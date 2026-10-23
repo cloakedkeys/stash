@@ -22,6 +22,9 @@ type ScreenshotOptions struct {
 
 	// SlowSeek uses accurate seek by placing -ss after the input.
 	SlowSeek bool
+
+	// FFMpegVersion selects version-specific arguments. Used by ScreenshotFrame.
+	FFMpegVersion ffmpeg.Version
 }
 
 func (o *ScreenshotOptions) setDefaults() {
@@ -105,7 +108,7 @@ func ScreenshotFrame(input string, frame int, options ScreenshotOptions) ffmpeg.
 	args = args.Input(input)
 	args = args.VideoFrames(1)
 
-	args = args.VSync(ffmpeg.VSyncMethodPassthrough)
+	args = args.VSync(ffmpeg.VSyncMethodPassthrough, options.FFMpegVersion)
 
 	var vf ffmpeg.VideoFilter
 	// keep only frame number options.Frame)

@@ -52,9 +52,10 @@ func (g Generator) SpriteScreenshotSlow(ctx context.Context, input string, frame
 	defer lockCtx.Cancel()
 
 	ssOptions := transcoder.ScreenshotOptions{
-		OutputPath: "-",
-		OutputType: transcoder.ScreenshotOutputTypeBMP,
-		Width:      width,
+		OutputPath:    "-",
+		OutputType:    transcoder.ScreenshotOutputTypeBMP,
+		Width:         width,
+		FFMpegVersion: g.Encoder.Version(),
 	}
 
 	args := transcoder.ScreenshotFrame(input, frame, ssOptions)

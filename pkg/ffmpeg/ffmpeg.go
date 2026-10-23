@@ -244,6 +244,11 @@ func (f *FFMpeg) Path() string {
 	return f.ffmpeg
 }
 
+// Version returns the detected ffmpeg version, or zero if it was not detected.
+func (f *FFMpeg) Version() Version {
+	return f.version
+}
+
 func (f *FFMpeg) getHWCodecSupport() []VideoCodec {
 	f.hwCodecSupportMutex.RLock()
 	defer f.hwCodecSupportMutex.RUnlock()
