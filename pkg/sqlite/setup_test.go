@@ -1835,6 +1835,7 @@ func createTags(ctx context.Context, tqb models.TagReaderWriter, n int) error {
 		tag := models.Tag{
 			Name:          getTagStringValue(index, name),
 			IgnoreAutoTag: getIgnoreAutoTag(i),
+			Rating:        getIntPtr(getRating(index)),
 		}
 
 		if (index+1)%5 != 0 {
