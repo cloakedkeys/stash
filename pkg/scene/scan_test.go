@@ -37,6 +37,8 @@ func (stubServerConfig) GetPluginsPath() string       { return "" }
 func (stubServerConfig) GetDisabledPlugins() []string { return nil }
 func (stubServerConfig) GetPythonPath() string        { return "" }
 
+func (stubServerConfig) GetPluginConfiguration(string) map[string]interface{} { return nil }
+
 // oldHash/newHash are the before/after hashes shared by every
 // TestHandle_ContentChangedAtSamePath* same-path-content-change test below.
 const (
@@ -268,7 +270,6 @@ func TestHandle_ContentChangedAtSamePath(t *testing.T) {
 			db.Scene.On("GetFiles", mock.Anything, testSceneID).Return([]*models.VideoFile{oldFile}, nil)
 			db.Scene.On("UpdatePartial", mock.Anything, testSceneID, mock.Anything).
 				Return(&models.Scene{ID: testSceneID}, nil)
-			db.Scene.On("UpdateCover", mock.Anything, testSceneID, mock.Anything).Return(nil)
 			db.Gallery.On("FindByPath", mock.Anything, mock.Anything).Return(nil, nil)
 
 			h := newTestScanHandler(db, &p)
@@ -279,7 +280,7 @@ func TestHandle_ContentChangedAtSamePath(t *testing.T) {
 
 			if tt.expectInvalidation {
 				assert.NoFileExists(t, staleSprite)
-				db.Scene.AssertCalled(t, "UpdateCover", mock.Anything, testSceneID, mock.Anything)
+				db.Scene.AssertNotCalled(t, "UpdateCover", mock.Anything, mock.Anything, mock.Anything)
 			} else {
 				assert.FileExists(t, staleSprite)
 				db.Scene.AssertNotCalled(t, "UpdateCover", mock.Anything, mock.Anything, mock.Anything)
@@ -337,7 +338,6 @@ func TestHandle_ContentChangedAtSamePath_SecondaryFile(t *testing.T) {
 	db.Scene.On("GetFiles", mock.Anything, testSceneID).Return([]*models.VideoFile{primaryFile, oldFile}, nil)
 	db.Scene.On("UpdatePartial", mock.Anything, testSceneID, mock.Anything).
 		Return(&models.Scene{ID: testSceneID}, nil)
-	db.Scene.On("UpdateCover", mock.Anything, testSceneID, mock.Anything).Return(nil)
 	db.Gallery.On("FindByPath", mock.Anything, mock.Anything).Return(nil, nil)
 
 	h := newTestScanHandler(db, &p)
@@ -410,7 +410,6 @@ func TestHandle_ContentChangedAtSamePath_SharedHashSibling(t *testing.T) {
 	db.Scene.On("GetFiles", mock.Anything, testSceneID).Return([]*models.VideoFile{primaryFile, oldFile}, nil)
 	db.Scene.On("UpdatePartial", mock.Anything, testSceneID, mock.Anything).
 		Return(&models.Scene{ID: testSceneID}, nil)
-	db.Scene.On("UpdateCover", mock.Anything, testSceneID, mock.Anything).Return(nil)
 	db.Gallery.On("FindByPath", mock.Anything, mock.Anything).Return(nil, nil)
 
 	h := newTestScanHandler(db, &p)
@@ -468,7 +467,6 @@ func TestHandle_ContentChangedAtSamePath_RollbackDoesNotDeleteFiles(t *testing.T
 	db.Scene.On("GetFiles", mock.Anything, testSceneID).Return([]*models.VideoFile{oldFile}, nil)
 	db.Scene.On("UpdatePartial", mock.Anything, testSceneID, mock.Anything).
 		Return(&models.Scene{ID: testSceneID}, nil)
-	db.Scene.On("UpdateCover", mock.Anything, testSceneID, mock.Anything).Return(nil)
 	// a later step (gallery association) fails, forcing Handle() to
 	// return an error and the transaction to roll back
 	db.Gallery.On("FindByPath", mock.Anything, mock.Anything).Return(nil, assert.AnError)
