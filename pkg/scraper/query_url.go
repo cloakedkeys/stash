@@ -16,6 +16,7 @@ func queryURLParametersFromScene(scene *models.Scene) queryURLParameters {
 	ret["checksum"] = scene.Checksum
 	ret["oshash"] = scene.OSHash
 	ret["filename"] = filepath.Base(scene.Path)
+	ret["path"] = scene.Path
 
 	// pull phash from primary file
 	phashFingerprints := scene.Files.Primary().Base().Fingerprints.Filter(models.FingerprintTypePhash)
@@ -113,7 +114,44 @@ func (p queryURLParameters) constructURL(url string) string {
 		ret = strings.ReplaceAll(ret, "{"+k+"}", v)
 	}
 
-	return ret
+	return escapeInvalidURLChars(ret)
+}
+
+// escapeInvalidURLChars percent-encodes the characters that can never appear in a URL as-is,
+// such as spaces and non-ASCII characters from a substituted filename or path.
+// Characters with a meaning in URLs (& = + # / and valid % escapes) are left alone, so that
+// templates and queryURLReplace rules that already encode their values keep working.
+// The scheme and host are not changed.
+func escapeInvalidURLChars(s string) string {
+	start := 0
+	if i := strings.Index(s, "://"); i >= 0 {
+		start = i + 3
+		if j := strings.IndexAny(s[start:], "/?#"); j >= 0 {
+			start += j
+		} else {
+			start = len(s)
+		}
+	}
+
+	const hexDigits = "0123456789ABCDEF"
+	var b strings.Builder
+	b.WriteString(s[:start])
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		validEscape := c == '%' && i+2 < len(s) && isHexDigit(s[i+1]) && isHexDigit(s[i+2])
+		if c <= ' ' || c >= 0x7f || c == '"' || c == '<' || c == '>' || (c == '%' && !validEscape) {
+			b.WriteByte('%')
+			b.WriteByte(hexDigits[c>>4])
+			b.WriteByte(hexDigits[c&0xf])
+		} else {
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+func isHexDigit(c byte) bool {
+	return ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')
 }
 
 // replaceURL does a partial URL Replace ( only url parameter is used)
