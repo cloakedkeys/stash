@@ -15,9 +15,12 @@ function preferredSourceIndex(
   let matchedType = -1;
   for (let i = 0; i < sources.length; i++) {
     const source = sources[i];
-    const matchType = preferredType ? source.streamType === preferredType : true;
+    const matchType = preferredType
+      ? source.streamType === preferredType
+      : true;
     if (matchType && source.resolution === preferredResolution) return i;
-    if (matchType && source.resolution === "ORIGINAL" && matchedType === -1) matchedType = i;
+    if (matchType && source.resolution === "ORIGINAL" && matchedType === -1)
+      matchedType = i;
   }
   return matchedType === -1 ? 0 : matchedType;
 }
@@ -244,7 +247,11 @@ class SourceSelectorPlugin extends videojs.getPlugin("plugin") {
       this.player.removeRemoteTextTrack(track);
     }
 
-    const selectedIndex = preferredSourceIndex(sources, preferredType, preferredResolution);
+    const selectedIndex = preferredSourceIndex(
+      sources,
+      preferredType,
+      preferredResolution
+    );
 
     this.menu.setSources(sources, selectedIndex);
     if (sources.length !== 0) {

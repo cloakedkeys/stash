@@ -27,40 +27,40 @@ type endpointType struct {
 
 var (
 	directEndpointType = endpointType{
-		label:     "Direct stream",
-		mimeType:  ffmpeg.MimeMp4Video,
-		extension: "",
+		label:      "Direct stream",
+		mimeType:   ffmpeg.MimeMp4Video,
+		extension:  "",
 		streamType: "direct",
 	}
 	mp4EndpointType = endpointType{
-		label:     "MP4",
-		mimeType:  ffmpeg.MimeMp4Video,
-		extension: ".mp4",
+		label:      "MP4",
+		mimeType:   ffmpeg.MimeMp4Video,
+		extension:  ".mp4",
 		streamType: "mp4",
 	}
 	mkvEndpointType = endpointType{
 		label: "MKV",
 		// use mp4 mimetype to trick the client, since many clients won't try mkv
-		mimeType:  ffmpeg.MimeMp4Video,
-		extension: ".mkv",
+		mimeType:   ffmpeg.MimeMp4Video,
+		extension:  ".mkv",
 		streamType: "mkv",
 	}
 	webmEndpointType = endpointType{
-		label:     "WEBM",
-		mimeType:  ffmpeg.MimeWebmVideo,
-		extension: ".webm",
+		label:      "WEBM",
+		mimeType:   ffmpeg.MimeWebmVideo,
+		extension:  ".webm",
 		streamType: "webm",
 	}
 	hlsEndpointType = endpointType{
-		label:     "HLS",
-		mimeType:  ffmpeg.MimeHLS,
-		extension: ".m3u8",
+		label:      "HLS",
+		mimeType:   ffmpeg.MimeHLS,
+		extension:  ".m3u8",
 		streamType: "hls",
 	}
 	dashEndpointType = endpointType{
-		label:     "DASH",
-		mimeType:  ffmpeg.MimeDASH,
-		extension: ".mpd",
+		label:      "DASH",
+		mimeType:   ffmpeg.MimeDASH,
+		extension:  ".mpd",
 		streamType: "dash",
 	}
 )

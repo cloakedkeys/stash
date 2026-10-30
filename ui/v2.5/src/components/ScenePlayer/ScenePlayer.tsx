@@ -783,8 +783,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
               duration,
             };
           }),
-          uiConfig?.defaultStreamType,
-          uiConfig?.defaultStreamingResolution
+        uiConfig?.defaultStreamType,
+        uiConfig?.defaultStreamingResolution
       );
 
       function getDefaultLanguageCode() {
