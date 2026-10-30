@@ -702,8 +702,9 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
       {maybeRenderMergeDialog()}
       {maybeRenderDeleteDialog()}
       <div
-        className={`scene-tabs order-xl-first order-last ${collapsed ? "collapsed" : ""
-          }`}
+        className={`scene-tabs order-xl-first order-last ${
+          collapsed ? "collapsed" : ""
+        }`}
       >
         <div>
           <div className="scene-header-container">
@@ -978,8 +979,33 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
         const newPage = (sceneQueue.query?.currentPage ?? 0) + 1;
         loadScene(target.id, autoPlay, newPage);
       }
-    } else if (allowLoop && loopPlaylist && queueScenes.length > 0) {
-      loadScene(queueScenes[0].id, autoPlay);
+    } else if (allowLoop && loopPlaylist) {
+      await queueLoopToStart(autoPlay, canLoad);
+    }
+  }
+
+  // go back to the first scene of the whole queue. If the queue is a filter
+  // and the first page isn't loaded, fetch the first page to find it.
+  async function queueLoopToStart(
+    autoPlay: boolean,
+    canLoad: (s: QueuedScene) => boolean
+  ) {
+    if (sceneQueue.query && queueStart > 1) {
+      const filterCopy = sceneQueue.query.clone();
+      filterCopy.currentPage = 1;
+      const query = await queryFindScenes(filterCopy);
+      const target = (query.data.findScenes.scenes as QueuedScene[]).find(
+        canLoad
+      );
+      if (target) {
+        loadScene(target.id, autoPlay, 1);
+      }
+      return;
+    }
+
+    const target = queueScenes.find(canLoad);
+    if (target) {
+      loadScene(target.id, autoPlay);
     }
   }
 

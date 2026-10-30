@@ -1018,26 +1018,26 @@ export const SettingsInterfacePanel: React.FC = PatchComponent(
           </SelectSetting>
           {(ui.ratingSystemOptions?.type ?? defaultRatingSystemType) ===
             RatingSystemType.Stars && (
-              <SelectSetting
-                id="rating_system_star_precision"
-                headingID="config.ui.editing.rating_system.star_precision.label"
-                value={
-                  ui.ratingSystemOptions?.starPrecision ??
-                  defaultRatingStarPrecision
-                }
-                onChange={(v) =>
-                  saveRatingSystemStarPrecision(v as RatingStarPrecision)
-                }
-              >
-                {Array.from(ratingStarPrecisionIntlMap.entries()).map((v) => (
-                  <option key={v[0]} value={v[0]}>
-                    {intl.formatMessage({
-                      id: v[1],
-                    })}
-                  </option>
-                ))}
-              </SelectSetting>
-            )}
+            <SelectSetting
+              id="rating_system_star_precision"
+              headingID="config.ui.editing.rating_system.star_precision.label"
+              value={
+                ui.ratingSystemOptions?.starPrecision ??
+                defaultRatingStarPrecision
+              }
+              onChange={(v) =>
+                saveRatingSystemStarPrecision(v as RatingStarPrecision)
+              }
+            >
+              {Array.from(ratingStarPrecisionIntlMap.entries()).map((v) => (
+                <option key={v[0]} value={v[0]}>
+                  {intl.formatMessage({
+                    id: v[1],
+                  })}
+                </option>
+              ))}
+            </SelectSetting>
+          )}
         </SettingSection>
 
         <SettingSection headingID="config.ui.custom_css.heading">
