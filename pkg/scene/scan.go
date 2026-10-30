@@ -126,12 +126,34 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 	}
 
 	if oldFile != nil {
-		// migrate hashes from the old file to the new
 		oldHash := GetHash(oldFile, h.FileNamingAlgorithm)
 		newHash := GetHash(f, h.FileNamingAlgorithm)
 
 		if oldHash != "" && newHash != "" && oldHash != newHash {
-			MigrateHash(h.Paths, oldHash, newHash)
+			// sprite/preview/transcode are keyed on the scene's
+			// primary file hash - only invalidate if this file is
+			// primary somewhere, so editing a secondary file (or one
+			// sharing a hash with the real primary) can't destroy
+			// content that's still valid.
+			// The cover is kept: it may have been set by the user or a
+			// scraper, and there is no way to tell it was generated.
+			isPrimary := false
+			for _, s := range existing {
+				if s.PrimaryFileID != nil && *s.PrimaryFileID == videoFile.ID {
+					isPrimary = true
+				}
+			}
+
+			if isPrimary {
+				// delete, don't rename - stale content shouldn't pass as
+				// valid under the new hash. Deferred to a post-commit
+				// hook since disk deletes can't roll back with the
+				// transaction; registered before the ScanGenerator hook
+				// below so deletion still runs first.
+				txn.AddPostCommitHook(ctx, func(ctx context.Context) {
+					InvalidateGeneratedFiles(h.Paths, oldHash)
+				})
+			}
 		}
 	}
 
