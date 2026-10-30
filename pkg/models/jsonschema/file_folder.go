@@ -101,7 +101,6 @@ type VideoFile struct {
 type VRCorrections struct {
 	HorizontalOffset *float64 `json:"horizontal_offset,omitempty"`
 	VerticalOffset   *float64 `json:"vertical_offset,omitempty"`
-	AlphaMode        *string  `json:"alpha_mode,omitempty"`
 }
 
 type ImageFile struct {

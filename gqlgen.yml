@@ -37,6 +37,10 @@ models:
     model: github.com/stashapp/stash/internal/api.PluginConfigMap
   File:
     model: github.com/stashapp/stash/internal/api.File
+  VideoProjection:
+    model: github.com/stashapp/stash/pkg/models.ProjectionEnum
+  StereoMode:
+    model: github.com/stashapp/stash/pkg/models.StereoModeEnum
   VideoFile:
     fields:
       # override float fields - #1572

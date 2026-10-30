@@ -427,8 +427,9 @@ type Mutation {
   destroyFiles(ids: [ID!]!): Boolean!
 
   fileSetFingerprints(input: FileSetFingerprintsInput!): Boolean!
+  "Set the VR metadata of a video file. Fields not supplied are cleared."
   fileSetVRMetadata(input: FileSetVRMetadataInput!): Boolean!
-  "Reveal file system file manager"
+  "Reveal the file in the system file manager"
   revealFileInFileManager(id: ID!): Boolean!
   "Reveal the folder in the system file manager"
   revealFolderInFileManager(id: ID!): Boolean!

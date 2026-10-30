@@ -338,28 +338,28 @@ func (r *mutationResolver) FileSetVRMetadata(ctx context.Context, input FileSetV
 	}
 	fileID := models.FileID(fileIDInt)
 
-	var projection *models.ProjectionEnum
-	if input.Projection != nil && *input.Projection != "" {
-		p := models.ProjectionEnum(*input.Projection)
-		projection = &p
-	}
-
-	var stereoMode *models.StereoModeEnum
-	if input.StereoMode != nil && *input.StereoMode != "" {
-		sm := models.StereoModeEnum(*input.StereoMode)
-		stereoMode = &sm
-	}
-
 	var vrCorrections *models.VRCorrections
 	if input.VrCorrections != nil {
 		vrCorrections = &models.VRCorrections{
 			HorizontalOffset: input.VrCorrections.HorizontalOffset,
 			VerticalOffset:   input.VrCorrections.VerticalOffset,
-			AlphaMode:        input.VrCorrections.AlphaMode,
 		}
 	}
 
-	if err := r.repository.File.ModifyVideoFileMetadata(ctx, fileID, projection, stereoMode, vrCorrections); err != nil {
+	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		f, err := r.repository.File.Find(ctx, fileID)
+		if err != nil {
+			return err
+		}
+		if len(f) == 0 {
+			return fmt.Errorf("file with id %d not found", fileID)
+		}
+		if _, ok := f[0].(*models.VideoFile); !ok {
+			return fmt.Errorf("file with id %d is not a video file", fileID)
+		}
+
+		return r.repository.File.ModifyVideoFileMetadata(ctx, fileID, input.Projection, input.StereoMode, vrCorrections)
+	}); err != nil {
 		return false, err
 	}
 

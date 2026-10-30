@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/jsonschema"
 	"github.com/stashapp/stash/pkg/utils"
@@ -306,11 +307,16 @@ func (i *Importer) Update(ctx context.Context, id int) error {
 	return nil
 }
 
+// unknown values are dropped rather than failing the whole import
 func projectionPtr(s *string) *models.ProjectionEnum {
 	if s == nil {
 		return nil
 	}
 	p := models.ProjectionEnum(*s)
+	if !p.IsValid() {
+		logger.Warnf("ignoring unknown projection %q", *s)
+		return nil
+	}
 	return &p
 }
 
@@ -319,6 +325,10 @@ func stereoModePtr(s *string) *models.StereoModeEnum {
 		return nil
 	}
 	m := models.StereoModeEnum(*s)
+	if !m.IsValid() {
+		logger.Warnf("ignoring unknown stereo mode %q", *s)
+		return nil
+	}
 	return &m
 }
 
@@ -329,6 +339,5 @@ func vrCorrectionsFromJSON(jc *jsonschema.VRCorrections) *models.VRCorrections {
 	return &models.VRCorrections{
 		HorizontalOffset: jc.HorizontalOffset,
 		VerticalOffset:   jc.VerticalOffset,
-		AlphaMode:        jc.AlphaMode,
 	}
 }

@@ -114,12 +114,12 @@ func (e StereoModeEnum) MarshalGQL(w io.Writer) {
 	fmt.Fprint(w, strconv.Quote(e.String()))
 }
 
-// VRCorrections holds optional per-video corrections commonly
-// applied when projecting stereoscopic or 360-degree content.
-// All fields are optional; nil means "unset".
-// AlphaMode follows DeoVR's alpha channel specification.
+// VRCorrections holds optional per-video adjustments to the image
+// position, as offered by VR players (for example DeoVR's x and y
+// corrections). All fields are optional; nil means "unset".
+// Passthrough settings (chroma key, alpha packing) are not corrections
+// and are not stored here.
 type VRCorrections struct {
 	HorizontalOffset *float64 `json:"horizontal_offset"`
 	VerticalOffset   *float64 `json:"vertical_offset"`
-	AlphaMode        *string  `json:"alpha_mode"`
 }

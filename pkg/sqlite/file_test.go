@@ -668,7 +668,6 @@ func TestFileStore_ModifyVRMetadata(t *testing.T) {
 	stereo := models.StereoModeEnumSBS
 	hOff := -0.5
 	vOff := 0.25
-	alpha := "yes"
 
 	tests := []struct {
 		name        string
@@ -683,7 +682,6 @@ func TestFileStore_ModifyVRMetadata(t *testing.T) {
 			&models.VRCorrections{
 				HorizontalOffset: &hOff,
 				VerticalOffset:   &vOff,
-				AlphaMode:        &alpha,
 			},
 		},
 		{
@@ -707,7 +705,11 @@ func TestFileStore_ModifyVRMetadata(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			err := qb.ModifyVideoFileMetadata(ctx, fileID, tt.projection, tt.stereoMode, tt.corrections)
+			before, err := qb.Find(ctx, fileID)
+			assert.NoError(err)
+			assert.Len(before, 1)
+
+			err = qb.ModifyVideoFileMetadata(ctx, fileID, tt.projection, tt.stereoMode, tt.corrections)
 			assert.NoError(err)
 
 			files, err := qb.Find(ctx, fileID)
@@ -718,6 +720,14 @@ func TestFileStore_ModifyVRMetadata(t *testing.T) {
 			if !assert.True(ok, "expected VideoFile") {
 				return
 			}
+
+			// the other video fields must be left alone
+			old := before[0].(*models.VideoFile)
+			assert.Equal(old.Duration, vf.Duration)
+			assert.Equal(old.Width, vf.Width)
+			assert.Equal(old.Height, vf.Height)
+			assert.Equal(old.VideoCodec, vf.VideoCodec)
+			assert.Equal(old.Format, vf.Format)
 
 			if tt.projection != nil {
 				if assert.NotNil(vf.Projection) {

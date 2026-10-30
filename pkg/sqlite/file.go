@@ -508,14 +508,15 @@ func vrCorrectionsFromNullString(s null.String) *models.VRCorrections {
 	return &vc
 }
 
-// ModifyVideoFileMetadata updates VR metadata fields; nil = no change.
+// ModifyVideoFileMetadata sets the VR metadata fields; nil clears a field.
+// Only the VR columns are written, the rest of the video file is left alone.
 func (qb *FileStore) ModifyVideoFileMetadata(ctx context.Context, fileID models.FileID, projection *models.ProjectionEnum, stereoMode *models.StereoModeEnum, vrCorrections *models.VRCorrections) error {
-	var row videoFileRow
-	row.FileID = fileID
-	row.Projection = null.StringFromPtr(projectionEnumPtr(projection))
-	row.StereoMode = null.StringFromPtr(stereoModeEnumPtr(stereoMode))
-	row.VRCorrections = vrCorrectionsToNullString(vrCorrections)
-	if err := videoFileTableMgr.updateByID(ctx, fileID, row); err != nil {
+	record := goqu.Record{
+		"projection":     null.StringFromPtr(projectionEnumPtr(projection)),
+		"stereo_mode":    null.StringFromPtr(stereoModeEnumPtr(stereoMode)),
+		"vr_corrections": vrCorrectionsToNullString(vrCorrections),
+	}
+	if err := videoFileTableMgr.updateByID(ctx, fileID, record); err != nil {
 		return fmt.Errorf("updating vr metadata: %w", err)
 	}
 	return nil
