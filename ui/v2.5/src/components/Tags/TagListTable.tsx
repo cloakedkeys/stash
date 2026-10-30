@@ -5,6 +5,7 @@ import { useIntl } from "react-intl";
 import { Button } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import * as GQL from "src/core/generated-graphql";
+import { SortDirectionEnum } from "src/core/generated-graphql";
 import { Icon } from "../Shared/Icon";
 import NavUtils from "src/utils/navigation";
 import { faHeart } from "@fortawesome/free-solid-svg-icons";
@@ -18,6 +19,9 @@ interface ITagListTableProps {
   tags: GQL.TagListDataFragment[];
   selectedIds: Set<string>;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
+  onSort?: (value: string) => void;
+  sortBy?: string;
+  sortDirection?: SortDirectionEnum;
 }
 
 const TABLE_NAME = "tags";
@@ -141,6 +145,7 @@ export const TagListTable: React.FC<ITagListTableProps> = (
     label: string;
     defaultShow?: boolean;
     mandatory?: boolean;
+    sortable?: boolean;
     render?: (tag: GQL.TagListDataFragment, index: number) => React.ReactNode;
   }
 
@@ -149,6 +154,7 @@ export const TagListTable: React.FC<ITagListTableProps> = (
       value: "image",
       label: intl.formatMessage({ id: "image" }),
       defaultShow: true,
+      sortable: false,
       render: ImageCell,
     },
     {
@@ -162,6 +168,7 @@ export const TagListTable: React.FC<ITagListTableProps> = (
       value: "aliases",
       label: intl.formatMessage({ id: "aliases" }),
       defaultShow: true,
+      sortable: false,
       render: AliasesCell,
     },
     {
@@ -253,6 +260,9 @@ export const TagListTable: React.FC<ITagListTableProps> = (
       selectedIds={props.selectedIds}
       onSelectChange={props.onSelectChange}
       renderCell={renderCell}
+      onSort={props.onSort}
+      sortBy={props.sortBy}
+      sortDirection={props.sortDirection}
     />
   );
 };
