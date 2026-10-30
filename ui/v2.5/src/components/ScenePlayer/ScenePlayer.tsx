@@ -873,7 +873,9 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       player.ready(() => {
         player.vttThumbnails().src(scene.paths.vtt ?? null);
 
-        if (startPosition) {
+        // the browser keeps a pending start position from a previous source
+        // that never loaded, so reset it when this scene starts from 0
+        if (startPosition || player.currentTime() !== 0) {
           player.currentTime(startPosition);
         }
       });
