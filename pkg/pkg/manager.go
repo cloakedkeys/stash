@@ -176,6 +176,10 @@ func (m *Manager) install(ctx context.Context, spec models.PackageSpecInput, ins
 		return fmt.Errorf("getting remote package: %w", err)
 	}
 
+	if pkg == nil {
+		return fmt.Errorf("package %s not found in source %s", spec.ID, spec.SourceURL)
+	}
+
 	fromRemote, err := remote.GetPackageZip(ctx, *pkg)
 	if err != nil {
 		return fmt.Errorf("getting remote package: %w", err)
