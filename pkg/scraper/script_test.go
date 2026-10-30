@@ -1,6 +1,7 @@
 package scraper
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -49,4 +50,31 @@ func makeImageFile(i int) *models.ImageFile {
 		Height: 200,
 		Width:  300,
 	}
+}
+
+func Test_sceneInputFromScene_includesStudioAndPerformers(t *testing.T) {
+	studioID := 3
+	model := models.Scene{
+		ID:           1,
+		Title:        "Test Scene",
+		Code:         "ABC-123",
+		StudioID:     &studioID,
+		PerformerIDs: models.NewRelatedIDs([]int{5, 7}),
+		URLs:         models.NewRelatedStrings([]string{}),
+		Files:        models.NewRelatedVideoFiles([]*models.VideoFile{}),
+	}
+
+	input := sceneInputFromScene(&model)
+
+	assert.Equal(t, "ABC-123", input.Code)
+	assert.Equal(t, "3", *input.StudioID)
+	assert.Equal(t, []string{"5", "7"}, input.PerformerIDs)
+
+	// left out of the JSON when the scene has none
+	model.StudioID = nil
+	model.PerformerIDs = models.NewRelatedIDs([]int{})
+	b, err := json.Marshal(sceneInputFromScene(&model))
+	assert.NoError(t, err)
+	assert.NotContains(t, string(b), "studio_id")
+	assert.NotContains(t, string(b), "performer_ids")
 }

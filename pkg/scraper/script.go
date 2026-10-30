@@ -69,6 +69,9 @@ type sceneInput struct {
 
 	Director string `json:"director,omitempty"`
 
+	StudioID     *string  `json:"studio_id,omitempty"`
+	PerformerIDs []string `json:"performer_ids,omitempty"`
+
 	Files []videoFileInput `json:"files,omitempty"`
 }
 
@@ -144,6 +147,17 @@ func sceneInputFromScene(scene *models.Scene) sceneInput {
 		ProductionDate: dateToStringPtr(scene.ProductionDate),
 		Code:           scene.Code,
 		Director:       scene.Director,
+	}
+
+	if scene.StudioID != nil {
+		v := strconv.Itoa(*scene.StudioID)
+		ret.StudioID = &v
+	}
+
+	if scene.PerformerIDs.Loaded() {
+		for _, id := range scene.PerformerIDs.List() {
+			ret.PerformerIDs = append(ret.PerformerIDs, strconv.Itoa(id))
+		}
 	}
 
 	for _, f := range scene.Files.List() {
