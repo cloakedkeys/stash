@@ -582,6 +582,19 @@ func cspConnectSrcFromSettings(settings map[string]interface{}) (valid []string,
 	return valid, skipped
 }
 
+// declaredSettings returns only the settings declared in the plugin's configuration file.
+// configurePlugin accepts any key, so without this a csp_ key the plugin author never
+// declared could be added at runtime to widen the policy.
+func declaredSettings(settings map[string]interface{}, declared []plugin.PluginSetting) map[string]interface{} {
+	ret := make(map[string]interface{})
+	for _, s := range declared {
+		if v, ok := settings[s.Name]; ok {
+			ret[s.Name] = v
+		}
+	}
+	return ret
+}
+
 // warnedCSPSettings tracks the invalid csp_ settings already logged, so that a
 // misconfigured plugin does not emit a warning on every page request. The value
 // is re-logged if the user changes the setting to another invalid value.
@@ -670,7 +683,7 @@ func setPageSecurityHeaders(w http.ResponseWriter, r *http.Request, plugins []*p
 		// only read plugin settings if the plugin opted in to the csp_ prefix
 		if ui.CSPSettings {
 			if settings := c.GetPluginConfiguration(plugin.ID); settings != nil {
-				valid, skipped := cspConnectSrcFromSettings(settings)
+				valid, skipped := cspConnectSrcFromSettings(declaredSettings(settings, plugin.Settings))
 				connectSrcSlice = append(connectSrcSlice, valid...)
 				warnInvalidCSPSettings(plugin.ID, skipped)
 			}

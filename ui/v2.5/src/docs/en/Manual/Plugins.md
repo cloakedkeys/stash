@@ -140,6 +140,8 @@ Settings whose key begins with `csp_` and whose value is a valid, concrete `http
 
 **This feature is opt-in.** The plugin must set `csp-settings: true` in its `ui` section (see below) to enable the `csp_` setting prefix. This prevents accidental namespace collisions with non-CSP settings.
 
+Only `csp_` settings declared in the `settings` field are used. A `csp_` setting added through `configurePlugin` that the plugin does not declare is ignored.
+
 Only values that are valid `http`/`https` URLs with a host are accepted. Wildcard hosts, URLs containing whitespace, commas, or `;` characters, and other invalid values are ignored and logged, so a misconfigured setting cannot weaken or corrupt the page content security policy.
 
 ### UI configuration

@@ -117,6 +117,7 @@ func TestSetPageSecurityHeadersCSPSettings(t *testing.T) {
 	settings := map[string]interface{}{
 		"csp_endpoint": "https://api.example.com",
 		"csp_bad":      "http://*:7860",
+		"csp_runtime":  "https://undeclared.example.com",
 		"apiKey":       "secret",
 	}
 
@@ -125,6 +126,12 @@ func TestSetPageSecurityHeadersCSPSettings(t *testing.T) {
 			ID:      "test-plugin",
 			Enabled: true,
 			UI:      plugin.PluginUI{CSPSettings: cspSettings},
+			// csp_runtime is set through configurePlugin but not declared
+			Settings: []plugin.PluginSetting{
+				{Name: "csp_endpoint"},
+				{Name: "csp_bad"},
+				{Name: "apiKey"},
+			},
 		}}
 	}
 
@@ -133,6 +140,10 @@ func TestSetPageSecurityHeadersCSPSettings(t *testing.T) {
 		assert.Contains(t, csp, "https://api.example.com")
 		assert.NotContains(t, csp, "http://*:7860")
 		assert.NotContains(t, csp, "secret")
+	})
+
+	t.Run("undeclared setting", func(t *testing.T) {
+		assert.NotContains(t, connectSrc(t, pluginWith(true), settings), "undeclared.example.com")
 	})
 
 	t.Run("not opted in", func(t *testing.T) {
