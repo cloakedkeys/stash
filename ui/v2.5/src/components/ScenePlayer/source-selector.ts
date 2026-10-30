@@ -245,7 +245,6 @@ class SourceSelectorPlugin extends videojs.getPlugin("plugin") {
     }
 
     const selectedIndex = preferredSourceIndex(sources, preferredType, preferredResolution);
-    if (selectedIndex === this.selectedIndex) return;
 
     this.menu.setSources(sources, selectedIndex);
     if (sources.length !== 0) {
