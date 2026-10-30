@@ -19,6 +19,8 @@ import { ManualStateContext } from "./Help/context";
 import { SettingsButton } from "./SettingsButton";
 import {
   buildMainNavbarMenuItems,
+  isMenuItemActive,
+  splitHref,
   type INavbarMenuItem,
 } from "./MainNavbar/menuItems";
 import {
@@ -362,20 +364,30 @@ export const MainNavbar: React.FC = () => {
     >
       <Navbar.Collapse className="bg-dark order-sm-1">
         <MainNavbarMenuItems>
-          {menuItems.map(({ href, icon, label, message, name }) => (
+          {menuItems.map((item) => (
             <Nav.Link
-              eventKey={href}
+              eventKey={item.href}
               as="div"
-              key={name}
+              key={item.name}
               className="col-4 col-sm-3 col-md-2 col-lg-auto"
             >
-              <LinkContainer activeClassName="active" exact to={href}>
+              <LinkContainer
+                activeClassName="active"
+                to={splitHref(item.href)}
+                isActive={(_match, loc) =>
+                  isMenuItemActive(item, menuItems, loc.pathname, loc.search)
+                }
+              >
                 <Button className="minimal p-4 p-xl-2 d-flex d-xl-inline-block flex-column justify-content-between align-items-center">
                   <Icon
-                    {...{ icon }}
+                    icon={item.icon}
                     className="nav-menu-icon d-block d-xl-inline mb-2 mb-xl-0"
                   />
-                  <span>{message ? intl.formatMessage(message) : label}</span>
+                  <span>
+                    {item.message
+                      ? intl.formatMessage(item.message)
+                      : item.label}
+                  </span>
                 </Button>
               </LinkContainer>
             </Nav.Link>

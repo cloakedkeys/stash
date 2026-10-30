@@ -8,6 +8,8 @@ import type {
 import {
   buildMainNavbarMenuItems,
   buildSavedFilterMenuItems,
+  isMenuItemActive,
+  splitHref,
   type INavbarMenuItem,
 } from "./menuItems";
 import type { ISavedFilterMenuItem } from "../../core/config";
@@ -79,6 +81,30 @@ const combinedItems = buildMainNavbarMenuItems(
 assertEqual(combinedItems.length, 2);
 assertEqual(combinedItems[0].name, "galleries");
 assertEqual(combinedItems[1].name, "saved-filter:manga-section");
+
+// only one item is highlighted on a saved filter's page
+const [galleriesItem, mangaItem] = combinedItems;
+const mangaSearch = "?" + mangaItem.href.split("?")[1];
+const activeNames = (pathname: string, search: string) =>
+  combinedItems
+    .filter((i) => isMenuItemActive(i, combinedItems, pathname, search))
+    .map((i) => i.name)
+    .join(",");
+
+assertEqual(activeNames("/galleries", mangaSearch), mangaItem.name);
+assertEqual(activeNames("/galleries", ""), galleriesItem.name);
+assertEqual(activeNames("/galleries", "?sortby=title"), galleriesItem.name);
+assertEqual(activeNames("/scenes", mangaSearch), "");
+
+// parameter order does not matter
+const reordered =
+  "?" +
+  new URLSearchParams(mangaSearch).toString().split("&").reverse().join("&");
+assertEqual(activeNames("/galleries", reordered), mangaItem.name);
+
+assertEqual(splitHref("/galleries?a=1").pathname, "/galleries");
+assertEqual(splitHref("/galleries?a=1").search, "a=1");
+assertEqual(splitHref("/galleries").search, "");
 function assertEqual<T>(actual: T, expected: T) {
   if (actual !== expected) {
     throw new Error(`Expected ${String(expected)}, got ${String(actual)}`);

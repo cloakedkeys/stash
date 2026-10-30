@@ -69,6 +69,54 @@ export function buildSavedFilterMenuItems(
   });
 }
 
+export function splitHref(href: string) {
+  const i = href.indexOf("?");
+  return i === -1
+    ? { pathname: href, search: "" }
+    : { pathname: href.slice(0, i), search: href.slice(i + 1) };
+}
+
+function sameQuery(a: string, b: string) {
+  const sorted = (s: string) => {
+    const params = new URLSearchParams(s);
+    params.sort();
+    return params.toString();
+  };
+  return sorted(a) === sorted(b);
+}
+
+function matchesLocation(
+  item: INavbarMenuItem,
+  pathname: string,
+  search: string
+) {
+  const href = splitHref(item.href);
+  return (
+    href.pathname === pathname &&
+    (!href.search || sameQuery(href.search, search))
+  );
+}
+
+// A saved filter item links to the same page as a built-in item, so only one of them
+// is highlighted: the saved filter while its query is unchanged, otherwise the page.
+export function isMenuItemActive(
+  item: INavbarMenuItem,
+  menuItems: INavbarMenuItem[],
+  pathname: string,
+  search: string
+) {
+  if (!matchesLocation(item, pathname, search)) {
+    return false;
+  }
+  if (splitHref(item.href).search) {
+    return true;
+  }
+  return !menuItems.some(
+    (other) =>
+      splitHref(other.href).search && matchesLocation(other, pathname, search)
+  );
+}
+
 export function buildMainNavbarMenuItems(
   builtInItems: INavbarMenuItem[],
   configuredBuiltInNames: string[] | null | undefined,
