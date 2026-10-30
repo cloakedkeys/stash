@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/image"
@@ -21,60 +19,55 @@ import (
 	"github.com/stashapp/stash/pkg/scene"
 )
 
-type cleaner interface {
-	Clean(ctx context.Context, options file.CleanOptions, progress *job.Progress)
-}
-
-type cleanJob struct {
-	cleaner      cleaner
-	repository   models.Repository
-	input        CleanMetadataInput
-	sceneService SceneService
-	imageService ImageService
-	scanSubs     *subscriptionManager
-}
-
 // galleryCleanCandidate avoids retaining full gallery models for large libraries.
 type galleryCleanCandidate struct {
 	id   int
 	path string
 }
 
-func (j *cleanJob) Execute(ctx context.Context, progress *job.Progress) error {
-	logger.Infof("Starting cleaning of tracked files")
+type purgeMissingJob struct {
+	purger *file.MissingPurger
+
+	options      file.PurgeMissingOptions
+	repository   models.Repository
+	sceneService SceneService
+	imageService ImageService
+	scanSubs     *subscriptionManager
+}
+
+func (j *purgeMissingJob) Execute(ctx context.Context, progress *job.Progress) error {
+	logger.Infof("Starting purging of missing files and folders")
 	start := time.Now()
-	if j.input.DryRun {
+	if j.options.DryRun {
 		logger.Infof("Running in Dry Mode")
 	}
 
-	j.cleaner.Clean(ctx, file.CleanOptions{
-		Paths:                 j.input.Paths,
-		DryRun:                j.input.DryRun,
-		IgnoreZipFileContents: j.input.IgnoreZipFileContents,
-		PathFilter:            newCleanFilter(instance.Config),
-	}, progress)
+	j.purger.PurgeMissing(ctx, j.options, progress)
 
 	if job.IsCancelled(ctx) {
 		logger.Info("Stopping due to user request")
 		return nil
 	}
 
-	j.cleanGalleries(ctx)
+	// only clean galleries if not in dry run mode
+	if !j.options.DryRun {
+		j.cleanGalleries(ctx)
+	}
 
 	j.scanSubs.notify()
 	elapsed := time.Since(start)
-	logger.Info(fmt.Sprintf("Finished Cleaning (%s)", elapsed))
+	logger.Info(fmt.Sprintf("Finished purging missing files and folders (%s)", elapsed))
 	return nil
 }
 
-func (j *cleanJob) cleanGalleries(ctx context.Context) {
+func (j *purgeMissingJob) cleanGalleries(ctx context.Context) {
 	toClean, err := j.findGalleriesToClean(ctx)
 	if err != nil {
 		logger.Errorf("Error finding galleries to clean: %v", err)
 		return
 	}
 
-	if !j.input.DryRun {
+	if !j.options.DryRun {
 		for _, id := range toClean {
 			j.deleteGallery(ctx, id)
 		}
@@ -97,7 +90,7 @@ func isNoGalleryFolder(path string) (bool, error) {
 	return false, nil
 }
 
-func (j *cleanJob) findGalleriesToClean(ctx context.Context) ([]int, error) {
+func (j *purgeMissingJob) findGalleriesToClean(ctx context.Context) ([]int, error) {
 	const batchSize = 1000
 	var toClean []int
 	var folderGalleries []galleryCleanCandidate
@@ -105,7 +98,7 @@ func (j *cleanJob) findGalleriesToClean(ctx context.Context) ([]int, error) {
 	r := j.repository
 
 	inCleanPaths := func(g *models.Gallery) bool {
-		return g.Path != "" && (len(j.input.Paths) == 0 || fsutil.IsPathInDirs(j.input.Paths, g.Path))
+		return g.Path != "" && (len(j.options.Paths) == 0 || fsutil.IsPathInDirs(j.options.Paths, g.Path))
 	}
 
 	markForClean := func(id int, displayName, reason string) {
@@ -190,7 +183,7 @@ func (j *cleanJob) findGalleriesToClean(ctx context.Context) ([]int, error) {
 	return toClean, nil
 }
 
-func (j *cleanJob) deleteGallery(ctx context.Context, id int) {
+func (j *purgeMissingJob) deleteGallery(ctx context.Context, id int) {
 	pluginCache := GetInstance().PluginCache
 
 	r := j.repository
@@ -224,130 +217,9 @@ func (j *cleanJob) deleteGallery(ctx context.Context, id int) {
 	}
 }
 
-type cleanFilter struct {
-	scanFilter
-}
+type purgeHandler struct{}
 
-func newCleanFilter(c *config.Config) *cleanFilter {
-	return &cleanFilter{
-		scanFilter: scanFilter{
-			extensionConfig:   newExtensionConfig(c),
-			stashPaths:        c.GetStashPaths(),
-			generatedPath:     c.GetGeneratedPath(),
-			videoExcludeRegex: generateRegexps(c.GetExcludes()),
-			imageExcludeRegex: generateRegexps(c.GetImageExcludes()),
-			stashIgnoreFilter: file.NewStashIgnoreFilter(),
-		},
-	}
-}
-
-func (f *cleanFilter) Accept(ctx context.Context, path string, info fs.FileInfo, zipFilePath string) bool {
-	//  #1102 - clean anything in generated path
-	generatedPath := f.generatedPath
-
-	var stash *config.StashConfig
-	fileOrFolder := "File"
-
-	if info.IsDir() {
-		fileOrFolder = "Folder"
-		stash = f.stashPaths.GetStashFromDirPath(path)
-	} else {
-		stash = f.stashPaths.GetStashFromPath(path)
-	}
-
-	if stash == nil {
-		logger.Infof("%s not in any stash library directories. Marking to clean: %q", fileOrFolder, path)
-		return false
-	}
-
-	if fsutil.IsPathInDir(generatedPath, path) {
-		logger.Infof("%s is in generated path. Marking to clean: %q", fileOrFolder, path)
-		return false
-	}
-
-	// Check .stashignore files, bounded to the library root.
-	if !f.stashIgnoreFilter.Accept(ctx, path, info, f.stashPaths.GetStashRootFromDirPath(path), zipFilePath) {
-		logger.Infof("%s is excluded due to .stashignore. Marking to clean: %q", fileOrFolder, path)
-		return false
-	}
-
-	if info.IsDir() {
-		return !f.shouldCleanFolder(path, stash)
-	}
-
-	return !f.shouldCleanFile(path, info, stash)
-}
-
-func (f *cleanFilter) shouldCleanFolder(path string, s *config.StashConfig) bool {
-	// only delete folders where it is excluded from everything
-	pathExcludeTest := path + string(filepath.Separator)
-	if (s.ExcludeVideo || matchFileRegex(pathExcludeTest, f.videoExcludeRegex)) && (s.ExcludeImage || matchFileRegex(pathExcludeTest, f.imageExcludeRegex)) {
-		logger.Infof("Folder is excluded from both video and image. Marking to clean: \"%s\"", path)
-		return true
-	}
-
-	return false
-}
-
-func (f *cleanFilter) shouldCleanFile(path string, info fs.FileInfo, stash *config.StashConfig) bool {
-	switch {
-	case info.IsDir() || fsutil.MatchExtension(path, f.zipExt):
-		return f.shouldCleanGallery(path, stash)
-	case useAsVideo(path):
-		return f.shouldCleanVideoFile(path, stash)
-	case useAsImage(path):
-		return f.shouldCleanImage(path, stash)
-	default:
-		logger.Infof("File extension does not match any media extensions. Marking to clean: \"%s\"", path)
-		return true
-	}
-}
-
-func (f *cleanFilter) shouldCleanVideoFile(path string, stash *config.StashConfig) bool {
-	if stash.ExcludeVideo {
-		logger.Infof("File in stash library that excludes video. Marking to clean: \"%s\"", path)
-		return true
-	}
-
-	if matchFileRegex(path, f.videoExcludeRegex) {
-		logger.Infof("File matched regex. Marking to clean: \"%s\"", path)
-		return true
-	}
-
-	return false
-}
-
-func (f *cleanFilter) shouldCleanGallery(path string, stash *config.StashConfig) bool {
-	if stash.ExcludeImage {
-		logger.Infof("File in stash library that excludes images. Marking to clean: \"%s\"", path)
-		return true
-	}
-
-	if matchFileRegex(path, f.imageExcludeRegex) {
-		logger.Infof("File matched regex. Marking to clean: \"%s\"", path)
-		return true
-	}
-
-	return false
-}
-
-func (f *cleanFilter) shouldCleanImage(path string, stash *config.StashConfig) bool {
-	if stash.ExcludeImage {
-		logger.Infof("File in stash library that excludes images. Marking to clean: \"%s\"", path)
-		return true
-	}
-
-	if matchFileRegex(path, f.imageExcludeRegex) {
-		logger.Infof("File matched regex. Marking to clean: \"%s\"", path)
-		return true
-	}
-
-	return false
-}
-
-type cleanHandler struct{}
-
-func (h *cleanHandler) HandleFile(ctx context.Context, fileDeleter *file.Deleter, fileID models.FileID) error {
+func (h *purgeHandler) HandleFile(ctx context.Context, fileDeleter *file.Deleter, fileID models.FileID) error {
 	if err := h.handleRelatedScenes(ctx, fileDeleter, fileID); err != nil {
 		return err
 	}
@@ -361,11 +233,11 @@ func (h *cleanHandler) HandleFile(ctx context.Context, fileDeleter *file.Deleter
 	return nil
 }
 
-func (h *cleanHandler) HandleFolder(ctx context.Context, fileDeleter *file.Deleter, folderID models.FolderID) error {
+func (h *purgeHandler) HandleFolder(ctx context.Context, fileDeleter *file.Deleter, folderID models.FolderID) error {
 	return h.deleteRelatedFolderGalleries(ctx, folderID)
 }
 
-func (h *cleanHandler) handleRelatedScenes(ctx context.Context, fileDeleter *file.Deleter, fileID models.FileID) error {
+func (h *purgeHandler) handleRelatedScenes(ctx context.Context, fileDeleter *file.Deleter, fileID models.FileID) error {
 	mgr := GetInstance()
 	sceneQB := mgr.Repository.Scene
 	scenes, err := sceneQB.FindByFileID(ctx, fileID)
@@ -423,7 +295,7 @@ func (h *cleanHandler) handleRelatedScenes(ctx context.Context, fileDeleter *fil
 	return nil
 }
 
-func (h *cleanHandler) handleRelatedGalleries(ctx context.Context, fileID models.FileID) error {
+func (h *purgeHandler) handleRelatedGalleries(ctx context.Context, fileID models.FileID) error {
 	mgr := GetInstance()
 	qb := mgr.Repository.Gallery
 	galleries, err := qb.FindByFileID(ctx, fileID)
@@ -469,7 +341,7 @@ func (h *cleanHandler) handleRelatedGalleries(ctx context.Context, fileID models
 	return nil
 }
 
-func (h *cleanHandler) deleteRelatedFolderGalleries(ctx context.Context, folderID models.FolderID) error {
+func (h *purgeHandler) deleteRelatedFolderGalleries(ctx context.Context, folderID models.FolderID) error {
 	mgr := GetInstance()
 	qb := mgr.Repository.Gallery
 	galleries, err := qb.FindByFolderID(ctx, folderID)
@@ -493,7 +365,7 @@ func (h *cleanHandler) deleteRelatedFolderGalleries(ctx context.Context, folderI
 	return nil
 }
 
-func (h *cleanHandler) handleRelatedImages(ctx context.Context, fileDeleter *file.Deleter, fileID models.FileID) error {
+func (h *purgeHandler) handleRelatedImages(ctx context.Context, fileDeleter *file.Deleter, fileID models.FileID) error {
 	mgr := GetInstance()
 	imageQB := mgr.Repository.Image
 	images, err := imageQB.FindByFileID(ctx, fileID)

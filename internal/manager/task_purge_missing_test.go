@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/mocks"
 	"github.com/stretchr/testify/assert"
@@ -94,9 +95,9 @@ func TestFindGalleriesToCleanIncludesNoGalleryFolders(t *testing.T) {
 	db.Gallery.On("Query", mock.Anything, folderGalleryFilter, mock.Anything).
 		Return([]*models.Gallery{}, 0, nil).Once()
 
-	j := cleanJob{
+	j := purgeMissingJob{
 		repository: db.Repository(),
-		input: CleanMetadataInput{
+		options: file.PurgeMissingOptions{
 			Paths: []string{cleanPath},
 		},
 	}
