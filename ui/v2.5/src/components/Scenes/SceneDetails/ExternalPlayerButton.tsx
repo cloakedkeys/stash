@@ -5,7 +5,6 @@ import { useIntl } from "react-intl";
 import { Icon } from "src/components/Shared/Icon";
 import { objectTitle } from "src/core/files";
 import { SceneDataFragment } from "src/core/generated-graphql";
-import { useConfigurationContext } from "src/hooks/Config";
 
 export interface IExternalPlayerButtonProps {
   scene: SceneDataFragment;
@@ -17,20 +16,19 @@ export const ExternalPlayerButton: React.FC<IExternalPlayerButtonProps> = ({
   const isAndroid = /(android)/i.test(navigator.userAgent);
   const isAppleDevice = /(ipod|iphone|ipad)/i.test(navigator.userAgent);
   const intl = useIntl();
-  const { configuration } = useConfigurationContext();
-  const showOpenExternal = configuration.ui.showOpenExternal ?? true;
-  const { paths } = scene;
-  const { files } = scene;
-  // Get only file name from the full path.
-  const fileName = files[0].path?.split("/").pop()?.split("\\").pop() ?? "";
 
-  if (!paths?.stream || (!isAndroid && !isAppleDevice && !showOpenExternal))
-    return <span />;
+  const { paths } = scene;
+
+  if (!paths?.stream) return <span />;
 
   const { stream } = paths;
   const title = objectTitle(scene);
 
+  // VR players such as DeoVR need the file name (and its extension) at the end of the URL
+  const fileName = scene.files[0]?.path.split(/[\\/]/).pop();
+
   let url: string | undefined;
+  let newTab = false;
   const streamURL = new URL(stream);
   if (isAndroid) {
     const scheme = streamURL.protocol.slice(0, -1);
@@ -52,8 +50,12 @@ export const ExternalPlayerButton: React.FC<IExternalPlayerButtonProps> = ({
     url = streamURL
       .toString()
       .replace(new RegExp(`^${streamURL.protocol}`), "vlc-x-callback:");
-  } else if (showOpenExternal) {
-    url = stream + "/" + encodeURIComponent(fileName);
+  } else {
+    if (fileName) {
+      streamURL.pathname += "/" + encodeURIComponent(fileName);
+    }
+    url = streamURL.toString();
+    newTab = true;
   }
 
   return (
@@ -62,7 +64,11 @@ export const ExternalPlayerButton: React.FC<IExternalPlayerButtonProps> = ({
       variant="secondary"
       title={intl.formatMessage({ id: "actions.open_in_external_player" })}
     >
-      <a href={url}>
+      <a
+        href={url}
+        target={newTab ? "_blank" : undefined}
+        rel={newTab ? "noopener noreferrer" : undefined}
+      >
         <Icon icon={faExternalLinkAlt} color="white" />
       </a>
     </Button>
