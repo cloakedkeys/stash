@@ -333,7 +333,7 @@ func emptyGroup(idx int) models.Group {
 	return models.Group{
 		ID:               groupIDs[idx],
 		Name:             groupNames[idx],
-		Aliases:          "",
+		Aliases:          models.NewRelatedStrings([]string{}),
 		TagIDs:           models.NewRelatedIDs([]int{}),
 		ContainingGroups: models.NewRelatedGroupDescriptions([]models.GroupIDDescription{}),
 		SubGroups:        models.NewRelatedGroupDescriptions([]models.GroupIDDescription{}),
@@ -463,7 +463,7 @@ func Test_groupQueryBuilder_UpdatePartial(t *testing.T) {
 			models.Group{
 				ID:      groupIDs[groupIdxWithParent],
 				Name:    groupNames[groupIdxWithParent],
-				Aliases: getGroupEmptyString(groupIdxWithParent, "Aliases"),
+				Aliases: models.NewRelatedStrings(groupAliases(groupIdxWithParent)),
 				ContainingGroups: models.NewRelatedGroupDescriptions([]models.GroupIDDescription{
 					{GroupID: groupIDs[groupIdxWithChild]},
 					{GroupID: groupIDs[groupIdxWithScene], Description: containingGroupDescription},
@@ -485,7 +485,7 @@ func Test_groupQueryBuilder_UpdatePartial(t *testing.T) {
 			models.Group{
 				ID:      groupIDs[groupIdxWithChild],
 				Name:    groupNames[groupIdxWithChild],
-				Aliases: getGroupEmptyString(groupIdxWithChild, "Aliases"),
+				Aliases: models.NewRelatedStrings(groupAliases(groupIdxWithChild)),
 				SubGroups: models.NewRelatedGroupDescriptions([]models.GroupIDDescription{
 					{GroupID: groupIDs[groupIdxWithParent]},
 					{GroupID: groupIDs[groupIdxWithScene], Description: subGroupDescription},
@@ -507,7 +507,7 @@ func Test_groupQueryBuilder_UpdatePartial(t *testing.T) {
 			models.Group{
 				ID:               groupIDs[groupIdxWithParent],
 				Name:             groupNames[groupIdxWithParent],
-				Aliases:          getGroupEmptyString(groupIdxWithParent, "Aliases"),
+				Aliases:          models.NewRelatedStrings(groupAliases(groupIdxWithParent)),
 				ContainingGroups: models.NewRelatedGroupDescriptions([]models.GroupIDDescription{}),
 			},
 			false,
@@ -526,7 +526,7 @@ func Test_groupQueryBuilder_UpdatePartial(t *testing.T) {
 			models.Group{
 				ID:        groupIDs[groupIdxWithChild],
 				Name:      groupNames[groupIdxWithChild],
-				Aliases:   getGroupEmptyString(groupIdxWithChild, "Aliases"),
+				Aliases:   models.NewRelatedStrings(groupAliases(groupIdxWithChild)),
 				SubGroups: models.NewRelatedGroupDescriptions([]models.GroupIDDescription{}),
 			},
 			false,
@@ -959,12 +959,10 @@ func TestGroupQueryURL(t *testing.T) {
 }
 
 func TestGroupQueryAliases(t *testing.T) {
-	const groupIdx = 1
-	const aliasesField = "Aliases"
-	groupAliases := getGroupStringValue(groupIdx, aliasesField)
+	groupAlias := groupAliases(groupIdxWithAlias)[0]
 
 	aliasesCriterion := models.StringCriterionInput{
-		Value:    groupAliases,
+		Value:    groupAlias,
 		Modifier: models.CriterionModifierEquals,
 	}
 
@@ -974,16 +972,18 @@ func TestGroupQueryAliases(t *testing.T) {
 
 	verifyFn := func(n *models.Group) {
 		t.Helper()
-		verifyString(t, n.Aliases, aliasesCriterion)
+		verifyStringList(t, n.Aliases.List(), aliasesCriterion)
 	}
 
 	verifyGroupQuery(t, filter, verifyFn)
 
+	// only groups with aliases can match, and only groupIdxWithAlias has one
 	aliasesCriterion.Modifier = models.CriterionModifierNotEquals
+	aliasesCriterion.Value = "not-present-alias"
 	verifyGroupQuery(t, filter, verifyFn)
 
 	aliasesCriterion.Modifier = models.CriterionModifierIncludes
-	aliasesCriterion.Value = "0001_Ali"
+	aliasesCriterion.Value = groupAlias[3:9]
 	verifyGroupQuery(t, filter, verifyFn)
 
 	aliasesCriterion.Modifier = models.CriterionModifierExcludes
@@ -991,7 +991,7 @@ func TestGroupQueryAliases(t *testing.T) {
 	verifyGroupQuery(t, filter, verifyFn)
 
 	aliasesCriterion.Modifier = models.CriterionModifierMatchesRegex
-	aliasesCriterion.Value = "group_.*1_Aliases"
+	aliasesCriterion.Value = "group_.*_alias"
 	verifyGroupQuery(t, filter, verifyFn)
 
 	aliasesCriterion.Modifier = models.CriterionModifierNotMatchesRegex
@@ -1064,6 +1064,9 @@ func verifyGroupQuery(t *testing.T, filter models.GroupFilterType, verifyFn func
 
 		for _, group := range groups {
 			if err := group.LoadURLs(ctx, sqb); err != nil {
+				t.Errorf("Error loading group relationships: %v", err)
+			}
+			if err := group.LoadAliases(ctx, sqb); err != nil {
 				t.Errorf("Error loading group relationships: %v", err)
 			}
 		}
