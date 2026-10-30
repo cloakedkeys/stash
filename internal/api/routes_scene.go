@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -68,6 +69,8 @@ func (rs sceneRoutes) Routes() chi.Router {
 		r.Get("/stream.mpd", rs.StreamDASH)
 		r.Get("/stream.mpd/{segment}_v.webm", rs.StreamDASHVideoSegment)
 		r.Get("/stream.mpd/{segment}_a.webm", rs.StreamDASHAudioSegment)
+		// same as /stream, with the file name at the end for players that need it
+		r.Get("/stream/{filename}", rs.StreamDirectNamed)
 
 		r.Get("/screenshot", rs.Screenshot)
 		r.Get("/preview", rs.Preview)
@@ -97,6 +100,27 @@ func (rs sceneRoutes) StreamDirect(w http.ResponseWriter, r *http.Request) {
 		SceneCoverGetter: rs.sceneFinder,
 	}
 	ss.StreamSceneDirect(scene, w, r)
+}
+
+// StreamDirectNamed only serves the scene's primary file, and only if the name matches it.
+func (rs sceneRoutes) StreamDirectNamed(w http.ResponseWriter, r *http.Request) {
+	scene := r.Context().Value(sceneKey).(*models.Scene)
+
+	// chi matches on the raw path when the request isn't in Go's default encoding
+	name := chi.URLParam(r, "filename")
+	if r.URL.RawPath != "" {
+		if unescaped, err := url.PathUnescape(name); err == nil {
+			name = unescaped
+		}
+	}
+
+	pf := scene.Files.Primary()
+	if pf == nil || name != pf.Basename {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	rs.StreamDirect(w, r)
 }
 
 func (rs sceneRoutes) StreamMp4(w http.ResponseWriter, r *http.Request) {
