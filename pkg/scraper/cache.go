@@ -56,6 +56,7 @@ type SceneFinder interface {
 	models.SceneGetter
 	models.URLLoader
 	models.VideoFileLoader
+	models.PerformerIDLoader
 }
 
 type PerformerFinder interface {
@@ -434,6 +435,10 @@ func (c Cache) getScene(ctx context.Context, sceneID int) (*models.Scene, error)
 		}
 
 		if err := ret.LoadFiles(ctx, qb); err != nil {
+			return err
+		}
+
+		if err := ret.LoadPerformerIDs(ctx, qb); err != nil {
 			return err
 		}
 
