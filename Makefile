@@ -103,10 +103,21 @@ flags-static-windows:
 	$(eval GO_BUILD_FLAGS += -buildmode=pie)
 	$(eval GO_BUILD_TAGS += sqlite_omit_load_extension osusergo)
 
+# getDate.go must run on the host, even when a build-cc target exports a different GOOS/GOARCH.
+# cmd cannot set variables in front of a command, so on Windows they are set as exported
+# target-specific variables instead, which $(shell) receives from GNU make 4.4 onwards.
 .PHONY: build-info
+ifeq ($(OS),Windows_NT)
+build-info: export GOOS = $(shell go env GOHOSTOS)
+build-info: export GOARCH = $(shell go env GOHOSTARCH)
+endif
 build-info:
 ifndef BUILD_DATE
+ifeq ($(OS),Windows_NT)
+	$(eval BUILD_DATE := $(shell go run scripts/getDate.go))
+else
 	$(eval BUILD_DATE := $(shell GOOS=$$(go env GOHOSTOS) GOARCH=$$(go env GOHOSTARCH) go run scripts/getDate.go))
+endif
 endif
 ifndef GITHASH
 	$(eval GITHASH := $(shell git rev-parse --short HEAD))
