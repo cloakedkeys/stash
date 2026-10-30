@@ -215,8 +215,11 @@ For `sceneByFragment` and `sceneByQueryFragment`, the `queryURL` field must also
 - `{oshash}` - the oshash of the scene
 - `{phash}` - the phash of the scene
 - `{filename}` - the base filename of the scene
+- `{path}` - the full path of the scene file
 - `{title}` - the title of the scene
 - `{url}` - the url of the scene
+
+After the placeholders are replaced, characters that are not allowed in a URL, such as spaces and non-ASCII characters, are percent-encoded. Characters that have a meaning in URLs, such as `&`, `=`, `+`, `#` and existing `%` escapes, are left as they are, so a value containing them should be encoded with `queryURLReplace`.
 
 These placeholder field values may be manipulated with regex replacements by adding a `queryURLReplace` section, containing a map of placeholder field to regex configuration which uses the same format as the `replace` post-process action covered below. For example:
 

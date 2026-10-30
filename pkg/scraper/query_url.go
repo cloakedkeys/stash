@@ -1,7 +1,6 @@
 package scraper
 
 import (
-	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -109,32 +108,50 @@ func (p queryURLParameters) applyReplacements(r queryURLReplacements) {
 	}
 }
 
-func (p queryURLParameters) constructURL(urlStr string) string {
-	ret := urlStr
+func (p queryURLParameters) constructURL(url string) string {
+	ret := url
 	for k, v := range p {
 		ret = strings.ReplaceAll(ret, "{"+k+"}", v)
 	}
 
-	// URL-encode special characters in the query string values
-	if idx := strings.IndexByte(ret, '?'); idx >= 0 {
-		queryStr := ret[idx+1:]
-		// Parse key=value pairs and re-encode only the values
-		pairs := strings.Split(queryStr, "&")
-		encodedPairs := make([]string, 0, len(pairs))
-		for _, pair := range pairs {
-			if eq := strings.IndexByte(pair, '='); eq >= 0 {
-				key := pair[:eq]
-				value := pair[eq+1:]
-				// Encode the value but not the key
-				encodedPairs = append(encodedPairs, key+"="+url.QueryEscape(value))
-			} else {
-				encodedPairs = append(encodedPairs, pair)
-			}
+	return escapeInvalidURLChars(ret)
+}
+
+// escapeInvalidURLChars percent-encodes the characters that can never appear in a URL as-is,
+// such as spaces and non-ASCII characters from a substituted filename or path.
+// Characters with a meaning in URLs (& = + # / and valid % escapes) are left alone, so that
+// templates and queryURLReplace rules that already encode their values keep working.
+// The scheme and host are not changed.
+func escapeInvalidURLChars(s string) string {
+	start := 0
+	if i := strings.Index(s, "://"); i >= 0 {
+		start = i + 3
+		if j := strings.IndexAny(s[start:], "/?#"); j >= 0 {
+			start += j
+		} else {
+			start = len(s)
 		}
-		ret = ret[:idx+1] + strings.Join(encodedPairs, "&")
 	}
 
-	return ret
+	const hexDigits = "0123456789ABCDEF"
+	var b strings.Builder
+	b.WriteString(s[:start])
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		validEscape := c == '%' && i+2 < len(s) && isHexDigit(s[i+1]) && isHexDigit(s[i+2])
+		if c <= ' ' || c >= 0x7f || c == '"' || c == '<' || c == '>' || (c == '%' && !validEscape) {
+			b.WriteByte('%')
+			b.WriteByte(hexDigits[c>>4])
+			b.WriteByte(hexDigits[c&0xf])
+		} else {
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+func isHexDigit(c byte) bool {
+	return ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')
 }
 
 // replaceURL does a partial URL Replace ( only url parameter is used)
