@@ -77,12 +77,26 @@ type FileFingerprintWriter interface {
 	DestroyFingerprints(ctx context.Context, fileID FileID, types []string) error
 }
 
+// FileVRMetadataWriter provides methods to set the VR-related
+// metadata fields (projection, stereo_mode, vr_corrections)
+// of a video file. A nil argument clears that field.
+type FileVRMetadataWriter interface {
+	ModifyVideoFileMetadata(
+		ctx context.Context,
+		fileID FileID,
+		projection *ProjectionEnum,
+		stereoMode *StereoModeEnum,
+		vrCorrections *VRCorrections,
+	) error
+}
+
 // FileWriter provides all methods to modify files.
 type FileWriter interface {
 	FileCreator
 	FileUpdater
 	FileDestroyer
 	FileFingerprintWriter
+	FileVRMetadataWriter
 
 	UpdateCaptions(ctx context.Context, fileID FileID, captions []*VideoCaption) error
 }

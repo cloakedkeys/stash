@@ -17,6 +17,12 @@ fragment VideoFileData on VideoFile {
   height
   frame_rate
   bit_rate
+  projection
+  stereo_mode
+  vr_corrections {
+    horizontal_offset
+    vertical_offset
+  }
   fingerprints {
     type
     value
@@ -83,6 +89,12 @@ fragment VisualFileData on VisualFile {
     height
     frame_rate
     bit_rate
+    projection
+    stereo_mode
+    vr_corrections {
+      horizontal_offset
+      vertical_offset
+    }
     fingerprints {
       type
       value

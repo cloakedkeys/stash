@@ -462,6 +462,9 @@ func fileToJSON(f models.File) jsonschema.DirEntry {
 			BitRate:          ff.BitRate,
 			Interactive:      ff.Interactive,
 			InteractiveSpeed: ff.InteractiveSpeed,
+			Projection:       (*string)(ff.Projection),
+			StereoMode:       (*string)(ff.StereoMode),
+			VRCorrections:    vrCorrectionsToJSON(ff.VRCorrections),
 		}
 	case *models.ImageFile:
 		base.Type = jsonschema.DirEntryTypeImage
@@ -483,6 +486,16 @@ func (t *ExportTask) exportFolder(f models.Folder) {
 
 	if err := t.json.saveFile(fn, newFileJSON); err != nil {
 		logger.Errorf("[files] <%s> failed to save json: %v", fn, err)
+	}
+}
+
+func vrCorrectionsToJSON(c *models.VRCorrections) *jsonschema.VRCorrections {
+	if c == nil {
+		return nil
+	}
+	return &jsonschema.VRCorrections{
+		HorizontalOffset: c.HorizontalOffset,
+		VerticalOffset:   c.VerticalOffset,
 	}
 }
 

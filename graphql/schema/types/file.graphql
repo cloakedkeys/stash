@@ -93,6 +93,10 @@ type VideoFile implements BaseFile {
   frame_rate: Float!
   bit_rate: Int!
 
+  projection: VideoProjection
+  stereo_mode: StereoMode
+  vr_corrections: VRCorrections
+
   scenes: [Scene!]!
 
   created_at: Time!
@@ -173,6 +177,57 @@ input FileSetFingerprintsInput {
   id: ID!
   "only supplied fingerprint types will be modified"
   fingerprints: [SetFingerprintsInput!]!
+}
+
+"How each eye's image is mapped for viewing"
+enum VideoProjection {
+  "flat 2D video"
+  FLAT
+  "equirectangular mesh, 180 or 360 degrees"
+  EQUIRECTANGULAR
+  "180 degree fisheye mesh"
+  FISHEYE
+  "200 degree fisheye mesh for the iZugar MKX200 lens"
+  MKX200
+  "190 degree fisheye mesh for the Canon RF52 lens"
+  RF52
+  DOME
+  CUBEMAP
+  RECTILINEAR
+}
+
+"How the two eyes' images are laid out in the frame"
+enum StereoMode {
+  "single image for both eyes"
+  MONO
+  "side by side, left eye on the left"
+  SBS
+  "top and bottom, left eye on top"
+  TB
+  "custom UV mapping"
+  CUV
+  "alternating frames, left eye first"
+  AF
+  "interleaved rows, left eye first"
+  INTERLEAVED_ROWS
+}
+
+"Small per-video adjustments to the image position, as offered by VR players"
+type VRCorrections {
+  horizontal_offset: Float
+  vertical_offset: Float
+}
+
+input FileSetVRMetadataInput {
+  id: ID!
+  projection: VideoProjection
+  stereo_mode: StereoMode
+  vr_corrections: VRCorrectionsInput
+}
+
+input VRCorrectionsInput {
+  horizontal_offset: Float
+  vertical_offset: Float
 }
 
 type FindFilesResultType {
