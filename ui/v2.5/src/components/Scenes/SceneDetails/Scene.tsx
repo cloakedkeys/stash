@@ -157,6 +157,8 @@ interface IProps {
   setCollapsed: (state: boolean) => void;
   setContinuePlaylist: (value: boolean) => void;
   onRefreshScene: () => Promise<void>;
+  loopPlaylist: boolean;
+  setLoopPlaylist: (value: boolean) => void;
 }
 
 interface ISceneParams {
@@ -187,6 +189,8 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
     setCollapsed,
     setContinuePlaylist,
     onRefreshScene,
+    loopPlaylist,
+    setLoopPlaylist,
   } = props;
 
   const Toast = useToast();
@@ -618,6 +622,8 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
               currentID={scene.id}
               continue={continuePlaylist}
               setContinue={setContinuePlaylist}
+              loop={loopPlaylist}
+              setLoop={setLoopPlaylist}
               onSceneClicked={onQueueSceneClicked}
               onNext={onQueueNext}
               onPrevious={onQueuePrevious}
@@ -696,9 +702,8 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
       {maybeRenderMergeDialog()}
       {maybeRenderDeleteDialog()}
       <div
-        className={`scene-tabs order-xl-first order-last ${
-          collapsed ? "collapsed" : ""
-        }`}
+        className={`scene-tabs order-xl-first order-last ${collapsed ? "collapsed" : ""
+          }`}
       >
         <div>
           <div className="scene-header-container">
@@ -816,10 +821,19 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     }
   }, [configuration?.interface.continuePlaylistDefault, queryParams]);
 
+  const queryLoop = useMemo(() => {
+    const loop = queryParams.get("loop");
+    if (loop) {
+      return loop === "true";
+    }
+    return !!configuration?.interface.loopPlaylistDefault;
+  }, [configuration?.interface.loopPlaylistDefault, queryParams]);
+
   const [queueScenes, setQueueScenes] = useState<QueuedScene[]>([]);
 
   const [collapsed, setCollapsed] = useState(false);
   const [continuePlaylist, setContinuePlaylist] = useState(queryContinue);
+  const [loopPlaylist, setLoopPlaylist] = useState(queryLoop);
   const [hideScrubber, setHideScrubber] = useState(
     !(configuration?.interface.showScrubber ?? true)
   );
@@ -935,6 +949,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       newPage,
       autoPlay,
       continue: continuePlaylist,
+      loop: loopPlaylist,
     });
     history.replace(sceneLink);
   }
@@ -942,7 +957,11 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   // skipUnplayable steps over scenes that have no file. Set it when advancing
   // without the user choosing the destination, since a scene that can't be
   // played never finishes and so would stall the queue.
-  async function queueNext(autoPlay: boolean, skipUnplayable = false) {
+  async function queueNext(
+    autoPlay: boolean,
+    skipUnplayable = false,
+    allowLoop = false
+  ) {
     if (currentQueueIndex === -1) return;
 
     const canLoad = (s: QueuedScene) => !skipUnplayable || isPlayable(s);
@@ -959,6 +978,8 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
         const newPage = (sceneQueue.query?.currentPage ?? 0) + 1;
         loadScene(target.id, autoPlay, newPage);
       }
+    } else if (allowLoop && loopPlaylist && queueScenes.length > 0) {
+      loadScene(queueScenes[0].id, autoPlay);
     }
   }
 
@@ -1008,7 +1029,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   function onComplete() {
     // load the next scene if we're continuing
     if (continuePlaylist) {
-      queueNext(true, true);
+      queueNext(true, true, true);
     }
   }
 
@@ -1066,6 +1087,8 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
         setCollapsed={setCollapsed}
         setContinuePlaylist={setContinuePlaylist}
         onRefreshScene={onRefreshScene}
+        loopPlaylist={loopPlaylist}
+        setLoopPlaylist={setLoopPlaylist}
       />
       <div className={`scene-player-container ${collapsed ? "expanded" : ""}`}>
         {isPlayable(scene) ? (
