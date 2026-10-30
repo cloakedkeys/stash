@@ -528,6 +528,12 @@ export const SettingsInterfacePanel: React.FC = PatchComponent(
             <option value="STANDARD">Standard (480p)</option>
             <option value="LOW">Low (240p)</option>
           </SelectSetting>
+          <BooleanSetting
+            id="show-open-external"
+            headingID="config.ui.scene_player.options.show_open_external"
+            checked={ui.showOpenExternal ?? true}
+            onChange={(v) => saveUI({ showOpenExternal: v })}
+          />
         </SettingSection>
         <SettingSection headingID="config.ui.tag_panel.heading">
           <BooleanSetting
