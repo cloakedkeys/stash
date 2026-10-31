@@ -1,0 +1,827 @@
+//go:build db_integration
+// +build db_integration
+
+package database_test
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/stashapp/stash/pkg/models"
+	"github.com/stretchr/testify/assert"
+)
+
+func getFilePath(folderIdx int, basename string) string {
+	return filepath.Join(folderPaths[folderIdx], basename)
+}
+
+func makeZipFileWithID(index int) models.File {
+	f := makeFile(index)
+
+	return &models.BaseFile{
+		ID:       fileIDs[index],
+		Basename: f.Base().Basename,
+		Path:     getFilePath(fileFolders[index], getFileBaseName(index)),
+	}
+}
+
+func Test_fileFileStore_Create(t *testing.T) {
+	var (
+		basename               = "basename"
+		fingerprintType        = "MD5"
+		fingerprintValue       = "checksum"
+		fileModTime            = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+		createdAt              = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
+		updatedAt              = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
+		size             int64 = 1234
+
+		duration         = 1.234
+		width            = 640
+		height           = 480
+		framerate        = 2.345
+		bitrate    int64 = 234
+		videoCodec       = "videoCodec"
+		audioCodec       = "audioCodec"
+		format           = "format"
+	)
+
+	tests := []struct {
+		name      string
+		newObject models.File
+		wantErr   bool
+	}{
+		{
+			"full",
+			&models.BaseFile{
+				DirEntry: models.DirEntry{
+					ZipFileID: &fileIDs[fileIdxZip],
+					ZipFile:   makeZipFileWithID(fileIdxZip),
+					ModTime:   fileModTime,
+				},
+				Path:           getFilePath(folderIdxWithFiles, basename),
+				ParentFolderID: folderIDs[folderIdxWithFiles],
+				Basename:       basename,
+				Size:           size,
+				Fingerprints: []models.Fingerprint{
+					{
+						Type:        fingerprintType,
+						Fingerprint: fingerprintValue,
+					},
+				},
+				CreatedAt: createdAt,
+				UpdatedAt: updatedAt,
+			},
+			false,
+		},
+		{
+			"video file",
+			&models.VideoFile{
+				BaseFile: &models.BaseFile{
+					DirEntry: models.DirEntry{
+						ZipFileID: &fileIDs[fileIdxZip],
+						ZipFile:   makeZipFileWithID(fileIdxZip),
+						ModTime:   fileModTime,
+					},
+					Path:           getFilePath(folderIdxWithFiles, basename),
+					ParentFolderID: folderIDs[folderIdxWithFiles],
+					Basename:       basename,
+					Size:           size,
+					Fingerprints: []models.Fingerprint{
+						{
+							Type:        fingerprintType,
+							Fingerprint: fingerprintValue,
+						},
+					},
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Duration:   duration,
+				VideoCodec: videoCodec,
+				AudioCodec: audioCodec,
+				Format:     format,
+				Width:      width,
+				Height:     height,
+				FrameRate:  framerate,
+				BitRate:    bitrate,
+			},
+			false,
+		},
+		{
+			"image file",
+			&models.ImageFile{
+				BaseFile: &models.BaseFile{
+					DirEntry: models.DirEntry{
+						ZipFileID: &fileIDs[fileIdxZip],
+						ZipFile:   makeZipFileWithID(fileIdxZip),
+						ModTime:   fileModTime,
+					},
+					Path:           getFilePath(folderIdxWithFiles, basename),
+					ParentFolderID: folderIDs[folderIdxWithFiles],
+					Basename:       basename,
+					Size:           size,
+					Fingerprints: []models.Fingerprint{
+						{
+							Type:        fingerprintType,
+							Fingerprint: fingerprintValue,
+						},
+					},
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Format: format,
+				Width:  width,
+				Height: height,
+			},
+			false,
+		},
+		{
+			"duplicate path",
+			&models.BaseFile{
+				DirEntry: models.DirEntry{
+					ModTime: fileModTime,
+				},
+				Path:           getFilePath(folderIdxWithFiles, getFileBaseName(fileIdxZip)),
+				ParentFolderID: folderIDs[folderIdxWithFiles],
+				Basename:       getFileBaseName(fileIdxZip),
+				Size:           size,
+				Fingerprints: []models.Fingerprint{
+					{
+						Type:        fingerprintType,
+						Fingerprint: fingerprintValue,
+					},
+				},
+				CreatedAt: createdAt,
+				UpdatedAt: updatedAt,
+			},
+			true,
+		},
+		{
+			"empty basename",
+			&models.BaseFile{
+				ParentFolderID: folderIDs[folderIdxWithFiles],
+			},
+			true,
+		},
+		{
+			"missing folder id",
+			&models.BaseFile{
+				Basename: basename,
+			},
+			true,
+		},
+		{
+			"invalid folder id",
+			&models.BaseFile{
+				DirEntry:       models.DirEntry{},
+				ParentFolderID: invalidFolderID,
+				Basename:       basename,
+			},
+			true,
+		},
+		{
+			"invalid zip file id",
+			&models.BaseFile{
+				DirEntry: models.DirEntry{
+					ZipFileID: &invalidFileID,
+				},
+				Basename: basename,
+			},
+			true,
+		},
+	}
+
+	qb := db.File()
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			assert := assert.New(t)
+
+			s := tt.newObject
+			if err := qb.Create(ctx, s); (err != nil) != tt.wantErr {
+				t.Errorf("fileStore.Create() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+
+			if tt.wantErr {
+				assert.Zero(s.Base().ID)
+				return
+			}
+
+			assert.NotZero(s.Base().ID)
+
+			var copy models.File
+			switch t := s.(type) {
+			case *models.BaseFile:
+				v := *t
+				copy = &v
+			case *models.VideoFile:
+				v := *t
+				copy = &v
+			case *models.ImageFile:
+				v := *t
+				copy = &v
+			}
+
+			copy.Base().ID = s.Base().ID
+
+			assert.Equal(copy, s)
+
+			// ensure can find the scene
+			found, err := qb.Find(ctx, s.Base().ID)
+			if err != nil {
+				t.Errorf("fileStore.Find() error = %v", err)
+			}
+
+			if !assert.Len(found, 1) {
+				return
+			}
+
+			assert.Equal(copy, found[0])
+
+			return
+		})
+	}
+}
+
+func Test_fileStore_Update(t *testing.T) {
+	var (
+		basename               = "basename"
+		fingerprintType        = "MD5"
+		fingerprintValue       = "checksum"
+		fileModTime            = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+		createdAt              = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
+		updatedAt              = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
+		size             int64 = 1234
+
+		duration         = 1.234
+		width            = 640
+		height           = 480
+		framerate        = 2.345
+		bitrate    int64 = 234
+		videoCodec       = "videoCodec"
+		audioCodec       = "audioCodec"
+		format           = "format"
+	)
+
+	tests := []struct {
+		name          string
+		updatedObject models.File
+		wantErr       bool
+	}{
+		{
+			"full",
+			&models.BaseFile{
+				ID: fileIDs[fileIdxInZip],
+				DirEntry: models.DirEntry{
+					ZipFileID: &fileIDs[fileIdxZip],
+					ZipFile:   makeZipFileWithID(fileIdxZip),
+					ModTime:   fileModTime,
+				},
+				Path:           getFilePath(folderIdxWithFiles, basename),
+				ParentFolderID: folderIDs[folderIdxWithFiles],
+				Basename:       basename,
+				Size:           size,
+				Fingerprints: []models.Fingerprint{
+					{
+						Type:        fingerprintType,
+						Fingerprint: fingerprintValue,
+					},
+				},
+				CreatedAt: createdAt,
+				UpdatedAt: updatedAt,
+			},
+			false,
+		},
+		{
+			"video file",
+			&models.VideoFile{
+				BaseFile: &models.BaseFile{
+					ID: fileIDs[fileIdxStartVideoFiles],
+					DirEntry: models.DirEntry{
+						ZipFileID: &fileIDs[fileIdxZip],
+						ZipFile:   makeZipFileWithID(fileIdxZip),
+						ModTime:   fileModTime,
+					},
+					Path:           getFilePath(folderIdxWithFiles, basename),
+					ParentFolderID: folderIDs[folderIdxWithFiles],
+					Basename:       basename,
+					Size:           size,
+					Fingerprints: []models.Fingerprint{
+						{
+							Type:        fingerprintType,
+							Fingerprint: fingerprintValue,
+						},
+					},
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Duration:   duration,
+				VideoCodec: videoCodec,
+				AudioCodec: audioCodec,
+				Format:     format,
+				Width:      width,
+				Height:     height,
+				FrameRate:  framerate,
+				BitRate:    bitrate,
+			},
+			false,
+		},
+		{
+			"image file",
+			&models.ImageFile{
+				BaseFile: &models.BaseFile{
+					ID: fileIDs[fileIdxStartImageFiles],
+					DirEntry: models.DirEntry{
+						ZipFileID: &fileIDs[fileIdxZip],
+						ZipFile:   makeZipFileWithID(fileIdxZip),
+						ModTime:   fileModTime,
+					},
+					Path:           getFilePath(folderIdxWithFiles, basename),
+					ParentFolderID: folderIDs[folderIdxWithFiles],
+					Basename:       basename,
+					Size:           size,
+					Fingerprints: []models.Fingerprint{
+						{
+							Type:        fingerprintType,
+							Fingerprint: fingerprintValue,
+						},
+					},
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Format: format,
+				Width:  width,
+				Height: height,
+			},
+			false,
+		},
+		{
+			"duplicate path",
+			&models.BaseFile{
+				ID: fileIDs[fileIdxInZip],
+				DirEntry: models.DirEntry{
+					ModTime: fileModTime,
+				},
+				Path:           getFilePath(folderIdxWithFiles, getFileBaseName(fileIdxZip)),
+				ParentFolderID: folderIDs[folderIdxWithFiles],
+				Basename:       getFileBaseName(fileIdxZip),
+				Size:           size,
+				Fingerprints: []models.Fingerprint{
+					{
+						Type:        fingerprintType,
+						Fingerprint: fingerprintValue,
+					},
+				},
+				CreatedAt: createdAt,
+				UpdatedAt: updatedAt,
+			},
+			true,
+		},
+		{
+			"clear zip",
+			&models.BaseFile{
+				ID:             fileIDs[fileIdxInZip],
+				Path:           getFilePath(folderIdxWithFiles, getFileBaseName(fileIdxZip)+".renamed"),
+				Basename:       getFileBaseName(fileIdxZip) + ".renamed",
+				ParentFolderID: folderIDs[folderIdxWithFiles],
+			},
+			false,
+		},
+		{
+			"clear folder",
+			&models.BaseFile{
+				ID:   fileIDs[fileIdxZip],
+				Path: basename,
+			},
+			true,
+		},
+		{
+			"invalid parent folder id",
+			&models.BaseFile{
+				ID:             fileIDs[fileIdxZip],
+				Path:           basename,
+				ParentFolderID: invalidFolderID,
+			},
+			true,
+		},
+		{
+			"invalid zip file id",
+			&models.BaseFile{
+				ID:   fileIDs[fileIdxZip],
+				Path: basename,
+				DirEntry: models.DirEntry{
+					ZipFileID: &invalidFileID,
+				},
+				ParentFolderID: folderIDs[folderIdxWithFiles],
+			},
+			true,
+		},
+	}
+
+	qb := db.File()
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			assert := assert.New(t)
+
+			copy := tt.updatedObject
+
+			if err := qb.Update(ctx, tt.updatedObject); (err != nil) != tt.wantErr {
+				t.Errorf("FileStore.Update() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.wantErr {
+				return
+			}
+
+			s, err := qb.Find(ctx, tt.updatedObject.Base().ID)
+			if err != nil {
+				t.Errorf("FileStore.Find() error = %v", err)
+			}
+
+			if !assert.Len(s, 1) {
+				return
+			}
+
+			assert.Equal(copy, s[0])
+
+			return
+		})
+	}
+}
+
+func makeFileWithID(index int) models.File {
+	ret := makeFile(index)
+	ret.Base().Path = getFilePath(fileFolders[index], getFileBaseName(index))
+	ret.Base().ID = fileIDs[index]
+
+	return ret
+}
+
+func Test_fileStore_Find(t *testing.T) {
+	tests := []struct {
+		name    string
+		id      models.FileID
+		want    models.File
+		wantErr bool
+	}{
+		{
+			"valid",
+			fileIDs[fileIdxZip],
+			makeFileWithID(fileIdxZip),
+			false,
+		},
+		{
+			"invalid",
+			models.FileID(invalidID),
+			nil,
+			true,
+		},
+		{
+			"video file",
+			fileIDs[fileIdxStartVideoFiles],
+			makeFileWithID(fileIdxStartVideoFiles),
+			false,
+		},
+		{
+			"image file",
+			fileIDs[fileIdxStartImageFiles],
+			makeFileWithID(fileIdxStartImageFiles),
+			false,
+		},
+	}
+
+	qb := db.File()
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			assert := assert.New(t)
+			got, err := qb.Find(ctx, tt.id)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("fileStore.Find() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.want == nil {
+				assert.Len(got, 0)
+				return
+			}
+
+			if !assert.Len(got, 1) {
+				return
+			}
+
+			assert.Equal(tt.want, got[0])
+		})
+	}
+}
+
+func Test_FileStore_FindByPath(t *testing.T) {
+	getPath := func(index int) string {
+		folderIdx, found := fileFolders[index]
+		if !found {
+			folderIdx = folderIdxWithFiles
+		}
+
+		return getFilePath(folderIdx, getFileBaseName(index))
+	}
+
+	tests := []struct {
+		name    string
+		path    string
+		want    models.File
+		wantErr bool
+	}{
+		{
+			"valid",
+			getPath(fileIdxZip),
+			makeFileWithID(fileIdxZip),
+			false,
+		},
+		{
+			"invalid",
+			"invalid path",
+			nil,
+			false,
+		},
+	}
+
+	qb := db.File()
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			assert := assert.New(t)
+			got, err := qb.FindByPath(ctx, tt.path, true)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("FileStore.FindByPath() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			assert.Equal(tt.want, got)
+		})
+	}
+}
+
+func TestFileStore_FindByPathCaseInsensitiveTreatsLikeWildcardsLiterally(t *testing.T) {
+	qb := db.File
+
+	runWithRollbackTxn(t, "literal wildcards", func(t *testing.T, ctx context.Context) {
+		now := time.Now()
+		makeTestFile := func(basename string) models.File {
+			return &models.BaseFile{
+				Path:           getFilePath(folderIdxWithFiles, basename),
+				ParentFolderID: folderIDs[folderIdxWithFiles],
+				Basename:       basename,
+				Size:           1,
+				DirEntry: models.DirEntry{
+					ModTime: now,
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+		}
+
+		ambiguous := makeTestFile("scan_lookup_AB1.mp4")
+		if !assert.NoError(t, qb.Create(ctx, ambiguous)) {
+			return
+		}
+
+		got, err := qb.FindByPath(ctx, getFilePath(folderIdxWithFiles, "scan_lookup_A_1.mp4"), false)
+		assert.NoError(t, err)
+		assert.Nil(t, got)
+
+		got, err = qb.FindByPath(ctx, getFilePath(folderIdxWithFiles, "scan_lookup_A%1.mp4"), false)
+		assert.NoError(t, err)
+		assert.Nil(t, got)
+
+		literalUnderscore := makeTestFile("scan_lookup_A_1.mp4")
+		if !assert.NoError(t, qb.Create(ctx, literalUnderscore)) {
+			return
+		}
+
+		got, err = qb.FindByPath(ctx, getFilePath(folderIdxWithFiles, "SCAN_LOOKUP_a_1.MP4"), false)
+		assert.NoError(t, err)
+		if assert.NotNil(t, got) {
+			assert.Equal(t, literalUnderscore.Base().ID, got.Base().ID)
+		}
+
+		wildcardMatches, err := qb.FindAllByPath(ctx, getFilePath(folderIdxWithFiles, "scan_lookup_A*1.mp4"), true)
+		assert.NoError(t, err)
+		assert.Len(t, wildcardMatches, 2)
+	})
+}
+
+func TestFileStore_FindByFingerprint(t *testing.T) {
+	tests := []struct {
+		name    string
+		fp      models.Fingerprint
+		want    []models.File
+		wantErr bool
+	}{
+		{
+			"by MD5",
+			models.Fingerprint{
+				Type:        models.FingerprintTypeMD5,
+				Fingerprint: getPrefixedStringValue("file", fileIdxZip, "md5"),
+			},
+			[]models.File{makeFileWithID(fileIdxZip)},
+			false,
+		},
+		{
+			"by OSHASH",
+			models.Fingerprint{
+				Type:        models.FingerprintTypeOshash,
+				Fingerprint: getPrefixedStringValue("file", fileIdxZip, "oshash"),
+			},
+			[]models.File{makeFileWithID(fileIdxZip)},
+			false,
+		},
+		{
+			"non-existing",
+			models.Fingerprint{
+				Type:        models.FingerprintTypeOshash,
+				Fingerprint: "foo",
+			},
+			nil,
+			false,
+		},
+	}
+
+	qb := db.File()
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			assert := assert.New(t)
+			got, err := qb.FindByFingerprint(ctx, tt.fp)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("FileStore.FindByFingerprint() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			assert.Equal(tt.want, got)
+		})
+	}
+}
+
+func TestFileStore_ModifyVRMetadata(t *testing.T) {
+	proj := models.ProjectionEnumEquirectangular
+	stereo := models.StereoModeEnumSBS
+	hOff := -0.5
+	vOff := 0.25
+	brightness := 0.1
+	contrast := 0.2
+	saturation := 0.3
+	hue := 120.0
+	threshold := 0.05
+	opacity := 0.9
+	alphaPacked := true
+
+	tests := []struct {
+		name        string
+		projection  *models.ProjectionEnum
+		stereoMode  *models.StereoModeEnum
+		corrections *models.VRCorrections
+		passthrough *models.VRPassthrough
+	}{
+		{
+			"set all fields",
+			&proj,
+			&stereo,
+			&models.VRCorrections{
+				HorizontalOffset: &hOff,
+				VerticalOffset:   &vOff,
+				Brightness:       &brightness,
+				Contrast:         &contrast,
+				Saturation:       &saturation,
+			},
+			&models.VRPassthrough{
+				AlphaPacked: &alphaPacked,
+				ChromaKeys: []models.VRChromaKey{{
+					Hue: &hue, Threshold: &threshold, Opacity: &opacity,
+				}},
+			},
+		},
+		{
+			"projection only",
+			&proj,
+			nil,
+			nil,
+			nil,
+		},
+		{
+			"clear all",
+			nil,
+			nil,
+			nil,
+			nil,
+		},
+	}
+
+	fileID := sceneFileIDs[sceneIdx1WithPerformer]
+	qb := db.File
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			assert := assert.New(t)
+
+			before, err := qb.Find(ctx, fileID)
+			assert.NoError(err)
+			assert.Len(before, 1)
+
+			err = qb.ModifyVideoFileMetadata(ctx, fileID, tt.projection, tt.stereoMode, tt.corrections, tt.passthrough)
+			assert.NoError(err)
+
+			files, err := qb.Find(ctx, fileID)
+			assert.NoError(err)
+			assert.Len(files, 1)
+
+			vf, ok := files[0].(*models.VideoFile)
+			if !assert.True(ok, "expected VideoFile") {
+				return
+			}
+
+			// the other video fields must be left alone
+			old := before[0].(*models.VideoFile)
+			assert.Equal(old.Duration, vf.Duration)
+			assert.Equal(old.Width, vf.Width)
+			assert.Equal(old.Height, vf.Height)
+			assert.Equal(old.VideoCodec, vf.VideoCodec)
+			assert.Equal(old.Format, vf.Format)
+
+			if tt.projection != nil {
+				if assert.NotNil(vf.Projection) {
+					assert.Equal(*tt.projection, *vf.Projection)
+				}
+			} else {
+				assert.Nil(vf.Projection)
+			}
+
+			if tt.stereoMode != nil {
+				if assert.NotNil(vf.StereoMode) {
+					assert.Equal(*tt.stereoMode, *vf.StereoMode)
+				}
+			} else {
+				assert.Nil(vf.StereoMode)
+			}
+
+			if tt.corrections != nil {
+				if assert.NotNil(vf.VRCorrections) {
+					assert.Equal(*tt.corrections, *vf.VRCorrections)
+				}
+			} else {
+				assert.Nil(vf.VRCorrections)
+			}
+
+			assert.Equal(tt.passthrough, vf.VRPassthrough)
+		})
+	}
+}
+
+func TestFileStore_IsPrimary(t *testing.T) {
+	tests := []struct {
+		name   string
+		fileID models.FileID
+		want   bool
+	}{
+		{
+			"scene file",
+			sceneFileIDs[sceneIdx1WithPerformer],
+			true,
+		},
+		{
+			"image file",
+			imageFileIDs[imageIdx1WithGallery],
+			true,
+		},
+		{
+			"gallery file",
+			galleryFileIDs[galleryIdx1WithImage],
+			true,
+		},
+		{
+			"orphan file",
+			fileIDs[fileIdxZip],
+			false,
+		},
+		{
+			"invalid file",
+			invalidFileID,
+			false,
+		},
+	}
+
+	qb := db.File()
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			assert := assert.New(t)
+			got, err := qb.IsPrimary(ctx, tt.fileID)
+			if err != nil {
+				t.Errorf("FileStore.IsPrimary() error = %v", err)
+				return
+			}
+
+			assert.Equal(tt.want, got)
+		})
+	}
+}

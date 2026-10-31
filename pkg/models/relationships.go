@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"slices"
 
 	"github.com/stashapp/stash/pkg/sliceutil"
 )
@@ -92,6 +93,10 @@ func NewRelatedIDs(ids []int) RelatedIDs {
 // Loaded returns true if the related IDs have been loaded.
 func (r RelatedIDs) Loaded() bool {
 	return r.list != nil
+}
+
+func (r RelatedIDs) Sort() {
+	slices.Sort(r.list)
 }
 
 func (r RelatedIDs) mustLoaded() {

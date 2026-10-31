@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/job"
 	"github.com/stashapp/stash/pkg/logger"
-	"github.com/stashapp/stash/pkg/sqlite"
 )
 
 type migrateJobConfig interface {
@@ -22,7 +22,7 @@ type migrateJobConfig interface {
 type MigrateJob struct {
 	BackupPath string
 	Config     migrateJobConfig
-	Database   *sqlite.Database
+	Database   database.Database
 }
 
 type databaseSchemaInfo struct {
@@ -123,9 +123,7 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 }
 
 func (s *MigrateJob) required() (ret databaseSchemaInfo, err error) {
-	database := s.Database
-
-	m, err := sqlite.NewMigrator(database)
+	m, err := s.Database.NewMigrator()
 	if err != nil {
 		return
 	}
@@ -145,9 +143,7 @@ func (s *MigrateJob) required() (ret databaseSchemaInfo, err error) {
 }
 
 func (s *MigrateJob) runMigrations(ctx context.Context, progress *job.Progress) error {
-	database := s.Database
-
-	m, err := sqlite.NewMigrator(database)
+	m, err := s.Database.NewMigrator()
 	if err != nil {
 		return err
 	}
