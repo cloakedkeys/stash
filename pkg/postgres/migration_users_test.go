@@ -182,6 +182,7 @@ func TestNativeUserMigrationFailsClosed(t *testing.T) {
 	cfg.SetString(config.LegacyPassword, string(hash))
 	db := NewDatabase()
 	db.dbPath = migrationFixture(t)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	m, err := NewMigrator(db)
 	require.NoError(t, err)
 	t.Cleanup(m.Close)
@@ -190,12 +191,26 @@ func TestNativeUserMigrationFailsClosed(t *testing.T) {
 	}
 	require.Error(t, m.RunMigration(ctx, 15))
 	var locked bool
-	var passwordCount int
+	var password string
 	require.NoError(t, m.conn.Get(&locked, "SELECT locked FROM users WHERE id=1"))
 	require.True(t, locked, "failed migration must not expose a passwordless administrator")
-	require.NoError(t, m.conn.Get(&passwordCount, "SELECT count(*) FROM users WHERE password_hash IS NOT NULL"))
-	require.Zero(t, passwordCount, "credential update must roll back with config failure")
+	require.NoError(t, m.conn.Get(&password, "SELECT password_hash FROM users WHERE id=1"))
+	require.Equal(t, "!migration-incomplete", password, "credential update must roll back with config failure")
 	require.Equal(t, "legacy-admin", cfg.GetLegacyUsername())
 	require.Equal(t, string(hash), cfg.GetLegacyPasswordHash())
 	require.False(t, cfg.GetPublicAccess())
+	// The SQL migration is already recorded; a later startup can advance to
+	// schema 16. The incomplete account must still never become a default admin.
+	require.NoError(t, m.RunMigration(ctx, 16))
+	require.NoError(t, db.ReInitialise())
+	service := &user.Service{Store: db.User(), Config: cfg}
+	require.NoError(t, txn.WithReadTxn(ctx, db, service.Init))
+	require.False(t, service.IsSingleUserMode())
+	require.NoError(t, txn.WithReadTxn(ctx, db, func(ctx context.Context) error {
+		defaultUser, err := service.GetSingleUser(ctx)
+		require.NoError(t, err)
+		require.Nil(t, defaultUser)
+		require.Error(t, service.ValidateCredentials(ctx, "admin", ""))
+		return nil
+	}))
 }

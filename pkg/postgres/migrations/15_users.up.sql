@@ -17,11 +17,13 @@ CREATE TABLE "user_roles" (
     PRIMARY KEY ("user_id", "role"),
     FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE
 );
-INSERT INTO users(id,username,locked,created_at,updated_at) VALUES(1,'admin',true,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+-- A nonempty, unusable password prevents single-user mode if credential
+-- migration fails and the application is restarted before recovery.
+INSERT INTO users(id,username,locked,password_hash,created_at,updated_at) VALUES(1,'admin',true,'!migration-incomplete',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 INSERT INTO user_roles(user_id,role) VALUES(1,'ADMIN');
 SELECT setval(pg_get_serial_sequence('users','id'),1,true);
--- existing user data is assigned to the initial user (id 1), which is created in the post-migration.
--- Foreign keys are disabled so that the data can be inserted before the user exists.
+-- Existing personal data belongs to the reserved initial user (id 1).
+-- The post-migration installs its credentials before unlocking the account.
 
 CREATE TABLE "scenes_user_data" (
   "scene_id" integer NOT NULL,
