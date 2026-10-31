@@ -40,7 +40,7 @@ function numericFields<T extends string>(
   values?: Partial<Record<T, number | null>> | null
 ): NumericFields<T> {
   return Object.fromEntries(
-    fields.map((field) => [field, values?.[field] ?? ""])
+    fields.map((field) => [field, String(values?.[field] ?? "")])
   ) as NumericFields<T>;
 }
 
@@ -52,6 +52,15 @@ function numericValues<T extends string>(fields: NumericFields<T>) {
     if (Number.isFinite(number)) values[key] = number;
   }
   return values;
+}
+
+function cachedNumericValues<T extends string>(
+  fields: T[],
+  values: Partial<Record<T, number>>
+) {
+  return Object.fromEntries(
+    fields.map((field) => [field, values[field] ?? null])
+  );
 }
 
 function labelFor(value: string) {
@@ -145,7 +154,10 @@ export const VRMetadataEditor: React.FC<IProps> = ({ file }) => {
             stereo_mode: () => stereoMode || null,
             vr_corrections: () =>
               Object.keys(correctionValues).length > 0
-                ? { __typename: "VRCorrections", ...correctionValues }
+                ? {
+                    __typename: "VRCorrections",
+                    ...cachedNumericValues(correctionFields, correctionValues),
+                  }
                 : null,
             vr_passthrough: () =>
               input.vr_passthrough
@@ -154,7 +166,7 @@ export const VRMetadataEditor: React.FC<IProps> = ({ file }) => {
                     alpha_packed: passthrough.alpha_packed,
                     chroma_keys: chromaKeyValues.map((key) => ({
                       __typename: "VRChromaKey",
-                      ...key,
+                      ...cachedNumericValues(chromaKeyFields, key),
                     })),
                   }
                 : null,
