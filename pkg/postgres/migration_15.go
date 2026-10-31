@@ -78,7 +78,7 @@ AND NOT EXISTS (SELECT 1 FROM scenes_view_dates)`)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `UPDATE users SET username=$1,password_hash=NULLIF($2,''),api_key=NULLIF($3,''),locked=false,updated_at=CURRENT_TIMESTAMP WHERE id=1`, username, password, apiKey); err != nil {
 		return err
 	}
