@@ -1,3 +1,4 @@
+import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useEffect, useMemo, useState } from "react";
 import { Button, Tabs, Tab, Col, Row } from "react-bootstrap";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -343,9 +344,11 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
       setRating
     );
 
+    const canModify = useCanModify();
+
     // set up hotkeys
     useEffect(() => {
-      Mousetrap.bind("e", () => toggleEditing());
+      if (canModify) Mousetrap.bind("e", () => toggleEditing());
       Mousetrap.bind("f", () => setFavorite(!performer.favorite));
       Mousetrap.bind(",", () => setCollapsed(!collapsed));
 

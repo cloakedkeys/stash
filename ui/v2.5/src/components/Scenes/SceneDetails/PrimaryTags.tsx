@@ -10,7 +10,7 @@ interface IPrimaryTags {
   sceneMarkers: GQL.SceneMarkerDataFragment[];
   onClickMarker: (marker: GQL.SceneMarkerDataFragment) => void;
   onLoopMarker: (marker: GQL.SceneMarkerDataFragment) => void;
-  onEdit: (marker: GQL.SceneMarkerDataFragment) => void;
+  onEdit?: (marker: GQL.SceneMarkerDataFragment) => void;
 }
 
 export const PrimaryTags: React.FC<IPrimaryTags> = ({
@@ -50,13 +50,15 @@ export const PrimaryTags: React.FC<IPrimaryTags> = ({
             <Button variant="link" onClick={() => onClickMarker(marker)}>
               {markerTitle(marker)}
             </Button>
-            <Button
-              variant="link"
-              className="ml-auto"
-              onClick={() => onEdit(marker)}
-            >
-              <FormattedMessage id="actions.edit" />
-            </Button>
+            {onEdit && (
+              <Button
+                variant="link"
+                className="ml-auto"
+                onClick={() => onEdit(marker)}
+              >
+                <FormattedMessage id="actions.edit" />
+              </Button>
+            )}
           </div>
           <div className="d-flex align-items-center">
             <div>

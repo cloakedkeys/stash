@@ -40,6 +40,7 @@ import SceneQueue, {
 import { ListFilterModel } from "src/models/list-filter/filter";
 import Mousetrap from "mousetrap";
 import { OrganizedButton } from "./OrganizedButton";
+import { useCanAdminister, useCanModify } from "src/hooks/CurrentUser";
 import { useConfigurationContext } from "src/hooks/Config";
 import {
   getAbLoopPlugin,
@@ -234,6 +235,8 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
 
   const [organizedLoading, setOrganizedLoading] = useState(false);
 
+  const canModify = useCanModify();
+  const canAdminister = useCanAdminister();
   const [activeTabKey, setActiveTabKey] = useState("scene-details-panel");
 
   const [isMerging, setIsMerging] = useState(false);
@@ -290,7 +293,10 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
   useEffect(() => {
     Mousetrap.bind("a", () => setActiveTabKey("scene-details-panel"));
     Mousetrap.bind("q", () => setActiveTabKey("scene-queue-panel"));
-    Mousetrap.bind("e", () => setActiveTabKey("scene-edit-panel"));
+    if (canModify) {
+      Mousetrap.bind("e", () => setActiveTabKey("scene-edit-panel"));
+      Mousetrap.bind("d d", () => setIsDeleteAlertOpen(true));
+    }
     Mousetrap.bind("k", () => setActiveTabKey("scene-markers-panel"));
     Mousetrap.bind("i", () => setActiveTabKey("scene-file-info-panel"));
     Mousetrap.bind("h", () => setActiveTabKey("scene-history-panel"));
@@ -301,13 +307,14 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
     Mousetrap.bind("p p", () => onQueuePrevious());
     Mousetrap.bind("p r", () => onQueueRandom());
     Mousetrap.bind(",", () => setCollapsed(!collapsed));
-    Mousetrap.bind("d d", () => setIsDeleteAlertOpen(true));
-    Mousetrap.bind("c c", () => {
-      onGenerateScreenshot(getPlayerPosition());
-    });
-    Mousetrap.bind("c d", () => {
-      onGenerateScreenshot();
-    });
+    if (canAdminister) {
+      Mousetrap.bind("c c", () => {
+        onGenerateScreenshot(getPlayerPosition());
+      });
+      Mousetrap.bind("c d", () => {
+        onGenerateScreenshot();
+      });
+    }
 
     return () => {
       Mousetrap.unbind("a");
@@ -505,7 +512,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
         <Icon icon={faEllipsisV} />
       </Dropdown.Toggle>
       <Dropdown.Menu className="bg-secondary text-white">
-        {!!scene.files.length && (
+        {canAdminister && !!scene.files.length && (
           <Dropdown.Item
             key="rescan"
             className="bg-secondary text-white"
@@ -514,13 +521,15 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
             <FormattedMessage id="actions.rescan" />
           </Dropdown.Item>
         )}
-        <Dropdown.Item
-          key="generate"
-          className="bg-secondary text-white"
-          onClick={() => setIsGenerateDialogOpen(true)}
-        >
-          <FormattedMessage id="actions.generate" />…
-        </Dropdown.Item>
+        {canAdminister && (
+          <Dropdown.Item
+            key="generate"
+            className="bg-secondary text-white"
+            onClick={() => setIsGenerateDialogOpen(true)}
+          >
+            <FormattedMessage id="actions.generate" />…
+          </Dropdown.Item>
+        )}
         {boxes.length > 0 && (
           <Dropdown.Item
             key="submit"
@@ -617,11 +626,13 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
                 <FormattedMessage id="history" />
               </Nav.Link>
             </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="scene-edit-panel">
-                <FormattedMessage id="actions.edit" />
-              </Nav.Link>
-            </Nav.Item>
+            {canModify && (
+              <Nav.Item>
+                <Nav.Link eventKey="scene-edit-panel">
+                  <FormattedMessage id="actions.edit" />
+                </Nav.Link>
+              </Nav.Item>
+            )}
           </ScenePageTabs>
         </Nav>
       </div>
@@ -680,20 +691,22 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
           >
             <SceneFileInfoPanel scene={scene} />
           </Tab.Pane>
-          <Tab.Pane eventKey="scene-edit-panel" mountOnEnter>
-            {/* Changing scenes discards the previous scene's local edit state. */}
-            <SceneEditPanel
-              key={scene.id}
-              isVisible={activeTabKey === "scene-edit-panel"}
-              scene={scene}
-              onGenerateThumbFromCurrent={() =>
-                onGenerateScreenshot(getPlayerPosition())
-              }
-              onGenerateThumbDefault={() => onGenerateScreenshot()}
-              onSubmit={onSave}
-              onDelete={() => setIsDeleteAlertOpen(true)}
-            />
-          </Tab.Pane>
+          {canModify && (
+            <Tab.Pane eventKey="scene-edit-panel" mountOnEnter>
+              {/* Changing scenes discards the previous scene's local edit state. */}
+              <SceneEditPanel
+                key={scene.id}
+                isVisible={activeTabKey === "scene-edit-panel"}
+                scene={scene}
+                onGenerateThumbFromCurrent={() =>
+                  onGenerateScreenshot(getPlayerPosition())
+                }
+                onGenerateThumbDefault={() => onGenerateScreenshot()}
+                onSubmit={onSave}
+                onDelete={() => setIsDeleteAlertOpen(true)}
+              />
+            </Tab.Pane>
+          )}
           <Tab.Pane eventKey="scene-history-panel">
             <SceneHistoryPanel scene={scene} />
           </Tab.Pane>
@@ -777,7 +790,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
                   onClick={onOrganizedClick}
                 />
               </span>
-              <span>{renderOperations()}</span>
+              {canModify && <span>{renderOperations()}</span>}
             </span>
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useEffect, useMemo, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { Helmet } from "react-helmet";
@@ -261,12 +262,16 @@ const GroupPage: React.FC<IProps> = PatchComponent(
       id: group.id,
     });
 
+    const canModify = useCanModify();
+
     // set up hotkeys
     useEffect(() => {
-      Mousetrap.bind("e", () => toggleEditing());
-      Mousetrap.bind("d d", () => {
-        setIsDeleteAlertOpen(true);
-      });
+      if (canModify) {
+        Mousetrap.bind("e", () => toggleEditing());
+        Mousetrap.bind("d d", () => {
+          setIsDeleteAlertOpen(true);
+        });
+      }
       Mousetrap.bind(",", () => setCollapsed(!collapsed));
 
       return () => {

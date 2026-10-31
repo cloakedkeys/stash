@@ -20,6 +20,7 @@ import {
   faThLarge,
 } from "@fortawesome/free-solid-svg-icons";
 import { ZoomSelect } from "./ZoomSlider";
+import { useCanModify } from "src/hooks/CurrentUser";
 
 interface IListViewOptionsProps {
   zoomIndex?: number;
@@ -65,14 +66,21 @@ function getLabel(intl: IntlShape, option: DisplayMode) {
   return intl.formatMessage({ id: getLabelId(option) });
 }
 
+function useAllowedDisplayModes(options: DisplayMode[]) {
+  const canModify = useCanModify();
+  // the tagger only changes things
+  return canModify ? options : options.filter((o) => o !== DisplayMode.Tagger);
+}
+
 export const ListViewOptions: React.FC<IListViewOptionsProps> = ({
   zoomIndex,
   onSetZoom,
   displayMode,
   onSetDisplayMode,
-  displayModeOptions,
+  displayModeOptions: displayModeOptionsProp,
 }) => {
   const intl = useIntl();
+  const displayModeOptions = useAllowedDisplayModes(displayModeOptionsProp);
 
   const overlayTarget = useRef(null);
   const [showOptions, setShowOptions] = useState(false);
@@ -176,9 +184,10 @@ export const ListViewButtonGroup: React.FC<IListViewOptionsProps> = ({
   onSetZoom,
   displayMode,
   onSetDisplayMode,
-  displayModeOptions,
+  displayModeOptions: displayModeOptionsProp,
 }) => {
   const intl = useIntl();
+  const displayModeOptions = useAllowedDisplayModes(displayModeOptionsProp);
 
   return (
     <>

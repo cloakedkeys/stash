@@ -96,6 +96,7 @@ export const GalleryAddPanel: React.FC<IGalleryAddProps> = PatchComponent(
           { entityType: intl.formatMessage({ id: "gallery" }) }
         ),
         onClick: addImages,
+        requiredRole: GQL.RoleEnum.Modify,
         isDisplayed: showWhenSelected,
         postRefetch: true,
         icon: faPlus,

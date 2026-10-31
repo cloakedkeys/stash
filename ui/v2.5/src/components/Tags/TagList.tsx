@@ -1,3 +1,4 @@
+import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useCallback, useEffect } from "react";
 import cloneDeep from "lodash-es/cloneDeep";
 import Mousetrap from "mousetrap";
@@ -72,6 +73,7 @@ const TagList: React.FC<{
 }> = PatchComponent(
   "TagList",
   ({ tags, filter, selectedIds, onSelectChange, onSort }) => {
+    const canModify = useCanModify();
     const activeSortColumn = sortFieldToColumn(tagSortColumnMap, filter.sortBy);
 
     if (tags.length === 0 && filter.displayMode !== DisplayMode.Tagger) {
@@ -100,7 +102,7 @@ const TagList: React.FC<{
         />
       );
     }
-    if (filter.displayMode === DisplayMode.Tagger) {
+    if (canModify && filter.displayMode === DisplayMode.Tagger) {
       return <TagTagger tags={tags} />;
     }
 
@@ -413,16 +415,19 @@ export const FilteredTagList = PatchComponent(
       },
       {
         text: `${intl.formatMessage({ id: "actions.merge" })}…`,
+        requiredRole: GQL.RoleEnum.Modify,
         onClick: () => onMerge(),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(false),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export_all" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(true),
       },
     ];

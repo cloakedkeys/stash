@@ -112,6 +112,7 @@ export const GroupSubGroupsPanel: React.FC<IGroupSubGroupsPanel> =
       const otherOperations = [
         ...extraOperations,
         {
+          requiredRole: GQL.RoleEnum.Modify,
           text: intl.formatMessage({ id: "actions.add_sub_groups" }),
           onClick: onAddSubGroups,
           isDisplayed: showWhenNoneSelected,
@@ -120,6 +121,7 @@ export const GroupSubGroupsPanel: React.FC<IGroupSubGroupsPanel> =
           buttonVariant: "secondary",
         },
         {
+          requiredRole: GQL.RoleEnum.Modify,
           text: intl.formatMessage({
             id: "actions.remove_from_containing_group",
           }),

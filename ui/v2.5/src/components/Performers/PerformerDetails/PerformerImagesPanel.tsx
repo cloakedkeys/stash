@@ -65,6 +65,7 @@ export const PerformerImagesPanel: React.FC<IPerformerImagesPanel> =
     >(
       () => [
         {
+          requiredRole: GQL.RoleEnum.Modify,
           text: intl.formatMessage({
             id: "actions.set_as_performer_image",
           }),

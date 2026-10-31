@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from "react";
 import { QueryResult } from "@apollo/client";
+import * as GQL from "src/core/generated-graphql";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { PageSizeSelector, SearchTermInput } from "./ListFilter";
@@ -67,6 +68,7 @@ export interface IItemListOperation<T extends QueryResult> {
     selectedIds: Set<string>
   ) => boolean;
   postRefetch?: boolean;
+  requiredRole?: GQL.RoleEnum;
   icon?: IconDefinition;
   buttonVariant?: string;
 }

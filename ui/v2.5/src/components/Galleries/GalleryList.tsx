@@ -459,11 +459,13 @@ export const FilteredGalleryList = PatchComponent(
       },
       {
         text: `${intl.formatMessage({ id: "actions.generate" })}…`,
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: onGenerate,
         isDisplayed: () => hasSelection,
       },
       {
         text: `${intl.formatMessage({ id: "actions.identify" })}…`,
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () =>
           showModal(
             <IdentifyDialog
@@ -476,11 +478,13 @@ export const FilteredGalleryList = PatchComponent(
       },
       {
         text: intl.formatMessage({ id: "actions.export" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(false),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export_all" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(true),
       },
     ];

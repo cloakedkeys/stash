@@ -1,5 +1,6 @@
 import React from "react";
 import { Redirect, Route, RouteComponentProps, Switch } from "react-router-dom";
+import { ModifyRoute } from "src/components/Shared/ModifyRoute";
 import { Helmet } from "react-helmet";
 import { useTitleProps } from "src/hooks/title";
 import Gallery from "./GalleryDetails/Gallery";
@@ -50,7 +51,7 @@ const GalleryRoutes: React.FC = () => {
       <Helmet {...titleProps} />
       <Switch>
         <Route exact path="/galleries" component={Galleries} />
-        <Route exact path="/galleries/new" component={GalleryCreate} />
+        <ModifyRoute exact path="/galleries/new" component={GalleryCreate} />
         <Route
           exact
           path="/galleries/:id/images/:index"

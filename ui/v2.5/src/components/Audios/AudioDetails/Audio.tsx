@@ -29,6 +29,7 @@ import { Counter } from "src/components/Shared/Counter";
 import { useToast } from "src/hooks/Toast";
 import Mousetrap from "mousetrap";
 import { OrganizedButton } from "src/components/Scenes/SceneDetails/OrganizedButton";
+import { useCanAdminister, useCanModify } from "src/hooks/CurrentUser";
 import { useConfigurationContext } from "src/hooks/Config";
 import { faEllipsisV } from "@fortawesome/free-solid-svg-icons";
 import { objectPath, objectTitle } from "src/core/files";
@@ -186,6 +187,8 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
 
   const [organizedLoading, setOrganizedLoading] = useState(false);
 
+  const canModify = useCanModify();
+  const canAdminister = useCanAdminister();
   const [activeTabKey, setActiveTabKey] = useState("audio-details-panel");
 
   const [isMerging, setIsMerging] = useState(false);
@@ -220,13 +223,15 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
   useEffect(() => {
     Mousetrap.bind("a", () => setActiveTabKey("audio-details-panel"));
     Mousetrap.bind("q", () => setActiveTabKey("audio-queue-panel"));
-    Mousetrap.bind("e", () => setActiveTabKey("audio-edit-panel"));
+    if (canModify) {
+      Mousetrap.bind("e", () => setActiveTabKey("audio-edit-panel"));
+      Mousetrap.bind("d d", () => setIsDeleteAlertOpen(true));
+    }
     Mousetrap.bind("i", () => setActiveTabKey("audio-file-info-panel"));
     Mousetrap.bind("h", () => setActiveTabKey("audio-history-panel"));
     Mousetrap.bind("o", () => {
       onIncrementOClick();
     });
-    Mousetrap.bind("d d", () => setIsDeleteAlertOpen(true));
     Mousetrap.bind("p n", () => onQueueNext());
     Mousetrap.bind("p p", () => onQueuePrevious());
     Mousetrap.bind("p r", () => onQueueRandom());
@@ -341,7 +346,7 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
         <Icon icon={faEllipsisV} />
       </Dropdown.Toggle>
       <Dropdown.Menu className="bg-secondary text-white">
-        {!!audio.files.length && (
+        {canAdminister && !!audio.files.length && (
           <Dropdown.Item
             key="rescan"
             className="bg-secondary text-white"
@@ -427,11 +432,13 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
                 <FormattedMessage id="history" />
               </Nav.Link>
             </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="audio-edit-panel">
-                <FormattedMessage id="actions.edit" />
-              </Nav.Link>
-            </Nav.Item>
+            {canModify && (
+              <Nav.Item>
+                <Nav.Link eventKey="audio-edit-panel">
+                  <FormattedMessage id="actions.edit" />
+                </Nav.Link>
+              </Nav.Item>
+            )}
           </AudioPageTabs>
         </Nav>
       </div>
@@ -474,14 +481,16 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
           >
             <AudioFileInfoPanel audio={audio} />
           </Tab.Pane>
-          <Tab.Pane eventKey="audio-edit-panel" mountOnEnter>
-            <AudioEditPanel
-              isVisible={activeTabKey === "audio-edit-panel"}
-              audio={audio}
-              onSubmit={onSave}
-              onDelete={() => setIsDeleteAlertOpen(true)}
-            />
-          </Tab.Pane>
+          {canModify && (
+            <Tab.Pane eventKey="audio-edit-panel" mountOnEnter>
+              <AudioEditPanel
+                isVisible={activeTabKey === "audio-edit-panel"}
+                audio={audio}
+                onSubmit={onSave}
+                onDelete={() => setIsDeleteAlertOpen(true)}
+              />
+            </Tab.Pane>
+          )}
           <Tab.Pane eventKey="audio-history-panel">
             <AudioHistoryPanel audio={audio} />
           </Tab.Pane>
@@ -556,7 +565,7 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
                   onClick={onOrganizedClick}
                 />
               </span>
-              <span>{renderOperations()}</span>
+              {canModify && <span>{renderOperations()}</span>}
             </span>
           </div>
         </div>

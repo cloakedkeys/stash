@@ -4,6 +4,7 @@ import { FormattedMessage } from "react-intl";
 import Mousetrap from "mousetrap";
 import * as GQL from "src/core/generated-graphql";
 import { ChapterEntries } from "./ChapterEntry";
+import { useCanModify } from "src/hooks/CurrentUser";
 import { GalleryChapterForm } from "./GalleryChapterForm";
 
 interface IGalleryChapterPanelProps {
@@ -21,9 +22,11 @@ export const GalleryChapterPanel: React.FC<IGalleryChapterPanelProps> = ({
   const [editingChapter, setEditingChapter] =
     useState<GQL.GalleryChapterDataFragment>();
 
+  const canModify = useCanModify();
+
   // set up hotkeys
   useEffect(() => {
-    if (!isVisible) return;
+    if (!isVisible || !canModify) return;
 
     Mousetrap.bind("n", () => onOpenEditor());
 
@@ -53,14 +56,16 @@ export const GalleryChapterPanel: React.FC<IGalleryChapterPanelProps> = ({
 
   return (
     <div>
-      <Button onClick={() => onOpenEditor()}>
-        <FormattedMessage id="actions.create_chapters" />
-      </Button>
+      {canModify && (
+        <Button onClick={() => onOpenEditor()}>
+          <FormattedMessage id="actions.create_chapters" />
+        </Button>
+      )}
       <div className="container">
         <ChapterEntries
           galleryChapters={gallery.chapters}
           onClickChapter={onClickChapter}
-          onEdit={onOpenEditor}
+          onEdit={canModify ? onOpenEditor : undefined}
         />
       </div>
     </div>

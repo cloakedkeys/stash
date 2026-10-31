@@ -1,3 +1,4 @@
+import { useCanModify } from "src/hooks/CurrentUser";
 import { Tabs, Tab, Form } from "react-bootstrap";
 import React, { useEffect, useMemo, useState } from "react";
 import { useHistory, Redirect, RouteComponentProps } from "react-router-dom";
@@ -370,12 +371,16 @@ const StudioPage: React.FC<IProps> = PatchComponent(
       }
     }
 
+    const canModify = useCanModify();
+
     // set up hotkeys
     useEffect(() => {
-      Mousetrap.bind("e", () => toggleEditing());
-      Mousetrap.bind("d d", () => {
-        setIsDeleteAlertOpen(true);
-      });
+      if (canModify) {
+        Mousetrap.bind("e", () => toggleEditing());
+        Mousetrap.bind("d d", () => {
+          setIsDeleteAlertOpen(true);
+        });
+      }
       Mousetrap.bind(",", () => setCollapsed(!collapsed));
       Mousetrap.bind("f", () => setFavorite(!studio.favorite));
 

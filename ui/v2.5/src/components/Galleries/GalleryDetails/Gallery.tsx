@@ -27,6 +27,7 @@ import Mousetrap from "mousetrap";
 import { useGalleryLightbox } from "src/hooks/Lightbox/hooks";
 import { useToast } from "src/hooks/Toast";
 import { OrganizedButton } from "src/components/Scenes/SceneDetails/OrganizedButton";
+import { useCanAdminister, useCanModify } from "src/hooks/CurrentUser";
 import { OCounterButton } from "src/components/Scenes/SceneDetails/OCounterButton";
 import { GalleryEditPanel } from "./GalleryEditPanel";
 import { GalleryDetailPanel } from "./GalleryDetailPanel";
@@ -73,6 +74,8 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
 
   const [collapsed, setCollapsed] = useState(false);
 
+  const canModify = useCanModify();
+  const canAdminister = useCanAdminister();
   const [activeTabKey, setActiveTabKey] = useState("gallery-details-panel");
 
   const setMainTabKey = (newTabKey: string | null) => {
@@ -247,7 +250,7 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
           <Icon icon={faEllipsisV} />
         </Dropdown.Toggle>
         <Dropdown.Menu className="bg-secondary text-white">
-          {path ? (
+          {canAdminister && path ? (
             <Dropdown.Item
               className="bg-secondary text-white"
               onClick={() => onRescan()}
@@ -261,12 +264,14 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
           >
             <FormattedMessage id="actions.reset_cover" />
           </Dropdown.Item>
-          <Dropdown.Item
-            className="bg-secondary text-white"
-            onClick={() => setIsGenerateDialogOpen(true)}
-          >
-            {`${intl.formatMessage({ id: "actions.generate" })}…`}
-          </Dropdown.Item>
+          {canAdminister && (
+            <Dropdown.Item
+              className="bg-secondary text-white"
+              onClick={() => setIsGenerateDialogOpen(true)}
+            >
+              {`${intl.formatMessage({ id: "actions.generate" })}…`}
+            </Dropdown.Item>
+          )}
           <Dropdown.Item
             className="bg-secondary text-white"
             onClick={() => setIsDeleteAlertOpen(true)}
@@ -331,11 +336,13 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
                 <FormattedMessage id="chapters" />
               </Nav.Link>
             </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="gallery-edit-panel">
-                <FormattedMessage id="actions.edit" />
-              </Nav.Link>
-            </Nav.Item>
+            {canModify && (
+              <Nav.Item>
+                <Nav.Link eventKey="gallery-edit-panel">
+                  <FormattedMessage id="actions.edit" />
+                </Nav.Link>
+              </Nav.Item>
+            )}
           </Nav>
         </div>
 
@@ -356,14 +363,16 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
               isVisible={activeTabKey === "gallery-chapter-panel"}
             />
           </Tab.Pane>
-          <Tab.Pane eventKey="gallery-edit-panel" mountOnEnter>
-            <GalleryEditPanel
-              isVisible={activeTabKey === "gallery-edit-panel"}
-              gallery={gallery}
-              onSubmit={onSave}
-              onDelete={() => setIsDeleteAlertOpen(true)}
-            />
-          </Tab.Pane>
+          {canModify && (
+            <Tab.Pane eventKey="gallery-edit-panel" mountOnEnter>
+              <GalleryEditPanel
+                isVisible={activeTabKey === "gallery-edit-panel"}
+                gallery={gallery}
+                onSubmit={onSave}
+                onDelete={() => setIsDeleteAlertOpen(true)}
+              />
+            </Tab.Pane>
+          )}
           {gallery.scenes.length > 0 && (
             <Tab.Pane eventKey="gallery-scenes-panel">
               <GalleryScenesPanel scenes={gallery.scenes} />
@@ -397,11 +406,13 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
                 <FormattedMessage id="images" />
               </Nav.Link>
             </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="add">
-                <FormattedMessage id="actions.add" />
-              </Nav.Link>
-            </Nav.Item>
+            {canModify && (
+              <Nav.Item>
+                <Nav.Link eventKey="add">
+                  <FormattedMessage id="actions.add" />
+                </Nav.Link>
+              </Nav.Item>
+            )}
           </Nav>
         </div>
 
@@ -409,9 +420,11 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
           <Tab.Pane eventKey="images">
             <GalleryImagesPanel active={!add} gallery={gallery} />
           </Tab.Pane>
-          <Tab.Pane eventKey="add">
-            <GalleryAddPanel active={!!add} gallery={gallery} />
-          </Tab.Pane>
+          {canModify && (
+            <Tab.Pane eventKey="add">
+              <GalleryAddPanel active={!!add} gallery={gallery} />
+            </Tab.Pane>
+          )}
         </Tab.Content>
       </Tab.Container>
     );
@@ -438,7 +451,9 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
   useEffect(() => {
     Mousetrap.bind("a", () => setActiveTabKey("gallery-details-panel"));
     Mousetrap.bind("c", () => setActiveTabKey("gallery-chapter-panel"));
-    Mousetrap.bind("e", () => setActiveTabKey("gallery-edit-panel"));
+    if (canModify) {
+      Mousetrap.bind("e", () => setActiveTabKey("gallery-edit-panel"));
+    }
     Mousetrap.bind("f", () => setActiveTabKey("gallery-file-info-panel"));
     Mousetrap.bind(",", () => setCollapsed(!collapsed));
 
@@ -504,7 +519,7 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
                   onClick={onOrganizedClick}
                 />
               </span>
-              <span>{renderOperations()}</span>
+              {canModify && <span>{renderOperations()}</span>}
             </span>
           </div>
         </div>
@@ -527,6 +542,7 @@ const GalleryLoader: React.FC<RouteComponentProps<IGalleryParams>> = ({
   match,
 }) => {
   const { id, tab } = match.params;
+  const canModifyGallery = useCanModify();
   const { data, loading, error } = useFindGallery(id);
 
   useScrollToTopOnMount();
@@ -536,7 +552,7 @@ const GalleryLoader: React.FC<RouteComponentProps<IGalleryParams>> = ({
   if (!data?.findGallery)
     return <ErrorMessage error={`No gallery found with id ${id}.`} />;
 
-  if (tab === "add") {
+  if (tab === "add" && canModifyGallery) {
     return <GalleryPage add gallery={data.findGallery} />;
   }
 

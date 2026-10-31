@@ -1,3 +1,4 @@
+import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useCallback, useEffect, useMemo } from "react";
 import cloneDeep from "lodash-es/cloneDeep";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -196,6 +197,7 @@ const SceneList: React.FC<{
 }> = PatchComponent(
   "SceneList",
   ({ scenes, filter, selectedIds, onSelectChange, fromGroupId, onSort }) => {
+    const canModify = useCanModify();
     const activeSortColumn = sortFieldToColumn(
       sceneSortColumnMap,
       filter.sortBy
@@ -246,7 +248,7 @@ const SceneList: React.FC<{
         />
       );
     }
-    if (filter.displayMode === DisplayMode.Tagger) {
+    if (canModify && filter.displayMode === DisplayMode.Tagger) {
       return (
         <Tagger
           scenes={scenes}
@@ -593,6 +595,7 @@ export const FilteredSceneList = PatchComponent(
         ),
         onClick: () => onCreateNew(),
         isDisplayed: () => !hasSelection,
+        requiredRole: GQL.RoleEnum.Modify,
         className: "create-new-item",
       },
       {
@@ -617,6 +620,7 @@ export const FilteredSceneList = PatchComponent(
       },
       {
         text: `${intl.formatMessage({ id: "actions.generate" })}…`,
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () =>
           showModal(
             <GenerateDialog
@@ -629,6 +633,7 @@ export const FilteredSceneList = PatchComponent(
       },
       {
         text: `${intl.formatMessage({ id: "actions.identify" })}…`,
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () =>
           showModal(
             <IdentifyDialog
@@ -640,16 +645,19 @@ export const FilteredSceneList = PatchComponent(
       },
       {
         text: `${intl.formatMessage({ id: "actions.merge" })}…`,
+        requiredRole: GQL.RoleEnum.Modify,
         onClick: () => onMerge(),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(false),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export_all" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(true),
       },
     ];

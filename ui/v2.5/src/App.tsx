@@ -29,6 +29,7 @@ import MousetrapPause from "mousetrap-pause";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { MainNavbar } from "./components/MainNavbar";
 import { PageNotFound } from "./components/PageNotFound";
+import { ModifyRoute } from "./components/Shared/ModifyRoute";
 import * as GQL from "./core/generated-graphql";
 import { makeTitleProps } from "./hooks/title";
 import { useScrollRestoration } from "./hooks/scrollRestoration";
@@ -282,15 +283,15 @@ export const App: React.FC = () => {
             <Route path="/groups" component={Groups} />
             <Route path="/stats" component={Stats} />
             <Route path="/settings" component={Settings} />
-            <Route
+            <ModifyRoute
               path="/sceneFilenameParser"
               component={SceneFilenameParser}
             />
-            <Route
+            <ModifyRoute
               path="/audioFilenameParser"
               component={AudioFilenameParser}
             />
-            <Route
+            <ModifyRoute
               path="/sceneDuplicateChecker"
               component={SceneDuplicateChecker}
             />

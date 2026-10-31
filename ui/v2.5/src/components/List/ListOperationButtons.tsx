@@ -12,6 +12,8 @@ import {
   faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 import cx from "classnames";
+import * as GQL from "src/core/generated-graphql";
+import { useCanAdminister, useCanModify } from "src/hooks/CurrentUser";
 import { createPortal } from "react-dom";
 
 export const OperationDropdown: React.FC<
@@ -81,9 +83,27 @@ export interface IListFilterOperation {
   text: string;
   onClick: () => void;
   isDisplayed?: () => boolean;
+  // only shown to accounts with this role
+  requiredRole?: GQL.RoleEnum;
   icon?: IconDefinition;
   buttonVariant?: string;
   className?: string;
+}
+
+function useAllowedOperations(operations?: IListFilterOperation[]) {
+  const canModify = useCanModify();
+  const canAdminister = useCanAdminister();
+
+  return operations?.filter((o) => {
+    switch (o.requiredRole) {
+      case GQL.RoleEnum.Admin:
+        return canAdminister;
+      case GQL.RoleEnum.Modify:
+        return canModify;
+      default:
+        return true;
+    }
+  });
 }
 
 interface IListOperationButtonsProps {
@@ -100,12 +120,16 @@ export const ListOperationButtons: React.FC<IListOperationButtonsProps> = ({
   onSelectAll,
   onSelectNone,
   onInvertSelection,
-  onEdit,
-  onDelete,
+  onEdit: onEditProp,
+  onDelete: onDeleteProp,
   itemsSelected,
-  otherOperations,
+  otherOperations: otherOperationsProp,
 }) => {
   const intl = useIntl();
+  const canModify = useCanModify();
+  const onEdit = canModify ? onEditProp : undefined;
+  const onDelete = canModify ? onDeleteProp : undefined;
+  const otherOperations = useAllowedOperations(otherOperationsProp);
 
   useEffect(() => {
     Mousetrap.bind("s a", () => onSelectAll?.());
@@ -301,14 +325,18 @@ export const ListOperations: React.FC<{
 }> = ({
   items,
   hasSelection = false,
-  operations = [],
-  onEdit,
-  onDelete,
+  operations: operationsProp = [],
+  onEdit: onEditProp,
+  onDelete: onDeleteProp,
   onPlay,
   operationsClassName = "list-operations",
   operationsMenuClassName,
 }) => {
   const intl = useIntl();
+  const canModify = useCanModify();
+  const onEdit = canModify ? onEditProp : undefined;
+  const onDelete = canModify ? onDeleteProp : undefined;
+  const operations = useAllowedOperations(operationsProp) ?? [];
 
   const dropdownOperations = useMemo(() => {
     return operations.filter((o) => {

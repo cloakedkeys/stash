@@ -4,12 +4,16 @@ import { Alert, Button, Form, Table } from "react-bootstrap";
 import { FormattedMessage } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
+import { FavoriteIcon } from "../Shared/FavoriteIcon";
+import { ModifyRoute } from "../Shared/ModifyRoute";
+import { useCanModify } from "src/hooks/CurrentUser";
 
 const heading = (
   <FormattedMessage id="voice_actors" defaultMessage="Voice actors" />
 );
 
 function VoiceActorList() {
+  const canModify = useCanModify();
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [favorite, setFavorite] = useState(false);
@@ -24,9 +28,11 @@ function VoiceActorList() {
     <section className="mt-3">
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h2>{heading}</h2>
-        <Link className="btn btn-primary" to="/voice-actors/new">
-          <FormattedMessage id="actions.create" defaultMessage="Create" />
-        </Link>
+        {canModify && (
+          <Link className="btn btn-primary" to="/voice-actors/new">
+            <FormattedMessage id="actions.create" defaultMessage="Create" />
+          </Link>
+        )}
       </div>
       <Form.Control
         aria-label="Search voice actors"
@@ -202,6 +208,8 @@ function VoiceActorDetail({
     skip: creating,
     fetchPolicy: "cache-and-network",
   });
+  const canModify = useCanModify();
+  const [setUserData] = GQL.useVoiceActorUserDataUpdateMutation();
   const [create, creatingNow] = GQL.useVoiceActorCreateMutation();
   const [update, updating] = GQL.useVoiceActorUpdateMutation();
   const [destroy, destroying] = GQL.useVoiceActorDestroyMutation();
@@ -238,34 +246,49 @@ function VoiceActorDetail({
         actor && (
           <>
             <div className="mb-3">
-              <Link className="btn btn-primary" to={`/voice-actors/${id}/edit`}>
-                <FormattedMessage id="actions.edit" defaultMessage="Edit" />
-              </Link>{" "}
-              <Button
-                variant="danger"
-                disabled={destroying.loading}
-                onClick={async () => {
-                  if (
-                    !window.confirm(
-                      `Delete voice actor ${actor.name}? Scene voice credits will be removed.`
-                    )
-                  )
-                    return;
-                  try {
-                    await destroy({ variables: { id } });
-                    history.push("/voice-actors");
-                  } catch (err) {
-                    setDeleteError(
-                      err instanceof Error ? err.message : String(err)
-                    );
-                  }
-                }}
-              >
-                <FormattedMessage id="actions.delete" defaultMessage="Delete" />
-              </Button>
+              <FavoriteIcon
+                favorite={actor.favorite}
+                onToggleFavorite={(favorite) =>
+                  setUserData({ variables: { input: { id, favorite } } })
+                }
+              />
             </div>
+            {canModify && (
+              <div className="mb-3">
+                <Link
+                  className="btn btn-primary"
+                  to={`/voice-actors/${id}/edit`}
+                >
+                  <FormattedMessage id="actions.edit" defaultMessage="Edit" />
+                </Link>{" "}
+                <Button
+                  variant="danger"
+                  disabled={destroying.loading}
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        `Delete voice actor ${actor.name}? Scene voice credits will be removed.`
+                      )
+                    )
+                      return;
+                    try {
+                      await destroy({ variables: { id } });
+                      history.push("/voice-actors");
+                    } catch (err) {
+                      setDeleteError(
+                        err instanceof Error ? err.message : String(err)
+                      );
+                    }
+                  }}
+                >
+                  <FormattedMessage
+                    id="actions.delete"
+                    defaultMessage="Delete"
+                  />
+                </Button>
+              </div>
+            )}
             {deleteError && <Alert variant="danger">{deleteError}</Alert>}
-            {actor.favorite && <p>★ Favorite</p>}
             {actor.aliases.length > 0 && (
               <p>
                 <strong>Aliases:</strong> {actor.aliases.join(", ")}
@@ -318,12 +341,12 @@ function VoiceActorDetail({
 export default function VoiceActors() {
   return (
     <Switch>
-      <Route
+      <ModifyRoute
         exact
         path="/voice-actors/new"
         render={() => <VoiceActorDetail creating />}
       />
-      <Route
+      <ModifyRoute
         exact
         path="/voice-actors/:id/edit"
         render={() => <VoiceActorDetail editing />}

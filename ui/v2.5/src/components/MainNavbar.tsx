@@ -12,6 +12,7 @@ import { Link, NavLink, useLocation, useHistory } from "react-router-dom";
 import Mousetrap from "mousetrap";
 
 import SessionUtils from "src/utils/session";
+import { useCanModify } from "src/hooks/CurrentUser";
 import { Icon } from "src/components/Shared/Icon";
 import { useConfigurationContext } from "src/hooks/Config";
 import * as GQL from "src/core/generated-graphql";
@@ -263,8 +264,10 @@ export const MainNavbar: React.FC = () => {
     [history]
   );
 
+  const canModify = useCanModify();
   const pathname = location.pathname.replace(/\/$/, "");
-  let newPath = newPathsList.includes(pathname) ? `${pathname}/new` : null;
+  let newPath =
+    canModify && newPathsList.includes(pathname) ? `${pathname}/new` : null;
   if (newPath !== null) {
     const queryParam = new URLSearchParams(location.search).get("q");
     if (queryParam) {

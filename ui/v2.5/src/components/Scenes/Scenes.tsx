@@ -1,5 +1,6 @@
 import React from "react";
 import { Route, Switch } from "react-router-dom";
+import { ModifyRoute } from "src/components/Shared/ModifyRoute";
 import { Helmet } from "react-helmet";
 import { useTitleProps } from "src/hooks/title";
 import { lazyComponent } from "src/utils/lazyComponent";
@@ -32,7 +33,7 @@ const SceneRoutes: React.FC = () => {
       <Switch>
         <Route exact path="/scenes" component={Scenes} />
         <Route exact path="/scenes/markers" component={SceneMarkers} />
-        <Route exact path="/scenes/new" component={SceneCreate} />
+        <ModifyRoute exact path="/scenes/new" component={SceneCreate} />
         <Route path="/scenes/:id" component={Scene} />
       </Switch>
     </>

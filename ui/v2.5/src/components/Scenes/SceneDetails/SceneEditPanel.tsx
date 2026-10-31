@@ -1,3 +1,4 @@
+import { useCanAdminister } from "src/hooks/CurrentUser";
 import React, { useEffect, useState, useMemo } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import {
@@ -94,6 +95,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
   onDelete,
 }) => {
   const intl = useIntl();
+  const isAdmin = useCanAdminister();
   const Toast = useToast();
 
   const [galleries, setGalleries] = useState<Gallery[]>([]);
@@ -1045,7 +1047,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
                 onImageURL={onImageLoad}
                 // Generate-from-server actions require a saved scene.
                 extraActions={
-                  !isNew
+                  !isNew && isAdmin
                     ? [
                         {
                           icon: faArrowsRotate,

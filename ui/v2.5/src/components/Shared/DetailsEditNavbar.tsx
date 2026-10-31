@@ -5,6 +5,7 @@ import { useAutoTagTrigger } from "src/hooks/useAutoTagTrigger";
 import { ImageInput } from "./ImageInput";
 import { AutoTagConfirmDialog } from "./AutoTagConfirmDialog";
 import cx from "classnames";
+import { useCanAdminister, useCanModify } from "src/hooks/CurrentUser";
 
 interface IProps {
   objectName?: string;
@@ -31,6 +32,8 @@ interface IProps {
 
 export const DetailsEditNavbar: React.FC<IProps> = (props: IProps) => {
   const intl = useIntl();
+  const canModify = useCanModify();
+  const canAdminister = useCanAdminister();
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState<boolean>(false);
   const [isAutoTagAlertOpen, setIsAutoTagAlertOpen] = useState<boolean>(false);
 
@@ -38,6 +41,9 @@ export const DetailsEditNavbar: React.FC<IProps> = (props: IProps) => {
     () => props.onAutoTag?.(),
     () => setIsAutoTagAlertOpen(true)
   );
+
+  // everything here changes the object
+  if (!canModify) return null;
 
   function renderEditButton() {
     if (props.isNew) return;
@@ -116,7 +122,7 @@ export const DetailsEditNavbar: React.FC<IProps> = (props: IProps) => {
   function renderAutoTagButton() {
     if (props.isNew || props.isEditing) return;
 
-    if (props.onAutoTag) {
+    if (props.onAutoTag && canAdminister) {
       return (
         <div>
           <Button

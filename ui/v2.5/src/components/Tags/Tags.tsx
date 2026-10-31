@@ -1,5 +1,6 @@
 import React from "react";
 import { Route, Switch } from "react-router-dom";
+import { ModifyRoute } from "src/components/Shared/ModifyRoute";
 import { Helmet } from "react-helmet";
 import { useTitleProps } from "src/hooks/title";
 import Tag from "./TagDetails/Tag";
@@ -17,7 +18,7 @@ const TagRoutes: React.FC = () => {
       <Helmet {...titleProps} />
       <Switch>
         <Route exact path="/tags" component={Tags} />
-        <Route exact path="/tags/new" component={TagCreate} />
+        <ModifyRoute exact path="/tags/new" component={TagCreate} />
         <Route path="/tags/:id/:tab?" component={Tag} />
       </Switch>
     </>

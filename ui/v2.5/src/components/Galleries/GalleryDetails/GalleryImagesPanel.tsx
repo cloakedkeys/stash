@@ -131,11 +131,13 @@ export const GalleryImagesPanel: React.FC<IGalleryDetailsProps> =
         ...extraOperations,
         {
           text: intl.formatMessage({ id: "actions.set_cover" }),
+          requiredRole: GQL.RoleEnum.Modify,
           onClick: setCover,
           isDisplayed: showWhenSingleSelection,
         },
         {
           text: intl.formatMessage({ id: "actions.remove_from_gallery" }),
+          requiredRole: GQL.RoleEnum.Modify,
           onClick: removeImages,
           isDisplayed: showWhenSelected,
           postRefetch: true,

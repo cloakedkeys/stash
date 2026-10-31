@@ -1,3 +1,4 @@
+import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useCallback, useEffect } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import cloneDeep from "lodash-es/cloneDeep";
@@ -85,6 +86,7 @@ const StudioList: React.FC<{
 }> = PatchComponent(
   "StudioList",
   ({ studios, filter, selectedIds, onSelectChange, fromParent, onSort }) => {
+    const canModify = useCanModify();
     const showChildContent = useShowChildStudioContent();
     const activeSortColumn = sortFieldToColumn(
       reverseMap(getColumnSortMap(showChildContent)),
@@ -121,7 +123,7 @@ const StudioList: React.FC<{
     if (filter.displayMode === DisplayMode.Wall) {
       return <h1>TODO</h1>;
     }
-    if (filter.displayMode === DisplayMode.Tagger) {
+    if (canModify && filter.displayMode === DisplayMode.Tagger) {
       return <StudioTagger studios={studios} />;
     }
 
@@ -407,11 +409,13 @@ export const FilteredStudioList = PatchComponent(
       },
       {
         text: intl.formatMessage({ id: "actions.export" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(false),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export_all" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(true),
       },
     ];

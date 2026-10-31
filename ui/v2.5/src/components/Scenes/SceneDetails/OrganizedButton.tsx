@@ -24,6 +24,9 @@ export const OrganizedButton: React.FC<IOrganizedButtonProps> = (
     },
   });
 
+  // organized may only be changed by administrators
+  if (!isAdmin) return null;
+
   if (props.loading) return <Spinner animation="border" role="status" />;
 
   return (
@@ -36,8 +39,6 @@ export const OrganizedButton: React.FC<IOrganizedButtonProps> = (
         props.organized ? "organized" : "not-organized"
       )}
       onClick={props.onClick}
-      // organized may only be changed by administrators
-      disabled={!isAdmin}
     >
       <Icon icon={faBox} />
     </Button>

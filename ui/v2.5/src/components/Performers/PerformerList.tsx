@@ -1,3 +1,4 @@
+import { useCanModify } from "src/hooks/CurrentUser";
 import cloneDeep from "lodash-es/cloneDeep";
 import React, { useCallback, useEffect } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -231,6 +232,7 @@ const PerformerList: React.FC<{
     extraCriteria,
     onSort,
   }) => {
+    const canModify = useCanModify();
     const activeSortColumn = sortFieldToColumn(
       performerSortColumnMap,
       filter.sortBy
@@ -270,7 +272,7 @@ const PerformerList: React.FC<{
         />
       );
     }
-    if (filter.displayMode === DisplayMode.Tagger) {
+    if (canModify && filter.displayMode === DisplayMode.Tagger) {
       return <PerformerTagger performers={performers} />;
     }
 
@@ -598,16 +600,19 @@ export const FilteredPerformerList = PatchComponent(
       },
       {
         text: `${intl.formatMessage({ id: "actions.merge" })}…`,
+        requiredRole: GQL.RoleEnum.Modify,
         onClick: onMerge,
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(false),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export_all" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(true),
       },
     ];

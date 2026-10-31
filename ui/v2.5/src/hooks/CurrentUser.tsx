@@ -22,6 +22,20 @@ export const useIsAdmin = () => {
   return user?.roles?.includes(GQL.RoleEnum.Admin) ?? false;
 };
 
+// The user is only null until it has loaded. These two allow it in that case, because
+// they decide what to show: the server checks the role on every request anyway.
+const useHasRole = (...roles: GQL.RoleEnum[]) => {
+  const user = useCurrentUser();
+  return !user || roles.some((role) => user.roles?.includes(role));
+};
+
+// Returns true if the current user may change the library.
+export const useCanModify = () =>
+  useHasRole(GQL.RoleEnum.Admin, GQL.RoleEnum.Modify);
+
+// Returns true if the current user may use what is limited to administrators.
+export const useCanAdminister = () => useHasRole(GQL.RoleEnum.Admin);
+
 export const CurrentUserProvider: React.FC<
   React.PropsWithChildren<ICurrentUserContext>
 > = ({ user, children }) => {
