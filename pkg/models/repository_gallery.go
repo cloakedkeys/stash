@@ -90,6 +90,9 @@ type GalleryWriter interface {
 	RemoveImages(ctx context.Context, galleryID int, imageIDs ...int) error
 	SetCover(ctx context.Context, galleryID int, coverImageID int) error
 	ResetCover(ctx context.Context, galleryID int) error
+	IncrementOCounter(ctx context.Context, id int) (int, error)
+	DecrementOCounter(ctx context.Context, id int) (int, error)
+	ResetOCounter(ctx context.Context, id int) (int, error)
 }
 
 // GalleryReaderWriter provides all gallery methods.

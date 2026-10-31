@@ -32,6 +32,7 @@ var (
 	date       = "2001-01-01"
 	dateObj, _ = models.ParseDate(date)
 	rating     = 5
+	ocounter   = 2
 	organized  = true
 	details    = "details"
 )
@@ -59,6 +60,7 @@ func createFullGallery(id int) models.Gallery {
 		Details:   details,
 		Rating:    &rating,
 		Organized: organized,
+		OCounter:  ocounter,
 		URLs:      models.NewRelatedStrings([]string{url}),
 		CreatedAt: createTime,
 		UpdatedAt: updateTime,
@@ -85,6 +87,7 @@ func createFullJSONGallery() *jsonschema.Gallery {
 		Details:   details,
 		Rating:    rating,
 		Organized: organized,
+		OCounter:  ocounter,
 		URLs:      []string{url},
 		ZipFiles:  []string{path},
 		CreatedAt: json.JSONTime{

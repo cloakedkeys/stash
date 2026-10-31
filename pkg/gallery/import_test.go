@@ -47,6 +47,7 @@ func TestImporterPreImport(t *testing.T) {
 			Details:   details,
 			Rating:    rating,
 			Organized: organized,
+			OCounter:  ocounter,
 			URL:       url,
 			CreatedAt: json.JSONTime{
 				Time: createdAt,
@@ -66,6 +67,7 @@ func TestImporterPreImport(t *testing.T) {
 		Details:      details,
 		Rating:       &rating,
 		Organized:    organized,
+		OCounter:     ocounter,
 		URLs:         models.NewRelatedStrings([]string{url}),
 		Files:        models.NewRelatedFiles([]models.File{}),
 		TagIDs:       models.NewRelatedIDs([]int{}),

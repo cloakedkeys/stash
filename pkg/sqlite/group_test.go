@@ -2436,6 +2436,133 @@ func TestGroupQueryCustomFields(t *testing.T) {
 	}
 }
 
+// createGroupWithPerformers creates a group with two scenes. The first scene
+// has two performers and the second shares one of them, so the group has two
+// distinct performers.
+func createGroupWithPerformers(ctx context.Context, t *testing.T) *models.Group {
+	t.Helper()
+
+	group := models.Group{Name: "TestGroupPerformerCount"}
+	if err := db.Group.Create(ctx, &group); err != nil {
+		t.Fatalf("creating group: %v", err)
+	}
+
+	performerSets := [][]int{
+		{performerIDs[performerIdx1WithScene], performerIDs[performerIdx2WithScene]},
+		{performerIDs[performerIdx2WithScene]},
+	}
+	for i, ids := range performerSets {
+		scene := models.Scene{
+			Title:        fmt.Sprintf("TestGroupPerformerCount %d", i),
+			PerformerIDs: models.NewRelatedIDs(ids),
+			Groups: models.NewRelatedGroups([]models.GroupsScenes{
+				{GroupID: group.ID},
+			}),
+		}
+		if err := db.Scene.Create(ctx, &scene, nil); err != nil {
+			t.Fatalf("creating scene: %v", err)
+		}
+	}
+
+	return &group
+}
+
+func verifyGroupsPerformerCount(ctx context.Context, t *testing.T, performerCountCriterion models.IntCriterionInput) []*models.Group {
+	t.Helper()
+
+	groupFilter := models.GroupFilterType{
+		PerformerCount: &performerCountCriterion,
+	}
+
+	groups := queryGroups(ctx, t, &groupFilter, nil)
+	assert.Greater(t, len(groups), 0)
+
+	for _, group := range groups {
+		// count the same way as the group's performer_count field
+		count, err := db.Performer.QueryCount(ctx, &models.PerformerFilterType{
+			Groups: &models.HierarchicalMultiCriterionInput{
+				Value:    []string{strconv.Itoa(group.ID)},
+				Modifier: models.CriterionModifierIncludes,
+			},
+		}, nil)
+		if err != nil {
+			t.Errorf("counting performers for group %d: %v", group.ID, err)
+			continue
+		}
+		verifyInt(t, count, performerCountCriterion)
+	}
+
+	return groups
+}
+
+func TestGroupQueryPerformerCount(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		group := createGroupWithPerformers(ctx, t)
+
+		criterion := models.IntCriterionInput{
+			Value:    2,
+			Modifier: models.CriterionModifierEquals,
+		}
+		groups := verifyGroupsPerformerCount(ctx, t, criterion)
+		assert.Contains(t, groupsToIDs(groups), group.ID)
+
+		// existing fixture groups have no performers
+		criterion.Value = 0
+		groups = verifyGroupsPerformerCount(ctx, t, criterion)
+		assert.NotContains(t, groupsToIDs(groups), group.ID)
+		assert.Contains(t, groupsToIDs(groups), groupIDs[groupIdxWithScene])
+
+		criterion.Modifier = models.CriterionModifierNotEquals
+		groups = verifyGroupsPerformerCount(ctx, t, criterion)
+		assert.Contains(t, groupsToIDs(groups), group.ID)
+
+		criterion.Value = 1
+		criterion.Modifier = models.CriterionModifierGreaterThan
+		groups = verifyGroupsPerformerCount(ctx, t, criterion)
+		assert.Contains(t, groupsToIDs(groups), group.ID)
+
+		criterion.Value = 2
+		criterion.Modifier = models.CriterionModifierLessThan
+		groups = verifyGroupsPerformerCount(ctx, t, criterion)
+		assert.NotContains(t, groupsToIDs(groups), group.ID)
+
+		criterion.Value = 1
+		criterion.Value2 = intPtr(3)
+		criterion.Modifier = models.CriterionModifierBetween
+		groups = verifyGroupsPerformerCount(ctx, t, criterion)
+		assert.Contains(t, groupsToIDs(groups), group.ID)
+
+		return nil
+	})
+}
+
+func TestGroupQuerySortPerformerCount(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		group := createGroupWithPerformers(ctx, t)
+
+		sortBy := "performer_count"
+		direction := models.SortDirectionEnumDesc
+		findFilter := &models.FindFilterType{
+			Sort:      &sortBy,
+			Direction: &direction,
+		}
+
+		groups := queryGroups(ctx, t, nil, findFilter)
+		if assert.Greater(t, len(groups), 1) {
+			// the new group is the only one with performers
+			assert.Equal(t, group.ID, groups[0].ID)
+		}
+
+		direction = models.SortDirectionEnumAsc
+		groups = queryGroups(ctx, t, nil, findFilter)
+		if assert.Greater(t, len(groups), 1) {
+			assert.Equal(t, group.ID, groups[len(groups)-1].ID)
+		}
+
+		return nil
+	})
+}
+
 // TODO Update
 // TODO Destroy - ensure image is destroyed
 // TODO Find

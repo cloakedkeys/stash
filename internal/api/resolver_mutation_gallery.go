@@ -690,3 +690,51 @@ func (r *mutationResolver) GalleryChapterDestroy(ctx context.Context, id string)
 
 	return true, nil
 }
+
+func (r *mutationResolver) GalleryIncrementO(ctx context.Context, id string) (ret int, err error) {
+	galleryID, err := strconv.Atoi(id)
+	if err != nil {
+		return 0, fmt.Errorf("converting id: %w", err)
+	}
+
+	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		ret, err = r.repository.Gallery.IncrementOCounter(ctx, galleryID)
+		return err
+	}); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (r *mutationResolver) GalleryDecrementO(ctx context.Context, id string) (ret int, err error) {
+	galleryID, err := strconv.Atoi(id)
+	if err != nil {
+		return 0, fmt.Errorf("converting id: %w", err)
+	}
+
+	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		ret, err = r.repository.Gallery.DecrementOCounter(ctx, galleryID)
+		return err
+	}); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (r *mutationResolver) GalleryResetO(ctx context.Context, id string) (ret int, err error) {
+	galleryID, err := strconv.Atoi(id)
+	if err != nil {
+		return 0, fmt.Errorf("converting id: %w", err)
+	}
+
+	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		ret, err = r.repository.Gallery.ResetOCounter(ctx, galleryID)
+		return err
+	}); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}

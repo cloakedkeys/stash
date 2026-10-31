@@ -28,7 +28,8 @@ type Gallery struct {
 	Photographer string                 `json:"photographer,omitempty"`
 	Rating       int                    `json:"rating,omitempty"`
 	Organized    bool                   `json:"organized,omitempty"`
-	Chapters     []GalleryChapter       `json:"chapters,omitempty"`
+	OCounter     int                    `json:"o_counter,omitempty"`
+	Chapters    []GalleryChapter       `json:"chapters,omitempty"`
 	Studio       string                 `json:"studio,omitempty"`
 	Performers   []string               `json:"performers,omitempty"`
 	Tags         []string               `json:"tags,omitempty"`

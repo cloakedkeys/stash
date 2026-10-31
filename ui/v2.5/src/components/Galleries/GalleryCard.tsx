@@ -8,6 +8,7 @@ import { SceneLink, TagLink } from "../Shared/TagLink";
 import { TruncatedText } from "../Shared/TruncatedText";
 import { PerformerPopoverButton } from "../Shared/PerformerPopoverButton";
 import { PopoverCountButton } from "../Shared/PopoverCountButton";
+import { OCounterButton } from "../Shared/CountButton";
 import NavUtils from "src/utils/navigation";
 import { RatingBanner } from "../Shared/RatingBanner";
 import {
@@ -145,6 +146,12 @@ const GalleryCardPopovers = React.memo(
       );
     }
 
+    function maybeRenderOCounter() {
+      if (props.gallery.o_counter) {
+        return <OCounterButton value={props.gallery.o_counter} />;
+      }
+    }
+
     function maybeRenderOrganized() {
       if (props.gallery.organized) {
         return (
@@ -167,6 +174,7 @@ const GalleryCardPopovers = React.memo(
         props.gallery.scenes.length > 0 ||
         props.gallery.performers.length > 0 ||
         props.gallery.tags.length > 0 ||
+        props.gallery.o_counter ||
         props.gallery.organized ||
         props.gallery.image_count > 0
       ) {
@@ -178,6 +186,7 @@ const GalleryCardPopovers = React.memo(
               {maybeRenderTagPopoverButton()}
               {maybeRenderPerformerPopoverButton()}
               {maybeRenderScenePopoverButton()}
+              {maybeRenderOCounter()}
               {maybeRenderOrganized()}
             </ButtonGroup>
           </>

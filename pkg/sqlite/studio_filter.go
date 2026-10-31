@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/stashapp/stash/pkg/models"
 )
@@ -86,6 +87,7 @@ func (qb *studioFilterHandler) criterionHandler() criterionHandler {
 		qb.imageCountCriterionHandler(studioFilter.ImageCount),
 		qb.galleryCountCriterionHandler(studioFilter.GalleryCount),
 		qb.groupCountCriterionHandler(studioFilter.GroupCount),
+		qb.performerCountCriterionHandler(studioFilter.PerformerCount),
 		qb.parentCriterionHandler(studioFilter.Parents),
 		qb.aliasCriterionHandler(studioFilter.Aliases),
 		qb.tagsCriterionHandler(studioFilter.Tags),
@@ -209,6 +211,36 @@ func (qb *studioFilterHandler) groupCountCriterionHandler(groupCount *models.Int
 			clause, args := getIntCriterionWhereClause("count(distinct groups.id)", *groupCount)
 
 			f.addHaving(clause, args...)
+		}
+	}
+}
+
+// selectStudioPerformerCountSQL counts the distinct performers in the studio's
+// scenes, images and galleries, matching the studio's performer_count field.
+var selectStudioPerformerCountSQL = fmt.Sprintf(`SELECT COUNT(*) FROM (
+	SELECT %[2]s.performer_id FROM %[2]s
+	INNER JOIN %[3]s ON %[3]s.id = %[2]s.scene_id
+	WHERE %[3]s.studio_id = %[1]s.id
+	UNION
+	SELECT %[4]s.performer_id FROM %[4]s
+	INNER JOIN %[5]s ON %[5]s.id = %[4]s.image_id
+	WHERE %[5]s.studio_id = %[1]s.id
+	UNION
+	SELECT %[6]s.performer_id FROM %[6]s
+	INNER JOIN %[7]s ON %[7]s.id = %[6]s.gallery_id
+	WHERE %[7]s.studio_id = %[1]s.id
+)`, studioTable,
+	performersScenesTable, sceneTable,
+	performersImagesTable, imageTable,
+	performersGalleriesTable, galleryTable,
+)
+
+func (qb *studioFilterHandler) performerCountCriterionHandler(performerCount *models.IntCriterionInput) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		if performerCount != nil {
+			clause, args := getIntCriterionWhereClause("("+selectStudioPerformerCountSQL+")", *performerCount)
+
+			f.addWhere(clause, args...)
 		}
 	}
 }
