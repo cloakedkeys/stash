@@ -854,8 +854,14 @@ func (i *Config) GetBackupDirectoryPath() string {
 func (i *Config) GetBackupDirectoryPathOrDefault() string {
 	ret := i.GetBackupDirectoryPath()
 	if ret == "" {
+		dbPath := i.GetDatabasePath()
+		// a connection string has no directory, so use the config directory
+		if strings.Contains(dbPath, "://") {
+			return i.GetConfigPath()
+		}
+
 		// #4915 - default to the same directory as the database
-		return filepath.Dir(i.GetDatabasePath())
+		return filepath.Dir(dbPath)
 	}
 
 	return ret
