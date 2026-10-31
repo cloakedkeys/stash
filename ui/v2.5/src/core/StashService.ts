@@ -2671,6 +2671,8 @@ export const mutateSubmitStashBoxPerformerDraft = (
 
 export const useConfiguration = () => GQL.useConfigurationQuery();
 
+export const useMe = () => GQL.useMeQuery();
+
 export const usePlugins = () => GQL.usePluginsQuery();
 
 export const usePluginTasks = () => GQL.usePluginTasksQuery();

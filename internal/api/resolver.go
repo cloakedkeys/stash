@@ -38,6 +38,7 @@ type Resolver struct {
 	imageService   manager.ImageService
 	galleryService manager.GalleryService
 	groupService   manager.GroupService
+	userService    manager.UserService
 
 	hookExecutor hookExecutor
 }
@@ -116,6 +117,9 @@ func (r *Resolver) ConfigResult() ConfigResultResolver {
 func (r *Resolver) ScraperURLConflict() ScraperURLConflictResolver {
 	return &scraperURLConflictResolver{r}
 }
+func (r *Resolver) User() UserResolver {
+	return &userResolver{r}
+}
 
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
@@ -144,6 +148,7 @@ type savedFilterResolver struct{ *Resolver }
 type pluginResolver struct{ *Resolver }
 type configResultResolver struct{ *Resolver }
 type scraperURLConflictResolver struct{ *Resolver }
+type userResolver struct{ *Resolver }
 
 func (r *Resolver) withTxn(ctx context.Context, fn func(ctx context.Context) error) error {
 	return r.repository.WithTxn(ctx, fn)

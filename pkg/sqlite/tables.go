@@ -55,6 +55,8 @@ var (
 	tagRelationsJoinTable = goqu.T(tagRelationsTable)
 	tagsStashIDsJoinTable = goqu.T("tag_stash_ids")
 	tagsCustomFieldsTable = goqu.T("tag_custom_fields")
+
+	userRolesJoinTable = goqu.T(userRolesTable)
 )
 
 var (
@@ -426,6 +428,21 @@ var (
 			idColumn: groupAliasesJoinTable.Col(groupIDColumn),
 		},
 		stringColumn: groupAliasesJoinTable.Col(groupAliasColumn),
+	}
+)
+
+var (
+	userTableMgr = &table{
+		table:    goqu.T(userTable),
+		idColumn: goqu.T(userTable).Col(idColumn),
+	}
+
+	userRolesTableMgr = &stringTable{
+		table: table{
+			table:    userRolesJoinTable,
+			idColumn: userRolesJoinTable.Col(userIDColumn),
+		},
+		stringColumn: userRolesJoinTable.Col(userRoleColumn),
 	}
 )
 

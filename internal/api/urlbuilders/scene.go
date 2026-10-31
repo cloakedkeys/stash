@@ -22,18 +22,13 @@ func NewSceneURLBuilder(baseURL string, scene *models.Scene) SceneURLBuilder {
 	}
 }
 
-func (b SceneURLBuilder) GetStreamURL(apiKey string) *url.URL {
+func (b SceneURLBuilder) GetStreamURL() *url.URL {
 	u, err := url.Parse(fmt.Sprintf("%s/scene/%s/stream", b.BaseURL, b.SceneID))
 	if err != nil {
 		// shouldn't happen
 		panic(err)
 	}
 
-	if apiKey != "" {
-		v := u.Query()
-		v.Set("apikey", apiKey)
-		u.RawQuery = v.Encode()
-	}
 	return u
 }
 
@@ -61,17 +56,11 @@ func (b SceneURLBuilder) GetFunscriptPath() string {
 	return "/scene/" + b.SceneID + "/funscript"
 }
 
-func (b SceneURLBuilder) GetFunscriptURL(apiKey string) *url.URL {
+func (b SceneURLBuilder) GetFunscriptURL() *url.URL {
 	u, err := url.Parse(fmt.Sprintf("%s%s", b.BaseURL, b.GetFunscriptPath()))
 	if err != nil {
 		// shouldn't happen
 		panic(err)
-	}
-
-	if apiKey != "" {
-		v := u.Query()
-		v.Set("apikey", apiKey)
-		u.RawQuery = v.Encode()
 	}
 
 	return u

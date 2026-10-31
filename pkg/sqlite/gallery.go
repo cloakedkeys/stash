@@ -27,7 +27,14 @@ const (
 	galleryIDColumn          = "gallery_id"
 	galleriesURLsTable       = "gallery_urls"
 	galleriesURLColumn       = "url"
+	galleriesUserDataTable   = "galleries_user_data"
 )
+
+var galleryUserData = userDataTable{
+	table:       galleriesUserDataTable,
+	idColumn:    galleryIDColumn,
+	objectTable: galleryTable,
+}
 
 type galleryRow struct {
 	ID            int         `db:"id" goqu:"skipinsert"`
@@ -37,14 +44,12 @@ type galleryRow struct {
 	DatePrecision null.Int    `db:"date_precision"`
 	Details       zero.String `db:"details"`
 	Photographer  zero.String `db:"photographer"`
-	// expressed as 1-100
-	Rating    null.Int  `db:"rating"`
-	Organized bool      `db:"organized"`
-	OCounter  int       `db:"o_counter"`
-	StudioID  null.Int  `db:"studio_id,omitempty"`
-	FolderID  null.Int  `db:"folder_id,omitempty"`
-	CreatedAt Timestamp `db:"created_at"`
-	UpdatedAt Timestamp `db:"updated_at"`
+	OCounter      int         `db:"o_counter"`
+	Organized     bool        `db:"organized"`
+	StudioID      null.Int    `db:"studio_id,omitempty"`
+	FolderID      null.Int    `db:"folder_id,omitempty"`
+	CreatedAt     Timestamp   `db:"created_at"`
+	UpdatedAt     Timestamp   `db:"updated_at"`
 }
 
 func (r *galleryRow) fromGallery(o models.Gallery) {
@@ -55,13 +60,38 @@ func (r *galleryRow) fromGallery(o models.Gallery) {
 	r.DatePrecision = datePrecisionFromDatePtr(o.Date)
 	r.Details = zero.StringFrom(o.Details)
 	r.Photographer = zero.StringFrom(o.Photographer)
-	r.Rating = intFromPtr(o.Rating)
 	r.Organized = o.Organized
 	r.OCounter = o.OCounter
 	r.StudioID = intFromPtr(o.StudioID)
 	r.FolderID = nullIntFromFolderIDPtr(o.FolderID)
 	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
+}
+
+// galleryUserDataRow is a row of a user's data for a gallery.
+type galleryUserDataRow struct {
+	GalleryID int `db:"gallery_id"`
+	UserID    int `db:"user_id"`
+	// expressed as 1-100
+	Rating null.Int `db:"rating"`
+}
+
+func (r galleryUserDataRow) apply(g *models.Gallery) {
+	g.Rating = nullIntPtr(r.Rating)
+}
+
+func galleryUserDataRecord(o models.Gallery) goqu.Record {
+	return goqu.Record{
+		"rating": intFromPtr(o.Rating),
+	}
+}
+
+func galleryUserDataPartialRecord(o models.GalleryPartial) goqu.Record {
+	r := updateRecord{
+		Record: make(exp.Record),
+	}
+	r.setNullInt("rating", o.Rating)
+	return goqu.Record(r.Record)
 }
 
 type galleryQueryRow struct {
@@ -81,7 +111,6 @@ func (r *galleryQueryRow) resolve() *models.Gallery {
 		Date:          r.Date.DatePtr(r.DatePrecision),
 		Details:       r.Details.String,
 		Photographer:  r.Photographer.String,
-		Rating:        nullIntPtr(r.Rating),
 		Organized:     r.Organized,
 		OCounter:      r.OCounter,
 		StudioID:      nullIntPtr(r.StudioID),
@@ -110,7 +139,6 @@ func (r *galleryRowRecord) fromPartial(o models.GalleryPartial) {
 	r.setNullDate("date", "date_precision", o.Date)
 	r.setNullString("details", o.Details)
 	r.setNullString("photographer", o.Photographer)
-	r.setNullInt("rating", o.Rating)
 	r.setBool("organized", o.Organized)
 	r.setInt("o_counter", o.OCounter)
 	r.setNullInt("studio_id", o.StudioID)
@@ -252,6 +280,10 @@ func (qb *GalleryStore) Create(ctx context.Context, newObject *models.CreateGall
 		return err
 	}
 
+	if err := galleryUserData.upsert(ctx, id, galleryUserDataRecord(*newObject.Gallery)); err != nil {
+		return err
+	}
+
 	if len(newObject.FileIDs) > 0 {
 		const firstPrimary = true
 		if err := galleriesFilesTableMgr.insertJoins(ctx, id, firstPrimary, newObject.FileIDs); err != nil {
@@ -301,6 +333,10 @@ func (qb *GalleryStore) Update(ctx context.Context, updatedObject *models.Update
 	r.fromGallery(*updatedObject.Gallery)
 
 	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
+		return err
+	}
+
+	if err := galleryUserData.upsert(ctx, updatedObject.ID, galleryUserDataRecord(*updatedObject.Gallery)); err != nil {
 		return err
 	}
 
@@ -356,6 +392,10 @@ func (qb *GalleryStore) UpdatePartial(ctx context.Context, id int, partial model
 		if err := qb.tableMgr.updateByID(ctx, id, r.Record); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := galleryUserData.upsert(ctx, id, galleryUserDataPartialRecord(partial)); err != nil {
+		return nil, err
 	}
 
 	if partial.URLs != nil {
@@ -518,7 +558,41 @@ func (qb *GalleryStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*
 		return nil, err
 	}
 
+	if err := qb.loadUserData(ctx, ret); err != nil {
+		return nil, err
+	}
+
 	return ret, nil
+}
+
+// loadUserData sets the current user's data on the provided galleries.
+func (qb *GalleryStore) loadUserData(ctx context.Context, galleries []*models.Gallery) error {
+	if _, ok := models.UserIDFromContext(ctx); !ok || len(galleries) == 0 {
+		return nil
+	}
+
+	byID := make(map[int]*models.Gallery, len(galleries))
+	ids := make([]int, len(galleries))
+	for i, g := range galleries {
+		byID[g.ID] = g
+		ids[i] = g.ID
+	}
+
+	return batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := galleryUserData.selectForUser(ctx, batch)
+		const single = false
+		return queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+			var r galleryUserDataRow
+			if err := rows.StructScan(&r); err != nil {
+				return err
+			}
+
+			if g := byID[r.GalleryID]; g != nil {
+				r.apply(g)
+			}
+			return nil
+		})
+	})
 }
 
 func (qb *GalleryStore) FindByFileID(ctx context.Context, fileID models.FileID) ([]*models.Gallery, error) {
@@ -855,7 +929,7 @@ func (qb *GalleryStore) makeQuery(ctx context.Context, galleryFilter *models.Gal
 		return nil, err
 	}
 
-	if err := qb.setGallerySort(&query, findFilter); err != nil {
+	if err := qb.setGallerySort(ctx, &query, findFilter); err != nil {
 		return nil, err
 	}
 	query.sortAndPagination += getPagination(findFilter)
@@ -909,7 +983,7 @@ var gallerySortOptions = sortOptions{
 	"updated_at",
 }
 
-func (qb *GalleryStore) setGallerySort(query *queryBuilder, findFilter *models.FindFilterType) error {
+func (qb *GalleryStore) setGallerySort(ctx context.Context, query *queryBuilder, findFilter *models.FindFilterType) error {
 	if findFilter == nil || findFilter.Sort == nil || *findFilter.Sort == "" {
 		return nil
 	}
@@ -1003,6 +1077,9 @@ func (qb *GalleryStore) setGallerySort(query *queryBuilder, findFilter *models.F
 		addFileTable()
 		addFolderTable()
 		query.sortAndPagination += " ORDER BY COALESCE(galleries.title, files.basename, basename(COALESCE(folders.path, ''))) COLLATE NATURAL_CI " + direction + ", file_folder.path COLLATE NATURAL_CI " + direction
+	case "rating":
+		galleryUserData.joinSort(ctx, query)
+		query.sortAndPagination += getSort(sort, direction, galleriesUserDataTable)
 	default:
 		query.sortAndPagination += getSort(sort, direction, "galleries")
 	}
