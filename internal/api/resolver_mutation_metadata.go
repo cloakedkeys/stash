@@ -163,7 +163,7 @@ func (r *mutationResolver) BackupDatabase(ctx context.Context, input BackupDatab
 	includeBlobs := input.IncludeBlobs != nil && *input.IncludeBlobs
 	mgr := manager.GetInstance()
 
-	backupPath, backupName, err := mgr.BackupDatabase(download, includeBlobs)
+	backupPath, backupName, err := mgr.BackupDatabaseQueued(ctx, download, includeBlobs)
 	if err != nil {
 		logger.Errorf("Error backing up database: %v", err)
 		return nil, err

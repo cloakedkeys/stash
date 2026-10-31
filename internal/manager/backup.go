@@ -2,6 +2,7 @@ package manager
 
 import (
 	"archive/zip"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/fsutil"
+	"github.com/stashapp/stash/pkg/job"
 	"github.com/stashapp/stash/pkg/logger"
 )
 
@@ -43,6 +45,19 @@ func (z *databaseBackupZip) zipFileRename(fn, outDir, outFn string) error {
 
 func (z *databaseBackupZip) zipFile(fn, outDir string) error {
 	return z.zipFileRename(fn, outDir, filepath.Base(fn))
+}
+
+func (s *Manager) BackupDatabaseQueued(ctx context.Context, download bool, includeBlobs bool) (string, string, error) {
+	var backupPath, backupName string
+	err := s.JobManager.AddAndWait(ctx, "Backing up database...", job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error {
+		var err error
+		backupPath, backupName, err = s.BackupDatabase(download, includeBlobs)
+		return err
+	}))
+	if err != nil {
+		return "", "", err
+	}
+	return backupPath, backupName, nil
 }
 
 func (s *Manager) BackupDatabase(download bool, includeBlobs bool) (string, string, error) {

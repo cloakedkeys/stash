@@ -64,6 +64,7 @@ type Job struct {
 	outerCtx   context.Context
 	exec       JobExec
 	cancelFunc context.CancelFunc
+	completed  chan Job
 }
 
 // statusCopy returns a copy of the Job with only the fields needed for
