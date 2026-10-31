@@ -39,9 +39,17 @@ type SceneActivityWriter interface {
 	AddViews(ctx context.Context, sceneID int, dates []time.Time) ([]time.Time, error)
 }
 
+// AudioActivityWriter provides methods for saving audio activity.
+type AudioActivityWriter interface {
+	SaveActivity(ctx context.Context, audioID int, resumeTime *float64, playDuration *float64) (bool, error)
+	AddViews(ctx context.Context, audioID int, dates []time.Time) ([]time.Time, error)
+}
+
 // streamSession represents an active DLNA streaming session.
 type streamSession struct {
+	// SceneID is the id of the scene, or of the audio if IsAudio is set.
 	SceneID        int
+	IsAudio        bool
 	ClientIP       string
 	StartTime      time.Time
 	LastActivity   time.Time
@@ -49,9 +57,23 @@ type streamSession struct {
 	PlayCountAdded bool
 }
 
+// contentType returns what the session is playing, for logging.
+func (s *streamSession) contentType() string {
+	if s.IsAudio {
+		return "audio"
+	}
+	return "scene"
+}
+
 // sessionKey generates a unique key for a session based on client IP and scene ID.
 func sessionKey(clientIP string, sceneID int) string {
 	return fmt.Sprintf("%s:%d", clientIP, sceneID)
+}
+
+// audioSessionKey generates a unique key for a session based on client IP and audio ID.
+// Audio IDs are separate from scene IDs, so they must not share keys.
+func audioSessionKey(clientIP string, audioID int) string {
+	return fmt.Sprintf("audio:%s:%d", clientIP, audioID)
 }
 
 // percentWatched calculates the estimated percentage of video watched.
@@ -123,6 +145,7 @@ type ActivityUserResolver interface {
 type ActivityTracker struct {
 	txnManager     txn.Manager
 	sceneWriter    SceneActivityWriter
+	audioWriter    AudioActivityWriter
 	config         ActivityConfig
 	userResolver   ActivityUserResolver
 	sessionTimeout time.Duration
@@ -139,6 +162,7 @@ type ActivityTracker struct {
 func NewActivityTracker(
 	txnManager txn.Manager,
 	sceneWriter SceneActivityWriter,
+	audioWriter AudioActivityWriter,
 	config ActivityConfig,
 ) *ActivityTracker {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -146,6 +170,7 @@ func NewActivityTracker(
 	tracker := &ActivityTracker{
 		txnManager:     txnManager,
 		sceneWriter:    sceneWriter,
+		audioWriter:    audioWriter,
 		config:         config,
 		sessionTimeout: DefaultSessionTimeout,
 		sessions:       make(map[string]*streamSession),
@@ -183,11 +208,19 @@ func (t *ActivityTracker) Stop() {
 // Each request updates the session's LastActivity time, which is used for
 // time-based tracking of watch progress.
 func (t *ActivityTracker) RecordRequest(sceneID int, clientIP string, videoDuration float64) {
+	t.recordRequest(sessionKey(clientIP, sceneID), sceneID, false, clientIP, videoDuration)
+}
+
+// RecordAudioRequest records a streaming request for an audio, in the same way as RecordRequest.
+func (t *ActivityTracker) RecordAudioRequest(audioID int, clientIP string, duration float64) {
+	t.recordRequest(audioSessionKey(clientIP, audioID), audioID, true, clientIP, duration)
+}
+
+func (t *ActivityTracker) recordRequest(key string, id int, isAudio bool, clientIP string, duration float64) {
 	if !t.isEnabled() {
 		return
 	}
 
-	key := sessionKey(clientIP, sceneID)
 	now := time.Now()
 
 	t.mutex.Lock()
@@ -196,13 +229,14 @@ func (t *ActivityTracker) RecordRequest(sceneID int, clientIP string, videoDurat
 	session, exists := t.sessions[key]
 	if !exists {
 		session = &streamSession{
-			SceneID:       sceneID,
+			SceneID:       id,
+			IsAudio:       isAudio,
 			ClientIP:      clientIP,
 			StartTime:     now,
-			VideoDuration: videoDuration,
+			VideoDuration: duration,
 		}
 		t.sessions[key] = session
-		logger.Debugf("[DLNA Activity] New session started: scene=%d, client=%s", sceneID, clientIP)
+		logger.Debugf("[DLNA Activity] New session started: %s=%d, client=%s", session.contentType(), id, clientIP)
 	}
 
 	session.LastActivity = now
@@ -272,8 +306,8 @@ func (t *ActivityTracker) processCompletedSession(session *streamSession) {
 	percentWatched := session.percentWatched()
 	resumeTime := session.estimatedResumeTime()
 
-	logger.Debugf("[DLNA Activity] Session completed: scene=%d, client=%s, videoDuration=%.1fs, percent=%.1f%%, resume=%.1fs",
-		session.SceneID, session.ClientIP, session.VideoDuration, percentWatched, resumeTime)
+	logger.Debugf("[DLNA Activity] Session completed: %s=%d, client=%s, videoDuration=%.1fs, percent=%.1f%%, resume=%.1fs",
+		session.contentType(), session.SceneID, session.ClientIP, session.VideoDuration, percentWatched, resumeTime)
 
 	// Only save if there was meaningful activity (at least 1% watched)
 	if percentWatched < 1 {
@@ -320,25 +354,39 @@ func (t *ActivityTracker) processCompletedSession(session *streamSession) {
 		// guesses would corrupt analytics. Resume time is still useful as a
 		// "continue watching" hint even if imprecise.
 		if shouldSaveResume {
-			if _, err := t.sceneWriter.SaveActivity(ctx, session.SceneID, &resumeTime, nil); err != nil {
+			if _, err := t.saveActivity(ctx, session, &resumeTime); err != nil {
 				return fmt.Errorf("save resume time: %w", err)
 			}
 		}
 
 		// Increment play count (also updates last_played_at via view date)
 		if shouldAddView {
-			if _, err := t.sceneWriter.AddViews(ctx, session.SceneID, []time.Time{time.Now()}); err != nil {
+			if _, err := t.addViews(ctx, session, []time.Time{time.Now()}); err != nil {
 				return fmt.Errorf("add view: %w", err)
 			}
 			session.PlayCountAdded = true
-			logger.Debugf("[DLNA Activity] Incremented play count for scene %d (%.1f%% watched)",
-				session.SceneID, percentWatched)
+			logger.Debugf("[DLNA Activity] Incremented play count for %s %d (%.1f%% watched)",
+				session.contentType(), session.SceneID, percentWatched)
 		}
 
 		return nil
 	}); err != nil {
-		logger.Warnf("[DLNA Activity] Failed to save activity for scene %d: %v", session.SceneID, err)
+		logger.Warnf("[DLNA Activity] Failed to save activity for %s %d: %v", session.contentType(), session.SceneID, err)
 	}
+}
+
+func (t *ActivityTracker) saveActivity(ctx context.Context, session *streamSession, resumeTime *float64) (bool, error) {
+	if session.IsAudio {
+		return t.audioWriter.SaveActivity(ctx, session.SceneID, resumeTime, nil)
+	}
+	return t.sceneWriter.SaveActivity(ctx, session.SceneID, resumeTime, nil)
+}
+
+func (t *ActivityTracker) addViews(ctx context.Context, session *streamSession, dates []time.Time) ([]time.Time, error) {
+	if session.IsAudio {
+		return t.audioWriter.AddViews(ctx, session.SceneID, dates)
+	}
+	return t.sceneWriter.AddViews(ctx, session.SceneID, dates)
 }
 
 // isEnabled returns true if activity tracking is enabled.

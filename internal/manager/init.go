@@ -102,7 +102,7 @@ func Initialize(cfg *config.Config, l *log.Logger) (*Manager, error) {
 	}
 
 	dlnaRepository := dlna.NewRepository(repo)
-	dlnaService := dlna.NewService(dlnaRepository, cfg, sceneServer, audioServer, repo.Scene, cfg.GetMinimumPlayPercent())
+	dlnaService := dlna.NewService(dlnaRepository, cfg, sceneServer, audioServer, repo.Scene, repo.Audio, cfg.GetMinimumPlayPercent())
 
 	mgr := &Manager{
 		Config: cfg,

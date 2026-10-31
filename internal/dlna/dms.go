@@ -643,6 +643,16 @@ func (me *Server) initMux(mux *http.ServeMux) {
 			w.Header().Set("transferMode.dlna.org", "Streaming")
 			w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01500000000000000000000000000000")
 
+			// Track activity - uses time-based tracking, updated on each request
+			if me.activityTracker != nil {
+				var duration float64
+				if f := a.Files.Primary(); f != nil {
+					duration = f.Duration
+				}
+				clientIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+				me.activityTracker.RecordAudioRequest(a.ID, clientIP, duration)
+			}
+
 			me.audioServer.StreamAudioDirect(a, w, r)
 			return
 		}

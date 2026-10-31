@@ -394,6 +394,69 @@ func TestActivityTracker_MultipleSessions(t *testing.T) {
 	tracker.mutex.RUnlock()
 }
 
+type mockTxnManager struct{}
+
+func (mockTxnManager) Begin(ctx context.Context, _ bool) (context.Context, error) { return ctx, nil }
+func (mockTxnManager) Commit(context.Context) error                               { return nil }
+func (mockTxnManager) Rollback(context.Context) error                             { return nil }
+func (mockTxnManager) IsLocked(error) bool                                        { return false }
+
+type mockUserResolver struct{ ok bool }
+
+func (r mockUserResolver) DLNAActivityUserID(context.Context) (int, bool, error) {
+	return 1, r.ok, nil
+}
+
+func TestActivityTracker_AudioSessions(t *testing.T) {
+	sceneWriter := &mockSceneWriter{}
+	audioWriter := &mockSceneWriter{}
+	tracker := &ActivityTracker{
+		txnManager:     mockTxnManager{},
+		sceneWriter:    sceneWriter,
+		audioWriter:    audioWriter,
+		config:         &mockConfig{enabled: true, minPlayPercent: 50},
+		userResolver:   mockUserResolver{ok: true},
+		sessionTimeout: DefaultSessionTimeout,
+		sessions:       make(map[string]*streamSession),
+	}
+
+	// a scene and an audio with the same id from the same client are different sessions
+	tracker.RecordRequest(42, "192.168.1.100", 120.0)
+	tracker.RecordAudioRequest(42, "192.168.1.100", 120.0)
+	assert.Len(t, tracker.sessions, 2)
+
+	session := tracker.sessions[audioSessionKey("192.168.1.100", 42)]
+	assert.True(t, session.IsAudio)
+
+	// played most of the way through: counted as a play with a resume point
+	session.StartTime = session.LastActivity.Add(-90 * time.Second)
+	tracker.processCompletedSession(session)
+
+	assert.Len(t, audioWriter.addViewsCalls, 1)
+	assert.Equal(t, 42, audioWriter.addViewsCalls[0].sceneID)
+	assert.Len(t, audioWriter.saveActivityCalls, 1)
+	assert.InDelta(t, 90.0, *audioWriter.saveActivityCalls[0].resumeTime, 0.1)
+	assert.Nil(t, audioWriter.saveActivityCalls[0].playDuration)
+	assert.Empty(t, sceneWriter.addViewsCalls, "audio plays must not be recorded on the scene with the same id")
+	assert.Empty(t, sceneWriter.saveActivityCalls)
+
+	// too little of the track played to count as a play
+	audioWriter = &mockSceneWriter{}
+	tracker.audioWriter = audioWriter
+	now := time.Now()
+	tracker.processCompletedSession(&streamSession{SceneID: 42, IsAudio: true, StartTime: now.Add(-12 * time.Second), LastActivity: now, VideoDuration: 120.0})
+	assert.Empty(t, audioWriter.addViewsCalls)
+	assert.Len(t, audioWriter.saveActivityCalls, 1)
+
+	// several accounts: no way of knowing whose play it was
+	audioWriter = &mockSceneWriter{}
+	tracker.audioWriter = audioWriter
+	tracker.userResolver = mockUserResolver{ok: false}
+	tracker.processCompletedSession(&streamSession{SceneID: 42, IsAudio: true, StartTime: now.Add(-90 * time.Second), LastActivity: now, VideoDuration: 120.0})
+	assert.Empty(t, audioWriter.addViewsCalls)
+	assert.Empty(t, audioWriter.saveActivityCalls)
+}
+
 func TestActivityTracker_ShortSessionIgnored(t *testing.T) {
 	// Test that short sessions are ignored
 	// Create a session with only ~0.8% watched (1 second of a 120 second video)

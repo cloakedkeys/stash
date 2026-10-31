@@ -243,8 +243,9 @@ func (s *Service) SetActivityUserResolver(r ActivityUserResolver) {
 
 // NewService initialises and returns a new DLNA service.
 // The sceneWriter parameter should implement SceneActivityWriter (typically models.SceneReaderWriter).
+// The audioWriter parameter should implement AudioActivityWriter (typically models.AudioReaderWriter).
 // The minPlayPercent parameter is the minimum percentage of video that must be played to increment play count.
-func NewService(repo Repository, cfg Config, sceneServer sceneServer, audioServer audioServer, sceneWriter SceneActivityWriter, minPlayPercent int) *Service {
+func NewService(repo Repository, cfg Config, sceneServer sceneServer, audioServer audioServer, sceneWriter SceneActivityWriter, audioWriter AudioActivityWriter, minPlayPercent int) *Service {
 	activityCfg := &activityConfig{
 		config:         cfg,
 		minPlayPercent: minPlayPercent,
@@ -256,7 +257,7 @@ func NewService(repo Repository, cfg Config, sceneServer sceneServer, audioServe
 		audioServer:     audioServer,
 		config:          cfg,
 		IPWhitelistMgr:  &ip.WhitelistManager{},
-		activityTracker: NewActivityTracker(repo.TxnManager, sceneWriter, activityCfg),
+		activityTracker: NewActivityTracker(repo.TxnManager, sceneWriter, audioWriter, activityCfg),
 		mutex:           sync.Mutex{},
 	}
 
