@@ -8,6 +8,7 @@ import (
 	"github.com/stashapp/stash/internal/api/urlbuilders"
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/signedurl"
 )
 
 func (r *queryResolver) AudioStreams(ctx context.Context, id *string) ([]*manager.AudioStreamEndpoint, error) {
@@ -39,7 +40,8 @@ func (r *queryResolver) AudioStreams(ctx context.Context, id *string) ([]*manage
 
 	baseURL, _ := ctx.Value(BaseURLCtxKey).(string)
 	builder := urlbuilders.NewAudioURLBuilder(baseURL, audio)
-	apiKey := config.GetAPIKey()
+	streamURL := builder.GetStreamURL("")
+	signURL(ctx, config, streamURL, signedurl.DerivePrefix(streamURL.Path))
 
-	return manager.GetAudioStreamPaths(audio, builder.GetStreamURL(apiKey))
+	return manager.GetAudioStreamPaths(audio, streamURL)
 }

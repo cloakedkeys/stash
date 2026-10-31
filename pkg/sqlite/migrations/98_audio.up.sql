@@ -7,12 +7,9 @@ CREATE TABLE "audios" (
     `details` text,
     `date` date,
     "date_precision" TINYINT,
-    `rating` tinyint,
     `studio_id` integer,
     `organized` boolean not null default '0',
     `code` text,
-    `resume_time` float not null default 0,
-    `play_duration` float not null default 0,
     `cover_blob` varchar(255),
     `created_at` datetime not null,
     `updated_at` datetime not null,
@@ -20,15 +17,33 @@ CREATE TABLE "audios" (
     foreign key(`cover_blob`) references `blobs`(`checksum`) on delete SET NULL
 );
 CREATE INDEX `index_audios_on_studio_id` on `audios` (`studio_id`);
+
+--------------------------------------------
+-- audios_user_data definition
+--
+CREATE TABLE `audios_user_data` (
+    `audio_id` integer NOT NULL,
+    `user_id` integer NOT NULL,
+    `rating` tinyint,
+    `resume_time` float NOT NULL DEFAULT 0,
+    `play_duration` float NOT NULL DEFAULT 0,
+    PRIMARY KEY (`audio_id`, `user_id`),
+    FOREIGN KEY (`audio_id`) REFERENCES `audios`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+);
+CREATE INDEX `index_audios_user_data_on_user_id` ON `audios_user_data` (`user_id`);
 --------------------------------------------
 -- audios_o_dates definition
 --
 CREATE TABLE "audios_o_dates" (
     `audio_id` integer not null,
+    `user_id` integer not null,
     `o_date` datetime not null,
-    foreign key(`audio_id`) references `audios`(`id`) on delete CASCADE
+    foreign key(`audio_id`) references `audios`(`id`) on delete CASCADE,
+    foreign key(`user_id`) references `users`(`id`) on delete CASCADE
 );
-CREATE INDEX `index_audios_o_dates` ON `audios_o_dates` (`audio_id`);
+CREATE INDEX `index_audios_o_dates` ON `audios_o_dates` (`audio_id`, `user_id`);
+CREATE INDEX `index_audios_o_dates_on_user_id` ON `audios_o_dates` (`user_id`);
 --------------------------------------------
 -- audios_tags definition
 --
@@ -45,10 +60,13 @@ CREATE INDEX `index_audios_tags_on_tag_id` on `audios_tags` (`tag_id`);
 --
 CREATE TABLE "audios_play_dates" (
     `audio_id` integer not null,
+    `user_id` integer not null,
     `play_date` datetime not null,
-    foreign key(`audio_id`) references `audios`(`id`) on delete CASCADE
+    foreign key(`audio_id`) references `audios`(`id`) on delete CASCADE,
+    foreign key(`user_id`) references `users`(`id`) on delete CASCADE
 );
-CREATE INDEX `index_audios_play_dates` ON `audios_play_dates` (`audio_id`);
+CREATE INDEX `index_audios_play_dates` ON `audios_play_dates` (`audio_id`, `user_id`);
+CREATE INDEX `index_audios_play_dates_on_user_id` ON `audios_play_dates` (`user_id`);
 --------------------------------------------
 -- groups_audios definition
 --
