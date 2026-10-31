@@ -54,7 +54,7 @@ func (c *LockContext) Cancel() {
 	if command != nil {
 		// wait for the process to die before returning
 		// don't wait more than a few seconds
-		go command.wait()
+		go func() { _ = command.wait() }()
 
 		select {
 		case <-command.done:
