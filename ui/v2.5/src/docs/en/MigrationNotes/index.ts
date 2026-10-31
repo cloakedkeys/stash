@@ -4,6 +4,7 @@ import migration48 from "./48.md";
 import migration58 from "./58.md";
 import migration60 from "./60.md";
 import migration87 from "./87.md";
+import migration97 from "./97.md";
 
 export const migrationNotes: Record<number, string> = {
   32: migration32,
@@ -12,4 +13,5 @@ export const migrationNotes: Record<number, string> = {
   58: migration58,
   60: migration60,
   87: migration87,
+  97: migration97,
 };

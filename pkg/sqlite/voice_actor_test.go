@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
@@ -25,10 +26,18 @@ INSERT INTO scenes VALUES (1),(2); INSERT INTO performers VALUES (1); INSERT INT
 	require.NoError(t, err)
 	_, err = db.Exec(string(migration))
 	require.NoError(t, err)
+	_, err = db.Exec("CREATE TABLE users(id INTEGER PRIMARY KEY); INSERT INTO users VALUES(1),(2);")
+	require.NoError(t, err)
 	tx, err := db.Beginx()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = tx.Rollback() })
-	return context.WithValue(context.Background(), txnKey, tx)
+	usersMigration, err := migrationsBox.ReadFile("migrations/97_users.up.sql")
+	require.NoError(t, err)
+	start := strings.Index(string(usersMigration), "CREATE TABLE voice_actors_user_data")
+	end := strings.Index(string(usersMigration), "ALTER TABLE voice_actors DROP COLUMN favorite;") + len("ALTER TABLE voice_actors DROP COLUMN favorite;")
+	_, err = tx.Exec(string(usersMigration)[start:end])
+	require.NoError(t, err)
+	return models.WithUserID(context.WithValue(context.Background(), txnKey, tx), 1)
 }
 
 func TestVoiceActorStore(t *testing.T) {
@@ -115,4 +124,53 @@ func TestVoiceActorCreditsSurviveSceneMerge(t *testing.T) {
 	actors, err := store.FindBySceneID(ctx, 1)
 	require.NoError(t, err)
 	require.Len(t, actors, 2)
+}
+
+func TestVoiceActorFavoritesArePerUser(t *testing.T) {
+	ctx := voiceActorTestContext(t)
+	otherCtx := models.WithUserID(ctx, 2)
+	guestCtx := models.WithUserID(ctx, 0)
+	store := &VoiceActorStore{}
+	actor := &models.VoiceActor{Name: "Artist", Favorite: true}
+	require.NoError(t, store.Create(ctx, actor))
+	require.NoError(t, store.SetScene(ctx, 1, []int{actor.ID}))
+	for _, test := range []struct {
+		ctx  context.Context
+		want bool
+	}{{ctx, true}, {otherCtx, false}, {guestCtx, false}} {
+		found, err := store.Find(test.ctx, actor.ID)
+		require.NoError(t, err)
+		require.Equal(t, test.want, found.Favorite)
+		credits, err := store.FindBySceneID(test.ctx, 1)
+		require.NoError(t, err)
+		require.Equal(t, test.want, credits[0].Favorite)
+		yes := true
+		_, count, err := store.Query(test.ctx, nil, &yes)
+		require.NoError(t, err)
+		if test.want {
+			require.Equal(t, 1, count)
+		} else {
+			require.Zero(t, count)
+		}
+	}
+	other, err := store.FindByName(otherCtx, "Artist")
+	require.NoError(t, err)
+	other.Favorite = true
+	other.Name = "Shared name"
+	require.NoError(t, store.Update(otherCtx, other))
+	actor.Favorite = false
+	actor.Name = other.Name
+	require.NoError(t, store.Update(ctx, actor))
+	other, err = store.Find(otherCtx, actor.ID)
+	require.NoError(t, err)
+	require.True(t, other.Favorite, "another user's update must retain this user's favorite")
+	guest, err := store.Find(guestCtx, actor.ID)
+	require.NoError(t, err)
+	require.False(t, guest.Favorite)
+	require.Equal(t, "Shared name", guest.Name)
+	_, err = dbWrapper.Exec(ctx, "DELETE FROM users WHERE id=2")
+	require.NoError(t, err)
+	var count int
+	require.NoError(t, dbWrapper.Get(ctx, &count, "SELECT count(*) FROM voice_actors_user_data WHERE user_id=2"))
+	require.Zero(t, count)
 }

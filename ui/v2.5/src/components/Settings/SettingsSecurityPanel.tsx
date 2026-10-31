@@ -1,127 +1,94 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import { ModalSetting, NumberSetting } from "./Inputs";
 import { SettingSection } from "./SettingSection";
 import * as GQL from "src/core/generated-graphql";
 import { Button, Form } from "react-bootstrap";
-import { useIntl } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import { useSettings } from "./context";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
 import { useToast } from "src/hooks/Toast";
-import { useGenerateAPIKey } from "src/core/StashService";
+import { useCurrentUser, useIsAdmin } from "src/hooks/CurrentUser";
 
-type AuthenticationSettingsInput = Pick<
-  GQL.ConfigGeneralInput,
-  "username" | "password"
->;
-
-interface IAuthenticationInput {
-  value: AuthenticationSettingsInput;
-  setValue: (v: AuthenticationSettingsInput) => void;
-}
-
-// bcrypt imposes a 72-byte maximum on passwords. Note this is a byte count,
-// not a character count: a multibyte UTF-8 password can be 72 characters
-// but well over 72 bytes. We validate the byte length here so the user gets
-// immediate feedback, and the backend rejects the request atomically if they
-// somehow submit anyway. See #7135.
-const MAX_PASSWORD_BYTES = 72;
-
-function passwordByteLength(password: string): number {
-  return new TextEncoder().encode(password).length;
-}
-
-const AuthenticationInput: React.FC<IAuthenticationInput> = ({
-  value,
-  setValue,
-}) => {
-  const intl = useIntl();
-
-  function set(v: Partial<AuthenticationSettingsInput>) {
-    setValue({
-      ...value,
-      ...v,
-    });
-  }
-
-  const { username, password } = value;
-  const passwordTooLong =
-    passwordByteLength(password ?? "") > MAX_PASSWORD_BYTES;
-
-  return (
-    <div>
-      <Form.Group id="username">
-        <h6>{intl.formatMessage({ id: "config.general.auth.username" })}</h6>
-        <Form.Control
-          className="text-input"
-          value={username ?? ""}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            set({ username: e.currentTarget.value })
-          }
+const PasswordInput: React.FC<{
+  value: GQL.UserChangePasswordInput;
+  setValue: (value: GQL.UserChangePasswordInput) => void;
+}> = ({ value, setValue }) => (
+  <>
+    <Form.Group controlId="existing-password">
+      <Form.Label>
+        <FormattedMessage
+          id="config.general.auth.current_password"
+          defaultMessage="Current password"
         />
-        <Form.Text className="text-muted">
-          {intl.formatMessage({ id: "config.general.auth.username_desc" })}
-        </Form.Text>
-      </Form.Group>
-      <Form.Group id="password">
-        <h6>{intl.formatMessage({ id: "config.general.auth.password" })}</h6>
-        <Form.Control
-          className="text-input"
-          type="password"
-          value={password ?? ""}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            set({ password: e.currentTarget.value })
-          }
-          isInvalid={passwordTooLong}
+      </Form.Label>
+      <Form.Control
+        type="password"
+        autoComplete="current-password"
+        value={value.existingPassword}
+        onChange={(event) =>
+          setValue({ ...value, existingPassword: event.currentTarget.value })
+        }
+      />
+    </Form.Group>
+    <Form.Group controlId="new-password">
+      <Form.Label>
+        <FormattedMessage
+          id="config.general.auth.new_password"
+          defaultMessage="New password"
         />
-        <Form.Control.Feedback type="invalid">
-          {passwordTooLong
-            ? intl.formatMessage({
-                id: "config.general.auth.password_too_long",
-              })
-            : ""}
-        </Form.Control.Feedback>
-        <Form.Text className="text-muted">
-          {intl.formatMessage({ id: "config.general.auth.password_desc" })}
-        </Form.Text>
-      </Form.Group>
-    </div>
-  );
-};
+      </Form.Label>
+      <Form.Control
+        type="password"
+        autoComplete="new-password"
+        value={value.newPassword}
+        onChange={(event) =>
+          setValue({ ...value, newPassword: event.currentTarget.value })
+        }
+      />
+    </Form.Group>
+  </>
+);
 
 export const SettingsSecurityPanel: React.FC = () => {
   const intl = useIntl();
   const Toast = useToast();
+  const user = useCurrentUser();
+  const isAdmin = useIsAdmin();
+  const { general, loading, error, saveGeneral } = useSettings();
+  const [apiKey, setAPIKey] = useState("");
+  const passwordChangePending = useRef(false);
+  const [generateAPIKey, { loading: generating }] =
+    GQL.useGenerateApiKeyMutation();
+  const [changePassword, { loading: changingPassword }] =
+    GQL.useChangePasswordMutation();
+  const canGenerateAPIKey =
+    isAdmin || user?.roles?.includes(GQL.RoleEnum.GenerateApiKey);
 
-  const { general, apiKey, loading, error, saveGeneral, refetch } =
-    useSettings();
-
-  const [generateAPIKey] = useGenerateAPIKey();
-
-  async function onGenerateAPIKey() {
+  async function onChangePassword(input: GQL.UserChangePasswordInput) {
+    if (passwordChangePending.current) return;
+    passwordChangePending.current = true;
     try {
-      await generateAPIKey({
-        variables: {
-          input: {},
-        },
-      });
-      refetch();
-    } catch (e) {
-      Toast.error(e);
+      await changePassword({ variables: { input } });
+      Toast.success(
+        intl.formatMessage({
+          id: "config.general.auth.password_changed",
+          defaultMessage:
+            "Password changed. Sign in again with your new password.",
+        })
+      );
+    } catch (error) {
+      Toast.error(error);
+    } finally {
+      passwordChangePending.current = false;
     }
   }
 
-  async function onClearAPIKey() {
+  async function onGenerateAPIKey(clear: boolean) {
     try {
-      await generateAPIKey({
-        variables: {
-          input: {
-            clear: true,
-          },
-        },
-      });
-      refetch();
-    } catch (e) {
-      Toast.error(e);
+      const result = await generateAPIKey({ variables: { input: { clear } } });
+      setAPIKey(clear ? "" : (result.data?.generateAPIKey ?? ""));
+    } catch (error) {
+      Toast.error(error);
     }
   }
 
@@ -130,58 +97,71 @@ export const SettingsSecurityPanel: React.FC = () => {
 
   return (
     <SettingSection headingID="config.general.auth.authentication">
-      <ModalSetting<AuthenticationSettingsInput>
+      <ModalSetting<GQL.UserChangePasswordInput>
         id="authentication-settings"
-        headingID="config.general.auth.credentials.heading"
-        subHeadingID="config.general.auth.credentials.description"
-        value={{
-          username: general.username,
-          password: general.password,
-        }}
-        onChange={(v) => saveGeneral(v)}
+        heading={intl.formatMessage({
+          id: "config.general.auth.change_password",
+          defaultMessage: "Change password",
+        })}
+        subHeading={intl.formatMessage({
+          id: "config.general.auth.change_password_desc",
+          defaultMessage: "Change the password for your account.",
+        })}
+        value={{ existingPassword: "", newPassword: "" }}
+        disabled={!user || user.name === "guest" || changingPassword}
+        onChange={onChangePassword}
         renderField={(value, setValue) => (
-          <AuthenticationInput value={value ?? {}} setValue={setValue} />
+          <PasswordInput
+            value={value ?? { existingPassword: "", newPassword: "" }}
+            setValue={setValue}
+          />
         )}
-        renderValue={(v) => {
-          if (v?.username && v?.password)
-            return <span>{v?.username ?? ""}</span>;
-          return null;
-        }}
+        renderValue={() => user?.name}
       />
-
       <div className="setting" id="apikey">
         <div>
           <h3>{intl.formatMessage({ id: "config.general.auth.api_key" })}</h3>
-
-          <div className="value text-break">{apiKey}</div>
-
+          {apiKey && (
+            <Form.Control
+              as="textarea"
+              aria-label={intl.formatMessage({
+                id: "config.general.auth.api_key",
+              })}
+              readOnly
+              rows={3}
+              value={apiKey}
+            />
+          )}
           <div className="sub-heading">
-            {intl.formatMessage({ id: "config.general.auth.api_key_desc" })}
+            <FormattedMessage
+              id="config.general.auth.api_key_once"
+              defaultMessage="Your API key is only shown when generated. Copy it before leaving this page."
+            />
           </div>
         </div>
         <div>
           <Button
-            disabled={!general.username || !general.password}
-            onClick={() => onGenerateAPIKey()}
+            disabled={!canGenerateAPIKey || generating}
+            onClick={() => onGenerateAPIKey(false)}
           >
-            {intl.formatMessage({
-              id: "config.general.auth.generate_api_key",
-            })}
+            {intl.formatMessage({ id: "config.general.auth.generate_api_key" })}
           </Button>
-          <Button variant="danger" onClick={() => onClearAPIKey()}>
-            {intl.formatMessage({
-              id: "config.general.auth.clear_api_key",
-            })}
+          <Button
+            variant="danger"
+            disabled={!canGenerateAPIKey || generating}
+            onClick={() => onGenerateAPIKey(true)}
+          >
+            {intl.formatMessage({ id: "config.general.auth.clear_api_key" })}
           </Button>
         </div>
       </div>
-
       <NumberSetting
         id="maxSessionAge"
         headingID="config.general.auth.maximum_session_age"
         subHeadingID="config.general.auth.maximum_session_age_desc"
         value={general.maxSessionAge ?? undefined}
-        onChange={(v) => saveGeneral({ maxSessionAge: v })}
+        disabled={!isAdmin}
+        onChange={(value) => saveGeneral({ maxSessionAge: value })}
       />
     </SettingSection>
   );

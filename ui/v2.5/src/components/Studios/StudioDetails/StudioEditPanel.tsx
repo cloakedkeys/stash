@@ -16,6 +16,7 @@ import { Prompt } from "react-router-dom";
 import isEqual from "lodash-es/isEqual";
 import { useToast } from "src/hooks/Toast";
 import { useConfigurationContext } from "src/hooks/Config";
+import { useIsAdmin } from "src/hooks/CurrentUser";
 import { handleUnsavedChanges } from "src/utils/navigation";
 import { formikUtils } from "src/utils/form";
 import { yupFormikValidate, yupRequiredStringArray } from "src/utils/yup";
@@ -49,6 +50,7 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
   setEncodingImage,
 }) => {
   const intl = useIntl();
+  const isAdmin = useIsAdmin();
   const Toast = useToast();
   const { configuration: stashConfig } = useConfigurationContext();
 
@@ -180,7 +182,11 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
   async function onSave(input: InputValues, andNew?: boolean) {
     setIsLoading(true);
     try {
-      await onSubmit(input, andNew);
+      // ignore_auto_tag may only be changed by administrators
+      await onSubmit(
+        isAdmin ? input : { ...input, ignore_auto_tag: undefined },
+        andNew
+      );
       formik.resetForm();
       if (andNew) {
         setParentStudio(
@@ -520,7 +526,7 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
         />
 
         <hr />
-        {renderInputField("ignore_auto_tag", "checkbox")}
+        {isAdmin && renderInputField("ignore_auto_tag", "checkbox")}
       </Form>
 
       {renderButtons("mt-3")}
