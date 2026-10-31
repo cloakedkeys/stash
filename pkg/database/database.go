@@ -70,6 +70,9 @@ var (
 	// ErrDatabaseNotInitialized indicates that the database is not
 	// initialized, usually due to an incomplete configuration.
 	ErrDatabaseNotInitialized = errors.New("database not initialized")
+	// ErrBackupToolNotFound is returned when a program needed to back up or restore
+	// the database isn't installed. Nothing has been changed when it is returned.
+	ErrBackupToolNotFound = errors.New("database backup tool not found")
 )
 
 // ErrMigrationNeeded indicates that a database migration is needed

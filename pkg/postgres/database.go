@@ -325,13 +325,6 @@ func (db *Database) Reset() error {
 	return nil
 }
 
-// Backup the database. If db is nil, then uses the existing database
-// connection.
-func (db *Database) Backup(backupPath string) (err error) {
-	logger.Warn("Postgres backend detected, ignoring Backup request")
-	return nil
-}
-
 func (db *Database) Anonymise(outPath string) error {
 	anon, err := NewAnonymiser(db, outPath)
 
@@ -340,11 +333,6 @@ func (db *Database) Anonymise(outPath string) error {
 	}
 
 	return anon.Anonymise(context.Background())
-}
-
-func (db *Database) RestoreFromBackup(backupPath string) error {
-	logger.Warn("Postgres backend detected, ignoring RestoreFromBackup request")
-	return nil
 }
 
 func (db *Database) AppSchemaVersion() uint {
@@ -356,8 +344,13 @@ func (db *Database) DatabasePath() string {
 }
 
 func (db *Database) DatabaseBackupPath(backupDirectoryPath string) string {
-	logger.Warn("Postgres backend detected, ignoring DatabaseBackupPath request")
-	return ""
+	fn := fmt.Sprintf("%s.%d.%s.dump", "postgres", db.schemaVersion, time.Now().Format("20060102_150405"))
+
+	if backupDirectoryPath != "" {
+		return filepath.Join(backupDirectoryPath, fn)
+	}
+
+	return fn
 }
 
 func (db *Database) AnonymousDatabasePath(backupDirectoryPath string) string {

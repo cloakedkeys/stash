@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/job"
 	"github.com/stashapp/stash/pkg/logger"
@@ -123,6 +124,10 @@ func (s *Manager) BackupDatabase(download bool, includeBlobs bool) (string, stri
 
 	// move the database file into the zip
 	dbFn := filepath.Base(s.Config.GetDatabasePath())
+	if s.Database.DatabaseBackend() == database.PostgresBackend {
+		// the database path is a connection string rather than a file
+		dbFn = backupName
+	}
 	if err := z.zipFileRename(backupPath, "", dbFn); err != nil {
 		return "", "", fmt.Errorf("could not add database backup to zip file: %w", err)
 	}
