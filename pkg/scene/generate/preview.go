@@ -192,7 +192,7 @@ func (g Generator) previewVideoChunk(lockCtx *fsutil.LockContext, path string, w
 	extraInputArgs := g.Encoder.HWDeviceInit(g.FFMpegConfig.GetTranscodeInputArgs(), codec, fullhw)
 
 	if useVsync2 {
-		videoArgs = append(videoArgs, "-vsync", "2")
+		videoArgs = videoArgs.VSync(ffmpeg.VSyncMethodVFR, g.Encoder.Version())
 	}
 
 	trimOptions := transcoder.TranscodeOptions{

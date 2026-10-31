@@ -196,7 +196,7 @@ func (e *ThumbnailEncoder) getClipPreview(inPath string, outPath string, maxSize
 	)
 
 	if frameRate <= 0.01 {
-		thumbArgs = append(thumbArgs, "-vsync", "2")
+		thumbArgs = thumbArgs.VSync(ffmpeg.VSyncMethodVFR, e.FFMpeg.Version())
 	}
 
 	extraInputArgs := e.FFMpeg.HWDeviceInit(o.InputArgs, codec, false)
