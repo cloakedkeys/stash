@@ -2,7 +2,7 @@ import React from "react";
 import { Col, Form, Row } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
 import { FormattedMessage, useIntl } from "react-intl";
-import { IScraperSource } from "./constants";
+import { IdentifyType, IScraperSource } from "./constants";
 import { FieldOptionsList } from "./FieldOptions";
 import { ThreeStateBoolean } from "./ThreeStateBoolean";
 import { TagSelect } from "src/components/Shared/Select";
@@ -14,6 +14,7 @@ interface IOptionsEditor {
   source?: IScraperSource;
   defaultOptions?: GQL.IdentifyMetadataOptionsInput;
   setEditingField: (v: boolean) => void;
+  type?: IdentifyType;
 }
 
 export const OptionsEditor: React.FC<IOptionsEditor> = ({
@@ -22,6 +23,7 @@ export const OptionsEditor: React.FC<IOptionsEditor> = ({
   source,
   setEditingField,
   defaultOptions,
+  type = "scene",
 }) => {
   const intl = useIntl();
 
@@ -171,22 +173,24 @@ export const OptionsEditor: React.FC<IOptionsEditor> = ({
             <FormattedMessage id="config.tasks.identify.performer_genders_desc" />
           </Form.Text>
         </Form.Group>
-        <ThreeStateBoolean
-          id="set-cover-image"
-          value={
-            options.setCoverImage === null ? undefined : options.setCoverImage
-          }
-          setValue={(v) =>
-            setOptions({
-              setCoverImage: v,
-            })
-          }
-          label={intl.formatMessage({
-            id: "config.tasks.identify.set_cover_images",
-          })}
-          defaultValue={defaultOptions?.setCoverImage ?? undefined}
-          {...checkboxProps}
-        />
+        {type === "scene" && (
+          <ThreeStateBoolean
+            id="set-cover-image"
+            value={
+              options.setCoverImage === null ? undefined : options.setCoverImage
+            }
+            setValue={(v) =>
+              setOptions({
+                setCoverImage: v,
+              })
+            }
+            label={intl.formatMessage({
+              id: "config.tasks.identify.set_cover_images",
+            })}
+            defaultValue={defaultOptions?.setCoverImage ?? undefined}
+            {...checkboxProps}
+          />
+        )}
         <ThreeStateBoolean
           id="set-organized"
           value={
@@ -255,6 +259,7 @@ export const OptionsEditor: React.FC<IOptionsEditor> = ({
         setEditingField={setEditingField}
         allowSetDefault={!!source}
         defaultOptions={defaultOptions}
+        type={type}
       />
     </Form.Group>
   );

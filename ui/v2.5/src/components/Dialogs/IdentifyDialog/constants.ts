@@ -23,13 +23,30 @@ export const sceneFields = [
 ] as const;
 export type SceneField = (typeof sceneFields)[number];
 
-export const multiValueSceneFields: SceneField[] = [
+// the fields that gallery identify sets
+export const galleryFields = [
+  "title",
+  "code",
+  "date",
+  "photographer",
+  "details",
+  "url",
+  "studio",
+  "performers",
+  "tags",
+] as const;
+export type GalleryField = (typeof galleryFields)[number];
+
+export type IdentifyType = "scene" | "gallery";
+export type IdentifyField = SceneField | GalleryField;
+
+export const multiValueSceneFields: IdentifyField[] = [
   "studio",
   "performers",
   "tags",
 ];
 
-export function sceneFieldMessageID(field: SceneField) {
+export function sceneFieldMessageID(field: IdentifyField) {
   if (field === "code") {
     return "scene_code";
   } else if (field === "studio") {

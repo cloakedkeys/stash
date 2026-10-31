@@ -20,7 +20,7 @@ import {
 } from "src/components/Tagger/constants";
 import { DirectorySelectionDialog } from "src/components/Settings/Tasks/DirectorySelectionDialog";
 import { Manual } from "src/components/Help/Manual";
-import { IScraperSource } from "./constants";
+import { IdentifyType, IScraperSource } from "./constants";
 import { OptionsEditor } from "./Options";
 import { SourcesEditor, SourcesList } from "./Sources";
 import {
@@ -33,7 +33,7 @@ const autoTagScraperID = "builtin_autotag";
 
 interface IIdentifyDialogProps {
   selectedIds?: string[];
-  type?: "scene" | "gallery";
+  type?: IdentifyType;
   onClose: () => void;
 }
 
@@ -431,6 +431,7 @@ export const IdentifyDialog: React.FC<IIdentifyDialogProps> = ({
         saveSource={onSaveSource}
         isNew={isNewSource()}
         defaultOptions={options}
+        type={type}
       />
     );
   }
@@ -509,6 +510,7 @@ export const IdentifyDialog: React.FC<IIdentifyDialogProps> = ({
           options={options}
           setOptions={(o) => setOptions(o)}
           setEditingField={(v) => setEditingField(v)}
+          type={type}
         />
       </Form>
     </ModalComponent>

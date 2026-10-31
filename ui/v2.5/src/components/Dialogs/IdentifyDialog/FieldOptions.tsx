@@ -4,8 +4,10 @@ import { Icon } from "src/components/Shared/Icon";
 import * as GQL from "src/core/generated-graphql";
 import { FormattedMessage, useIntl } from "react-intl";
 import {
+  galleryFields,
+  IdentifyField,
+  IdentifyType,
   multiValueSceneFields,
-  SceneField,
   sceneFieldMessageID,
   sceneFields,
 } from "./constants";
@@ -18,7 +20,7 @@ import {
 
 interface IFieldOptionsEditor {
   options: GQL.IdentifyFieldOptions | undefined;
-  field: SceneField;
+  field: IdentifyField;
   editField: () => void;
   editOptions: (o?: GQL.IdentifyFieldOptions | null) => void;
   editing: boolean;
@@ -141,7 +143,7 @@ const FieldOptionsEditor: React.FC<IFieldOptionsEditor> = ({
     }
 
     if (
-      multiValueSceneFields.includes(localOptions.field as SceneField) &&
+      multiValueSceneFields.includes(localOptions.field as IdentifyField) &&
       localOptions.strategy !== GQL.IdentifyFieldStrategy.Ignore
     ) {
       const value =
@@ -253,6 +255,7 @@ interface IFieldOptionsList {
   setEditingField: (v: boolean) => void;
   allowSetDefault?: boolean;
   defaultOptions?: GQL.IdentifyMetadataOptionsInput;
+  type?: IdentifyType;
 }
 
 export const FieldOptionsList: React.FC<IFieldOptionsList> = ({
@@ -261,7 +264,10 @@ export const FieldOptionsList: React.FC<IFieldOptionsList> = ({
   setEditingField,
   allowSetDefault = true,
   defaultOptions,
+  type = "scene",
 }) => {
+  const fields: readonly IdentifyField[] =
+    type === "gallery" ? galleryFields : sceneFields;
   const [localFieldOptions, setLocalFieldOptions] =
     useState<GQL.IdentifyFieldOptions[]>();
   const [editField, setEditField] = useState<string | undefined>();
@@ -334,7 +340,7 @@ export const FieldOptionsList: React.FC<IFieldOptionsList> = ({
           </tr>
         </thead>
         <tbody>
-          {sceneFields.map((f) => (
+          {fields.map((f) => (
             <FieldOptionsEditor
               key={f}
               field={f}
