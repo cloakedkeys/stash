@@ -157,6 +157,7 @@ func (r *studioResolver) MovieCount(ctx context.Context, obj *models.Studio, dep
 func (r *studioResolver) OCounter(ctx context.Context, obj *models.Studio, depth *int) (ret int, err error) {
 	var res_scene int
 	var res_image int
+	var res_gallery int
 	depthVal := 0
 	if depth != nil {
 		depthVal = *depth
@@ -167,11 +168,15 @@ func (r *studioResolver) OCounter(ctx context.Context, obj *models.Studio, depth
 			return err
 		}
 		res_image, err = r.repository.Image.OCountByStudioID(ctx, obj.ID, depthVal)
+		if err != nil {
+			return err
+		}
+		res_gallery, err = r.repository.Gallery.OCountByStudioID(ctx, obj.ID, depthVal)
 		return err
 	}); err != nil {
 		return 0, err
 	}
-	return res_scene + res_image, nil
+	return res_scene + res_image + res_gallery, nil
 }
 
 func (r *studioResolver) ParentStudio(ctx context.Context, obj *models.Studio) (ret *models.Studio, err error) {

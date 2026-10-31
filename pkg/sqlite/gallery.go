@@ -586,6 +586,57 @@ func (qb *GalleryStore) OCountByPerformerID(ctx context.Context, performerID int
 	return ret, nil
 }
 
+func (qb *GalleryStore) OCountByStudioID(ctx context.Context, studioID int, depth int) (int, error) {
+	var ret int
+
+	if depth != 0 {
+		return qb.oCountByStudioIDRecursive(ctx, studioID, depth)
+	}
+
+	table := qb.table()
+	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table).Where(
+		table.Col(studioIDColumn).Eq(studioID),
+	)
+
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (qb *GalleryStore) oCountByStudioIDRecursive(ctx context.Context, studioID int, depth int) (int, error) {
+	q := `
+	WITH RECURSIVE sub_studios AS (
+		SELECT id, 0 AS level FROM studios WHERE id = ?
+		UNION ALL
+		SELECT s.id, ss.level + 1 FROM studios s
+		INNER JOIN sub_studios ss ON s.parent_id = ss.id
+		WHERE ss.level < ? OR ? < 0
+	)
+	SELECT COALESCE(SUM(o_counter), 0) FROM galleries
+	WHERE galleries.studio_id IN (SELECT id FROM sub_studios)`
+
+	var ret int
+	if err := dbWrapper.Get(ctx, &ret, q, studioID, depth, depth); err != nil {
+		return 0, fmt.Errorf("querying gallery o_count by studio: %w", err)
+	}
+
+	return ret, nil
+}
+
+func (qb *GalleryStore) OCount(ctx context.Context) (int, error) {
+	table := qb.table()
+
+	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table)
+	var ret int
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
 func (qb *GalleryStore) FindByFingerprints(ctx context.Context, fp []models.Fingerprint) ([]*models.Gallery, error) {
 	fingerprintTable := fingerprintTableMgr.table
 

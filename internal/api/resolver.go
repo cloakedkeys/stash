@@ -261,7 +261,11 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 		if err != nil {
 			return err
 		}
-		totalOCount := scenesTotalOCount + imagesTotalOCount
+		galleriesTotalOCount, err := galleryQB.OCount(ctx)
+		if err != nil {
+			return err
+		}
+		totalOCount := scenesTotalOCount + imagesTotalOCount + galleriesTotalOCount
 
 		totalPlayDuration, err := sceneQB.PlayDuration(ctx)
 		if err != nil {

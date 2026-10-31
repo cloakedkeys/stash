@@ -1986,6 +1986,69 @@ func TestStudioOCountByStudioID(t *testing.T) {
 	})
 }
 
+func TestStudioOCounterIncludesGalleries(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		totalBefore, err := db.Gallery.OCount(ctx)
+		if err != nil {
+			t.Fatalf("GalleryStore.OCount() error = %v", err)
+		}
+
+		parent := models.NewStudio()
+		parent.Name = "TestStudioOCounterGalleries"
+		if err := db.Studio.Create(ctx, &models.CreateStudioInput{Studio: &parent}); err != nil {
+			t.Fatalf("creating studio: %v", err)
+		}
+		child := models.NewStudio()
+		child.Name = "TestStudioOCounterGalleriesChild"
+		child.ParentID = &parent.ID
+		if err := db.Studio.Create(ctx, &models.CreateStudioInput{Studio: &child}); err != nil {
+			t.Fatalf("creating child studio: %v", err)
+		}
+
+		for _, g := range []models.Gallery{
+			{Title: "TestStudioOCounterGalleries", StudioID: &parent.ID, OCounter: 100},
+			{Title: "TestStudioOCounterGalleriesChild", StudioID: &child.ID, OCounter: 50},
+		} {
+			if err := db.Gallery.Create(ctx, &models.CreateGalleryInput{Gallery: &g}); err != nil {
+				t.Fatalf("creating gallery: %v", err)
+			}
+		}
+
+		count, err := db.Gallery.OCountByStudioID(ctx, parent.ID, 0)
+		if err != nil {
+			t.Fatalf("GalleryStore.OCountByStudioID() error = %v", err)
+		}
+		assert.Equal(t, 100, count)
+
+		count, err = db.Gallery.OCountByStudioID(ctx, parent.ID, -1)
+		if err != nil {
+			t.Fatalf("GalleryStore.OCountByStudioID() error = %v", err)
+		}
+		assert.Equal(t, 150, count)
+
+		totalAfter, err := db.Gallery.OCount(ctx)
+		if err != nil {
+			t.Fatalf("GalleryStore.OCount() error = %v", err)
+		}
+		assert.Equal(t, totalBefore+150, totalAfter)
+
+		// both sorts count gallery o-counts
+		direction := models.SortDirectionEnumDesc
+		for _, sortBy := range []string{"o_counter", "o_counter_all"} {
+			studios := queryStudios(ctx, t, nil, &models.FindFilterType{
+				Sort:      &sortBy,
+				Direction: &direction,
+			})
+			assert.Greater(t, len(studios), 0)
+			if len(studios) > 0 {
+				assert.Equal(t, parent.ID, studios[0].ID, sortBy)
+			}
+		}
+
+		return nil
+	})
+}
+
 func TestStudioQuerySortOCounter(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
 		sortBy := "o_counter"

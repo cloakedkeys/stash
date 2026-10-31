@@ -681,6 +681,27 @@ func (_m *GalleryReaderWriter) IncrementOCounter(ctx context.Context, id int) (i
 	return r0, r1
 }
 
+// OCount provides a mock function with given fields: ctx
+func (_m *GalleryReaderWriter) OCount(ctx context.Context) (int, error) {
+	ret := _m.Called(ctx)
+
+	var r0 int
+	if rf, ok := ret.Get(0).(func(context.Context) int); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // OCountByPerformerID provides a mock function with given fields: ctx, performerID
 func (_m *GalleryReaderWriter) OCountByPerformerID(ctx context.Context, performerID int) (int, error) {
 	ret := _m.Called(ctx, performerID)
@@ -695,6 +716,27 @@ func (_m *GalleryReaderWriter) OCountByPerformerID(ctx context.Context, performe
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
 		r1 = rf(ctx, performerID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// OCountByStudioID provides a mock function with given fields: ctx, studioID, depth
+func (_m *GalleryReaderWriter) OCountByStudioID(ctx context.Context, studioID int, depth int) (int, error) {
+	ret := _m.Called(ctx, studioID, depth)
+
+	var r0 int
+	if rf, ok := ret.Get(0).(func(context.Context, int, int) int); ok {
+		r0 = rf(ctx, studioID, depth)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int, int) error); ok {
+		r1 = rf(ctx, studioID, depth)
 	} else {
 		r1 = ret.Error(1)
 	}
