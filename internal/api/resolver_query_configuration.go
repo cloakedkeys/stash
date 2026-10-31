@@ -292,16 +292,21 @@ func (r *queryResolver) ValidateStashBoxCredentials(ctx context.Context, input c
 	return &result, nil
 }
 
-func (r *queryResolver) ValidateCDPPath(ctx context.Context) (*CDPValidationResult, error) {
-	err := scraper.TestRemoteCDP(config.GetInstance())
-	if err == nil {
+func (r *queryResolver) ValidateCDPPath(ctx context.Context, path *string) (*CDPValidationResult, error) {
+	cdpPath := config.GetInstance().GetScraperCDPPath()
+	if path != nil {
+		cdpPath = *path
+	}
+
+	status, err := scraper.ValidateCDPPath(ctx, cdpPath)
+	if err != nil {
 		return &CDPValidationResult{
-			Valid:  true,
-			Status: "Successfully validated CDP path",
+			Valid:  false,
+			Status: err.Error(),
 		}, nil
 	}
 	return &CDPValidationResult{
-		Valid:  false,
-		Status: err.Error(),
+		Valid:  true,
+		Status: status,
 	}, nil
 }

@@ -45,11 +45,19 @@ type GlobalConfig interface {
 }
 
 func isCDPPathHTTP(c GlobalConfig) bool {
-	return strings.HasPrefix(c.GetScraperCDPPath(), "http://") || strings.HasPrefix(c.GetScraperCDPPath(), "https://")
+	return isHTTPCDPPath(c.GetScraperCDPPath())
 }
 
 func isCDPPathWS(c GlobalConfig) bool {
-	return strings.HasPrefix(c.GetScraperCDPPath(), "ws://")
+	return isWSCDPPath(c.GetScraperCDPPath())
+}
+
+func isHTTPCDPPath(p string) bool {
+	return strings.HasPrefix(p, "http://") || strings.HasPrefix(p, "https://")
+}
+
+func isWSCDPPath(p string) bool {
+	return strings.HasPrefix(p, "ws://")
 }
 
 type SceneFinder interface {

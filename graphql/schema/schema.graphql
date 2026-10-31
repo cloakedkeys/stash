@@ -251,8 +251,8 @@ type Query {
   ): Directory!
   validateStashBoxCredentials(input: StashBoxInput!): StashBoxValidationResult!
 
-  # Validate remote CDP path
-  ValidateCDPPath: CDPValidationResult!
+  # Checks a Chrome CDP path. Tests the saved scraper CDP path when path is omitted.
+  validateCDPPath(path: String): CDPValidationResult!
 
   # System status
   systemStatus: SystemStatus!

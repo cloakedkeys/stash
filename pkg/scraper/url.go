@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
@@ -186,42 +187,9 @@ func urlFromCDP(ctx context.Context, urlCDP string, driverOptions scraperDriverO
 		var cancelAct context.CancelFunc
 
 		if isCDPPathHTTP(globalConfig) || isCDPPathWS(globalConfig) {
-			remote := cdpPath
-
-			// -------------------------------------------------------------------
-			// #1023
-			// when chromium is listening over RDP it only accepts requests
-			// with host headers that are either IPs or `localhost`
-			cdpURL, err := url.Parse(remote)
+			remote, err := resolveRemoteCDP(ctx, cdpPath)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse CDP Path: %v", err)
-			}
-			hostname := cdpURL.Hostname()
-			if hostname != "localhost" {
-				if net.ParseIP(hostname) == nil { // not an IP
-					addr, err := net.LookupIP(hostname)
-					if err != nil || len(addr) == 0 { // can not resolve to IP
-						return nil, fmt.Errorf("CDP: hostname <%s> can not be resolved", hostname)
-					}
-					if len(addr[0]) == 0 { // nil IP
-						return nil, fmt.Errorf("CDP: hostname <%s> resolved to nil", hostname)
-					}
-					// addr is a valid IP
-					// replace the host part of the cdpURL with the IP
-					cdpURL.Host = strings.Replace(cdpURL.Host, hostname, addr[0].String(), 1)
-					// use that for remote
-					remote = cdpURL.String()
-				}
-			}
-			// --------------------------------------------------------------------
-
-			// if CDPPath is http(s) then we need to get the websocket URL
-			if isCDPPathHTTP(globalConfig) {
-				var err error
-				remote, err = getRemoteCDPWSAddress(ctx, remote)
-				if err != nil {
-					return nil, err
-				}
+				return nil, err
 			}
 
 			ctx, cancelAct = chromedp.NewRemoteAllocator(ctx, remote)
@@ -389,14 +357,64 @@ func getRemoteCDPWSAddress(ctx context.Context, url string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("CDP: %s returned HTTP status %d", url, resp.StatusCode)
+	}
+
 	var result map[string]interface{}
 	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return "", fmt.Errorf("CDP: %s did not return a CDP version response: %w", url, err)
 	}
-	remote := result["webSocketDebuggerUrl"].(string)
+	remote, ok := result["webSocketDebuggerUrl"].(string)
+	if !ok || remote == "" {
+		return "", fmt.Errorf("CDP: %s did not return a webSocketDebuggerUrl", url)
+	}
 	logger.Debugf("Remote cdp instance found %s", remote)
-	return remote, err
+	return remote, nil
+}
+
+// resolveRemoteCDP turns a remote http(s):// or ws:// CDP path into the
+// websocket address to connect to.
+func resolveRemoteCDP(ctx context.Context, cdpPath string) (string, error) {
+	remote := cdpPath
+
+	// -------------------------------------------------------------------
+	// #1023
+	// when chromium is listening over RDP it only accepts requests
+	// with host headers that are either IPs or `localhost`
+	cdpURL, err := url.Parse(remote)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse CDP Path: %v", err)
+	}
+	hostname := cdpURL.Hostname()
+	if hostname != "localhost" {
+		if net.ParseIP(hostname) == nil { // not an IP
+			addr, err := net.LookupIP(hostname)
+			if err != nil || len(addr) == 0 { // can not resolve to IP
+				return "", fmt.Errorf("CDP: hostname <%s> can not be resolved", hostname)
+			}
+			if len(addr[0]) == 0 { // nil IP
+				return "", fmt.Errorf("CDP: hostname <%s> resolved to nil", hostname)
+			}
+			// addr is a valid IP
+			// replace the host part of the cdpURL with the IP
+			cdpURL.Host = strings.Replace(cdpURL.Host, hostname, addr[0].String(), 1)
+			// use that for remote
+			remote = cdpURL.String()
+		}
+	}
+	// --------------------------------------------------------------------
+
+	// if CDPPath is http(s) then we need to get the websocket URL
+	if isHTTPCDPPath(cdpPath) {
+		remote, err = getRemoteCDPWSAddress(ctx, remote)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return remote, nil
 }
 
 // isJSONMimeType reports whether mimeType indicates JSON content.
@@ -489,18 +507,44 @@ func splitProxyAuth(proxyUrl string) (string, string, string) {
 	return proxyUrl, "", ""
 }
 
-func TestRemoteCDP(globalConfig GlobalConfig) error {
-	cdpPath := globalConfig.GetScraperCDPPath()
+const cdpValidateTimeout = 15 * time.Second
+
+// ValidateCDPPath checks that a Chrome CDP path can be used the way CDP
+// scrapers would use it. Remote http(s):// and ws:// paths are resolved and
+// connected to. A local path is only looked up, not started. On success it
+// returns a message describing what was checked.
+func ValidateCDPPath(ctx context.Context, cdpPath string) (string, error) {
+	cdpPath = strings.TrimSpace(cdpPath)
 	if cdpPath == "" {
-		return fmt.Errorf("CDP path is empty")
+		return "No CDP path set. Chrome will be looked for in its default install locations when a scraper needs it.", nil
 	}
-	if !isCDPPathHTTP(globalConfig) {
-		// unable to test non-http CDP
-		return fmt.Errorf("Unable to test non-http CDP paths")
+
+	if !isHTTPCDPPath(cdpPath) && !isWSCDPPath(cdpPath) {
+		found, err := exec.LookPath(cdpPath)
+		if err != nil {
+			return "", fmt.Errorf("chrome executable not found: %w", err)
+		}
+		return fmt.Sprintf("Found Chrome executable at %s. It is started when a scraper needs it.", found), nil
 	}
-	_, err := getRemoteCDPWSAddress(context.Background(), cdpPath)
+
+	ctx, cancel := context.WithTimeout(ctx, cdpValidateTimeout)
+	defer cancel()
+
+	remote, err := resolveRemoteCDP(ctx, cdpPath)
 	if err != nil {
-		return fmt.Errorf("Failed to get remote CDP websocket address: %v", err)
+		return "", err
 	}
-	return nil
+
+	allocCtx, cancelAlloc := chromedp.NewRemoteAllocator(ctx, remote)
+	defer cancelAlloc()
+	browserCtx, cancelBrowser := chromedp.NewContext(allocCtx)
+	defer cancelBrowser()
+
+	// running with no actions connects to the browser and opens a tab,
+	// which is closed again when browserCtx is cancelled
+	if err := chromedp.Run(browserCtx); err != nil {
+		return "", fmt.Errorf("could not connect to CDP at %s: %w", remote, err)
+	}
+
+	return fmt.Sprintf("Connected to Chrome at %s", remote), nil
 }
