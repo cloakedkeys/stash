@@ -484,22 +484,29 @@ var selectPerformerOCountSQL = utils.StrFormat(
 		"LEFT JOIN {images} ON {images}.id = s.{images_id} "+
 		"WHERE s.{performer_id} = {performers}.id "+
 		"UNION ALL "+
+		"SELECT SUM(o_counter) as o_counter from {performers_galleries} s "+
+		"LEFT JOIN {galleries} ON {galleries}.id = s.{gallery_id} "+
+		"WHERE s.{performer_id} = {performers}.id "+
+		"UNION ALL "+
 		"SELECT COUNT({scenes_o_dates}.{o_date}) as o_counter from {performers_scenes} s "+
 		"LEFT JOIN {scenes} ON {scenes}.id = s.{scene_id} "+
 		"LEFT JOIN {scenes_o_dates} ON {scenes_o_dates}.{scene_id} = {scenes}.id "+
 		"WHERE s.{performer_id} = {performers}.id "+
 		")",
 	map[string]interface{}{
-		"performers_images": performersImagesTable,
-		"images":            imageTable,
-		"performer_id":      performerIDColumn,
-		"images_id":         imageIDColumn,
-		"performers":        performerTable,
-		"performers_scenes": performersScenesTable,
-		"scenes":            sceneTable,
-		"scene_id":          sceneIDColumn,
-		"scenes_o_dates":    scenesODatesTable,
-		"o_date":            sceneODateColumn,
+		"performers_images":    performersImagesTable,
+		"images":               imageTable,
+		"performer_id":         performerIDColumn,
+		"images_id":            imageIDColumn,
+		"performers_galleries": performersGalleriesTable,
+		"galleries":            galleryTable,
+		"gallery_id":           galleryIDColumn,
+		"performers":           performerTable,
+		"performers_scenes":    performersScenesTable,
+		"scenes":               sceneTable,
+		"scene_id":             sceneIDColumn,
+		"scenes_o_dates":       scenesODatesTable,
+		"o_date":               sceneODateColumn,
 	},
 )
 

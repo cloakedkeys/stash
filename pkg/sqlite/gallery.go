@@ -573,6 +573,19 @@ func (qb *GalleryStore) CountByFileID(ctx context.Context, fileID models.FileID)
 	return count(ctx, q)
 }
 
+func (qb *GalleryStore) OCountByPerformerID(ctx context.Context, performerID int) (int, error) {
+	table := qb.table()
+	joinTable := performersGalleriesJoinTable
+	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table).InnerJoin(joinTable, goqu.On(table.Col(idColumn).Eq(joinTable.Col(galleryIDColumn)))).Where(joinTable.Col(performerIDColumn).Eq(performerID))
+
+	var ret int
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
 func (qb *GalleryStore) FindByFingerprints(ctx context.Context, fp []models.Fingerprint) ([]*models.Gallery, error) {
 	fingerprintTable := fingerprintTableMgr.table
 
