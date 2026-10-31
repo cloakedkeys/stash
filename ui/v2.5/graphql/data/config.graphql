@@ -28,6 +28,7 @@ fragment ConfigGeneralData on ConfigGeneralResult {
   maxMarkerPreviewDuration
   defaultMarkerPreviewDuration
   transcodeHardwareAcceleration
+  generationHardwareAcceleration
   maxTranscodeSize
   maxStreamingTranscodeSize
   writeImageThumbnails

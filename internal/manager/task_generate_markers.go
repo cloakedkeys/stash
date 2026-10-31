@@ -6,11 +6,14 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/scene/generate"
 )
+
+const markerPreviewTargetWidth = 640
 
 type GenerateMarkersTask struct {
 	repository          models.Repository
@@ -67,14 +70,24 @@ func (t *GenerateMarkersTask) generateSpecificMarker(ctx context.Context, marker
 
 	videoFile := scene.Files.Primary()
 
-	if videoFile == nil {
+	if videoFile == nil || videoFile.Width == 0 || videoFile.Height == 0 {
 		// nothing to do
 		return
 	}
 
-	if err := t.generateMarker(videoFile, scene, marker); err != nil {
+	codec, fullhw := t.determineMarkerCodec(ctx, videoFile)
+
+	if err := t.generateMarker(videoFile, scene, marker, codec, fullhw); err != nil {
 		logger.Errorf("[generator] error generating marker files for scene (%d) marker (%d) at %s: %v", scene.ID, marker.ID, formatSeconds(float64(marker.Seconds)), err)
 	}
+}
+
+func (t *GenerateMarkersTask) determineMarkerCodec(ctx context.Context, videoFile *models.VideoFile) (ffmpeg.VideoCodec, bool) {
+	if !t.VideoPreview {
+		return ffmpeg.VideoCodecLibX264, false
+	}
+	targetHeight := ffmpeg.ScaledShortSide(videoFile.Width, videoFile.Height, markerPreviewTargetWidth)
+	return t.generator.DetermineCodecAndHW(ctx, videoFile.Path, videoFile.Width, videoFile.Height, targetHeight)
 }
 
 func formatSeconds(seconds float64) string {
@@ -96,10 +109,11 @@ func (t *GenerateMarkersTask) generateSceneMarkers(ctx context.Context, scene *m
 
 	videoFile := scene.Files.Primary()
 
-	if len(sceneMarkers) == 0 || videoFile == nil {
+	if len(sceneMarkers) == 0 || videoFile == nil || videoFile.Width == 0 || videoFile.Height == 0 {
 		return
 	}
 
+	codec, fullhw := t.determineMarkerCodec(ctx, videoFile)
 	sceneHash := scene.GetHash(t.fileNamingAlgorithm)
 
 	// Make the folder for the scenes markers
@@ -113,13 +127,13 @@ func (t *GenerateMarkersTask) generateSceneMarkers(ctx context.Context, scene *m
 		index := i + 1
 		logger.Progressf("[generator] <%s> scene marker %d of %d", sceneHash, index, len(sceneMarkers))
 
-		if err := t.generateMarker(videoFile, scene, sceneMarker); err != nil {
+		if err := t.generateMarker(videoFile, scene, sceneMarker, codec, fullhw); err != nil {
 			logger.Errorf("[generator] error generating marker files for scene (%d) marker (%d) at %s: %v", scene.ID, sceneMarker.ID, formatSeconds(float64(sceneMarker.Seconds)), err)
 		}
 	}
 }
 
-func (t *GenerateMarkersTask) generateMarker(videoFile *models.VideoFile, scene *models.Scene, sceneMarker *models.SceneMarker) error {
+func (t *GenerateMarkersTask) generateMarker(videoFile *models.VideoFile, scene *models.Scene, sceneMarker *models.SceneMarker, codec ffmpeg.VideoCodec, fullhw bool) error {
 	sceneHash := scene.GetHash(t.fileNamingAlgorithm)
 	seconds := float64(sceneMarker.Seconds)
 
@@ -131,7 +145,7 @@ func (t *GenerateMarkersTask) generateMarker(videoFile *models.VideoFile, scene 
 	g := t.generator
 
 	if t.VideoPreview {
-		if err := g.MarkerPreviewVideo(context.TODO(), videoFile.Path, sceneHash, seconds, sceneMarker.EndSeconds, instance.Config.GetPreviewAudio(), instance.Config.GetMaxMarkerPreviewDuration(), instance.Config.GetDefaultMarkerPreviewDuration()); err != nil {
+		if err := g.MarkerPreviewVideo(context.TODO(), videoFile.Path, videoFile.Width, videoFile.Height, sceneHash, seconds, sceneMarker.EndSeconds, instance.Config.GetPreviewAudio(), instance.Config.GetMaxMarkerPreviewDuration(), instance.Config.GetDefaultMarkerPreviewDuration(), codec, fullhw); err != nil {
 			logger.Errorf("[generator] failed to generate marker video for scene (%d) marker (%d) at %s: %v", scene.ID, sceneMarker.ID, formatSeconds(float64(sceneMarker.Seconds)), err)
 			logErrorOutput(err)
 		}
