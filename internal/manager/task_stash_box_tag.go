@@ -368,6 +368,11 @@ func (t *stashBoxBatchStudioTagTask) findStashBoxStudio(ctx context.Context) (*m
 
 func (t *stashBoxBatchStudioTagTask) processMatchedStudio(ctx context.Context, s *models.ScrapedStudio, excluded map[string]bool) {
 	if t.studio != nil {
+		// not set if the result didn't match a local studio by stash ID or name
+		if s.StoredID == nil {
+			id := strconv.Itoa(t.studio.ID)
+			s.StoredID = &id
+		}
 		storedID, _ := strconv.Atoi(*s.StoredID)
 
 		if s.Parent != nil && t.createParent {
