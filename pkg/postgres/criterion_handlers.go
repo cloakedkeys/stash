@@ -43,9 +43,9 @@ func stringCriterionHandler(c *models.StringCriterionInput, column string) crite
 				case models.CriterionModifierExcludes:
 					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{column}, c.Value, true))
 				case models.CriterionModifierEquals:
-					f.addWhere(column+" ILIKE ?", c.Value)
+					f.addWhere(column+" ILIKE ? ESCAPE ''", c.Value)
 				case models.CriterionModifierNotEquals:
-					f.addWhere(column+" NOT ILIKE ?", c.Value)
+					f.addWhere(column+" NOT ILIKE ? ESCAPE ''", c.Value)
 				case models.CriterionModifierMatchesRegex:
 					if _, err := regexp.Compile(c.Value); err != nil {
 						f.setError(err)
@@ -70,33 +70,31 @@ func stringCriterionHandler(c *models.StringCriterionInput, column string) crite
 	}
 }
 
-func uuidCriterionHandler(c *models.StringCriterionInput, column string) criterionHandlerFunc {
+func stringNoTrimCriterionHandler(c *models.StringCriterionInput, column string) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
-		columnCast := "CAST(" + column + " AS TEXT)"
-
 		if c != nil {
 			if modifier := c.Modifier; c.Modifier.IsValid() {
 				switch modifier {
 				case models.CriterionModifierIncludes:
-					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{columnCast}, c.Value, false))
+					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{column}, c.Value, false))
 				case models.CriterionModifierExcludes:
-					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{columnCast}, c.Value, true))
+					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{column}, c.Value, true))
 				case models.CriterionModifierEquals:
-					f.addWhere(columnCast+" ILIKE ?", c.Value)
+					f.addWhere(column+" ILIKE ? ESCAPE ''", c.Value)
 				case models.CriterionModifierNotEquals:
-					f.addWhere(columnCast+" NOT ILIKE ?", c.Value)
+					f.addWhere(column+" NOT ILIKE ? ESCAPE ''", c.Value)
 				case models.CriterionModifierMatchesRegex:
 					if _, err := regexp.Compile(c.Value); err != nil {
 						f.setError(err)
 						return
 					}
-					f.addWhere(fmt.Sprintf("(%s IS NOT NULL AND regex_match(%s, ?))", column, columnCast), c.Value)
+					f.addWhere(fmt.Sprintf("(%s IS NOT NULL AND regex_match(%[1]s, ?))", column), c.Value)
 				case models.CriterionModifierNotMatchesRegex:
 					if _, err := regexp.Compile(c.Value); err != nil {
 						f.setError(err)
 						return
 					}
-					f.addWhere(fmt.Sprintf("(%s IS NULL OR NOT regex_match(%s, ?))", column, columnCast), c.Value)
+					f.addWhere(fmt.Sprintf("(%s IS NULL OR NOT regex_match(%[1]s, ?))", column), c.Value)
 				case models.CriterionModifierIsNull:
 					f.addWhere("(" + column + " IS NULL)")
 				case models.CriterionModifierNotNull:
@@ -109,11 +107,15 @@ func uuidCriterionHandler(c *models.StringCriterionInput, column string) criteri
 	}
 }
 
-func joinedStringCriterionHandler(c *models.StringCriterionInput, column string, addJoinFn func(f *filterBuilder)) criterionHandlerFunc {
+func joinedStringCriterionHandler(c *models.StringCriterionInput, column string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if c != nil {
 			if addJoinFn != nil {
-				addJoinFn(f)
+				joinType := joinTypeInner
+				if c.Modifier == models.CriterionModifierIsNull || c.Modifier == models.CriterionModifierNotMatchesRegex {
+					joinType = joinTypeLeft
+				}
+				addJoinFn(f, joinType)
 			}
 			stringCriterionHandler(c, column)(ctx, f)
 		}
@@ -143,16 +145,20 @@ func enumCriterionHandler(modifier models.CriterionModifier, values []string, co
 	}
 }
 
-func pathCriterionHandler(c *models.StringCriterionInput, pathColumn string, basenameColumn string, addJoinFn func(f *filterBuilder)) criterionHandlerFunc {
+func pathCriterionHandler(c *models.StringCriterionInput, pathColumn string, basenameColumn string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if c != nil {
-			if addJoinFn != nil {
-				addJoinFn(f)
-			}
-			addWildcards := true
-			not := false
-
 			if modifier := c.Modifier; c.Modifier.IsValid() {
+				if addJoinFn != nil {
+					joinType := joinTypeInner
+					if modifier == models.CriterionModifierIsNull || modifier == models.CriterionModifierNotMatchesRegex {
+						joinType = joinTypeLeft
+					}
+					addJoinFn(f, joinType)
+				}
+				addWildcards := true
+				not := false
+
 				switch modifier {
 				case models.CriterionModifierIncludes:
 					f.whereClauses = append(f.whereClauses, getPathSearchClauseMany(pathColumn, basenameColumn, c.Value, addWildcards, not))
@@ -198,7 +204,7 @@ func getPathSearchClause(pathColumn, basenameColumn, p string, addWildcards, not
 	}
 
 	filepathColumn := fmt.Sprintf("%s || '%s' || %s", pathColumn, string(filepath.Separator), basenameColumn)
-	ret := makeClause(fmt.Sprintf("%s ILIKE ?", filepathColumn), p)
+	ret := makeClause(fmt.Sprintf("%s ILIKE ? ESCAPE ''", filepathColumn), p)
 
 	if not {
 		ret = ret.not()
@@ -233,11 +239,15 @@ func getPathSearchClauseMany(pathColumn, basenameColumn, p string, addWildcards,
 	return getPathSearchClause(pathColumn, basenameColumn, trimmedQuery, addWildcards, not)
 }
 
-func intCriterionHandler(c *models.IntCriterionInput, column string, addJoinFn func(f *filterBuilder)) criterionHandlerFunc {
+func intCriterionHandler(c *models.IntCriterionInput, column string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if c != nil {
 			if addJoinFn != nil {
-				addJoinFn(f)
+				joinType := joinTypeInner
+				if c.Modifier == models.CriterionModifierIsNull {
+					joinType = joinTypeLeft
+				}
+				addJoinFn(f, joinType)
 			}
 			clause, args := getIntCriterionWhereClause(column, *c)
 			f.addWhere(clause, args...)
@@ -245,11 +255,15 @@ func intCriterionHandler(c *models.IntCriterionInput, column string, addJoinFn f
 	}
 }
 
-func floatCriterionHandler(c *models.FloatCriterionInput, column string, addJoinFn func(f *filterBuilder)) criterionHandlerFunc {
+func floatCriterionHandler(c *models.FloatCriterionInput, column string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if c != nil {
 			if addJoinFn != nil {
-				addJoinFn(f)
+				joinType := joinTypeInner
+				if c.Modifier == models.CriterionModifierIsNull {
+					joinType = joinTypeLeft
+				}
+				addJoinFn(f, joinType)
 			}
 			clause, args := getFloatCriterionWhereClause(column, *c)
 			f.addWhere(clause, args...)
@@ -257,11 +271,15 @@ func floatCriterionHandler(c *models.FloatCriterionInput, column string, addJoin
 	}
 }
 
-func floatIntCriterionHandler(durationFilter *models.IntCriterionInput, column string, addJoinFn func(f *filterBuilder)) criterionHandlerFunc {
+func floatIntCriterionHandler(durationFilter *models.IntCriterionInput, column string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if durationFilter != nil {
 			if addJoinFn != nil {
-				addJoinFn(f)
+				joinType := joinTypeInner
+				if durationFilter.Modifier == models.CriterionModifierIsNull {
+					joinType = joinTypeLeft
+				}
+				addJoinFn(f, joinType)
 			}
 			clause, args := getIntCriterionWhereClause("cast("+column+" as int)", *durationFilter)
 			f.addWhere(clause, args...)
@@ -269,11 +287,11 @@ func floatIntCriterionHandler(durationFilter *models.IntCriterionInput, column s
 	}
 }
 
-func boolCriterionHandler(c *bool, column string, addJoinFn func(f *filterBuilder)) criterionHandlerFunc {
+func boolCriterionHandler(c *bool, column string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if c != nil {
 			if addJoinFn != nil {
-				addJoinFn(f)
+				addJoinFn(f, joinTypeInner)
 			}
 			var v = strconv.FormatBool(*c)
 
@@ -323,11 +341,11 @@ func yearFilterCriterionHandler(year *models.IntCriterionInput, col string) crit
 	}
 }
 
-func resolutionCriterionHandler(resolution *models.ResolutionCriterionInput, heightColumn string, widthColumn string, addJoinFn func(f *filterBuilder)) criterionHandlerFunc {
+func resolutionCriterionHandler(resolution *models.ResolutionCriterionInput, heightColumn string, widthColumn string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if resolution != nil && resolution.Value.IsValid() {
 			if addJoinFn != nil {
-				addJoinFn(f)
+				addJoinFn(f, joinTypeInner)
 			}
 
 			mn := resolution.Value.GetMinResolution()
@@ -349,11 +367,11 @@ func resolutionCriterionHandler(resolution *models.ResolutionCriterionInput, hei
 	}
 }
 
-func orientationCriterionHandler(orientation *models.OrientationCriterionInput, heightColumn string, widthColumn string, addJoinFn func(f *filterBuilder)) criterionHandlerFunc {
+func orientationCriterionHandler(orientation *models.OrientationCriterionInput, heightColumn string, widthColumn string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if orientation != nil {
 			if addJoinFn != nil {
-				addJoinFn(f)
+				addJoinFn(f, joinTypeInner)
 			}
 
 			var clauses []sqlClause
@@ -396,7 +414,7 @@ type joinedMultiCriterionHandlerBuilder struct {
 	// foreign key of the foreign object on the join table
 	foreignFK string
 
-	addJoinTable func(f *filterBuilder)
+	addJoinTable func(f *filterBuilder, joinType joinType)
 }
 
 func (m *joinedMultiCriterionHandlerBuilder) handler(c *models.MultiCriterionInput) criterionHandlerFunc {
@@ -412,11 +430,13 @@ func (m *joinedMultiCriterionHandlerBuilder) handler(c *models.MultiCriterionInp
 
 			if criterion.Modifier == models.CriterionModifierIsNull || criterion.Modifier == models.CriterionModifierNotNull {
 				var notClause string
+				joinType := joinTypeLeft
 				if criterion.Modifier == models.CriterionModifierNotNull {
 					notClause = "NOT"
+					joinType = joinTypeInner
 				}
 
-				m.addJoinTable(f)
+				m.addJoinTable(f, joinType)
 
 				f.addWhere(utils.StrFormat("{table}.{column} IS {not} NULL", utils.StrFormatMap{
 					"table":  joinAlias,
@@ -449,11 +469,11 @@ func (m *joinedMultiCriterionHandlerBuilder) handler(c *models.MultiCriterionInp
 				switch criterion.Modifier {
 				case models.CriterionModifierIncludes:
 					// includes any of the provided ids
-					m.addJoinTable(f)
+					m.addJoinTable(f, joinTypeInner)
 					whereClause = fmt.Sprintf("%s.%s IN %s", joinAlias, m.foreignFK, getInBinding(len(criterion.Value)))
 				case models.CriterionModifierEquals:
 					// includes only the provided ids
-					m.addJoinTable(f)
+					m.addJoinTable(f, joinTypeInner)
 					whereClause = utils.StrFormat("{joinAlias}.{foreignFK} IN {inBinding} AND (SELECT COUNT(*) FROM {joinTable} s WHERE s.{primaryFK} = {primaryTable}.id) = ?", utils.StrFormatMap{
 						"joinAlias":    joinAlias,
 						"foreignFK":    m.foreignFK,
@@ -468,7 +488,7 @@ func (m *joinedMultiCriterionHandlerBuilder) handler(c *models.MultiCriterionInp
 					f.setError(fmt.Errorf("not equals modifier is not supported for multi criterion input"))
 				case models.CriterionModifierIncludesAll:
 					// includes all of the provided ids
-					m.addJoinTable(f)
+					m.addJoinTable(f, joinTypeInner)
 					whereClause = fmt.Sprintf("%s.%s IN %s", joinAlias, m.foreignFK, getInBinding(len(criterion.Value)))
 					havingClause = fmt.Sprintf("count(distinct %s.%s) = %d", joinAlias, m.foreignFK, len(criterion.Value))
 				}
@@ -502,7 +522,7 @@ type multiCriterionHandlerBuilder struct {
 	foreignFK    string
 
 	// function that will be called to perform any necessary joins
-	addJoinsFunc func(f *filterBuilder)
+	addJoinsFunc func(f *filterBuilder, joinType joinType)
 }
 
 func (m *multiCriterionHandlerBuilder) handler(criterion *models.MultiCriterionInput) criterionHandlerFunc {
@@ -534,7 +554,7 @@ func (m *multiCriterionHandlerBuilder) handler(criterion *models.MultiCriterionI
 			}
 
 			if m.addJoinsFunc != nil {
-				m.addJoinsFunc(f)
+				m.addJoinsFunc(f, joinTypeInner)
 			}
 
 			whereClause, havingClause := getMultiCriterionClause(m.primaryTable, m.foreignTable, m.joinTable, m.primaryFK, m.foreignFK, criterion)
@@ -570,7 +590,7 @@ type stringListCriterionHandlerBuilder struct {
 	// string field on the join table
 	stringColumn string
 
-	addJoinTable   func(f *filterBuilder)
+	addJoinTable   func(f *filterBuilder, joinType joinType)
 	excludeHandler func(f *filterBuilder, criterion *models.StringCriterionInput)
 }
 
@@ -604,7 +624,11 @@ func (m *stringListCriterionHandlerBuilder) handler(criterion *models.StringCrit
 				// 	Modifier: models.CriterionModifierNotNull,
 				// }, m.joinTable+"."+m.stringColumn)(ctx, f)
 			} else {
-				m.addJoinTable(f)
+				joinType := joinTypeInner
+				if criterion.Modifier == models.CriterionModifierIsNull || criterion.Modifier == models.CriterionModifierNotMatchesRegex {
+					joinType = joinTypeLeft
+				}
+				m.addJoinTable(f, joinType)
 				stringCriterionHandler(criterion, m.joinTable+"."+m.stringColumn)(ctx, f)
 			}
 		}
@@ -1066,11 +1090,17 @@ func (h *stashIDCriterionHandler) handle(ctx context.Context, f *filterBuilder) 
 	}
 
 	joinClause := fmt.Sprintf("%s.%s = %s", t, stashIDRepo.idColumn, h.parentIDCol)
+	var args []interface{}
 	if h.c.Endpoint != nil && *h.c.Endpoint != "" {
-		joinClause += fmt.Sprintf(" AND %s.endpoint = '%s'", t, *h.c.Endpoint)
+		joinClause += fmt.Sprintf(" AND %s.endpoint = ?", t)
+		args = append(args, *h.c.Endpoint)
 	}
 
-	f.addLeftJoin(stashIDRepo.tableName, h.stashIDTableAs, joinClause)
+	joinType := joinTypeInner
+	if h.c.Modifier == models.CriterionModifierIsNull || h.c.Modifier == models.CriterionModifierNotMatchesRegex {
+		joinType = joinTypeLeft
+	}
+	f.addJoin(joinType, stashIDRepo.tableName, h.stashIDTableAs, joinClause, args...)
 
 	v := ""
 	if h.c.StashID != nil {
@@ -1102,11 +1132,18 @@ func (h *stashIDsCriterionHandler) handle(ctx context.Context, f *filterBuilder)
 	}
 
 	joinClause := fmt.Sprintf("%s.%s = %s", t, stashIDRepo.idColumn, h.parentIDCol)
+	var args []interface{}
 	if h.c.Endpoint != nil && *h.c.Endpoint != "" {
-		joinClause += fmt.Sprintf(" AND %s.endpoint = '%s'", t, *h.c.Endpoint)
+		joinClause += fmt.Sprintf(" AND %s.endpoint = ?", t)
+		args = append(args, *h.c.Endpoint)
 	}
 
-	f.addLeftJoin(stashIDRepo.tableName, h.stashIDTableAs, joinClause)
+	joinType := joinTypeInner
+	if h.c.Modifier == models.CriterionModifierIsNull {
+		joinType = joinTypeLeft
+	}
+
+	f.addJoin(joinType, stashIDRepo.tableName, h.stashIDTableAs, joinClause, args...)
 
 	switch h.c.Modifier {
 	case models.CriterionModifierIsNull:
@@ -1116,13 +1153,13 @@ func (h *stashIDsCriterionHandler) handle(ctx context.Context, f *filterBuilder)
 	case models.CriterionModifierEquals:
 		var clauses []sqlClause
 		for _, id := range h.c.StashIDs {
-			clauses = append(clauses, makeClause(fmt.Sprintf("%s.stash_id = '?'::uuid", t), id))
+			clauses = append(clauses, makeClause(fmt.Sprintf("%s.stash_id = ?", t), id))
 		}
 		f.whereClauses = append(f.whereClauses, orClauses(clauses...))
 	case models.CriterionModifierNotEquals:
 		var clauses []sqlClause
 		for _, id := range h.c.StashIDs {
-			clauses = append(clauses, makeClause(fmt.Sprintf("%s.stash_id != '?'::uuid", t), id))
+			clauses = append(clauses, makeClause(fmt.Sprintf("%s.stash_id != ?", t), id))
 		}
 		f.whereClauses = append(f.whereClauses, andClauses(clauses...))
 	default:
@@ -1131,11 +1168,16 @@ func (h *stashIDsCriterionHandler) handle(ctx context.Context, f *filterBuilder)
 }
 
 type relatedFilterHandler struct {
-	relatedIDCol   string
-	relatedRepo    repository
+	// column on the primary table that relates to the related table (eg scene_id)
+	relatedIDCol string
+	// repository for the related table (eg sceneRepository)
+	relatedRepo repository
+	// handler for the filter on the related table
 	relatedHandler criterionHandler
-	joinFn         func(f *filterBuilder)
-	directJoin     bool
+	// optional function to perform the necessary join(s) to the related table
+	joinFn func(f *filterBuilder)
+	// if true, related filter handler will be run using the existing filterBuilder instead of a subquery.
+	directJoin bool
 }
 
 func (h *relatedFilterHandler) handle(ctx context.Context, f *filterBuilder) {
@@ -1166,5 +1208,81 @@ func (h *relatedFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		return
 	}
 
-	f.addWhere(fmt.Sprintf("%s IN ("+subQuery.toSQL(false)+")", h.relatedIDCol), subQuery.args...)
+	f.addWhere(fmt.Sprintf("%s IN ("+subQuery.toSQL(false)+")", h.relatedIDCol), subQuery.allArgs()...)
+}
+
+type phashDistanceCriterionHandler struct {
+	// assumes that applicable fingerprints table is joined as fingerprints_phash
+	joinFn    func(f *filterBuilder)
+	criterion *models.PhashDistanceCriterionInput
+}
+
+func (h *phashDistanceCriterionHandler) handle(ctx context.Context, f *filterBuilder) {
+	phashDistance := h.criterion
+	if phashDistance == nil {
+		return
+	}
+
+	h.joinFn(f)
+
+	value, _ := utils.StringToPhash(phashDistance.Value)
+	distance := 0
+	if phashDistance.Distance != nil {
+		distance = *phashDistance.Distance
+	}
+
+	switch {
+	case phashDistance.Modifier == models.CriterionModifierEquals && distance > 0:
+		// needed to avoid a type mismatch
+		f.addWhere("typeof(fingerprints_phash.fingerprint) = 'integer'")
+		f.addWhere("phash_distance(fingerprints_phash.fingerprint, ?) < ?", value, distance)
+	case phashDistance.Modifier == models.CriterionModifierNotEquals && distance > 0:
+		// needed to avoid a type mismatch
+		f.addWhere("typeof(fingerprints_phash.fingerprint) = 'integer'")
+		f.addWhere("phash_distance(fingerprints_phash.fingerprint, ?) > ?", value, distance)
+	default:
+		intCriterionHandler(&models.IntCriterionInput{
+			Value:    int(value),
+			Modifier: phashDistance.Modifier,
+		}, "fingerprints_phash.fingerprint", nil)(ctx, f)
+	}
+}
+
+func uuidCriterionHandler(c *models.StringCriterionInput, column string) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		columnCast := "CAST(" + column + " AS TEXT)"
+
+		if c != nil {
+			if modifier := c.Modifier; c.Modifier.IsValid() {
+				switch modifier {
+				case models.CriterionModifierIncludes:
+					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{columnCast}, c.Value, false))
+				case models.CriterionModifierExcludes:
+					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{columnCast}, c.Value, true))
+				case models.CriterionModifierEquals:
+					f.addWhere(columnCast+" ILIKE ? ESCAPE ''", c.Value)
+				case models.CriterionModifierNotEquals:
+					f.addWhere(columnCast+" NOT ILIKE ? ESCAPE ''", c.Value)
+				case models.CriterionModifierMatchesRegex:
+					if _, err := regexp.Compile(c.Value); err != nil {
+						f.setError(err)
+						return
+					}
+					f.addWhere(fmt.Sprintf("(%s IS NOT NULL AND regex_match(%s, ?))", column, columnCast), c.Value)
+				case models.CriterionModifierNotMatchesRegex:
+					if _, err := regexp.Compile(c.Value); err != nil {
+						f.setError(err)
+						return
+					}
+					f.addWhere(fmt.Sprintf("(%s IS NULL OR NOT regex_match(%s, ?))", column, columnCast), c.Value)
+				case models.CriterionModifierIsNull:
+					f.addWhere("(" + column + " IS NULL)")
+				case models.CriterionModifierNotNull:
+					f.addWhere("(" + column + " IS NOT NULL)")
+				default:
+					panic("unsupported string filter modifier")
+				}
+			}
+		}
+	}
 }

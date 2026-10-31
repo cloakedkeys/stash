@@ -46,6 +46,7 @@ type Database interface {
 	WithDatabase(ctx context.Context) (context.Context, error)
 	NewMigrator() (MigrateStore, error)
 
+	VoiceActor() models.VoiceActorReaderWriter
 	Blobs() BlobStore
 	File() FileStore
 	Folder() FolderStore

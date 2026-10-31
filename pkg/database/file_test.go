@@ -1,5 +1,5 @@
-//go:build db_integration
-// +build db_integration
+//go:build integration
+// +build integration
 
 package database_test
 
@@ -563,7 +563,7 @@ func Test_FileStore_FindByPath(t *testing.T) {
 }
 
 func TestFileStore_FindByPathCaseInsensitiveTreatsLikeWildcardsLiterally(t *testing.T) {
-	qb := db.File
+	qb := db.File()
 
 	runWithRollbackTxn(t, "literal wildcards", func(t *testing.T, ctx context.Context) {
 		now := time.Now()
@@ -718,7 +718,7 @@ func TestFileStore_ModifyVRMetadata(t *testing.T) {
 	}
 
 	fileID := sceneFileIDs[sceneIdx1WithPerformer]
-	qb := db.File
+	qb := db.File()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {

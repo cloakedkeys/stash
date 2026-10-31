@@ -535,7 +535,7 @@ func TestStringCriterionHandlerEquals(t *testing.T) {
 	}, column))
 
 	assert.Len(f.whereClauses, 1)
-	assert.Equal(fmt.Sprintf("%[1]s ILIKE ?", column), f.whereClauses[0].sql)
+	assert.Equal(fmt.Sprintf("%[1]s ILIKE ? ESCAPE ''", column), f.whereClauses[0].sql)
 	assert.Len(f.whereClauses[0].args, 1)
 	assert.Equal(value1, f.whereClauses[0].args[0])
 }
@@ -553,7 +553,7 @@ func TestStringCriterionHandlerNotEquals(t *testing.T) {
 	}, column))
 
 	assert.Len(f.whereClauses, 1)
-	assert.Equal(fmt.Sprintf("%[1]s NOT ILIKE ?", column), f.whereClauses[0].sql)
+	assert.Equal(fmt.Sprintf("%[1]s NOT ILIKE ? ESCAPE ''", column), f.whereClauses[0].sql)
 	assert.Len(f.whereClauses[0].args, 1)
 	assert.Equal(value1, f.whereClauses[0].args[0])
 }

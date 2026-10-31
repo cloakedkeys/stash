@@ -1,5 +1,5 @@
-//go:build db_integration
-// +build db_integration
+//go:build integration
+// +build integration
 
 package database_test
 

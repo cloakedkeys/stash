@@ -1,5 +1,5 @@
-//go:build db_integration
-// +build db_integration
+//go:build integration
+// +build integration
 
 package database_test
 
@@ -41,7 +41,7 @@ func loadGroupRelationships(ctx context.Context, expected models.Group, actual *
 		}
 	}
 	if expected.Aliases.Loaded() {
-		if err := actual.LoadAliases(ctx, db.Group); err != nil {
+		if err := actual.LoadAliases(ctx, db.Group()); err != nil {
 			return err
 		}
 	}
@@ -626,7 +626,7 @@ func Test_GroupStore_UpdatePartialCustomFields(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		qb := db.Group
+		qb := db.Group()
 
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
@@ -722,14 +722,14 @@ func groupsToIDs(i []*models.Group) []int {
 func TestGroupGetAliases(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
 		// groupIdxWithAlias is the only group with aliases
-		aliases, err := db.Group.GetAliases(ctx, groupIDs[groupIdxWithAlias])
+		aliases, err := db.Group().GetAliases(ctx, groupIDs[groupIdxWithAlias])
 		if err != nil {
 			t.Errorf("error getting group aliases: %s", err.Error())
 		}
 		assert.ElementsMatch(t, groupAliases(groupIdxWithAlias), aliases)
 
 		// any other group has no aliases
-		aliases, err = db.Group.GetAliases(ctx, groupIDs[groupIdxWithScene])
+		aliases, err = db.Group().GetAliases(ctx, groupIDs[groupIdxWithScene])
 		if err != nil {
 			t.Errorf("error getting group aliases: %s", err.Error())
 		}
@@ -756,7 +756,7 @@ func TestGroupQueryIsMissingAlias(t *testing.T) {
 		assert.NotContains(t, groupsToIDs(groups), groupIDs[groupIdxWithAlias])
 
 		for _, group := range groups {
-			a, err := db.Group.GetAliases(ctx, group.ID)
+			a, err := db.Group().GetAliases(ctx, group.ID)
 			if err != nil {
 				t.Errorf("error getting group aliases: %s", err.Error())
 			}
@@ -1255,10 +1255,10 @@ func TestGroupQuerySortSubGroupDescription(t *testing.T) {
 		c01 := models.Group{Name: "sort-desc-child-01"}
 		c2 := models.Group{Name: "sort-desc-child-2"}
 		c10 := models.Group{Name: "sort-desc-child-10"}
-		assert.NoError(db.Group.Create(ctx, &cEmpty))
-		assert.NoError(db.Group.Create(ctx, &c01))
-		assert.NoError(db.Group.Create(ctx, &c2))
-		assert.NoError(db.Group.Create(ctx, &c10))
+		assert.NoError(db.Group().Create(ctx, &cEmpty))
+		assert.NoError(db.Group().Create(ctx, &c01))
+		assert.NoError(db.Group().Create(ctx, &c2))
+		assert.NoError(db.Group().Create(ctx, &c10))
 
 		parent := models.Group{
 			Name: "sort-desc-parent",
@@ -1269,7 +1269,7 @@ func TestGroupQuerySortSubGroupDescription(t *testing.T) {
 				{GroupID: c01.ID, Description: "01"},
 			}),
 		}
-		assert.NoError(db.Group.Create(ctx, &parent))
+		assert.NoError(db.Group().Create(ctx, &parent))
 
 		sortKey := "sub_group_description"
 		dirAsc := models.SortDirectionEnumAsc
@@ -1284,7 +1284,7 @@ func TestGroupQuerySortSubGroupDescription(t *testing.T) {
 			},
 		}
 
-		groups, _, err := db.Group.Query(ctx, &groupFilter, &findFilter)
+		groups, _, err := db.Group().Query(ctx, &groupFilter, &findFilter)
 		assert.NoError(err)
 		assert.Len(groups, 4)
 		assert.Equal(cEmpty.ID, groups[0].ID)
@@ -1294,7 +1294,7 @@ func TestGroupQuerySortSubGroupDescription(t *testing.T) {
 
 		dirDesc := models.SortDirectionEnumDesc
 		findFilter.Direction = &dirDesc
-		groups, _, err = db.Group.Query(ctx, &groupFilter, &findFilter)
+		groups, _, err = db.Group().Query(ctx, &groupFilter, &findFilter)
 		assert.NoError(err)
 		assert.Len(groups, 4)
 		assert.Equal(c10.ID, groups[0].ID)
@@ -1312,7 +1312,7 @@ func TestGroupQuerySortSubGroupDescription(t *testing.T) {
 		}
 
 		findFilter.Direction = &dirAsc
-		groups, _, err = db.Group.Query(ctx, &nameFilter, &findFilter)
+		groups, _, err = db.Group().Query(ctx, &nameFilter, &findFilter)
 		assert.NoError(err)
 		assert.Len(groups, 4)
 		assert.Equal(cEmpty.ID, groups[0].ID)
@@ -1321,7 +1321,7 @@ func TestGroupQuerySortSubGroupDescription(t *testing.T) {
 		assert.Equal(c10.ID, groups[3].ID)
 
 		findFilter.Direction = &dirDesc
-		groups, _, err = db.Group.Query(ctx, &nameFilter, &findFilter)
+		groups, _, err = db.Group().Query(ctx, &nameFilter, &findFilter)
 		assert.NoError(err)
 		assert.Len(groups, 4)
 		assert.Equal(c10.ID, groups[0].ID)
@@ -2413,7 +2413,7 @@ func TestGroupQueryCustomFields(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			groups, _, err := db.Group.Query(ctx, tt.filter, nil)
+			groups, _, err := db.Group().Query(ctx, tt.filter, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GroupStore.Query() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -2443,7 +2443,7 @@ func createGroupWithPerformers(ctx context.Context, t *testing.T) *models.Group 
 	t.Helper()
 
 	group := models.Group{Name: "TestGroupPerformerCount"}
-	if err := db.Group.Create(ctx, &group); err != nil {
+	if err := db.Group().Create(ctx, &group); err != nil {
 		t.Fatalf("creating group: %v", err)
 	}
 
@@ -2459,7 +2459,7 @@ func createGroupWithPerformers(ctx context.Context, t *testing.T) *models.Group 
 				{GroupID: group.ID},
 			}),
 		}
-		if err := db.Scene.Create(ctx, &scene, nil); err != nil {
+		if err := db.Scene().Create(ctx, &scene, nil); err != nil {
 			t.Fatalf("creating scene: %v", err)
 		}
 	}
@@ -2479,7 +2479,7 @@ func verifyGroupsPerformerCount(ctx context.Context, t *testing.T, performerCoun
 
 	for _, group := range groups {
 		// count the same way as the group's performer_count field
-		count, err := db.Performer.QueryCount(ctx, &models.PerformerFilterType{
+		count, err := db.Performer().QueryCount(ctx, &models.PerformerFilterType{
 			Groups: &models.HierarchicalMultiCriterionInput{
 				Value:    []string{strconv.Itoa(group.ID)},
 				Modifier: models.CriterionModifierIncludes,

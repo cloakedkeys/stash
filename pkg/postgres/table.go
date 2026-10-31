@@ -125,7 +125,22 @@ func (t *table) destroy(ctx context.Context, ids []int) error {
 	return nil
 }
 
-func (t *table) join(j joiner, as string, parentIDCol string) {
+func (t *table) join(j joiner, jt joinType, as string, parentIDCol string) {
+	tableName := t.table.GetTable()
+	tt := tableName
+	if as != "" {
+		tt = as
+	}
+
+	fn := j.addInnerJoin
+	if jt == joinTypeLeft {
+		fn = j.addLeftJoin
+	}
+
+	fn(tableName, as, fmt.Sprintf("%s.%s = %s", tt, t.idColumn.GetCol(), parentIDCol))
+}
+
+func (t *table) leftJoin(j joiner, as string, parentIDCol string) {
 	tableName := t.table.GetTable()
 	tt := tableName
 	if as != "" {
@@ -414,6 +429,28 @@ func (t *stringTable) get(ctx context.Context, id int) ([]string, error) {
 		return nil
 	}); err != nil {
 		return nil, fmt.Errorf("getting stash ids from %s: %w", t.table.table.GetTable(), err)
+	}
+
+	return ret, nil
+}
+
+// getAll returns every (id, value) pair in the join table, grouped by id.
+// Used to avoid N+1 lookups when callers need values for many ids at once.
+func (t *stringTable) getAll(ctx context.Context) (map[int][]string, error) {
+	q := dialect.Select(t.idColumn, t.stringColumn).From(t.table.table)
+
+	const single = false
+	ret := make(map[int][]string)
+	if err := queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+		var id int
+		var v string
+		if err := rows.Scan(&id, &v); err != nil {
+			return err
+		}
+		ret[id] = append(ret[id], v)
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("getting all values from %s: %w", t.table.table.GetTable(), err)
 	}
 
 	return ret, nil
@@ -1222,6 +1259,14 @@ func querySimple(ctx context.Context, query *goqu.SelectDataset, out interface{}
 
 	if err := rows.Err(); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func querySelect(ctx context.Context, query string, args []interface{}, dest interface{}) error {
+	if err := dbWrapper.Select(ctx, dest, query, args...); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("running query: %s [%v]: %w", query, args, err)
 	}
 
 	return nil

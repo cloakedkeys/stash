@@ -1,5 +1,5 @@
-//go:build db_integration
-// +build db_integration
+//go:build integration
+// +build integration
 
 package database_test
 
@@ -891,7 +891,7 @@ func Test_ImageStore_UpdatePartialCustomFields(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		qb := db.Image
+		qb := db.Image()
 
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
@@ -1602,7 +1602,7 @@ func TestImageQueryQ_Details(t *testing.T) {
 
 		q := getImageStringValue(imageIdx, detailsField)
 
-		sqb := db.Image
+		sqb := db.Image()
 
 		imageQueryQ(ctx, t, sqb, q, imageIdx)
 
@@ -1641,7 +1641,7 @@ func createImageTestFile(ctx context.Context, t *testing.T, basename string, siz
 		Width:  width,
 		Height: height,
 	}
-	if err := db.File.Create(ctx, f); err != nil {
+	if err := db.File().Create(ctx, f); err != nil {
 		t.Fatalf("creating file: %v", err)
 	}
 	return f.ID
@@ -1650,7 +1650,7 @@ func createImageTestFile(ctx context.Context, t *testing.T, basename string, siz
 // #5503 - total size/megapixels must include secondary files of equal size/dimensions
 func TestImageQueryTotalSizeMultipleFiles(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		iqb := db.Image
+		iqb := db.Image()
 
 		const fileSize = int64(1234)
 		const fileWidth = 1000
@@ -1693,7 +1693,7 @@ func TestImageQueryTotalSizeMultipleFiles(t *testing.T) {
 // #7262 - filesize sort must use the combined size of all files
 func TestImageQuerySortFileSizeMultipleFiles(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		iqb := db.Image
+		iqb := db.Image()
 
 		// each file is smaller than the single file, but combined they are larger
 		multiFileImage := &models.Image{Title: "multifile sort image"}
@@ -3444,7 +3444,7 @@ func TestImageQueryCustomFields(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			result, err := db.Image.Query(ctx, models.ImageQueryOptions{
+			result, err := db.Image().Query(ctx, models.ImageQueryOptions{
 				ImageFilter: tt.filter,
 			})
 			if (err != nil) != tt.wantErr {

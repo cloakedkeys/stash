@@ -122,10 +122,10 @@ func getSort(sort string, direction string, tableName string) (string, []string)
 			colName = sort
 		}
 		if strings.Compare(sort, "name") == 0 {
-			return " ORDER BY " + colName + " COLLATE NATURAL_CI " + direction, []string{colName}
+			return " ORDER BY " + colName + " COLLATE \"natural_ci\" " + direction, []string{colName}
 		}
 		if strings.Compare(sort, "title") == 0 {
-			return " ORDER BY " + colName + " COLLATE NATURAL_CI " + direction, []string{colName}
+			return " ORDER BY " + colName + " COLLATE \"natural_ci\" " + direction, []string{colName}
 		}
 
 		return " ORDER BY " + colName + " " + direction, []string{colName}
@@ -174,14 +174,14 @@ func getStringSearchClause(columns []string, q string, not bool) sqlClause {
 		// Search for any word
 		for _, word := range queryWords {
 			for _, column := range columns {
-				likeClauses = append(likeClauses, column+notStr+" ILIKE ?")
+				likeClauses = append(likeClauses, column+notStr+" ILIKE ? ESCAPE ''")
 				args = append(args, "%"+word+"%")
 			}
 		}
 	} else {
 		// Search the exact query
 		for _, column := range columns {
-			likeClauses = append(likeClauses, column+notStr+" ILIKE ?")
+			likeClauses = append(likeClauses, column+notStr+" ILIKE ? ESCAPE ''")
 			args = append(args, "%"+trimmedQuery+"%")
 		}
 	}
@@ -275,14 +275,17 @@ func getDateWhereClause(column string, modifier models.CriterionModifier, value 
 		upper = &u
 	}
 
-	args := []interface{}{value}
-	betweenArgs := []interface{}{value, *upper}
+	valueDate, _ := models.ParseDate(value)
+	date := Date{Date: valueDate.Time}
+
+	args := []interface{}{date}
+	betweenArgs := []interface{}{date, *upper}
 
 	switch modifier {
 	case models.CriterionModifierIsNull:
-		return fmt.Sprintf("(%s IS NULL OR %s = '')", column, column), nil
+		return fmt.Sprintf("%s IS NULL", column), nil
 	case models.CriterionModifierNotNull:
-		return fmt.Sprintf("(%s IS NOT NULL AND %s != '')", column, column), nil
+		return fmt.Sprintf("%s IS NOT NULL", column), nil
 	case models.CriterionModifierEquals:
 		return fmt.Sprintf("%s = ?", column), args
 	case models.CriterionModifierNotEquals:
@@ -390,3 +393,20 @@ func (t sqlTable) Name() string {
 func (t sqlTable) Col(n string) string {
 	return fmt.Sprintf("%s.%s", string(t), n)
 }
+
+func validateIsMissing(isMissing string, allowed []string) error {
+	for _, v := range allowed {
+		if v == isMissing {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("invalid is_missing field: %s", isMissing)
+}
+
+func getFileSizeSort(primaryTable, joinTable, primaryFK, direction string) string {
+	return fmt.Sprintf(" ORDER BY (SELECT COALESCE(SUM(sort_files.size), 0) FROM %s AS sort INNER JOIN %s AS sort_files ON sort.file_id = sort_files.id WHERE sort.%s = %s.id) %s", joinTable, fileTable, primaryFK, primaryTable, getSortDirection(direction))
+}
+
+// getStringSearchClause returns a sqlClause for searching strings in the provided columns.
+// It is used for includes and excludes string criteria.

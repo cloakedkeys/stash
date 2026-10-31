@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/stashapp/stash/pkg/models"
 )
@@ -41,13 +42,13 @@ func (qb *studioFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		return
 	}
 
+	f.handleCriterion(ctx, qb.criterionHandler())
+
 	sf := studioFilter.SubFilter()
 	if sf != nil {
 		sub := &studioFilterHandler{sf}
 		handleSubFilter(ctx, sub, f, studioFilter.OperatorFilter)
 	}
-
-	f.handleCriterion(ctx, qb.criterionHandler())
 }
 
 func (qb *studioFilterHandler) criterionHandler() criterionHandler {
@@ -59,10 +60,11 @@ func (qb *studioFilterHandler) criterionHandler() criterionHandler {
 		intCriterionHandler(studioFilter.Rating100, studioTable+".rating", nil),
 		boolCriterionHandler(studioFilter.Favorite, studioTable+".favorite", nil),
 		boolCriterionHandler(studioFilter.IgnoreAutoTag, studioTable+".ignore_auto_tag", nil),
+		boolCriterionHandler(studioFilter.Organized, studioTable+".organized", nil),
 
 		criterionHandlerFunc(func(ctx context.Context, f *filterBuilder) {
 			if studioFilter.StashID != nil {
-				studioRepository.stashIDs.join(f, "studio_stash_ids", "studios.id")
+				studioRepository.stashIDs.leftJoin(f, "studio_stash_ids", "studios.id")
 				uuidCriterionHandler(studioFilter.StashID, "studio_stash_ids.stash_id")(ctx, f)
 			}
 		}),
@@ -84,6 +86,8 @@ func (qb *studioFilterHandler) criterionHandler() criterionHandler {
 		qb.sceneCountCriterionHandler(studioFilter.SceneCount),
 		qb.imageCountCriterionHandler(studioFilter.ImageCount),
 		qb.galleryCountCriterionHandler(studioFilter.GalleryCount),
+		qb.groupCountCriterionHandler(studioFilter.GroupCount),
+		qb.performerCountCriterionHandler(studioFilter.PerformerCount),
 		qb.parentCriterionHandler(studioFilter.Parents),
 		qb.aliasCriterionHandler(studioFilter.Aliases),
 		qb.tagsCriterionHandler(studioFilter.Tags),
@@ -117,6 +121,22 @@ func (qb *studioFilterHandler) criterionHandler() criterionHandler {
 				studioRepository.galleries.innerJoin(f, "", "studios.id")
 			},
 		},
+
+		&relatedFilterHandler{
+			relatedIDCol:   "groups.id",
+			relatedRepo:    groupRepository.repository,
+			relatedHandler: &groupFilterHandler{studioFilter.GroupsFilter},
+			joinFn: func(f *filterBuilder) {
+				studioRepository.groups.innerJoin(f, "", "studios.id")
+			},
+		},
+
+		&customFieldsFilterHandler{
+			table: studiosCustomFieldsTable.GetTable(),
+			fkCol: studioIDColumn,
+			c:     studioFilter.CustomFields,
+			idCol: "studios.id",
+		},
 	}
 }
 
@@ -125,14 +145,26 @@ func (qb *studioFilterHandler) isMissingCriterionHandler(isMissing *string) crit
 		if isMissing != nil && *isMissing != "" {
 			switch *isMissing {
 			case "url":
-				studiosURLsTableMgr.join(f, "", "studios.id")
+				studiosURLsTableMgr.leftJoin(f, "", "studios.id")
 				f.addWhere("studio_urls.url IS NULL")
 			case "image":
 				f.addWhere("studios.image_blob IS NULL")
 			case "stash_id":
-				studioRepository.stashIDs.join(f, "studio_stash_ids", "studios.id")
+				studioRepository.stashIDs.leftJoin(f, "studio_stash_ids", "studios.id")
 				f.addWhere("studio_stash_ids.studio_id IS NULL")
+			case "aliases":
+				studiosAliasesTableMgr.leftJoin(f, "", "studios.id")
+				f.addWhere("studio_aliases.alias IS NULL")
+			case "tags":
+				f.addLeftJoin(studiosTagsTable, "tags_join", "tags_join.studio_id = studios.id")
+				f.addWhere("tags_join.studio_id IS NULL")
 			default:
+				if err := validateIsMissing(*isMissing, []string{
+					"details", "rating",
+				}); err != nil {
+					f.setError(err)
+					return
+				}
 				f.addWhere("(studios." + *isMissing + " IS NULL OR TRIM(CAST(studios." + *isMissing + " AS TEXT)) = '')")
 			}
 		}
@@ -172,6 +204,47 @@ func (qb *studioFilterHandler) galleryCountCriterionHandler(galleryCount *models
 	}
 }
 
+func (qb *studioFilterHandler) groupCountCriterionHandler(groupCount *models.IntCriterionInput) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		if groupCount != nil {
+			f.addLeftJoin("groups", "", "groups.studio_id = studios.id")
+			clause, args := getIntCriterionWhereClause("count(distinct groups.id)", *groupCount)
+
+			f.addHaving(clause, args...)
+		}
+	}
+}
+
+// selectStudioPerformerCountSQL counts the distinct performers in the studio's
+// scenes, images and galleries, matching the studio's performer_count field.
+var selectStudioPerformerCountSQL = fmt.Sprintf(`SELECT COUNT(*) FROM (
+	SELECT %[2]s.performer_id FROM %[2]s
+	INNER JOIN %[3]s ON %[3]s.id = %[2]s.scene_id
+	WHERE %[3]s.studio_id = %[1]s.id
+	UNION
+	SELECT %[4]s.performer_id FROM %[4]s
+	INNER JOIN %[5]s ON %[5]s.id = %[4]s.image_id
+	WHERE %[5]s.studio_id = %[1]s.id
+	UNION
+	SELECT %[6]s.performer_id FROM %[6]s
+	INNER JOIN %[7]s ON %[7]s.id = %[6]s.gallery_id
+	WHERE %[7]s.studio_id = %[1]s.id
+)`, studioTable,
+	performersScenesTable, sceneTable,
+	performersImagesTable, imageTable,
+	performersGalleriesTable, galleryTable,
+)
+
+func (qb *studioFilterHandler) performerCountCriterionHandler(performerCount *models.IntCriterionInput) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		if performerCount != nil {
+			clause, args := getIntCriterionWhereClause("("+selectStudioPerformerCountSQL+")", *performerCount)
+
+			f.addWhere(clause, args...)
+		}
+	}
+}
+
 func (qb *studioFilterHandler) tagCountCriterionHandler(tagCount *models.IntCriterionInput) criterionHandlerFunc {
 	h := countCriterionHandlerBuilder{
 		primaryTable: studioTable,
@@ -183,8 +256,8 @@ func (qb *studioFilterHandler) tagCountCriterionHandler(tagCount *models.IntCrit
 }
 
 func (qb *studioFilterHandler) parentCriterionHandler(parents *models.MultiCriterionInput) criterionHandlerFunc {
-	addJoinsFunc := func(f *filterBuilder) {
-		f.addLeftJoin("studios", "parent_studio", "parent_studio.id = studios.parent_id")
+	addJoinsFunc := func(f *filterBuilder, joinType joinType) {
+		f.addJoin(joinType, "studios", "parent_studio", "parent_studio.id = studios.parent_id")
 	}
 	h := multiCriterionHandlerBuilder{
 		primaryTable: studioTable,
@@ -203,8 +276,8 @@ func (qb *studioFilterHandler) aliasCriterionHandler(alias *models.StringCriteri
 		primaryFK:    studioIDColumn,
 		joinTable:    studioAliasesTable,
 		stringColumn: studioAliasColumn,
-		addJoinTable: func(f *filterBuilder) {
-			studiosAliasesTableMgr.join(f, "", "studios.id")
+		addJoinTable: func(f *filterBuilder, joinType joinType) {
+			studiosAliasesTableMgr.join(f, joinType, "", "studios.id")
 		},
 	}
 
@@ -217,8 +290,8 @@ func (qb *studioFilterHandler) urlsCriterionHandler(url *models.StringCriterionI
 		primaryFK:    studioIDColumn,
 		joinTable:    studioURLsTable,
 		stringColumn: studioURLColumn,
-		addJoinTable: func(f *filterBuilder) {
-			studiosURLsTableMgr.join(f, "", "studios.id")
+		addJoinTable: func(f *filterBuilder, joinType joinType) {
+			studiosURLsTableMgr.join(f, joinType, "", "studios.id")
 		},
 	}
 

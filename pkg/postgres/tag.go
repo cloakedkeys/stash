@@ -37,6 +37,7 @@ type tagRow struct {
 	Favorite      bool        `db:"favorite"`
 	Description   zero.String `db:"description"`
 	IgnoreAutoTag bool        `db:"ignore_auto_tag"`
+	Rating        null.Int    `db:"rating"`
 	CreatedAt     Timestamp   `db:"created_at"`
 	UpdatedAt     Timestamp   `db:"updated_at"`
 
@@ -51,6 +52,7 @@ func (r *tagRow) fromTag(o models.Tag) {
 	r.Favorite = o.Favorite
 	r.Description = zero.StringFrom(o.Description)
 	r.IgnoreAutoTag = o.IgnoreAutoTag
+	r.Rating = intFromPtr(o.Rating)
 	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
 }
@@ -63,6 +65,7 @@ func (r *tagRow) resolve() *models.Tag {
 		Favorite:      r.Favorite,
 		Description:   r.Description.String,
 		IgnoreAutoTag: r.IgnoreAutoTag,
+		Rating:        nullIntPtr(r.Rating),
 		CreatedAt:     r.CreatedAt.Timestamp.UTC(),
 		UpdatedAt:     r.UpdatedAt.Timestamp.UTC(),
 	}
@@ -94,6 +97,7 @@ func (r *tagRowRecord) fromPartial(o models.TagPartial) {
 	r.setNullString("description", o.Description)
 	r.setBool("favorite", o.Favorite)
 	r.setBool("ignore_auto_tag", o.IgnoreAutoTag)
+	r.setNullInt("rating", o.Rating)
 	r.setTimestamp("created_at", o.CreatedAt)
 	r.setTimestamp("updated_at", o.UpdatedAt)
 }
@@ -104,9 +108,12 @@ type tagRepositoryType struct {
 	aliases  stringRepository
 	stashIDs stashIDRepository
 
-	scenes    joinRepository
-	images    joinRepository
-	galleries joinRepository
+	scenes     joinRepository
+	images     joinRepository
+	galleries  joinRepository
+	groups     joinRepository
+	performers joinRepository
+	studios    joinRepository
 }
 
 var (
@@ -152,11 +159,36 @@ var (
 			fkColumn:     galleryIDColumn,
 			foreignTable: galleryTable,
 		},
+		groups: joinRepository{
+			repository: repository{
+				tableName: groupsTagsTable,
+				idColumn:  tagIDColumn,
+			},
+			fkColumn:     groupIDColumn,
+			foreignTable: groupTable,
+		},
+		performers: joinRepository{
+			repository: repository{
+				tableName: performersTagsTable,
+				idColumn:  tagIDColumn,
+			},
+			fkColumn:     performerIDColumn,
+			foreignTable: performerTable,
+		},
+		studios: joinRepository{
+			repository: repository{
+				tableName: studiosTagsTable,
+				idColumn:  tagIDColumn,
+			},
+			fkColumn:     studioIDColumn,
+			foreignTable: studioTable,
+		},
 	}
 )
 
 type TagStore struct {
 	blobJoinQueryBuilder
+	customFieldsStore
 
 	tableMgr *table
 }
@@ -166,6 +198,10 @@ func NewTagStore(blobStore *BlobStore) *TagStore {
 		blobJoinQueryBuilder: blobJoinQueryBuilder{
 			blobStore: blobStore,
 			joinTable: tagTable,
+		},
+		customFieldsStore: customFieldsStore{
+			table: tagsCustomFieldsTable,
+			fk:    tagsCustomFieldsTable.Col(tagIDColumn),
 		},
 		tableMgr: tagTableMgr,
 	}
@@ -179,9 +215,9 @@ func (qb *TagStore) selectDataset() *goqu.SelectDataset {
 	return dialect.From(qb.table()).Select(qb.table().All())
 }
 
-func (qb *TagStore) Create(ctx context.Context, newObject *models.Tag) error {
+func (qb *TagStore) Create(ctx context.Context, newObject *models.CreateTagInput) error {
 	var r tagRow
-	r.fromTag(*newObject)
+	r.fromTag(*newObject.Tag)
 
 	id, err := qb.tableMgr.insertID(ctx, r)
 	if err != nil {
@@ -212,12 +248,17 @@ func (qb *TagStore) Create(ctx context.Context, newObject *models.Tag) error {
 		}
 	}
 
+	const partial = false
+	if err := qb.setCustomFields(ctx, id, newObject.CustomFields, partial); err != nil {
+		return err
+	}
+
 	updated, err := qb.find(ctx, id)
 	if err != nil {
 		return fmt.Errorf("finding after create: %w", err)
 	}
 
-	*newObject = *updated
+	*newObject.Tag = *updated
 
 	return nil
 }
@@ -261,12 +302,16 @@ func (qb *TagStore) UpdatePartial(ctx context.Context, id int, partial models.Ta
 		}
 	}
 
+	if err := qb.SetCustomFields(ctx, id, partial.CustomFields); err != nil {
+		return nil, err
+	}
+
 	return qb.find(ctx, id)
 }
 
-func (qb *TagStore) Update(ctx context.Context, updatedObject *models.Tag) error {
+func (qb *TagStore) Update(ctx context.Context, updatedObject *models.UpdateTagInput) error {
 	var r tagRow
-	r.fromTag(*updatedObject)
+	r.fromTag(*updatedObject.Tag)
 
 	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
 		return err
@@ -294,6 +339,10 @@ func (qb *TagStore) Update(ctx context.Context, updatedObject *models.Tag) error
 		if err := tagsStashIDsTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.StashIDs.List()); err != nil {
 			return err
 		}
+	}
+
+	if err := qb.SetCustomFields(ctx, updatedObject.ID, updatedObject.CustomFields); err != nil {
+		return err
 	}
 
 	return nil
@@ -373,6 +422,18 @@ func (qb *TagStore) find(ctx context.Context, id int) (*models.Tag, error) {
 	}
 
 	return ret, nil
+}
+
+func (qb *TagStore) findBySubquery(ctx context.Context, sq *goqu.SelectDataset) ([]*models.Tag, error) {
+	table := qb.table()
+
+	q := qb.selectDataset().Prepared(true).Where(
+		table.Col(idColumn).Eq(
+			sq,
+		),
+	)
+
+	return qb.getMany(ctx, q)
 }
 
 // returns nil, sql.ErrNoRows if not found
@@ -503,12 +564,12 @@ func (qb *TagStore) FindByStudioID(ctx context.Context, studioID int) ([]*models
 func (qb *TagStore) FindByName(ctx context.Context, name string, nocase bool) (*models.Tag, error) {
 	// query := "SELECT * FROM tags WHERE name = ?"
 	// if nocase {
-	// 	query += " COLLATE NOCASE"
+	// 	query += " COLLATE \"nocase\""
 	// }
 	// query += " LIMIT 1"
 	where := "name = ?"
 	if nocase {
-		where += " COLLATE NOCASE"
+		where += " COLLATE \"nocase\""
 	}
 	sq := qb.selectDataset().Prepared(true).Where(goqu.L(where, name)).Limit(1)
 	ret, err := qb.get(ctx, sq)
@@ -523,12 +584,12 @@ func (qb *TagStore) FindByName(ctx context.Context, name string, nocase bool) (*
 func (qb *TagStore) FindByNames(ctx context.Context, names []string, nocase bool) ([]*models.Tag, error) {
 	// query := "SELECT * FROM tags WHERE name"
 	// if nocase {
-	// 	query += " COLLATE NOCASE"
+	// 	query += " COLLATE \"nocase\""
 	// }
 	// query += " IN " + getInBinding(len(names))
 	where := "name"
 	if nocase {
-		where += " COLLATE NOCASE"
+		where += " COLLATE \"nocase\""
 	}
 	where += " IN " + getInBinding(len(names))
 	var args []interface{}
@@ -545,6 +606,27 @@ func (qb *TagStore) FindByNames(ctx context.Context, names []string, nocase bool
 	return ret, nil
 }
 
+func (qb *TagStore) FindByAlias(ctx context.Context, alias string, nocase bool) (*models.Tag, error) {
+	where := fmt.Sprintf("%s = ?", tagAliasColumn)
+	if nocase {
+		where += " COLLATE \"nocase\""
+	}
+	sq := dialect.From(tagsAliasesJoinTable).Select(
+		tagsAliasesJoinTable.Col(tagIDColumn),
+	).Prepared(true).Where(goqu.L(where, alias)).Limit(1)
+	ret, err := qb.findBySubquery(ctx, sq)
+
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	if len(ret) == 0 {
+		return nil, nil
+	}
+
+	return ret[0], nil
+}
+
 func (qb *TagStore) FindByStashID(ctx context.Context, stashID models.StashID) ([]*models.Tag, error) {
 	sq := dialect.From(tagsStashIDsJoinTable).Select(tagsStashIDsJoinTable.Col(tagIDColumn)).Where(
 		tagsStashIDsJoinTable.Col("stash_id").Eq(stashID.StashID),
@@ -558,6 +640,36 @@ func (qb *TagStore) FindByStashID(ctx context.Context, stashID models.StashID) (
 	ret, err := qb.getMany(ctx, idsQuery)
 	if err != nil {
 		return nil, fmt.Errorf("getting tags for stash ID %s: %w", stashID.StashID, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *TagStore) FindByStashIDStatus(ctx context.Context, hasStashID bool, stashboxEndpoint string) ([]*models.Tag, error) {
+	table := qb.table()
+	sq := dialect.From(table).LeftJoin(
+		tagsStashIDsJoinTable,
+		goqu.On(table.Col(idColumn).Eq(tagsStashIDsJoinTable.Col(tagIDColumn))),
+	).Select(table.Col(idColumn))
+
+	if hasStashID {
+		sq = sq.Where(
+			tagsStashIDsJoinTable.Col("stash_id").IsNotNull(),
+			tagsStashIDsJoinTable.Col("endpoint").Eq(stashboxEndpoint),
+		)
+	} else {
+		sq = sq.Where(
+			tagsStashIDsJoinTable.Col("stash_id").IsNull(),
+		)
+	}
+
+	idsQuery := qb.selectDataset().Where(
+		table.Col(idColumn).In(sq),
+	)
+
+	ret, err := qb.getMany(ctx, idsQuery)
+	if err != nil {
+		return nil, fmt.Errorf("getting tags for stash-box endpoint %s: %w", stashboxEndpoint, err)
 	}
 
 	return ret, nil
@@ -618,7 +730,7 @@ func (qb *TagStore) All(ctx context.Context) ([]*models.Tag, error) {
 	table := qb.table()
 
 	return qb.getMany(ctx, qb.selectDataset().Order(
-		goqu.L("COALESCE(tags.sort_name, tags.name) COLLATE NATURAL_CI").Asc(),
+		goqu.L("COALESCE(tags.sort_name, tags.name) COLLATE \"natural_ci\"").Asc(),
 		table.Col(idColumn).Asc(),
 	))
 }
@@ -634,11 +746,11 @@ func (qb *TagStore) QueryForAutoTag(ctx context.Context, words []string) ([]*mod
 
 	for _, w := range words {
 		ww := w + "%"
-		whereClauses = append(whereClauses, "tags.name ILIKE ?")
+		whereClauses = append(whereClauses, "tags.name ILIKE ? ESCAPE ''")
 		args = append(args, ww)
 
 		// include aliases
-		whereClauses = append(whereClauses, "tag_aliases.alias ILIKE ?")
+		whereClauses = append(whereClauses, "tag_aliases.alias ILIKE ? ESCAPE ''")
 		args = append(args, ww)
 	}
 
@@ -698,11 +810,13 @@ func (qb *TagStore) Query(ctx context.Context, tagFilter *models.TagFilterType, 
 
 var tagSortOptions = sortOptions{
 	"created_at",
+	"favorite",
 	"galleries_count",
 	"groups_count",
 	"id",
 	"images_count",
 	"movies_count",
+	"rating",
 	"studios_count",
 	"name",
 	"performers_count",
@@ -710,6 +824,7 @@ var tagSortOptions = sortOptions{
 	"scene_markers_count",
 	"scenes_count",
 	"scenes_duration",
+	"scenes_size",
 	"updated_at",
 }
 
@@ -722,6 +837,17 @@ func (qb *TagStore) sortByScenesDuration(direction string) string {
 		LEFT JOIN video_files ON video_files.file_id = %s.file_id
 		WHERE %s.%s = %s.id
 	) %s`, scenesTagsTable, sceneTable, sceneTable, scenesTagsTable, sceneIDColumn, scenesFilesTable, scenesFilesTable, sceneIDColumn, sceneTable, scenesFilesTable, scenesTagsTable, tagIDColumn, tagTable, getSortDirection(direction))
+}
+
+func (qb *TagStore) sortByScenesSize(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		SELECT COALESCE(SUM(%s.size), 0)
+		FROM %s
+		LEFT JOIN %s ON %s.id = %s.%s
+		LEFT JOIN %s ON %s.%s = %s.id
+		LEFT JOIN %s ON %s.id = %s.file_id
+		WHERE %s.%s = %s.id
+	) %s`, fileTable, scenesTagsTable, sceneTable, sceneTable, scenesTagsTable, sceneIDColumn, scenesFilesTable, scenesFilesTable, sceneIDColumn, sceneTable, fileTable, fileTable, scenesFilesTable, scenesTagsTable, tagIDColumn, tagTable, getSortDirection(direction))
 }
 
 func (qb *TagStore) getDefaultTagSort() (string, []string) {
@@ -748,11 +874,13 @@ func (qb *TagStore) getTagSort(query *queryBuilder, findFilter *models.FindFilte
 	sortQuery := ""
 	switch sort {
 	case "name":
-		sortQuery += fmt.Sprintf(" ORDER BY COALESCE(tags.sort_name, tags.name) COLLATE NATURAL_CI %s", getSortDirection(direction))
+		sortQuery += fmt.Sprintf(" ORDER BY COALESCE(tags.sort_name, tags.name) COLLATE \"natural_ci\" %s", getSortDirection(direction))
 	case "scenes_count":
 		sortQuery += getCountSort(tagTable, scenesTagsTable, tagIDColumn, direction)
 	case "scenes_duration":
 		sortQuery += qb.sortByScenesDuration(direction)
+	case "scenes_size":
+		sortQuery += qb.sortByScenesSize(direction)
 	case "scene_markers_count":
 		sortQuery += fmt.Sprintf(" ORDER BY (SELECT COUNT(*) FROM scene_markers_tags WHERE tags.id = scene_markers_tags.tag_id)+(SELECT COUNT(*) FROM scene_markers WHERE tags.id = scene_markers.primary_tag_id) %s", getSortDirection(direction))
 	case "images_count":
@@ -772,7 +900,7 @@ func (qb *TagStore) getTagSort(query *queryBuilder, findFilter *models.FindFilte
 	}
 
 	// Whatever the sorting, always use sort_name/name/id as a final sort
-	sortQuery += ", COALESCE(tags.name, CAST(tags.id as text)) COLLATE NATURAL_CI ASC"
+	sortQuery += ", COALESCE(tags.name, CAST(tags.id as text)) COLLATE \"natural_ci\" ASC"
 	group = append(group, "tags.name", "tags.id")
 	return sortQuery, group, nil
 }
@@ -835,6 +963,12 @@ func (qb *TagStore) destroyImage(ctx context.Context, tagID int) error {
 
 func (qb *TagStore) GetAliases(ctx context.Context, tagID int) ([]string, error) {
 	return tagRepository.aliases.get(ctx, tagID)
+}
+
+// GetAllAliases returns a map of tag id to its aliases. Lets callers that
+// need aliases for many tags avoid N+1 per-id lookups.
+func (qb *TagStore) GetAllAliases(ctx context.Context) (map[int][]string, error) {
+	return tagRepository.aliases.getAll(ctx)
 }
 
 func (qb *TagStore) UpdateAliases(ctx context.Context, tagID int, aliases []string) error {

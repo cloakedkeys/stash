@@ -1,5 +1,5 @@
-//go:build db_integration
-// +build db_integration
+//go:build integration
+// +build integration
 
 package database_test
 
@@ -917,7 +917,7 @@ func Test_GalleryStore_UpdatePartialCustomFields(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		qb := db.Gallery
+		qb := db.Gallery()
 
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
@@ -1650,7 +1650,7 @@ func TestGalleryQueryParentFolderExcludes(t *testing.T) {
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
-			galleries, count, err := db.Gallery.Query(ctx, &models.GalleryFilterType{
+			galleries, count, err := db.Gallery().Query(ctx, &models.GalleryFilterType{
 				ParentFolder: &models.HierarchicalMultiCriterionInput{
 					Value: []string{
 						strconv.Itoa(int(folderIDs[tt.folderIdx])),
@@ -2825,7 +2825,7 @@ func TestGalleryQueryOCounter(t *testing.T) {
 
 func verifyGalleriesOCounter(t *testing.T, oCounterCriterion models.IntCriterionInput) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Gallery
+		sqb := db.Gallery()
 		galleryFilter := models.GalleryFilterType{
 			OCounter: &oCounterCriterion,
 		}
@@ -2850,7 +2850,7 @@ func TestGalleryQuerySortOCounter(t *testing.T) {
 			Direction: &direction,
 		}
 
-		galleries := queryGallery(ctx, t, db.Gallery, nil, findFilter)
+		galleries := queryGallery(ctx, t, db.Gallery(), nil, findFilter)
 		if assert.Greater(t, len(galleries), 1) {
 			assert.Equal(t, 2, galleries[0].OCounter)
 			for i := 1; i < len(galleries); i++ {
@@ -2859,7 +2859,7 @@ func TestGalleryQuerySortOCounter(t *testing.T) {
 		}
 
 		direction = models.SortDirectionEnumAsc
-		galleries = queryGallery(ctx, t, db.Gallery, nil, findFilter)
+		galleries = queryGallery(ctx, t, db.Gallery(), nil, findFilter)
 		if assert.Greater(t, len(galleries), 1) {
 			assert.Equal(t, 0, galleries[0].OCounter)
 			for i := 1; i < len(galleries); i++ {
@@ -2892,7 +2892,7 @@ func Test_galleryQueryBuilder_IncrementOCounter(t *testing.T) {
 		},
 	}
 
-	qb := db.Gallery
+	qb := db.Gallery()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -2935,7 +2935,7 @@ func Test_galleryQueryBuilder_DecrementOCounter(t *testing.T) {
 		},
 	}
 
-	qb := db.Gallery
+	qb := db.Gallery()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -2978,7 +2978,7 @@ func Test_galleryQueryBuilder_ResetOCounter(t *testing.T) {
 		},
 	}
 
-	qb := db.Gallery
+	qb := db.Gallery()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -3162,12 +3162,12 @@ func TestGalleryQuerySortingPerformerAgeNullHandling(t *testing.T) {
 			Name:      "performer-known-birthdate",
 			Birthdate: &knownBirthdate,
 		}
-		require.NoError(t, db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &knownPerformer}))
+		require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &knownPerformer}))
 
 		unknownPerformer := models.Performer{
 			Name: "performer-unknown-birthdate",
 		}
-		require.NoError(t, db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &unknownPerformer}))
+		require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &unknownPerformer}))
 
 		knownOnlyGallery := models.Gallery{
 			Title: "gallery-known-only",
@@ -3176,7 +3176,7 @@ func TestGalleryQuerySortingPerformerAgeNullHandling(t *testing.T) {
 				knownPerformer.ID,
 			}),
 		}
-		require.NoError(t, db.Gallery.Create(ctx, &models.CreateGalleryInput{Gallery: &knownOnlyGallery}))
+		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &knownOnlyGallery}))
 
 		mixedGallery := models.Gallery{
 			Title: "gallery-known-and-unknown",
@@ -3186,7 +3186,7 @@ func TestGalleryQuerySortingPerformerAgeNullHandling(t *testing.T) {
 				unknownPerformer.ID,
 			}),
 		}
-		require.NoError(t, db.Gallery.Create(ctx, &models.CreateGalleryInput{Gallery: &mixedGallery}))
+		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &mixedGallery}))
 
 		unknownOnlyGallery := models.Gallery{
 			Title: "gallery-unknown-only",
@@ -3195,7 +3195,7 @@ func TestGalleryQuerySortingPerformerAgeNullHandling(t *testing.T) {
 				unknownPerformer.ID,
 			}),
 		}
-		require.NoError(t, db.Gallery.Create(ctx, &models.CreateGalleryInput{Gallery: &unknownOnlyGallery}))
+		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &unknownOnlyGallery}))
 
 		findIndex := func(galleries []*models.Gallery, id int) int {
 			for i, g := range galleries {
@@ -3208,7 +3208,8 @@ func TestGalleryQuerySortingPerformerAgeNullHandling(t *testing.T) {
 
 		asc := models.SortDirectionEnumAsc
 		sortBy := "performer_age"
-		ascGot, _, err := db.Gallery.Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &asc})
+		perPage := -1
+		ascGot, _, err := db.Gallery().Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &asc, PerPage: &perPage})
 		require.NoError(t, err)
 
 		ascKnownOnly := findIndex(ascGot, knownOnlyGallery.ID)
@@ -3221,7 +3222,7 @@ func TestGalleryQuerySortingPerformerAgeNullHandling(t *testing.T) {
 		assert.Less(ascMixed, ascUnknownOnly)
 
 		desc := models.SortDirectionEnumDesc
-		descGot, _, err := db.Gallery.Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &desc})
+		descGot, _, err := db.Gallery().Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &desc, PerPage: &perPage})
 		require.NoError(t, err)
 
 		descKnownOnly := findIndex(descGot, knownOnlyGallery.ID)
@@ -3251,9 +3252,9 @@ func TestGalleryQuerySortingPerformerAgeMultiPerformerAggregation(t *testing.T) 
 		young := models.Performer{Name: "performer-young", Birthdate: &youngBirthdate}
 		mid := models.Performer{Name: "performer-mid", Birthdate: &midBirthdate}
 		old := models.Performer{Name: "performer-old", Birthdate: &oldBirthdate}
-		require.NoError(t, db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &young}))
-		require.NoError(t, db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &mid}))
-		require.NoError(t, db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &old}))
+		require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &young}))
+		require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &mid}))
+		require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &old}))
 
 		galleryYoungAndOld := models.Gallery{
 			Title: "gallery-young-and-old",
@@ -3263,7 +3264,7 @@ func TestGalleryQuerySortingPerformerAgeMultiPerformerAggregation(t *testing.T) 
 				old.ID,
 			}),
 		}
-		require.NoError(t, db.Gallery.Create(ctx, &models.CreateGalleryInput{Gallery: &galleryYoungAndOld}))
+		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &galleryYoungAndOld}))
 
 		galleryMidOnly := models.Gallery{
 			Title: "gallery-mid-only",
@@ -3272,7 +3273,7 @@ func TestGalleryQuerySortingPerformerAgeMultiPerformerAggregation(t *testing.T) 
 				mid.ID,
 			}),
 		}
-		require.NoError(t, db.Gallery.Create(ctx, &models.CreateGalleryInput{Gallery: &galleryMidOnly}))
+		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &galleryMidOnly}))
 
 		findIndex := func(galleries []*models.Gallery, id int) int {
 			for i, g := range galleries {
@@ -3285,7 +3286,7 @@ func TestGalleryQuerySortingPerformerAgeMultiPerformerAggregation(t *testing.T) 
 
 		sortBy := "performer_age"
 		asc := models.SortDirectionEnumAsc
-		ascGot, _, err := db.Gallery.Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &asc})
+		ascGot, _, err := db.Gallery().Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &asc})
 		require.NoError(t, err)
 		ascYoungAndOld := findIndex(ascGot, galleryYoungAndOld.ID)
 		ascMidOnly := findIndex(ascGot, galleryMidOnly.ID)
@@ -3295,7 +3296,7 @@ func TestGalleryQuerySortingPerformerAgeMultiPerformerAggregation(t *testing.T) 
 		assert.Less(ascYoungAndOld, ascMidOnly)
 
 		desc := models.SortDirectionEnumDesc
-		descGot, _, err := db.Gallery.Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &desc})
+		descGot, _, err := db.Gallery().Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &desc})
 		require.NoError(t, err)
 		descYoungAndOld := findIndex(descGot, galleryYoungAndOld.ID)
 		descMidOnly := findIndex(descGot, galleryMidOnly.ID)
@@ -3739,7 +3740,7 @@ func TestGalleryQueryCustomFields(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			galleries, _, err := db.Gallery.Query(ctx, tt.filter, nil)
+			galleries, _, err := db.Gallery().Query(ctx, tt.filter, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GalleryStore.Query() error = %v, wantErr %v", err, tt.wantErr)
 			}

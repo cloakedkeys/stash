@@ -244,6 +244,10 @@ func (s *customFieldsStore) GetCustomFieldsBulk(ctx context.Context, ids []int) 
 
 	const single = false
 	ret := make([]models.CustomFieldMap, len(ids))
+	// initialise ret with empty maps for each id
+	for i := range ret {
+		ret[i] = make(map[string]interface{})
+	}
 
 	idi := make(map[int]int, len(ids))
 	for i, id := range ids {
@@ -307,18 +311,18 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("%s ILIKE %s", valueAsString, getInBinding(len(cv))), cv...)
 	case models.CriterionModifierNotEquals:
-		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("%s NOT ILIKE %s", valueAsString, getInBinding(len(cv))), cv...)
+		h.leftJoin(f, joinAs, cc.Field)
+		f.addWhere(fmt.Sprintf("(%s NOT IN %s OR %s.value IS NULL)", valueAsString, getInBinding(len(cv)), joinAs), cv...)
 	case models.CriterionModifierIncludes:
 		clauses := make([]sqlClause, len(cv))
 		for i, v := range cv {
-			clauses[i] = makeClause(fmt.Sprintf("%s ILIKE ?", valueAsString), fmt.Sprintf("%%%v%%", v))
+			clauses[i] = makeClause(fmt.Sprintf("%s ILIKE ? ESCAPE ''", valueAsString), fmt.Sprintf("%%%v%%", v))
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 		f.whereClauses = append(f.whereClauses, clauses...)
 	case models.CriterionModifierExcludes:
 		for _, v := range cv {
-			f.addWhere(fmt.Sprintf("%s NOT ILIKE ?", valueAsString), fmt.Sprintf("%%%v%%", v))
+			f.addWhere(fmt.Sprintf("(%s NOT ILIKE ? OR %s.value IS NULL)", valueAsString, joinAs), fmt.Sprintf("%%%v%%", v))
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierMatchesRegex:
@@ -362,9 +366,8 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 		f.addWhere(valueIsNumber)
 		f.addWhere(fmt.Sprintf("%s BETWEEN ? AND ?", valueAsNumber), cv[0], cv[1])
 	case models.CriterionModifierNotBetween:
-		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(valueIsNumber)
-		f.addWhere(fmt.Sprintf("%s NOT BETWEEN ? AND ?", valueAsNumber), cv[0], cv[1])
+		h.leftJoin(f, joinAs, cc.Field)
+		f.addWhere(fmt.Sprintf("((%s AND %s NOT BETWEEN ? AND ?) OR %s.value IS NULL)", valueIsNumber, valueAsNumber, joinAs), cv[0], cv[1])
 	case models.CriterionModifierLessThan:
 		if len(cv) != 1 {
 			f.setError(fmt.Errorf("expected 1 value for custom field criterion modifier LESS_THAN, got %d", len(cv)))

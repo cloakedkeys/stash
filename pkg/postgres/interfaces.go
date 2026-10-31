@@ -1,6 +1,9 @@
 package postgres
 
-import "github.com/stashapp/stash/pkg/database"
+import (
+	"github.com/stashapp/stash/pkg/database"
+	"github.com/stashapp/stash/pkg/models"
+)
 
 func (db *Database) Blobs() database.BlobStore {
 	return db.storeRepository.Blobs
@@ -44,3 +47,5 @@ func (db *Database) Group() database.GroupStore {
 func (db *Database) NewMigrator() (database.MigrateStore, error) {
 	return NewMigrator(db)
 }
+
+func (db *Database) VoiceActor() models.VoiceActorReaderWriter { return db.storeRepository.VoiceActor }

@@ -26,6 +26,7 @@ const (
 	sceneTable            = "scenes"
 	scenesFilesTable      = "scenes_files"
 	sceneIDColumn         = "scene_id"
+	sceneDateColumn       = "date"
 	performersScenesTable = "performers_scenes"
 	scenesTagsTable       = "scenes_tags"
 	scenesGalleriesTable  = "scenes_galleries"
@@ -40,57 +41,32 @@ const (
 	sceneCoverBlobColumn = "cover_blob"
 )
 
-var findExactDuplicateQuery = `
-SELECT STRING_AGG(DISTINCT scene_id::TEXT, ',') as ids
-FROM (
-	SELECT scenes.id as scene_id
-		, video_files.duration as file_duration
-		, files.size as file_size
-		, files_fingerprints.fingerprint as phash
-		, abs(max(video_files.duration) OVER (PARTITION by files_fingerprints.fingerprint) - video_files.duration) as durationDiff
-	FROM scenes
-	INNER JOIN scenes_files ON (scenes.id = scenes_files.scene_id)
-	INNER JOIN files ON (scenes_files.file_id = files.id)
-	INNER JOIN files_fingerprints ON (scenes_files.file_id = files_fingerprints.file_id AND files_fingerprints.type = 'phash')
-	INNER JOIN video_files ON (files.id = video_files.file_id)
-) as subq
-WHERE durationDiff <= $1
-    OR $1 < 0   --  Always TRUE if the parameter is negative.
-                --  That will disable the durationDiff checking.
-GROUP BY phash
-HAVING COUNT(phash) > 1
-	AND COUNT(DISTINCT scene_id) > 1
-ORDER BY SUM(file_size) DESC;
-`
-
-var findAllPhashesQuery = `
-SELECT scenes.id as id
-    , files_fingerprints.fingerprint as phash
-    , video_files.duration as duration
-FROM scenes
-INNER JOIN scenes_files ON (scenes.id = scenes_files.scene_id)
-INNER JOIN files ON (scenes_files.file_id = files.id)
-INNER JOIN files_fingerprints ON (scenes_files.file_id = files_fingerprints.file_id AND files_fingerprints.type = 'phash')
-INNER JOIN video_files ON (files.id = video_files.file_id)
-ORDER BY files.size DESC;
-`
+// sceneAgeDateExpr is the scene date used when calculating a performer's age
+// for a scene. The production date is when the scene was actually shot, so it
+// is preferred over the release date where one is set. NULLIF is needed because
+// dates are stored as empty strings in some older databases, and an empty
+// production date must not mask a valid release date.
+const sceneAgeDateExpr = "COALESCE(scenes.production_date, scenes.date)"
 
 type sceneRow struct {
-	ID            int         `db:"id" goqu:"skipinsert"`
-	Title         zero.String `db:"title"`
-	Code          zero.String `db:"code"`
-	Details       zero.String `db:"details"`
-	Director      zero.String `db:"director"`
-	Date          NullDate    `db:"date"`
-	DatePrecision null.Int    `db:"date_precision"`
+	ID                      int         `db:"id" goqu:"skipinsert"`
+	Title                   zero.String `db:"title"`
+	Code                    zero.String `db:"code"`
+	Details                 zero.String `db:"details"`
+	Director                zero.String `db:"director"`
+	Date                    NullDate    `db:"date"`
+	DatePrecision           null.Int    `db:"date_precision"`
+	ProductionDate          NullDate    `db:"production_date"`
+	ProductionDatePrecision null.Int    `db:"production_date_precision"`
 	// expressed as 1-100
-	Rating       null.Int  `db:"rating"`
-	Organized    bool      `db:"organized"`
-	StudioID     null.Int  `db:"studio_id,omitempty"`
-	CreatedAt    Timestamp `db:"created_at"`
-	UpdatedAt    Timestamp `db:"updated_at"`
-	ResumeTime   float64   `db:"resume_time"`
-	PlayDuration float64   `db:"play_duration"`
+	Rating         null.Int  `db:"rating"`
+	Organized      bool      `db:"organized"`
+	CoverGenerated bool      `db:"cover_generated"`
+	StudioID       null.Int  `db:"studio_id,omitempty"`
+	CreatedAt      Timestamp `db:"created_at"`
+	UpdatedAt      Timestamp `db:"updated_at"`
+	ResumeTime     float64   `db:"resume_time"`
+	PlayDuration   float64   `db:"play_duration"`
 
 	// not used in resolutions or updates
 	CoverBlob zero.String `db:"cover_blob"`
@@ -104,8 +80,11 @@ func (r *sceneRow) fromScene(o models.Scene) {
 	r.Director = zero.StringFrom(o.Director)
 	r.Date = NullDateFromDatePtr(o.Date)
 	r.DatePrecision = datePrecisionFromDatePtr(o.Date)
+	r.ProductionDate = NullDateFromDatePtr(o.ProductionDate)
+	r.ProductionDatePrecision = datePrecisionFromDatePtr(o.ProductionDate)
 	r.Rating = intFromPtr(o.Rating)
 	r.Organized = o.Organized
+	r.CoverGenerated = o.CoverGenerated
 	r.StudioID = intFromPtr(o.StudioID)
 	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
@@ -124,15 +103,17 @@ type sceneQueryRow struct {
 
 func (r *sceneQueryRow) resolve() *models.Scene {
 	ret := &models.Scene{
-		ID:        r.ID,
-		Title:     r.Title.String,
-		Code:      r.Code.String,
-		Details:   r.Details.String,
-		Director:  r.Director.String,
-		Date:      r.Date.DatePtr(r.DatePrecision),
-		Rating:    nullIntPtr(r.Rating),
-		Organized: r.Organized,
-		StudioID:  nullIntPtr(r.StudioID),
+		ID:             r.ID,
+		Title:          r.Title.String,
+		Code:           r.Code.String,
+		Details:        r.Details.String,
+		Director:       r.Director.String,
+		Date:           r.Date.DatePtr(r.DatePrecision),
+		ProductionDate: r.ProductionDate.DatePtr(r.ProductionDatePrecision),
+		Rating:         nullIntPtr(r.Rating),
+		Organized:      r.Organized,
+		CoverGenerated: r.CoverGenerated,
+		StudioID:       nullIntPtr(r.StudioID),
 
 		PrimaryFileID: nullIntFileIDPtr(r.PrimaryFileID),
 		OSHash:        r.PrimaryFileOshash.String,
@@ -162,8 +143,10 @@ func (r *sceneRowRecord) fromPartial(o models.ScenePartial) {
 	r.setNullString("details", o.Details)
 	r.setNullString("director", o.Director)
 	r.setNullDate("date", "date_precision", o.Date)
+	r.setNullDate("production_date", "production_date_precision", o.ProductionDate)
 	r.setNullInt("rating", o.Rating)
 	r.setBool("organized", o.Organized)
+	r.setBool("cover_generated", o.CoverGenerated)
 	r.setNullInt("studio_id", o.StudioID)
 	r.setTimestamp("created_at", o.CreatedAt)
 	r.setTimestamp("updated_at", o.UpdatedAt)
@@ -233,6 +216,7 @@ var (
 
 type SceneStore struct {
 	blobJoinQueryBuilder
+	customFieldsStore
 
 	tableMgr *table
 	oDateManager
@@ -246,6 +230,10 @@ func NewSceneStore(r *storeRepository, blobStore *BlobStore) *SceneStore {
 		blobJoinQueryBuilder: blobJoinQueryBuilder{
 			blobStore: blobStore,
 			joinTable: sceneTable,
+		},
+		customFieldsStore: customFieldsStore{
+			table: scenesCustomFieldsTable,
+			fk:    scenesCustomFieldsTable.Col(sceneIDColumn),
 		},
 
 		tableMgr:        sceneTableMgr,
@@ -654,6 +642,38 @@ func (qb *SceneStore) FindByFileID(ctx context.Context, fileID models.FileID) ([
 	return ret, nil
 }
 
+func (qb *SceneStore) GetManyIDsByFileIDs(ctx context.Context, fileIDs []models.FileID) ([][]int, error) {
+	sq := dialect.From(scenesFilesJoinTable).Select(scenesFilesJoinTable.Col(sceneIDColumn), scenesFilesJoinTable.Col(fileIDColumn)).Where(
+		scenesFilesJoinTable.Col(fileIDColumn).In(fileIDs),
+	)
+
+	sql, args, err := sq.ToSQL()
+	if err != nil {
+		return nil, fmt.Errorf("building query: %w", err)
+	}
+
+	var results []struct {
+		SceneID int           `db:"scene_id"`
+		FileID  models.FileID `db:"file_id"`
+	}
+
+	if err := querySelect(ctx, sql, args, &results); err != nil {
+		return nil, fmt.Errorf("getting scenes by file ids %v: %w", fileIDs, err)
+	}
+
+	retMap := make(map[models.FileID][]int)
+	for _, r := range results {
+		retMap[r.FileID] = append(retMap[r.FileID], r.SceneID)
+	}
+
+	ret := make([][]int, len(fileIDs))
+	for i, id := range fileIDs {
+		ret[i] = retMap[id]
+	}
+
+	return ret, nil
+}
+
 func (qb *SceneStore) FindByPrimaryFileID(ctx context.Context, fileID models.FileID) ([]*models.Scene, error) {
 	sq := dialect.From(scenesFilesJoinTable).Select(scenesFilesJoinTable.Col(sceneIDColumn)).Where(
 		scenesFilesJoinTable.Col(fileIDColumn).Eq(fileID),
@@ -726,20 +746,25 @@ func (qb *SceneStore) FindByPath(ctx context.Context, p string) ([]*models.Scene
 	basename := filepath.Base(p)
 	dir := filepath.Dir(p)
 
-	// replace wildcards
-	basename = strings.ReplaceAll(basename, "*", "%")
-	dir = strings.ReplaceAll(dir, "*", "%")
-
 	sq := dialect.From(scenesFilesJoinTable).InnerJoin(
 		filesTable,
 		goqu.On(filesTable.Col(idColumn).Eq(scenesFilesJoinTable.Col(fileIDColumn))),
 	).InnerJoin(
 		foldersTable,
 		goqu.On(foldersTable.Col(idColumn).Eq(filesTable.Col("parent_folder_id"))),
-	).Select(scenesFilesJoinTable.Col(sceneIDColumn)).Where(
-		foldersTable.Col("path").Like(dir),
-		filesTable.Col("basename").Like(basename),
-	)
+	).Select(scenesFilesJoinTable.Col(sceneIDColumn))
+
+	if pathHasWildcard(basename) || pathHasWildcard(dir) {
+		sq = sq.Where(
+			pathLike(foldersTable.Col("path"), dir),
+			pathLike(filesTable.Col("basename"), basename),
+		)
+	} else {
+		sq = sq.Where(
+			pathEqNoCase(foldersTable.Col("path"), dir),
+			pathEqNoCase(filesTable.Col("basename"), basename),
+		)
+	}
 
 	ret, err := qb.findBySubquery(ctx, sq)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -828,7 +853,13 @@ func (qb *SceneStore) OCountByGroupID(ctx context.Context, groupID int) (int, er
 	return ret, nil
 }
 
-func (qb *SceneStore) OCountByStudioID(ctx context.Context, studioID int) (int, error) {
+func (qb *SceneStore) OCountByStudioID(ctx context.Context, studioID int, depth int) (int, error) {
+	var ret int
+
+	if depth != 0 {
+		return qb.oCountByStudioIDRecursive(ctx, studioID, depth)
+	}
+
 	table := qb.table()
 	oHistoryTable := goqu.T(scenesODatesTable)
 
@@ -837,11 +868,41 @@ func (qb *SceneStore) OCountByStudioID(ctx context.Context, studioID int) (int, 
 		goqu.On(table.Col(idColumn).Eq(oHistoryTable.Col(sceneIDColumn))),
 	).Where(table.Col(studioIDColumn).Eq(studioID))
 
-	var ret int
 	if err := querySimple(ctx, q, &ret); err != nil {
 		return 0, err
 	}
 
+	return ret, nil
+}
+
+func (qb *SceneStore) oCountByStudioIDRecursive(ctx context.Context, studioID int, depth int) (int, error) {
+	q := `
+	WITH RECURSIVE sub_studios AS (
+		SELECT id, 0 AS level FROM studios WHERE id = ?
+		UNION ALL
+		SELECT s.id, ss.level + 1 FROM studios s
+		INNER JOIN sub_studios ss ON s.parent_id = ss.id
+		WHERE ss.level < ? OR ? < 0
+	)
+	SELECT COUNT(*) FROM scenes
+	INNER JOIN scenes_o_dates ON scenes.id = scenes_o_dates.scene_id
+	WHERE scenes.studio_id IN (SELECT id FROM sub_studios)`
+
+	rows, err := dbWrapper.QueryxContext(ctx, q, studioID, depth, depth)
+	if err != nil {
+		return 0, fmt.Errorf("querying scene o_count by studio: %w", err)
+	}
+	defer rows.Close()
+
+	var ret int
+	for rows.Next() {
+		if err := rows.Scan(&ret); err != nil {
+			return 0, fmt.Errorf("scanning scene o_count: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterating scene o_count rows: %w", err)
+	}
 	return ret, nil
 }
 
@@ -988,7 +1049,7 @@ func (qb *SceneStore) makeQuery(ctx context.Context, sceneFilter *models.SceneFi
 		query.addJoins(
 			join{
 				table:    scenesFilesTable,
-				onClause: "scenes_files.scene_id = scenes.id AND scenes_files.\"primary\" = true",
+				onClause: "scenes_files.scene_id = scenes.id",
 			},
 			join{
 				table:    fileTable,
@@ -1008,7 +1069,7 @@ func (qb *SceneStore) makeQuery(ctx context.Context, sceneFilter *models.SceneFi
 			},
 		)
 
-		filepathColumn := "folders.path || '" + string(filepath.Separator) + "' || files.basename"
+		filepathColumn := "COALESCE(folders.path, '') || '" + string(filepath.Separator) + "' || COALESCE(files.basename, '')"
 		searchColumns := []string{"scenes.title", "scenes.details", filepathColumn, "files_fingerprints.fingerprint", "scene_markers.title"}
 		query.parseQueryString(searchColumns, *q)
 	}
@@ -1040,72 +1101,87 @@ func (qb *SceneStore) Query(ctx context.Context, options models.SceneQueryOption
 		return nil, fmt.Errorf("error querying aggregate fields: %w", err)
 	}
 
+	idsResult, err := query.findIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error finding IDs: %w", err)
+	}
+
+	result.IDs = idsResult
 	return result, nil
 }
 
 func (qb *SceneStore) queryGroupedFields(ctx context.Context, options models.SceneQueryOptions, query queryBuilder) (*models.SceneQueryResult, error) {
-	// Add necessary joins and columns for aggregation
-	if options.Count {
-		query.addColumn("COUNT(*) OVER () AS total_count")
+	if !options.Count && !options.TotalDuration && !options.TotalSize {
+		// nothing to do - return empty result
+		return models.NewSceneQueryResult(qb), nil
 	}
+
+	aggregateQuery := sceneRepository.newQuery()
+
+	if options.Count {
+		aggregateQuery.addColumn("COUNT(DISTINCT temp.id) as total")
+	}
+
 	if options.TotalDuration {
 		query.addJoins(
 			join{
 				table:    scenesFilesTable,
-				onClause: "scenes_files.scene_id = scenes.id AND scenes_files.\"primary\" = true",
+				onClause: "scenes_files.scene_id = scenes.id",
 			},
 			join{
 				table:    videoFileTable,
 				onClause: "scenes_files.file_id = video_files.file_id",
 			},
 		)
-		query.addGroupBy("video_files.duration")
-		query.addColumn("SUM(COALESCE(files.size, 0)) OVER () AS total_size")
+		query.addColumn("COALESCE(video_files.duration, 0) as duration")
+		aggregateQuery.addColumn("SUM(temp.duration) as duration")
 	}
+
 	if options.TotalSize {
 		query.addJoins(
 			join{
 				table:    scenesFilesTable,
-				onClause: "scenes_files.scene_id = scenes.id AND scenes_files.\"primary\" = true",
+				onClause: "scenes_files.scene_id = scenes.id",
 			},
 			join{
 				table:    fileTable,
 				onClause: "scenes_files.file_id = files.id",
 			},
 		)
-		query.addGroupBy("files.size")
-		query.addColumn("SUM(COALESCE(video_files.duration, 0)) OVER () AS total_custom")
+		query.addColumn("COALESCE(files.size, 0) as size")
+		aggregateQuery.addColumn("SUM(temp.size) as size")
 	}
 
-	// Support counting only
-	const includeSortPagination = true
-	var countOnly = options.FindFilter != nil && options.FindFilter.IsCounting()
+	// #5503 - select the file id so equal-sized/duration files aren't collapsed by DISTINCT
+	if options.TotalDuration || options.TotalSize {
+		query.addColumn(scenesFilesTable + ".file_id")
+	}
 
-	// Execute aggregate query
-	var obj *RowsWithCounts
-	var err error
-	if obj, err = sceneRepository.runIdsWithCount(ctx, query.toSQL(includeSortPagination), query.args); err != nil {
+	const includeSortPagination = false
+	if options.TotalDuration {
+		query.addGroupBy("video_files.duration")
+	}
+	if options.TotalSize {
+		query.addGroupBy("files.size")
+	}
+	if options.TotalDuration || options.TotalSize {
+		query.addGroupBy("scenes_files.file_id")
+	}
+	aggregateQuery.from = fmt.Sprintf("(%s) as temp", query.toSQL(includeSortPagination))
+
+	out := struct {
+		Total    int
+		Duration null.Float
+		Size     null.Float
+	}{}
+	if err := sceneRepository.queryStruct(ctx, aggregateQuery.toSQL(includeSortPagination), query.allArgs(), &out); err != nil {
 		return nil, err
 	}
 
-	// Prepare result
 	ret := models.NewSceneQueryResult(qb)
-	if len(obj.IDs) == 0 {
-		return ret, nil
-	}
-
-	if !countOnly {
-		ret.IDs = obj.IDs
-	}
-	if options.Count {
-		ret.Count = int(obj.TotalCount.Int64)
-	}
-	if options.TotalSize {
-		ret.TotalSize = obj.TotalSize.Float64
-	}
-	if options.TotalDuration {
-		ret.TotalDuration = obj.TotalCustom.Float64
-	}
+	ret.Count = out.Total
+	ret.TotalDuration = out.Duration.Float64
+	ret.TotalSize = out.Size.Float64
 	return ret, nil
 }
 
@@ -1123,6 +1199,7 @@ var sceneSortOptions = sortOptions{
 	"created_at",
 	"code",
 	"date",
+	"production_date",
 	"file_count",
 	"filesize",
 	"duration",
@@ -1168,7 +1245,7 @@ func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindF
 			join{
 				sort:     true,
 				table:    scenesFilesTable,
-				onClause: "scenes_files.scene_id = scenes.id AND scenes_files.\"primary\" = true",
+				onClause: "scenes_files.scene_id = scenes.id",
 			},
 			join{
 				sort:     true,
@@ -1221,7 +1298,7 @@ func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindF
 		// special handling for path
 		addFileTable()
 		addFolderTable()
-		query.sort += fmt.Sprintf(" ORDER BY COALESCE(folders.path, '') || COALESCE(files.basename, '') COLLATE NATURAL_CI %s", direction)
+		query.sort += fmt.Sprintf(" ORDER BY COALESCE(folders.path, '') || COALESCE(files.basename, '') COLLATE \"natural_ci\" %s", direction)
 		query.addGroupBy("folders.path", "files.basename")
 	case "perceptual_similarity":
 		// special handling for phash
@@ -1259,10 +1336,7 @@ func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindF
 		addVideoFileTable()
 		query.sort += fmt.Sprintf(" ORDER BY MIN(%s.width, %s.height) %s", videoFileTable, videoFileTable, getSortDirection(direction))
 	case "filesize":
-		addFileTable()
-		add, agg := getSort(sort, direction, fileTable)
-		query.sort += add
-		query.addGroupBy(agg...)
+		query.sort += getFileSizeSort(sceneTable, scenesFilesTable, sceneIDColumn, direction)
 	case "duration":
 		addVideoFileTable()
 		add, agg := getSort(sort, direction, videoFileTable)
@@ -1276,7 +1350,7 @@ func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindF
 	case "title":
 		addFileTable()
 		addFolderTable()
-		query.sort += " ORDER BY COALESCE(scenes.title, files.basename) COLLATE NATURAL_CI " + direction + ", folders.path COLLATE NATURAL_CI " + direction
+		query.sort += " ORDER BY COALESCE(scenes.title, files.basename) COLLATE \"natural_ci\" " + direction + ", folders.path COLLATE \"natural_ci\" " + direction
 		query.addGroupBy("scenes.title", "files.basename", "folders.path")
 	case "play_count":
 		query.sort += getCountSort(sceneTable, scenesViewDatesTable, sceneIDColumn, direction)
@@ -1299,8 +1373,9 @@ func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindF
 			fallback = "9223372036854775807"
 		}
 		query.sort += fmt.Sprintf(
-			" ORDER BY (SELECT COALESCE(%s(scenes.date - performers.birthdate), %s) FROM %s as performers INNER JOIN %s AS aggregation ON performers.id = aggregation.%s WHERE aggregation.%s = %s.id) %s",
+			" ORDER BY (SELECT COALESCE(%s((%s::date - performers.birthdate::date)), %s) FROM %s as performers INNER JOIN %s AS aggregation ON performers.id = aggregation.%s AND aggregation.%s = %s.id) %s",
 			aggregation,
+			sceneAgeDateExpr,
 			fallback,
 			performerTable,
 			performersScenesTable,
@@ -1321,7 +1396,7 @@ func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindF
 	}
 
 	// Whatever the sorting, always use title/id as a final sort
-	query.sort += ", COALESCE(scenes.title, CAST(scenes.id as text)) COLLATE NATURAL_CI ASC"
+	query.sort += ", COALESCE(scenes.title, CAST(scenes.id as text)) COLLATE \"natural_ci\" ASC"
 	query.addGroupBy("scenes.title", "scenes.id")
 
 	return nil
@@ -1388,7 +1463,13 @@ func (qb *SceneStore) HasCover(ctx context.Context, sceneID int) (bool, error) {
 }
 
 func (qb *SceneStore) UpdateCover(ctx context.Context, sceneID int, image []byte) error {
-	return qb.UpdateImage(ctx, sceneID, sceneCoverBlobColumn, image)
+	if err := qb.UpdateImage(ctx, sceneID, sceneCoverBlobColumn, image); err != nil {
+		return err
+	}
+	// Cover writes from uploads, scraping and imports are protected by default.
+	// The generator marks its own write explicitly in the same transaction.
+	_, err := dbWrapper.Exec(ctx, "UPDATE scenes SET cover_generated = false WHERE id = ?", sceneID)
+	return err
 }
 
 func (qb *SceneStore) destroyCover(ctx context.Context, sceneID int) error {
@@ -1454,11 +1535,63 @@ func (qb *SceneStore) GetStashIDs(ctx context.Context, sceneID int) ([]models.St
 	return sceneRepository.stashIDs.get(ctx, sceneID)
 }
 
-func (qb *SceneStore) FindDuplicates(ctx context.Context, distance int, durationDiff float64) ([][]*models.Scene, error) {
+func (qb *SceneStore) FindDuplicates(ctx context.Context, distance int, durationDiff float64, filter *models.SceneFilterType) ([][]*models.Scene, error) {
 	var dupeIds [][]int
+
+	query, err := qb.makeQuery(ctx, filter, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add necessary joins for duplicate checking
+	query.pagination = nil
+	query.addJoins(
+		join{
+			table:    scenesFilesTable,
+			onClause: "scenes.id = scenes_files.scene_id",
+		},
+		join{
+			table:    fileTable,
+			onClause: "scenes_files.file_id = files.id",
+		},
+		join{
+			table:    fingerprintTable,
+			onClause: "scenes_files.file_id = files_fingerprints.file_id AND files_fingerprints.type = 'phash'",
+		},
+		join{
+			table:    videoFileTable,
+			onClause: "files.id = video_files.file_id",
+		},
+	)
+
+	query.addGroupBy("video_files.duration", "files.size", "files_fingerprints.fingerprint")
 	if distance == 0 {
+		query.columns = []string{
+			"scenes.id as scene_id",
+			"video_files.duration as file_duration",
+			"files.size as file_size",
+			"files_fingerprints.fingerprint as phash",
+			"abs(max(video_files.duration) OVER (PARTITION by files_fingerprints.fingerprint) - video_files.duration) as durationDiff",
+		}
+
+		sqlStr := query.toSQL(false)
+
+		finalQuery := `
+SELECT string_agg(DISTINCT scene_id::text, ',') as ids
+FROM (` + sqlStr + `)
+WHERE phash IS NOT NULL
+    AND (durationDiff <= ?
+    OR ? < 0)  -- Always TRUE if the parameter is negative.
+               -- That will disable the durationDiff checking.
+GROUP BY phash
+HAVING COUNT(phash) > 1
+	AND COUNT(DISTINCT scene_id) > 1
+ORDER BY SUM(file_size) DESC;
+`
+
 		var ids []string
-		if err := dbWrapper.Select(ctx, &ids, findExactDuplicateQuery, durationDiff); err != nil {
+		args := append(query.allArgs(), durationDiff, durationDiff)
+		if err := dbWrapper.Select(ctx, &ids, finalQuery, args...); err != nil {
 			return nil, err
 		}
 
@@ -1476,9 +1609,19 @@ func (qb *SceneStore) FindDuplicates(ctx context.Context, distance int, duration
 			}
 		}
 	} else {
+		query.columns = []string{
+			"scenes.id as id",
+			"files_fingerprints.fingerprint as phash",
+			"video_files.duration as duration",
+		}
+		query.addWhere("files_fingerprints.fingerprint IS NOT NULL")
+		query.sort = " ORDER BY files.size DESC"
+
+		sqlStr := query.toSQL(true)
+
 		var hashes []*utils.Phash
 
-		if err := sceneRepository.queryFunc(ctx, findAllPhashesQuery, nil, false, func(rows *sqlx.Rows) error {
+		if err := sceneRepository.queryFunc(ctx, sqlStr, query.allArgs(), false, func(rows *sqlx.Rows) error {
 			phash := utils.Phash{
 				Bucket:   -1,
 				Duration: -1,

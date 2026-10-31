@@ -1,5 +1,5 @@
-//go:build db_integration
-// +build db_integration
+//go:build integration
+// +build integration
 
 package database_test
 
@@ -1843,7 +1843,7 @@ func TestPerformerQueryLegacyCareerLength(t *testing.T) {
 		},
 	}
 
-	qb := db.Performer
+	qb := db.Performer()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1907,7 +1907,7 @@ func TestPerformerQueryCareerEnd(t *testing.T) {
 	}
 
 	withTxn(func(ctx context.Context) error {
-		qb := db.Performer
+		qb := db.Performer()
 		performerFilter := models.PerformerFilterType{
 			CareerEnd: &criterion,
 		}
@@ -2570,7 +2570,7 @@ func TestPerformerQuerySortBirthdate(t *testing.T) {
 		noBirthdate := models.Performer{
 			Name: "performer-no-birthdate-sort",
 		}
-		if err := db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &noBirthdate}); err != nil {
+		if err := db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &noBirthdate}); err != nil {
 			t.Fatalf("Error creating performer: %s", err.Error())
 		}
 
@@ -2635,7 +2635,7 @@ func TestPerformerCountByTagID(t *testing.T) {
 func TestPerformerCountByGroupIDSubGroups(t *testing.T) {
 	if err := withRollbackTxn(func(ctx context.Context) error {
 		subGroup := models.Group{Name: "TestPerformerCountByGroupIDSubGroups child"}
-		if err := db.Group.Create(ctx, &subGroup); err != nil {
+		if err := db.Group().Create(ctx, &subGroup); err != nil {
 			return fmt.Errorf("creating sub-group: %w", err)
 		}
 
@@ -2645,17 +2645,17 @@ func TestPerformerCountByGroupIDSubGroups(t *testing.T) {
 				{GroupID: subGroup.ID},
 			}),
 		}
-		if err := db.Group.Create(ctx, &parentGroup); err != nil {
+		if err := db.Group().Create(ctx, &parentGroup); err != nil {
 			return fmt.Errorf("creating parent group: %w", err)
 		}
 
 		parentPerformer := models.Performer{Name: "TestPerformerCountByGroupIDSubGroups parent performer"}
-		if err := db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &parentPerformer}); err != nil {
+		if err := db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &parentPerformer}); err != nil {
 			return fmt.Errorf("creating parent performer: %w", err)
 		}
 
 		subGroupPerformer := models.Performer{Name: "TestPerformerCountByGroupIDSubGroups child performer"}
-		if err := db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &subGroupPerformer}); err != nil {
+		if err := db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &subGroupPerformer}); err != nil {
 			return fmt.Errorf("creating sub-group performer: %w", err)
 		}
 
@@ -2672,20 +2672,20 @@ func TestPerformerCountByGroupIDSubGroups(t *testing.T) {
 			},
 		}
 		for i := range scenes {
-			if err := db.Scene.Create(ctx, &scenes[i], nil); err != nil {
+			if err := db.Scene().Create(ctx, &scenes[i], nil); err != nil {
 				return fmt.Errorf("creating scene: %w", err)
 			}
 		}
 
 		depth := -1
-		count, err := performerquery.CountByGroupID(ctx, db.Performer, parentGroup.ID, &depth)
+		count, err := performerquery.CountByGroupID(ctx, db.Performer(), parentGroup.ID, &depth)
 		if err != nil {
 			return fmt.Errorf("counting performers across sub-groups: %w", err)
 		}
 		assert.Equal(t, 2, count)
 
 		depth = 0
-		count, err = performerquery.CountByGroupID(ctx, db.Performer, parentGroup.ID, &depth)
+		count, err = performerquery.CountByGroupID(ctx, db.Performer(), parentGroup.ID, &depth)
 		if err != nil {
 			return fmt.Errorf("counting performers at depth zero: %w", err)
 		}
@@ -2842,7 +2842,7 @@ func TestPerformerStore_FindByStashIDStatus(t *testing.T) {
 
 func TestPerformerQueryUnicodeSearchCaseInsensitive(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		qb := db.Performer
+		qb := db.Performer()
 
 		// test cases with various Unicode characters
 		testCases := []struct {
@@ -2932,7 +2932,7 @@ func TestPerformerQueryUnicodeSearchCaseInsensitive(t *testing.T) {
 
 func TestPerformerQuerySearchExcludeTerm(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		qb := db.Performer
+		qb := db.Performer()
 
 		performer := models.Performer{
 			Name: "Анна Exclusion",
@@ -3001,7 +3001,7 @@ func TestPerformerMerge(t *testing.T) {
 		},
 	}
 
-	qb := db.Performer
+	qb := db.Performer()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -3048,11 +3048,11 @@ func TestPerformerMerge(t *testing.T) {
 			for _, srcIdx := range tt.srcIdxs {
 				sceneIdxs := scenePerformers.reverseLookup(srcIdx)
 				for _, sceneIdx := range sceneIdxs {
-					s, err := db.Scene.Find(ctx, sceneIDs[sceneIdx])
+					s, err := db.Scene().Find(ctx, sceneIDs[sceneIdx])
 					if err != nil {
 						t.Errorf("Error finding scene: %s", err.Error())
 					}
-					if err := s.LoadPerformerIDs(ctx, db.Scene); err != nil {
+					if err := s.LoadPerformerIDs(ctx, db.Scene()); err != nil {
 						t.Errorf("Error loading scene performer IDs: %s", err.Error())
 					}
 					scenePerformerIDs := s.PerformerIDs.List()
@@ -3063,11 +3063,11 @@ func TestPerformerMerge(t *testing.T) {
 
 				imageIdxs := imagePerformers.reverseLookup(srcIdx)
 				for _, imageIdx := range imageIdxs {
-					i, err := db.Image.Find(ctx, imageIDs[imageIdx])
+					i, err := db.Image().Find(ctx, imageIDs[imageIdx])
 					if err != nil {
 						t.Errorf("Error finding image: %s", err.Error())
 					}
-					if err := i.LoadPerformerIDs(ctx, db.Image); err != nil {
+					if err := i.LoadPerformerIDs(ctx, db.Image()); err != nil {
 						t.Errorf("Error loading image performer IDs: %s", err.Error())
 					}
 					imagePerformerIDs := i.PerformerIDs.List()
@@ -3078,11 +3078,11 @@ func TestPerformerMerge(t *testing.T) {
 
 				galleryIdxs := galleryPerformers.reverseLookup(srcIdx)
 				for _, galleryIdx := range galleryIdxs {
-					g, err := db.Gallery.Find(ctx, galleryIDs[galleryIdx])
+					g, err := db.Gallery().Find(ctx, galleryIDs[galleryIdx])
 					if err != nil {
 						t.Errorf("Error finding gallery: %s", err.Error())
 					}
-					if err := g.LoadPerformerIDs(ctx, db.Gallery); err != nil {
+					if err := g.LoadPerformerIDs(ctx, db.Gallery()); err != nil {
 						t.Errorf("Error loading gallery performer IDs: %s", err.Error())
 					}
 					galleryPerformerIDs := g.PerformerIDs.List()
@@ -3114,7 +3114,7 @@ func TestPerformerMerge(t *testing.T) {
 func TestPerformerOCounterIncludesGalleries(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
 		performer := models.Performer{Name: "TestPerformerOCounterGalleries"}
-		if err := db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &performer}); err != nil {
+		if err := db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &performer}); err != nil {
 			t.Fatalf("creating performer: %v", err)
 		}
 
@@ -3123,7 +3123,7 @@ func TestPerformerOCounterIncludesGalleries(t *testing.T) {
 			OCounter:     200,
 			PerformerIDs: models.NewRelatedIDs([]int{performer.ID}),
 		}
-		if err := db.Image.Create(ctx, &models.CreateImageInput{Image: &image}); err != nil {
+		if err := db.Image().Create(ctx, &models.CreateImageInput{Image: &image}); err != nil {
 			t.Fatalf("creating image: %v", err)
 		}
 
@@ -3132,11 +3132,11 @@ func TestPerformerOCounterIncludesGalleries(t *testing.T) {
 			OCounter:     100,
 			PerformerIDs: models.NewRelatedIDs([]int{performer.ID}),
 		}
-		if err := db.Gallery.Create(ctx, &models.CreateGalleryInput{Gallery: &gallery}); err != nil {
+		if err := db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &gallery}); err != nil {
 			t.Fatalf("creating gallery: %v", err)
 		}
 
-		got, err := db.Gallery.OCountByPerformerID(ctx, performer.ID)
+		got, err := db.Gallery().OCountByPerformerID(ctx, performer.ID)
 		if err != nil {
 			t.Fatalf("GalleryStore.OCountByPerformerID() error = %v", err)
 		}

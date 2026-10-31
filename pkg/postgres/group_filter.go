@@ -43,13 +43,13 @@ func (qb *groupFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		return
 	}
 
+	f.handleCriterion(ctx, qb.criterionHandler())
+
 	sf := groupFilter.SubFilter()
 	if sf != nil {
 		sub := &groupFilterHandler{sf}
 		handleSubFilter(ctx, sub, f, groupFilter.OperatorFilter)
 	}
-
-	f.handleCriterion(ctx, qb.criterionHandler())
 }
 
 var groupHierarchyHandler = hierarchicalRelationshipHandler{
@@ -64,6 +64,7 @@ func (qb *groupFilterHandler) criterionHandler() criterionHandler {
 	groupFilter := qb.groupFilter
 	return compoundHandler{
 		stringCriterionHandler(groupFilter.Name, "groups.name"),
+		qb.aliasCriterionHandler(groupFilter.Aliases),
 		stringCriterionHandler(groupFilter.Director, "groups.director"),
 		stringCriterionHandler(groupFilter.Synopsis, "groups.description"),
 		intCriterionHandler(groupFilter.Rating100, "groups.rating", nil),
@@ -72,9 +73,11 @@ func (qb *groupFilterHandler) criterionHandler() criterionHandler {
 		qb.urlsCriterionHandler(groupFilter.URL),
 		studioCriterionHandler(groupTable, groupFilter.Studios),
 		qb.performersCriterionHandler(groupFilter.Performers),
+		qb.performerCountCriterionHandler(groupFilter.PerformerCount),
 		qb.tagsCriterionHandler(groupFilter.Tags),
 		qb.tagCountCriterionHandler(groupFilter.TagCount),
 		qb.groupOCounterCriterionHandler(groupFilter.OCounter),
+		qb.sceneCountCriterionHandler(groupFilter.SceneCount),
 		&dateCriterionHandler{groupFilter.Date, "groups.date", nil},
 		groupHierarchyHandler.ParentsCriterionHandler(groupFilter.ContainingGroups),
 		groupHierarchyHandler.ChildrenCriterionHandler(groupFilter.SubGroups),
@@ -82,6 +85,13 @@ func (qb *groupFilterHandler) criterionHandler() criterionHandler {
 		groupHierarchyHandler.ChildCountCriterionHandler(groupFilter.SubGroupCount),
 		&timestampCriterionHandler{groupFilter.CreatedAt, "groups.created_at", nil},
 		&timestampCriterionHandler{groupFilter.UpdatedAt, "groups.updated_at", nil},
+
+		&customFieldsFilterHandler{
+			table: groupsCustomFieldsTable.GetTable(),
+			fkCol: groupIDColumn,
+			c:     groupFilter.CustomFields,
+			idCol: "groups.id",
+		},
 
 		&relatedFilterHandler{
 			relatedIDCol:   "groups_scenes.scene_id",
@@ -111,7 +121,28 @@ func (qb *groupFilterHandler) missingCriterionHandler(isMissing *string) criteri
 			case "scenes":
 				f.addLeftJoin("groups_scenes", "", "groups_scenes.group_id = groups.id")
 				f.addWhere("groups_scenes.scene_id IS NULL")
+			case "url":
+				groupsURLsTableMgr.leftJoin(f, "", "groups.id")
+				f.addWhere("group_urls.url IS NULL")
+			case "studio":
+				f.addWhere("groups.studio_id IS NULL")
+			case "performers":
+				f.addLeftJoin("groups_scenes", "gs_perf", "groups.id = gs_perf.group_id")
+				f.addLeftJoin("performers_scenes", "ps_perf", "gs_perf.scene_id = ps_perf.scene_id")
+				f.addWhere("ps_perf.performer_id IS NULL")
+			case "tags":
+				groupRepository.tags.leftJoin(f, "tags_join", "groups.id")
+				f.addWhere("tags_join.group_id IS NULL")
+			case "aliases":
+				groupAliasesTableMgr.leftJoin(f, "", "groups.id")
+				f.addWhere("group_aliases.alias IS NULL")
 			default:
+				if err := validateIsMissing(*isMissing, []string{
+					"description", "director", "date", "rating",
+				}); err != nil {
+					f.setError(err)
+					return
+				}
 				f.addWhere("(groups." + *isMissing + " IS NULL OR TRIM(CAST(groups." + *isMissing + " AS TEXT)) = '')")
 			}
 		}
@@ -124,12 +155,26 @@ func (qb *groupFilterHandler) urlsCriterionHandler(url *models.StringCriterionIn
 		primaryFK:    groupIDColumn,
 		joinTable:    groupURLsTable,
 		stringColumn: groupURLColumn,
-		addJoinTable: func(f *filterBuilder) {
-			groupsURLsTableMgr.join(f, "", "groups.id")
+		addJoinTable: func(f *filterBuilder, joinType joinType) {
+			groupsURLsTableMgr.join(f, joinType, "", "groups.id")
 		},
 	}
 
 	return h.handler(url)
+}
+
+func (qb *groupFilterHandler) aliasCriterionHandler(alias *models.StringCriterionInput) criterionHandlerFunc {
+	h := stringListCriterionHandlerBuilder{
+		primaryTable: groupTable,
+		primaryFK:    groupIDColumn,
+		joinTable:    groupAliasesTable,
+		stringColumn: groupAliasColumn,
+		addJoinTable: func(f *filterBuilder, joinType joinType) {
+			groupAliasesTableMgr.join(f, joinType, "", "groups.id")
+		},
+	}
+
+	return h.handler(alias)
 }
 
 func (qb *groupFilterHandler) performersCriterionHandler(performers *models.MultiCriterionInput) criterionHandlerFunc {
@@ -204,6 +249,16 @@ func (qb *groupFilterHandler) tagCountCriterionHandler(count *models.IntCriterio
 	return h.handler(count)
 }
 
+func (qb *groupFilterHandler) sceneCountCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
+	h := countCriterionHandlerBuilder{
+		primaryTable: groupTable,
+		joinTable:    groupsScenesTable,
+		primaryFK:    groupIDColumn,
+	}
+
+	return h.handler(count)
+}
+
 // used for sorting and filtering on group o-count
 var selectGroupOCountSQL = utils.StrFormat(
 	"SELECT SUM(o_counter) "+
@@ -223,6 +278,37 @@ var selectGroupOCountSQL = utils.StrFormat(
 		"o_date":         sceneODateColumn,
 	},
 )
+
+// used for sorting and filtering on group performer count.
+// Counts the distinct performers in the group's scenes, matching the
+// group's performer_count field.
+var selectGroupPerformerCountSQL = utils.StrFormat(
+	"SELECT COUNT(DISTINCT {performers_scenes}.{performer_id}) "+
+		"FROM {groups_scenes} s "+
+		"INNER JOIN {performers_scenes} ON {performers_scenes}.{scene_id} = s.{scene_id} "+
+		"WHERE s.{group_id} = {group}.id",
+	map[string]interface{}{
+		"group":             groupTable,
+		"group_id":          groupIDColumn,
+		"groups_scenes":     groupsScenesTable,
+		"performers_scenes": performersScenesTable,
+		"performer_id":      performerIDColumn,
+		"scene_id":          sceneIDColumn,
+	},
+)
+
+func (qb *groupFilterHandler) performerCountCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		if count == nil {
+			return
+		}
+
+		lhs := "(" + selectGroupPerformerCountSQL + ")"
+		clause, args := getIntCriterionWhereClause(lhs, *count)
+
+		f.addWhere(clause, args...)
+	}
+}
 
 func (qb *groupFilterHandler) groupOCounterCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {

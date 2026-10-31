@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"regexp"
 	"strings"
 
@@ -143,7 +142,7 @@ func (s *customFieldsStore) setCustomFields(ctx context.Context, id int, values 
 
 	conflictKey := s.fk.GetCol().(string) + ", field"
 	// upsert new custom fields
-	q := dialect.Insert(s.table).Prepared(true).Cols(s.fk, "field", "value", "type").
+	q := dialect.Insert(s.table).Prepared(true).Cols(s.fk, "field", "value").
 		OnConflict(goqu.DoUpdate(conflictKey, goqu.Record{"value": goqu.I("excluded.value")}))
 	r := make([]interface{}, len(values))
 	var i int
@@ -152,7 +151,7 @@ func (s *customFieldsStore) setCustomFields(ctx context.Context, id int, values 
 		if err != nil {
 			return fmt.Errorf("getting SQL value for field %q: %w", key, err)
 		}
-		r[i] = goqu.Record{"field": key, "value": v, "type": reflect.TypeOf(v).String(), s.fk.GetCol().(string): id}
+		r[i] = goqu.Record{"field": key, "value": v, s.fk.GetCol().(string): id}
 		i++
 	}
 

@@ -29,12 +29,14 @@ const (
 	groupURLColumn = "url"
 
 	groupRelationsTable = "groups_relations"
+
+	groupAliasesTable = "group_aliases"
+	groupAliasColumn  = "alias"
 )
 
 type groupRow struct {
 	ID            int         `db:"id" goqu:"skipinsert"`
 	Name          zero.String `db:"name"`
-	Aliases       zero.String `db:"aliases"`
 	Duration      null.Int    `db:"duration"`
 	Date          NullDate    `db:"date"`
 	DatePrecision null.Int    `db:"date_precision"`
@@ -54,7 +56,6 @@ type groupRow struct {
 func (r *groupRow) fromGroup(o models.Group) {
 	r.ID = o.ID
 	r.Name = zero.StringFrom(o.Name)
-	r.Aliases = zero.StringFrom(o.Aliases)
 	r.Duration = intFromPtr(o.Duration)
 	r.Date = NullDateFromDatePtr(o.Date)
 	r.DatePrecision = datePrecisionFromDatePtr(o.Date)
@@ -70,7 +71,6 @@ func (r *groupRow) resolve() *models.Group {
 	ret := &models.Group{
 		ID:        r.ID,
 		Name:      r.Name.String,
-		Aliases:   r.Aliases.String,
 		Duration:  nullIntPtr(r.Duration),
 		Date:      r.Date.DatePtr(r.DatePrecision),
 		Rating:    nullIntPtr(r.Rating),
@@ -90,7 +90,6 @@ type groupRowRecord struct {
 
 func (r *groupRowRecord) fromPartial(o models.GroupPartial) {
 	r.setNullString("name", o.Name)
-	r.setNullString("aliases", o.Aliases)
 	r.setNullInt("duration", o.Duration)
 	r.setNullDate("date", "date_precision", o.Date)
 	r.setNullInt("rating", o.Rating)
@@ -131,6 +130,7 @@ var (
 
 type GroupStore struct {
 	blobJoinQueryBuilder
+	customFieldsStore
 	tagRelationshipStore
 	groupRelationshipStore
 
@@ -142,6 +142,10 @@ func NewGroupStore(blobStore *BlobStore) *GroupStore {
 		blobJoinQueryBuilder: blobJoinQueryBuilder{
 			blobStore: blobStore,
 			joinTable: groupTable,
+		},
+		customFieldsStore: customFieldsStore{
+			table: groupsCustomFieldsTable,
+			fk:    groupsCustomFieldsTable.Col(groupIDColumn),
 		},
 		tagRelationshipStore: tagRelationshipStore{
 			idRelationshipStore: idRelationshipStore{
@@ -171,6 +175,12 @@ func (qb *GroupStore) Create(ctx context.Context, newObject *models.Group) error
 	id, err := qb.tableMgr.insertID(ctx, r)
 	if err != nil {
 		return err
+	}
+
+	if newObject.Aliases.Loaded() {
+		if err := groupAliasesTableMgr.insertJoins(ctx, id, newObject.Aliases.List()); err != nil {
+			return err
+		}
 	}
 
 	if newObject.URLs.Loaded() {
@@ -217,6 +227,12 @@ func (qb *GroupStore) UpdatePartial(ctx context.Context, id int, partial models.
 		}
 	}
 
+	if partial.Aliases != nil {
+		if err := groupAliasesTableMgr.modifyJoins(ctx, id, partial.Aliases.Values, partial.Aliases.Mode); err != nil {
+			return nil, err
+		}
+	}
+
 	if partial.URLs != nil {
 		if err := groupsURLsTableMgr.modifyJoins(ctx, id, partial.URLs.Values, partial.URLs.Mode); err != nil {
 			return nil, err
@@ -235,6 +251,10 @@ func (qb *GroupStore) UpdatePartial(ctx context.Context, id int, partial models.
 		return nil, err
 	}
 
+	if err := qb.SetCustomFields(ctx, id, partial.CustomFields); err != nil {
+		return nil, err
+	}
+
 	return qb.find(ctx, id)
 }
 
@@ -244,6 +264,12 @@ func (qb *GroupStore) Update(ctx context.Context, updatedObject *models.Group) e
 
 	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
 		return err
+	}
+
+	if updatedObject.Aliases.Loaded() {
+		if err := groupAliasesTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.Aliases.List()); err != nil {
+			return err
+		}
 	}
 
 	if updatedObject.URLs.Loaded() {
@@ -368,12 +394,12 @@ func (qb *GroupStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*mo
 func (qb *GroupStore) FindByName(ctx context.Context, name string, nocase bool) (*models.Group, error) {
 	// query := "SELECT * FROM groups WHERE name = ?"
 	// if nocase {
-	// 	query += " COLLATE NOCASE"
+	// 	query += " COLLATE \"nocase\""
 	// }
 	// query += " LIMIT 1"
 	where := "name = ?"
 	if nocase {
-		where += " COLLATE NOCASE"
+		where += " COLLATE \"nocase\""
 	}
 	sq := qb.selectDataset().Prepared(true).Where(goqu.L(where, name)).Limit(1)
 	ret, err := qb.get(ctx, sq)
@@ -388,12 +414,12 @@ func (qb *GroupStore) FindByName(ctx context.Context, name string, nocase bool) 
 func (qb *GroupStore) FindByNames(ctx context.Context, names []string, nocase bool) ([]*models.Group, error) {
 	// query := "SELECT * FROM groups WHERE name"
 	// if nocase {
-	// 	query += " COLLATE NOCASE"
+	// 	query += " COLLATE \"nocase\""
 	// }
 	// query += " IN " + getInBinding(len(names))
 	where := "name"
 	if nocase {
-		where += " COLLATE NOCASE"
+		where += " COLLATE \"nocase\""
 	}
 	where += " IN " + getInBinding(len(names))
 	var args []interface{}
@@ -436,7 +462,8 @@ func (qb *GroupStore) makeQuery(ctx context.Context, groupFilter *models.GroupFi
 	distinctIDs(&query, groupTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
-		searchColumns := []string{"groups.name", "groups.aliases"}
+		query.join(groupAliasesTable, "", "group_aliases.group_id = groups.id")
+		searchColumns := []string{"groups.name", "group_aliases.alias"}
 		query.parseQueryString(searchColumns, *q)
 	}
 
@@ -495,6 +522,8 @@ var groupSortOptions = sortOptions{
 	"rating",
 	"scenes_count",
 	"o_counter",
+	"performer_count",
+	"sub_group_description",
 	"sub_group_order",
 	"tag_count",
 	"updated_at",
@@ -531,12 +560,25 @@ func (qb *GroupStore) setGroupSort(query *queryBuilder, findFilter *models.FindF
 			query.sort += add
 			query.addGroupBy(agg...)
 		}
+	case "sub_group_description":
+		// as above, we need to handle parent groups differently here
+		const clause = " ORDER BY COALESCE(%s.description, '') COLLATE \"natural_ci\" %s"
+		if query.hasJoin("groups_parents") {
+			query.sort += fmt.Sprintf(clause, "groups_parents", direction)
+			query.addGroupBy("groups_parents.description")
+		} else {
+			query.joinSort(groupRelationsTable, "", "groups.id = groups_relations.sub_id")
+			query.sort += fmt.Sprintf(clause, groupRelationsTable, direction)
+			query.addGroupBy(groupRelationsTable + ".description")
+		}
 	case "tag_count":
 		query.sort += getCountSort(groupTable, groupsTagsTable, groupIDColumn, direction)
 	case "scenes_count": // generic getSort won't work for this
 		query.sort += getCountSort(groupTable, groupsScenesTable, groupIDColumn, direction)
 	case "o_counter":
 		query.sort += qb.sortByOCounter(direction)
+	case "performer_count":
+		query.sort += " ORDER BY (" + selectGroupPerformerCountSQL + ") " + getSortDirection(direction)
 	default:
 		add, agg := getSort(sort, direction, "groups")
 		query.sort += add
@@ -544,7 +586,7 @@ func (qb *GroupStore) setGroupSort(query *queryBuilder, findFilter *models.FindF
 	}
 
 	// Whatever the sorting, always use name/id as a final sort
-	query.sort += ", COALESCE(groups.name, CAST(groups.id as text)) COLLATE NATURAL_CI ASC"
+	query.sort += ", COALESCE(groups.name, CAST(groups.id as text)) COLLATE \"natural_ci\" ASC"
 	query.addGroupBy("groups.name", "groups.id")
 	return nil
 }
@@ -721,4 +763,8 @@ func (qb *GroupStore) FindInAncestors(ctx context.Context, ascestorIDs []int, id
 func (qb *GroupStore) sortByOCounter(direction string) string {
 	// need to sum the o_counter from scenes and images
 	return " ORDER BY (" + selectGroupOCountSQL + ") " + direction
+}
+
+func (qb *GroupStore) GetAliases(ctx context.Context, groupId int) ([]string, error) {
+	return groupAliasesTableMgr.get(ctx, groupId)
 }

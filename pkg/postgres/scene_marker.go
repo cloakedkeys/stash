@@ -402,7 +402,7 @@ func (qb *SceneMarkerStore) setSceneMarkerSort(query *queryBuilder, findFilter *
 		query.addGroupBy(agg...)
 	case "title":
 		query.joinSort(tagTable, "", "scene_markers.primary_tag_id = tags.id")
-		query.sort += " ORDER BY COALESCE(NULLIF(scene_markers.title,''), tags.name) COLLATE NATURAL_CI " + direction
+		query.sort += " ORDER BY COALESCE(NULLIF(scene_markers.title,''), tags.name) COLLATE \"natural_ci\" " + direction
 		query.addGroupBy("scene_markers.title", "tags.name")
 	case "duration":
 		sort = "(scene_markers.end_seconds - scene_markers.seconds)"

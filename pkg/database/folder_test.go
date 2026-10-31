@@ -1,5 +1,5 @@
-//go:build db_integration
-// +build db_integration
+//go:build integration
+// +build integration
 
 package database_test
 
@@ -239,7 +239,7 @@ func Test_FolderStore_FindByPath(t *testing.T) {
 }
 
 func TestFolderStore_FindByPathCaseInsensitiveTreatsLikeWildcardsLiterally(t *testing.T) {
-	qb := db.Folder
+	qb := db.Folder()
 
 	runWithRollbackTxn(t, "literal wildcards", func(t *testing.T, ctx context.Context) {
 		now := time.Now()
@@ -333,7 +333,7 @@ func Test_FolderStore_GetManyParentFolderIDs(t *testing.T) {
 		},
 	}
 
-	qb := db.Folder
+	qb := db.Folder()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
