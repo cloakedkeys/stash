@@ -18,6 +18,9 @@ import "../ScenePlayer/PlaylistButtons";
 import "../ScenePlayer/track-activity";
 import "../ScenePlayer/media-session";
 import "../ScenePlayer/wake-sentinel";
+// registers the middleware that seeks by restarting a transcode
+import "../ScenePlayer/live";
+import type { ISource } from "../ScenePlayer/live";
 
 import {
   useAudioSaveActivity,
@@ -30,9 +33,9 @@ import { PatchComponent } from "src/patch";
 
 export const AUDIO_PLAYER_ID = "AudioJsPlayer";
 
-// Audio is served as a direct stream only - there is no transcoding, no
-// HLS/DASH variants and no generated previews, so the player is a plain
-// video.js instance over the single direct-stream source.
+// The original file is played directly where the browser supports its format,
+// falling back to a live mp3 transcode. There are no HLS/DASH variants or
+// generated previews, so the player is a plain video.js instance.
 function handleHotkeys(player: VideoJsPlayer, event: videojs.KeyboardEvent) {
   function seekStep(step: number) {
     const time = player.currentTime() + step;
@@ -166,6 +169,11 @@ export const AudioPlayer: React.FC<IAudioPlayerProps> = PatchComponent(
     const [ready, setReady] = useState(false);
     const started = useRef(false);
     const auto = useRef(false);
+    // state of the fallback from the direct stream to the transcode
+    const loadedSources = useRef<ISource[]>([]);
+    const sourceIndex = useRef(0);
+    const startTime = useRef(0);
+    const wantsPlay = useRef(false);
 
     const minimumPlayPercent = uiConfig?.minimumPlayPercent ?? 0;
     const trackActivity = uiConfig?.trackActivity ?? true;
@@ -175,8 +183,20 @@ export const AudioPlayer: React.FC<IAudioPlayerProps> = PatchComponent(
       [audio]
     );
 
-    // the direct stream is the only source
-    const source = useMemo(() => audio.audioStreams[0], [audio.audioStreams]);
+    const sources = useMemo<ISource[]>(
+      () =>
+        audio.audioStreams.map((stream) => ({
+          src: stream.url,
+          type: stream.mime_type ?? undefined,
+          label: stream.label ?? undefined,
+          // seeking in a transcode restarts it from the new position
+          offset: !new URL(stream.url, window.location.href).pathname.endsWith(
+            "/stream"
+          ),
+          duration: file?.duration || undefined,
+        })),
+      [audio.audioStreams, file?.duration]
+    );
 
     const maxLoopDuration = interfaceConfig?.maximumLoopDuration ?? 0;
     const looping = useMemo(
@@ -285,15 +305,22 @@ export const AudioPlayer: React.FC<IAudioPlayerProps> = PatchComponent(
       if (loadedAudioId.current === audio.id) return;
       loadedAudioId.current = audio.id;
 
-      if (!source) {
+      // lets the play effect run for the new source
+      setReady(false);
+
+      // saves the activity of the previous audio while its id and position
+      // are still current, then starts counting for the new audio
+      player.trackActivity().reset();
+
+      if (sources.length === 0) {
         player.reset();
         return;
       }
 
-      player.src({
-        src: source.url,
-        type: source.mime_type ?? undefined,
-      });
+      loadedSources.current = sources;
+      sourceIndex.current = 0;
+      wantsPlay.current = false;
+      player.src(sources[0]);
 
       const resumeTime = audio.resume_time ?? 0;
       const alwaysStartFromBeginning =
@@ -307,6 +334,8 @@ export const AudioPlayer: React.FC<IAudioPlayerProps> = PatchComponent(
       ) {
         startPosition = resumeTime;
       }
+
+      startTime.current = startPosition;
 
       player.load();
       player.focus();
@@ -327,13 +356,56 @@ export const AudioPlayer: React.FC<IAudioPlayerProps> = PatchComponent(
       getPlayer,
       audio.id,
       audio.resume_time,
-      source,
+      sources,
       file,
       autoplay,
       initialTimestamp,
       interfaceConfig?.autostartVideo,
       uiConfig?.alwaysStartFromBeginning,
     ]);
+
+    // fall back to the transcode if the browser can't play the direct stream
+    useEffect(() => {
+      const player = getPlayer();
+      if (!player) return;
+
+      function onPlay() {
+        wantsPlay.current = true;
+      }
+
+      function onError(this: VideoJsPlayer) {
+        const code = this.error()?.code;
+        if (
+          code !== MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED &&
+          code !== MediaError.MEDIA_ERR_DECODE
+        ) {
+          return;
+        }
+
+        const next = loadedSources.current[sourceIndex.current + 1];
+        if (!next) return;
+
+        sourceIndex.current++;
+        const time = this.currentTime() || startTime.current;
+        const play = wantsPlay.current || auto.current;
+
+        this.error(null);
+        this.src(next);
+        this.load();
+        this.one("canplay", () => {
+          if (time) this.currentTime(time);
+        });
+        if (play) this.play();
+      }
+
+      player.on("play", onPlay);
+      player.on("error", onError);
+
+      return () => {
+        player.off("play", onPlay);
+        player.off("error", onError);
+      };
+    }, [getPlayer]);
 
     useEffect(() => {
       const player = getPlayer();
@@ -414,7 +486,7 @@ export const AudioPlayer: React.FC<IAudioPlayerProps> = PatchComponent(
 
       player.on("ended", onComplete);
 
-      return () => player.off("ended");
+      return () => player.off("ended", onComplete);
     }, [getPlayer, onComplete]);
 
     useEffect(() => {

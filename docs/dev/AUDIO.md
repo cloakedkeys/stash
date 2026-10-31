@@ -4,14 +4,17 @@ The `Audio` datatype is similar to `Scene` but stores audio-only media (i.e. Aud
 
 ## Scope
 
-- This ticket adds backend support for Audio Only, future tickets can add the UI elements
-    - Database design
-    - Graphql Support
-    - Scanner Support
-        - Audio is served as a direct stream only. There are no transcodes, and no transcode infrastructure - it can be added in a future ticket if it is needed
+- Database design
+- Graphql Support
+- Scanner Support
+- UI, including the player (`ui/v2.5/src/components/AudioPlayer`)
+- Streaming
+    - The file itself at `/audio/{id}/stream`
+    - A live MP3 conversion at `/audio/{id}/stream.mp3`, which takes a `start` parameter in seconds. The player falls back to it for formats the browser can't decode, such as ALAC and WMA. Upstream rejected transcoding (<https://github.com/stashapp/stash/pull/6824>), so this is specific to this copy
+- DLNA (`internal/dlna/audio.go`). Plays are not recorded, unlike scenes
 
 - Audio metadata:
-    - Cover image (manually uploaded only - there is no generation)
+    - Cover image (uploaded by hand, or embedded art found when the file is first scanned - there is no generation)
     - Title
     - Date
     - Studio
@@ -47,10 +50,7 @@ The `Audio` datatype is similar to `Scene` but stores audio-only media (i.e. Aud
 
 ## Future Tickets
 
-- UI
-    - Audio using `video.js` (ref: https://videojs.org/blog/video-js-4-9-now-can-join-the-party)
-    - Audio Waveform (ref: https://github.com/collab-project/videojs-wavesurfer)
-    - New AudioPlayer.tsx (copy `ui/v2.5/src/components/ScenePlayer/ScenePlayer.tsx`)
+- Audio Waveform (ref: https://github.com/collab-project/videojs-wavesurfer)
 
 ## General TODO
 
@@ -69,6 +69,7 @@ The `Audio` datatype is similar to `Scene` but stores audio-only media (i.e. Aud
 - Phashes cannot be used on audio files; A future ticket might introduce Chromaprint (AcoustID)
 - StashIDs was removed, audio is unlikely to be added immediately to stashbox
 - Audio's could have interactive components, but removed to reduce PR complexity
+- Embedded tags are read when a file is first scanned (`pkg/audio/metadata.go`). Existing audios are never overwritten by a rescan. Artist, genre and album only link to performers, tags and groups that already exist; a scan never creates them
 
 ## Last Steps
 - [ ] Delete this file upon completion of the feature
@@ -135,10 +136,10 @@ mutation audio_mut {
 
 ### Check Streams
 
-Currently only direct streams are implemented. Use the following to get the Stream URL.
+Use the following to get the Stream URLs.
 
 1. Execute this GraphQL
-2. Paste the `Direct stream` url into the browser, ensure that the audio plays
+2. Paste the `Direct stream` and `MP3` urls into the browser, ensure that the audio plays
 
 ```graphql
 query {

@@ -421,6 +421,50 @@ type AudioFile struct {
 
 	AudioCodec string
 	SampleRate int64
+
+	// Tags holds the metadata tags of the file, keyed by lower-case name.
+	Tags map[string]string
+	// HasCoverArt is true if the file has an embedded cover image.
+	HasCoverArt bool
+}
+
+// audioTagsJSON is the part of the ffprobe output needed to read the tags of a
+// file. Tag names are arbitrary and their case depends on the container, and
+// some containers, such as ogg, keep them on the stream rather than the format.
+type audioTagsJSON struct {
+	Format struct {
+		Tags map[string]string `json:"tags"`
+	} `json:"format"`
+	Streams []struct {
+		CodecType string            `json:"codec_type"`
+		Tags      map[string]string `json:"tags"`
+	} `json:"streams"`
+}
+
+func parseAudioTags(out []byte) map[string]string {
+	var parsed audioTagsJSON
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		return nil
+	}
+
+	ret := make(map[string]string)
+	add := func(tags map[string]string) {
+		for k, v := range tags {
+			k = strings.ToLower(k)
+			if _, found := ret[k]; !found && v != "" {
+				ret[k] = v
+			}
+		}
+	}
+
+	add(parsed.Format.Tags)
+	for _, s := range parsed.Streams {
+		if s.CodecType == "audio" {
+			add(s.Tags)
+		}
+	}
+
+	return ret
 }
 
 // NewAudioFile runs ffprobe on the given path and returns a AudioFile.
@@ -453,7 +497,14 @@ func (f *FFProbe) NewAudioFile(audioPath string) (*AudioFile, error) {
 		return nil, fmt.Errorf("error unmarshalling audio data for <%s>: %s", audioPath, err.Error())
 	}
 
-	return parseAudio(audioPath, probeJSON)
+	result, err := parseAudio(audioPath, probeJSON)
+	if err != nil {
+		return nil, err
+	}
+
+	result.Tags = parseAudioTags(out)
+
+	return result, nil
 }
 
 func parseAudio(filePath string, probeJSON *FFProbeJSON) (*AudioFile, error) {
@@ -492,6 +543,13 @@ func parseAudio(filePath string, probeJSON *FFProbeJSON) (*AudioFile, error) {
 		result.AudioCodec = audioStream.CodecName
 		result.SampleRate, _ = strconv.ParseInt(audioStream.SampleRate, 10, 64)
 		result.AudioStream = audioStream
+	}
+
+	for _, stream := range probeJSON.Streams {
+		if stream.CodecType == "video" && stream.Disposition.AttachedPic != 0 {
+			result.HasCoverArt = true
+			break
+		}
 	}
 
 	return result, nil

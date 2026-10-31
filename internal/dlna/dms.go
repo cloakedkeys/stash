@@ -283,6 +283,7 @@ type Server struct {
 
 	repository         Repository
 	sceneServer        sceneServer
+	audioServer        audioServer
 	ipWhitelistManager *ip.WhitelistManager
 	activityTracker    *ActivityTracker
 	VideoSortOrder     string
@@ -444,7 +445,39 @@ func (me *Server) serviceControlHandler(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// findRequestAudio returns the audio identified in the request, loaded with its
+// primary file, or nil if there is none.
+func (me *Server) findRequestAudio(r *http.Request) *models.Audio {
+	id, err := strconv.Atoi(r.URL.Query().Get(audioParam))
+	if err != nil {
+		return nil
+	}
+
+	var a *models.Audio
+	repo := me.repository
+	if err := repo.WithReadTxn(r.Context(), func(ctx context.Context) error {
+		var err error
+		a, err = repo.AudioFinder.Find(ctx, id)
+		if err != nil || a == nil {
+			return err
+		}
+		return a.LoadPrimaryFile(ctx, repo.FileGetter)
+	}); err != nil {
+		logger.Warnf("failed to find audio id (%v): %v", id, err)
+		return nil
+	}
+
+	return a
+}
+
 func (me *Server) serveIcon(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Has(audioParam) {
+		if a := me.findRequestAudio(r); a != nil {
+			me.audioServer.ServeScreenshot(a, w, r)
+		}
+		return
+	}
+
 	sceneId := r.URL.Query().Get("scene")
 	if sceneId == "" {
 		return
@@ -601,6 +634,19 @@ func (me *Server) initMux(mux *http.ServeMux) {
 	mux.HandleFunc(contentDirectoryEventSubURL, me.contentDirectoryEventSubHandler)
 	mux.HandleFunc(iconPath, me.serveIcon)
 	mux.HandleFunc(resPath, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has(audioParam) {
+			a := me.findRequestAudio(r)
+			if a == nil {
+				return
+			}
+
+			w.Header().Set("transferMode.dlna.org", "Streaming")
+			w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01500000000000000000000000000000")
+
+			me.audioServer.StreamAudioDirect(a, w, r)
+			return
+		}
+
 		sceneId := r.URL.Query().Get("scene")
 		var scene *models.Scene
 		var videoDuration float64

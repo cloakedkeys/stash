@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { ApolloLink, ApolloProvider, Observable } from "@apollo/client";
 import { MemoryRouter } from "react-router-dom";
@@ -291,7 +292,9 @@ createRoot(document.getElementById("fixture")!).render(
           <ConfigurationProvider configuration={configuration}>
             <ToastProvider>
               <main className="main container-fluid">
-                <AudioRoutes />
+                <Suspense fallback={null}>
+                  <AudioRoutes />
+                </Suspense>
               </main>
             </ToastProvider>
           </ConfigurationProvider>

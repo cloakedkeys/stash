@@ -30,6 +30,18 @@ $audioPlayerSize: 520px;
     width: 100%;
   }
 
+  // the box is narrower than the scene player's, so the controls have to be
+  // sized to fit. Elapsed and total time are already shown.
+  .vjs-control-bar {
+    .vjs-remaining-time {
+      display: none;
+    }
+
+    .vjs-control:not(.vjs-progress-control):not(.vjs-time-control) {
+      width: 2.9em;
+    }
+  }
+
   // the default cover is a transparent svg, so the poster needs the same
   // background as the player or video.js's black shows through when paused
   .vjs-poster {
@@ -48,7 +60,23 @@ $audioPlayerSize: 520px;
 
     .audio-wrapper {
       height: 80vw;
-      max-height: $audioPlayerSize;
+      // a phone held sideways is wider than it is tall, so the width alone
+      // would push the controls off the screen
+      max-height: min($audioPlayerSize, calc(100vh - 6rem));
     }
+  }
+}
+
+// same control size the scene player uses on a phone
+@media (max-width: 576px) {
+  .AudioPlayer .vjs-control-bar {
+    .vjs-control:not(.vjs-progress-control):not(.vjs-time-control) {
+      width: 2.5em;
+    }
+  }
+}
+@media (max-width: 380px) {
+  .AudioPlayer .vjs-control-bar .vjs-seek-button {
+    display: none;
   }
 }

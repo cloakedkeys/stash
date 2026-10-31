@@ -68,6 +68,11 @@ type sceneServer interface {
 	ServeScreenshot(scene *models.Scene, w http.ResponseWriter, r *http.Request)
 }
 
+type audioServer interface {
+	StreamAudioDirect(audio *models.Audio, w http.ResponseWriter, r *http.Request)
+	ServeScreenshot(audio *models.Audio, w http.ResponseWriter, r *http.Request)
+}
+
 type Config interface {
 	GetDLNAInterfaces() []string
 	GetDLNAServerName() string
@@ -95,6 +100,7 @@ type Service struct {
 	repository      Repository
 	config          Config
 	sceneServer     sceneServer
+	audioServer     audioServer
 	IPWhitelistMgr  *ip.WhitelistManager
 	activityTracker *ActivityTracker
 
@@ -167,6 +173,7 @@ func (s *Service) init() error {
 	s.server = &Server{
 		repository:         s.repository,
 		sceneServer:        s.sceneServer,
+		audioServer:        s.audioServer,
 		ipWhitelistManager: s.IPWhitelistMgr,
 		activityTracker:    s.activityTracker,
 		Interfaces:         interfaces,
@@ -237,7 +244,7 @@ func (s *Service) SetActivityUserResolver(r ActivityUserResolver) {
 // NewService initialises and returns a new DLNA service.
 // The sceneWriter parameter should implement SceneActivityWriter (typically models.SceneReaderWriter).
 // The minPlayPercent parameter is the minimum percentage of video that must be played to increment play count.
-func NewService(repo Repository, cfg Config, sceneServer sceneServer, sceneWriter SceneActivityWriter, minPlayPercent int) *Service {
+func NewService(repo Repository, cfg Config, sceneServer sceneServer, audioServer audioServer, sceneWriter SceneActivityWriter, minPlayPercent int) *Service {
 	activityCfg := &activityConfig{
 		config:         cfg,
 		minPlayPercent: minPlayPercent,
@@ -246,6 +253,7 @@ func NewService(repo Repository, cfg Config, sceneServer sceneServer, sceneWrite
 	ret := &Service{
 		repository:      repo,
 		sceneServer:     sceneServer,
+		audioServer:     audioServer,
 		config:          cfg,
 		IPWhitelistMgr:  &ip.WhitelistManager{},
 		activityTracker: NewActivityTracker(repo.TxnManager, sceneWriter, activityCfg),

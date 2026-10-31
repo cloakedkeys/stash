@@ -38,6 +38,8 @@ func convertBaseFile(f models.File) BaseFile {
 		return f
 	case *models.VideoFile:
 		return &VideoFile{VideoFile: f}
+	case *models.AudioFile:
+		return &AudioFile{AudioFile: f}
 	case *models.ImageFile:
 		return &ImageFile{ImageFile: f}
 	case *models.BaseFile:

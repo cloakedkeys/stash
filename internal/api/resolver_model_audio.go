@@ -207,8 +207,10 @@ func (r *audioResolver) AudioStreams(ctx context.Context, obj *models.Audio) ([]
 	builder := urlbuilders.NewAudioURLBuilder(baseURL, obj)
 	streamURL := builder.GetStreamURL("")
 	signURL(ctx, config, streamURL, signedurl.DerivePrefix(streamURL.Path))
+	transcodeURL := builder.GetTranscodeStreamURL("")
+	signURL(ctx, config, transcodeURL, signedurl.DerivePrefix(transcodeURL.Path))
 
-	return manager.GetAudioStreamPaths(obj, streamURL)
+	return manager.GetAudioStreamPaths(obj, streamURL, transcodeURL)
 }
 
 func (r *audioResolver) Urls(ctx context.Context, obj *models.Audio) ([]string, error) {

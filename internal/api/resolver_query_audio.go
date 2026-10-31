@@ -42,6 +42,8 @@ func (r *queryResolver) AudioStreams(ctx context.Context, id *string) ([]*manage
 	builder := urlbuilders.NewAudioURLBuilder(baseURL, audio)
 	streamURL := builder.GetStreamURL("")
 	signURL(ctx, config, streamURL, signedurl.DerivePrefix(streamURL.Path))
+	transcodeURL := builder.GetTranscodeStreamURL("")
+	signURL(ctx, config, transcodeURL, signedurl.DerivePrefix(transcodeURL.Path))
 
-	return manager.GetAudioStreamPaths(audio, streamURL)
+	return manager.GetAudioStreamPaths(audio, streamURL, transcodeURL)
 }

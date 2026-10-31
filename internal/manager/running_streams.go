@@ -135,9 +135,9 @@ func (s *AudioServer) StreamAudioDirect(audio *models.Audio, w http.ResponseWrit
 	http.ServeFile(w, r, fp)
 }
 
-// ServeScreenshot serves the audio's cover image. Audio covers are only ever
-// manually uploaded - there is no generated fallback - so an audio without a
-// cover falls back to the default image.
+// ServeScreenshot serves the audio's cover image. Covers are uploaded by hand or
+// taken from the file's embedded art when it is scanned. Nothing is generated,
+// so an audio without a cover falls back to the default image.
 func (s *AudioServer) ServeScreenshot(audio *models.Audio, w http.ResponseWriter, r *http.Request) {
 	var cover []byte
 	readTxnErr := txn.WithReadTxn(r.Context(), s.TxnManager, func(ctx context.Context) error {

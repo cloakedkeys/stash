@@ -28,6 +28,21 @@ type ScanCreatorUpdater interface {
 	Create(ctx context.Context, newAudio *models.Audio, fileIDs []models.FileID) error
 	UpdatePartial(ctx context.Context, id int, updatedAudio models.AudioPartial) (*models.Audio, error)
 	AddFileID(ctx context.Context, id int, fileID models.FileID) error
+	UpdateCover(ctx context.Context, audioID int, cover []byte) error
+}
+
+// ScanNameFinder finds the existing objects that the metadata embedded in an
+// audio file refers to. Objects are never created from embedded metadata.
+type ScanNameFinder struct {
+	Performer interface {
+		FindByNames(ctx context.Context, names []string, nocase bool) ([]*models.Performer, error)
+	}
+	Tag interface {
+		FindByNames(ctx context.Context, names []string, nocase bool) ([]*models.Tag, error)
+	}
+	Group interface {
+		FindByName(ctx context.Context, name string, nocase bool) (*models.Group, error)
+	}
 }
 
 type ScanGalleryFinderUpdater interface {
@@ -41,6 +56,10 @@ type ScanGenerator interface {
 
 type ScanHandler struct {
 	CreatorUpdater ScanCreatorUpdater
+
+	// optional - if set, new audios are populated from the file's metadata
+	MetadataReader MetadataReader
+	NameFinder     ScanNameFinder
 
 	PluginCache *plugin.Cache
 	Paths       *paths.Paths
@@ -92,11 +111,88 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 
 		logger.Infof("%s doesn't exist. Creating new audio...", f.Base().Path)
 
+		cover := h.applyFileMetadata(ctx, &newAudio, f.Base().Path)
+
 		if err := h.CreatorUpdater.Create(ctx, &newAudio, []models.FileID{AudioFile.ID}); err != nil {
 			return fmt.Errorf("creating new audio: %w", err)
 		}
 
+		if len(cover) > 0 {
+			if err := h.CreatorUpdater.UpdateCover(ctx, newAudio.ID, cover); err != nil {
+				return fmt.Errorf("setting cover of new audio: %w", err)
+			}
+		}
+
 		h.PluginCache.RegisterPostHooks(ctx, newAudio.ID, hook.AudioCreatePost, nil, nil)
+	}
+
+	return nil
+}
+
+// applyFileMetadata populates a new audio from the metadata embedded in its
+// file, returning the embedded cover image if there is one. A file with missing
+// or unreadable metadata is still a valid audio, so failures are only logged.
+func (h *ScanHandler) applyFileMetadata(ctx context.Context, newAudio *models.Audio, path string) []byte {
+	if h.MetadataReader == nil {
+		return nil
+	}
+
+	metadata, err := h.MetadataReader.ReadMetadata(ctx, path)
+	if err != nil {
+		logger.Warnf("error reading metadata of %q: %v", path, err)
+		return nil
+	}
+
+	newAudio.Title = metadata.Title
+	newAudio.Details = metadata.Details
+	newAudio.Date = metadata.Date
+
+	if err := h.linkExisting(ctx, newAudio, metadata); err != nil {
+		logger.Warnf("error matching metadata of %q to existing objects: %v", path, err)
+	}
+
+	return metadata.Cover
+}
+
+func (h *ScanHandler) linkExisting(ctx context.Context, newAudio *models.Audio, metadata *Metadata) error {
+	if h.NameFinder.Performer != nil && len(metadata.Artists) > 0 {
+		performers, err := h.NameFinder.Performer.FindByNames(ctx, metadata.Artists, true)
+		if err != nil {
+			return fmt.Errorf("finding performers: %w", err)
+		}
+		if len(performers) > 0 {
+			ids := make([]int, len(performers))
+			for i, p := range performers {
+				ids[i] = p.ID
+			}
+			newAudio.PerformerIDs = models.NewRelatedIDs(ids)
+		}
+	}
+
+	if h.NameFinder.Tag != nil && len(metadata.Genres) > 0 {
+		tags, err := h.NameFinder.Tag.FindByNames(ctx, metadata.Genres, true)
+		if err != nil {
+			return fmt.Errorf("finding tags: %w", err)
+		}
+		if len(tags) > 0 {
+			ids := make([]int, len(tags))
+			for i, t := range tags {
+				ids[i] = t.ID
+			}
+			newAudio.TagIDs = models.NewRelatedIDs(ids)
+		}
+	}
+
+	if h.NameFinder.Group != nil && metadata.Album != "" {
+		group, err := h.NameFinder.Group.FindByName(ctx, metadata.Album, true)
+		if err != nil {
+			return fmt.Errorf("finding group: %w", err)
+		}
+		if group != nil {
+			newAudio.Groups = models.NewRelatedGroupsAudio([]models.GroupsAudios{
+				{GroupID: group.ID, AudioIndex: metadata.Track},
+			})
+		}
 	}
 
 	return nil

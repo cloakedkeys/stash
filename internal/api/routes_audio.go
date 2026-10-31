@@ -10,6 +10,7 @@ import (
 
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/static"
+	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/utils"
@@ -38,6 +39,7 @@ func (rs audioRoutes) Routes() chi.Router {
 
 		// streaming endpoints
 		r.Get("/stream", rs.StreamDirect)
+		r.Get("/stream.mp3", rs.StreamMp3)
 	})
 
 	return r
@@ -65,6 +67,34 @@ func (rs audioRoutes) StreamDirect(w http.ResponseWriter, r *http.Request) {
 		TxnManager: rs.txnManager,
 	}
 	ss.StreamAudioDirect(audio, w, r)
+}
+
+func (rs audioRoutes) StreamMp3(w http.ResponseWriter, r *http.Request) {
+	audio := r.Context().Value(audioKey).(*models.Audio)
+
+	streamManager := manager.GetInstance().StreamManager
+	if streamManager == nil {
+		http.Error(w, "Live transcoding disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	f := audio.Files.Primary()
+	if f == nil {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		logger.Warnf("[transcode] error parsing query form: %v", err)
+	}
+
+	ss, _ := strconv.ParseFloat(r.Form.Get("start"), 64)
+
+	logger.Debugf("[transcode] streaming audio %d as mp3", audio.ID)
+	streamManager.ServeAudioTranscode(w, r, ffmpeg.AudioTranscodeOptions{
+		Path:      f.Path,
+		StartTime: ss,
+	})
 }
 
 func (rs audioRoutes) AudioCtx(next http.Handler) http.Handler {

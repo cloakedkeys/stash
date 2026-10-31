@@ -180,7 +180,10 @@ func (sm *StreamManager) ServeTranscode(w http.ResponseWriter, r *http.Request, 
 }
 
 func (sm *StreamManager) getTranscodeStream(ctx *fsutil.LockContext, options TranscodeOptions) (http.HandlerFunc, error) {
-	args := options.makeStreamArgs(sm)
+	return sm.startTranscodeStream(ctx, options.makeStreamArgs(sm), options.StreamType.MimeType)
+}
+
+func (sm *StreamManager) startTranscodeStream(ctx *fsutil.LockContext, args Args, mimeType string) (http.HandlerFunc, error) {
 	cmd := sm.encoder.Command(ctx, args)
 
 	stdout, err := cmd.StdoutPipe()
@@ -222,7 +225,6 @@ func (sm *StreamManager) getTranscodeStream(ctx *fsutil.LockContext, options Tra
 		}
 	}()
 
-	mimeType := options.StreamType.MimeType
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", mimeType)

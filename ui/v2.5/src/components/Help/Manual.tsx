@@ -7,6 +7,7 @@ import JSONSpec from "src/docs/en/Manual/JSONSpec.md";
 import Configuration from "src/docs/en/Manual/Configuration.md";
 import Interface from "src/docs/en/Manual/Interface.md";
 import Images from "src/docs/en/Manual/Images.md";
+import Audio from "src/docs/en/Manual/Audio.md";
 import Scraping from "src/docs/en/Manual/Scraping.md";
 import ScraperDevelopment from "src/docs/en/Manual/ScraperDevelopment.md";
 import Plugins from "src/docs/en/Manual/Plugins.md";
@@ -93,6 +94,11 @@ export const Manual: React.FC<IManualProps> = ({
       key: "Images.md",
       title: "Images and Galleries",
       content: Images,
+    },
+    {
+      key: "Audio.md",
+      title: "Audio",
+      content: Audio,
     },
     {
       key: "Scraping.md",
