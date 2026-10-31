@@ -897,7 +897,7 @@ func (g *sceneGenerators) Generate(ctx context.Context, s *models.Scene, f *mode
 		g.generate(ctx, fmt.Sprintf("Generating preview for %s", path), previewsFn, *timing)
 	}
 
-	if t.GenerateCovers != nil {
+	if t.GenerateCovers != nil || s.RefreshCover {
 		fn := func(ctx context.Context) {
 			taskCover := GenerateCoverTask{
 				repository: mgr.Repository,
@@ -907,7 +907,11 @@ func (g *sceneGenerators) Generate(ctx context.Context, s *models.Scene, f *mode
 			taskCover.Start(ctx)
 		}
 
-		g.generate(ctx, fmt.Sprintf("Generating cover for %s", path), fn, *t.GenerateCovers)
+		timing := models.GenerateTimingSync
+		if t.GenerateCovers != nil {
+			timing = *t.GenerateCovers
+		}
+		g.generate(ctx, fmt.Sprintf("Generating cover for %s", path), fn, timing)
 	}
 
 	return nil

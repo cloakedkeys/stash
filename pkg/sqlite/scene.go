@@ -59,13 +59,14 @@ type sceneRow struct {
 	ProductionDate          NullDate    `db:"production_date"`
 	ProductionDatePrecision null.Int    `db:"production_date_precision"`
 	// expressed as 1-100
-	Rating       null.Int  `db:"rating"`
-	Organized    bool      `db:"organized"`
-	StudioID     null.Int  `db:"studio_id,omitempty"`
-	CreatedAt    Timestamp `db:"created_at"`
-	UpdatedAt    Timestamp `db:"updated_at"`
-	ResumeTime   float64   `db:"resume_time"`
-	PlayDuration float64   `db:"play_duration"`
+	Rating         null.Int  `db:"rating"`
+	Organized      bool      `db:"organized"`
+	CoverGenerated bool      `db:"cover_generated"`
+	StudioID       null.Int  `db:"studio_id,omitempty"`
+	CreatedAt      Timestamp `db:"created_at"`
+	UpdatedAt      Timestamp `db:"updated_at"`
+	ResumeTime     float64   `db:"resume_time"`
+	PlayDuration   float64   `db:"play_duration"`
 
 	// not used in resolutions or updates
 	CoverBlob zero.String `db:"cover_blob"`
@@ -83,6 +84,7 @@ func (r *sceneRow) fromScene(o models.Scene) {
 	r.ProductionDatePrecision = datePrecisionFromDatePtr(o.ProductionDate)
 	r.Rating = intFromPtr(o.Rating)
 	r.Organized = o.Organized
+	r.CoverGenerated = o.CoverGenerated
 	r.StudioID = intFromPtr(o.StudioID)
 	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
@@ -110,6 +112,7 @@ func (r *sceneQueryRow) resolve() *models.Scene {
 		ProductionDate: r.ProductionDate.DatePtr(r.ProductionDatePrecision),
 		Rating:         nullIntPtr(r.Rating),
 		Organized:      r.Organized,
+		CoverGenerated: r.CoverGenerated,
 		StudioID:       nullIntPtr(r.StudioID),
 
 		PrimaryFileID: nullIntFileIDPtr(r.PrimaryFileID),
@@ -143,6 +146,7 @@ func (r *sceneRowRecord) fromPartial(o models.ScenePartial) {
 	r.setNullDate("production_date", "production_date_precision", o.ProductionDate)
 	r.setNullInt("rating", o.Rating)
 	r.setBool("organized", o.Organized)
+	r.setBool("cover_generated", o.CoverGenerated)
 	r.setNullInt("studio_id", o.StudioID)
 	r.setTimestamp("created_at", o.CreatedAt)
 	r.setTimestamp("updated_at", o.UpdatedAt)
@@ -1421,7 +1425,13 @@ func (qb *SceneStore) HasCover(ctx context.Context, sceneID int) (bool, error) {
 }
 
 func (qb *SceneStore) UpdateCover(ctx context.Context, sceneID int, image []byte) error {
-	return qb.UpdateImage(ctx, sceneID, sceneCoverBlobColumn, image)
+	if err := qb.UpdateImage(ctx, sceneID, sceneCoverBlobColumn, image); err != nil {
+		return err
+	}
+	// Cover writes from uploads, scraping and imports are protected by default.
+	// The generator marks its own write explicitly in the same transaction.
+	_, err := dbWrapper.Exec(ctx, "UPDATE scenes SET cover_generated = 0 WHERE id = ?", sceneID)
+	return err
 }
 
 func (qb *SceneStore) destroyCover(ctx context.Context, sceneID int) error {

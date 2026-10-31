@@ -32,6 +32,7 @@ type ScanCreatorUpdater interface {
 	Create(ctx context.Context, newScene *models.Scene, fileIDs []models.FileID) error
 	UpdatePartial(ctx context.Context, id int, updatedScene models.ScenePartial) (*models.Scene, error)
 	AddFileID(ctx context.Context, id int, fileID models.FileID) error
+	UpdateCover(ctx context.Context, sceneID int, cover []byte) error
 }
 
 type ScanGalleryFinderUpdater interface {
@@ -135,12 +136,16 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 			// primary somewhere, so editing a secondary file (or one
 			// sharing a hash with the real primary) can't destroy
 			// content that's still valid.
-			// The cover is kept: it may have been set by the user or a
-			// scraper, and there is no way to tell it was generated.
 			isPrimary := false
 			for _, s := range existing {
 				if s.PrimaryFileID != nil && *s.PrimaryFileID == videoFile.ID {
 					isPrimary = true
+					if s.CoverGenerated {
+						if err := h.CreatorUpdater.UpdateCover(ctx, s.ID, nil); err != nil {
+							return fmt.Errorf("clearing stale generated cover: %w", err)
+						}
+						s.RefreshCover = true
+					}
 				}
 			}
 

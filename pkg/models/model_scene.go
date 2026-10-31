@@ -18,9 +18,12 @@ type Scene struct {
 	Date           *Date  `json:"date"`
 	ProductionDate *Date  `json:"production_date"`
 	// Rating expressed in 1-100 scale
-	Rating    *int `json:"rating"`
-	Organized bool `json:"organized"`
-	StudioID  *int `json:"studio_id"`
+	Rating         *int `json:"rating"`
+	Organized      bool `json:"organized"`
+	CoverGenerated bool `json:"cover_generated"`
+	// RefreshCover is set by scanning when a generated cover becomes stale.
+	RefreshCover bool `json:"-"`
+	StudioID     *int `json:"studio_id"`
 
 	// transient - not persisted
 	Files         RelatedVideoFiles
@@ -78,13 +81,14 @@ type ScenePartial struct {
 	Date           OptionalDate
 	ProductionDate OptionalDate
 	// Rating expressed in 1-100 scale
-	Rating       OptionalInt
-	Organized    OptionalBool
-	StudioID     OptionalInt
-	CreatedAt    OptionalTime
-	UpdatedAt    OptionalTime
-	ResumeTime   OptionalFloat64
-	PlayDuration OptionalFloat64
+	Rating         OptionalInt
+	Organized      OptionalBool
+	CoverGenerated OptionalBool
+	StudioID       OptionalInt
+	CreatedAt      OptionalTime
+	UpdatedAt      OptionalTime
+	ResumeTime     OptionalFloat64
+	PlayDuration   OptionalFloat64
 
 	URLs          *UpdateStrings
 	GalleryIDs    *UpdateIDs

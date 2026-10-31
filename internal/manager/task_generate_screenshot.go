@@ -76,6 +76,7 @@ func (t *GenerateCoverTask) Start(ctx context.Context) {
 	if err := r.WithTxn(ctx, func(ctx context.Context) error {
 		qb := r.Scene
 		scenePartial := models.NewScenePartial()
+		scenePartial.CoverGenerated = models.NewOptionalBool(true)
 
 		// update the scene cover table
 		if err := qb.UpdateCover(ctx, t.Scene.ID, coverImageData); err != nil {

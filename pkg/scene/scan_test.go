@@ -217,6 +217,7 @@ func TestHandle_ContentChangedAtSamePath(t *testing.T) {
 		name               string
 		newFingerprint     string
 		expectInvalidation bool
+		generatedCover     bool
 	}{
 		{
 			name:               "clears stale generated files and cover when content changed at the same path",
@@ -227,6 +228,17 @@ func TestHandle_ContentChangedAtSamePath(t *testing.T) {
 			name:               "leaves generated files and cover alone when the hash is unchanged",
 			newFingerprint:     oldHash,
 			expectInvalidation: false,
+		},
+		{
+			name:               "refreshes a known generated cover after primary content changes",
+			newFingerprint:     newHash,
+			expectInvalidation: true,
+			generatedCover:     true,
+		},
+		{
+			name:           "keeps a known generated cover when content is unchanged",
+			newFingerprint: oldHash,
+			generatedCover: true,
 		},
 	}
 
@@ -253,9 +265,10 @@ func TestHandle_ContentChangedAtSamePath(t *testing.T) {
 
 			primaryFileID := oldFile.ID
 			scene := &models.Scene{
-				ID:            testSceneID,
-				PrimaryFileID: &primaryFileID,
-				Files:         models.NewRelatedVideoFiles([]*models.VideoFile{oldFile}),
+				ID:             testSceneID,
+				CoverGenerated: tt.generatedCover,
+				PrimaryFileID:  &primaryFileID,
+				Files:          models.NewRelatedVideoFiles([]*models.VideoFile{oldFile}),
 			}
 
 			tmpDir := t.TempDir()
@@ -271,6 +284,9 @@ func TestHandle_ContentChangedAtSamePath(t *testing.T) {
 			db.Scene.On("UpdatePartial", mock.Anything, testSceneID, mock.Anything).
 				Return(&models.Scene{ID: testSceneID}, nil)
 			db.Gallery.On("FindByPath", mock.Anything, mock.Anything).Return(nil, nil)
+			if tt.generatedCover && tt.expectInvalidation {
+				db.Scene.On("UpdateCover", mock.Anything, testSceneID, []byte(nil)).Return(nil).Once()
+			}
 
 			h := newTestScanHandler(db, &p)
 
@@ -280,9 +296,13 @@ func TestHandle_ContentChangedAtSamePath(t *testing.T) {
 
 			if tt.expectInvalidation {
 				assert.NoFileExists(t, staleSprite)
-				db.Scene.AssertNotCalled(t, "UpdateCover", mock.Anything, mock.Anything, mock.Anything)
 			} else {
 				assert.FileExists(t, staleSprite)
+			}
+			assert.Equal(t, tt.generatedCover && tt.expectInvalidation, scene.RefreshCover)
+			if tt.generatedCover && tt.expectInvalidation {
+				db.Scene.AssertCalled(t, "UpdateCover", mock.Anything, testSceneID, []byte(nil))
+			} else {
 				db.Scene.AssertNotCalled(t, "UpdateCover", mock.Anything, mock.Anything, mock.Anything)
 			}
 		})
