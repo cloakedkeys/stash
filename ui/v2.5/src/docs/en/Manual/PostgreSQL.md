@@ -6,10 +6,19 @@ Stash keeps its library in an SQLite file by default. It can use a PostgreSQL se
 
 ## What the server needs
 
-- PostgreSQL 18 is the version Stash is tested with. PostgreSQL 17 was tested up to Stash v0.32.1 and isn't tested any more. There is no check that stops it from running, and "Upgrading from PostgreSQL 17" below covers moving to 18.
+- PostgreSQL 18 is the version Stash is tested with.
 - The `plperl` extension. On Debian and Ubuntu it is the `postgresql-plperl-18` package. Stash creates the extension itself, so its account must be allowed to: the owner of the database can, since `plperl` is a trusted extension.
 - ICU support, which PostgreSQL packages and the official Docker images include.
 - An empty database, owned by the account Stash connects with.
+- Permission for that account to change the `session_replication_role` setting, which Stash does every time it starts. Superuser accounts already have it, including the one the Docker example below creates.
+
+To create the account and database on the server, run these as the `postgres` user:
+
+```shell
+createuser --pwprompt stash
+createdb -E UTF8 -T template0 -O stash stash
+psql -c "GRANT SET ON PARAMETER session_replication_role TO stash"
+```
 
 Backups and database upgrades also need `pg_dump` and `pg_restore` on the computer that runs Stash, at least as new as the database server. The Stash Docker images include them. Without them, upgrades go ahead with a warning and no backup.
 
@@ -44,7 +53,7 @@ services:
       POSTGRES_PASSWORD: change-me
       POSTGRES_DB: stash
     volumes:
-      - ./pgdata18:/var/lib/postgresql
+      - ./pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U stash -d stash"]
       interval: 5s
@@ -83,52 +92,3 @@ With `STASH_DATABASE` set, Stash skips the setup wizard. After the first start:
 2. Add your library folder, `/data` in this example, under Settings > Library, then scan.
 
 Keep `STASH_DATABASE` set. The `database` line Stash writes to `config.yml` is the SQLite default, so without the variable Stash would start on an empty SQLite library.
-
-## Upgrading from PostgreSQL 17
-
-PostgreSQL 18 can't open a PostgreSQL 17 data folder, so the library has to be copied across with a dump and restore. Stash has to stay stopped until the restore finishes. These steps use the Docker Compose example above. Run the commands one at a time, and stop if one fails.
-
-First, check that the Stash image has PostgreSQL 18 tools. If this shows an older version, or the command isn't found, rebuild the image from this version of Stash. Later database upgrades would otherwise fail, or run without a backup.
-
-```shell
-docker compose run --rm --no-deps --entrypoint pg_dump stash --version
-```
-
-With the old settings still in place, copy the library out of the old database:
-
-```shell
-docker compose stop stash
-docker compose exec db pg_dump -U stash -Fc -f /tmp/stash.dump stash
-docker compose cp db:/tmp/stash.dump ./stash.dump
-docker compose down
-```
-
-Change the file to the settings shown above: the image, the `plperl` package and the data folder. The new `pgdata18` folder keeps the old `pgdata` folder untouched, so it can be used to go back. Start the new database and restore into it:
-
-```shell
-docker compose up -d --build --wait db
-docker compose cp ./stash.dump db:/tmp/stash.dump
-docker compose exec db pg_restore -U stash -d stash --single-transaction --exit-on-error /tmp/stash.dump
-docker compose exec db vacuumdb -U stash -d stash --analyze-only
-```
-
-If the restore fails, nothing from it is kept, so it can be run again once the problem is fixed. When it has worked, start Stash:
-
-```shell
-docker compose up -d
-```
-
-Check that your library is all there. The dump is a full copy of the database, including accounts, so once you're happy, remove it, and delete the `stash.dump` and `pgdata` files on the host:
-
-```shell
-docker compose exec db rm /tmp/stash.dump
-```
-
-If you upgrade by changing only the settings, without these steps, the new `pgdata18` folder starts empty and so does your library. Your data is still in `pgdata`, so you can stop Stash and follow the steps from the beginning with the old settings restored.
-
-Without Docker, use `pg_dump` and `pg_restore` the same way. Install `plperl` for the new server, then create the account and an empty database for the restore:
-
-```shell
-createuser --pwprompt stash
-createdb -E UTF8 -T template0 -O stash stash
-```
