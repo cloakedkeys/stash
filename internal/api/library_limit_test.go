@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/99designs/gqlgen/graphql"
-	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/mocks"
 	"github.com/stashapp/stash/pkg/session"
@@ -113,7 +112,7 @@ func TestLibraryLimitRefusesWhatItDoesNotKnow(t *testing.T) {
 func TestLibraryLimitOverHTTP(t *testing.T) {
 	db := mocks.NewDatabase()
 	r := newResolver(db)
-	gql := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: r, Directives: DirectiveRoot{HasRole: HasRoleDirective, IsUserOwner: IsUserOwnerDirective}}))
+	gql := newTestGraphQLServer(r)
 	gql.AroundFields(r.LibraryLimitMiddleware)
 
 	const visibleID, hiddenID = 1, 2
@@ -166,7 +165,7 @@ func TestLibraryLimitOverHTTP(t *testing.T) {
 func TestUserSetLibraryLimitNeedsAdmin(t *testing.T) {
 	db := mocks.NewDatabase()
 	r := newResolver(db)
-	gql := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: r, Directives: DirectiveRoot{HasRole: HasRoleDirective, IsUserOwner: IsUserOwnerDirective}}))
+	gql := newTestGraphQLServer(r)
 	gql.AroundFields(r.LibraryLimitMiddleware)
 
 	for _, u := range []models.User{
