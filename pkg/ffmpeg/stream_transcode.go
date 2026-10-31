@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -179,6 +181,14 @@ func (sm *StreamManager) ServeTranscode(w http.ResponseWriter, r *http.Request, 
 	handler(w, r)
 }
 
+// isAlreadyExitedKillError returns true if err came from stopping a process
+// that had already exited. Windows reports this as access denied rather than
+// the process being finished, so it isn't a real failure.
+func isAlreadyExitedKillError(err error) bool {
+	var syscallErr *os.SyscallError
+	return errors.As(err, &syscallErr) && syscallErr.Syscall == "TerminateProcess" && errors.Is(syscallErr.Err, fs.ErrPermission)
+}
+
 func (sm *StreamManager) getTranscodeStream(ctx *fsutil.LockContext, options TranscodeOptions) (http.HandlerFunc, error) {
 	return sm.startTranscodeStream(ctx, options.makeStreamArgs(sm), options.StreamType.MimeType)
 }
@@ -220,7 +230,7 @@ func (sm *StreamManager) startTranscodeStream(ctx *fsutil.LockContext, args Args
 
 		// ignore ExitErrors, the process is always forcibly killed
 		var exitError *exec.ExitError
-		if err != nil && !errors.As(err, &exitError) {
+		if err != nil && !errors.As(err, &exitError) && !isAlreadyExitedKillError(err) {
 			logger.Errorf("[transcode] ffmpeg error when running command <%s>: %v", strings.Join(cmd.Args, " "), err)
 		}
 	}()

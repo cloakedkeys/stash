@@ -765,7 +765,7 @@ func (sm *StreamManager) startTranscode(stream *runningStream, segment int, done
 				err = fmt.Errorf("ffmpeg error when running command <%s>: %w", strings.Join(cmd.Args, " "), err)
 
 				var exitError *exec.ExitError
-				if !errors.As(err, &exitError) {
+				if !errors.As(err, &exitError) && !isAlreadyExitedKillError(err) {
 					logger.Errorf("[transcode] %v", err)
 				}
 			}
