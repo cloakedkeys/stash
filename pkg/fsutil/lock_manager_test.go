@@ -30,7 +30,7 @@ func (w *commandReadyWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func startReadLockCommand(t *testing.T, ctx context.Context) *exec.Cmd {
+func startReadLockCommand(ctx context.Context, t *testing.T) *exec.Cmd {
 	t.Helper()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestReadLockCommandHelper$")
 	cmd.Env = append(os.Environ(), "STASH_READ_LOCK_COMMAND_HELPER=1")
@@ -55,7 +55,7 @@ func TestReadLockCancelSharesCommandWait(t *testing.T) {
 	m := NewReadLockManager()
 	ctx := m.ReadLock(context.Background(), "scene.mp4")
 	defer ctx.Cancel()
-	cmd := startReadLockCommand(t, ctx)
+	cmd := startReadLockCommand(ctx, t)
 	wait := ctx.AttachCommand(cmd)
 
 	// Deletion can win the race to wait for the encoder. The task must still
@@ -66,7 +66,7 @@ func TestReadLockCancelSharesCommandWait(t *testing.T) {
 	if !errors.As(err, &exitErr) {
 		t.Fatalf("wait after deletion = %v, want process exit error", err)
 	}
-	if again := wait(); again != err {
+	if again := wait(); !errors.Is(again, err) {
 		t.Fatalf("repeated wait = %v, want the same exit result %v", again, err)
 	}
 }
@@ -75,7 +75,7 @@ func TestReadLockCancelWhileCommandWaits(t *testing.T) {
 	m := NewReadLockManager()
 	ctx := m.ReadLock(context.Background(), "scene.mp4")
 	defer ctx.Cancel()
-	wait := ctx.AttachCommand(startReadLockCommand(t, ctx))
+	wait := ctx.AttachCommand(startReadLockCommand(ctx, t))
 
 	finished := make(chan error, 1)
 	go func() { finished <- wait() }()

@@ -13,28 +13,33 @@ var accountTables = []string{"users", "user_roles", "user_ui_config"}
 func (db *Database) readAccounts() (map[string][]goqu.Record, error) {
 	ret := make(map[string][]goqu.Record)
 	for _, table := range accountTables {
-		rows, err := db.writeDB.Queryx("SELECT * FROM " + table)
+		records, err := db.readAccountTable(table)
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", table, err)
 		}
-
-		for rows.Next() {
-			row := make(map[string]interface{})
-			if err := rows.MapScan(row); err != nil {
-				rows.Close()
-				return nil, fmt.Errorf("reading %s: %w", table, err)
-			}
-			ret[table] = append(ret[table], goqu.Record(row))
-		}
-
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", table, err)
-		}
+		ret[table] = records
 	}
 
 	return ret, nil
+}
+
+func (db *Database) readAccountTable(table string) ([]goqu.Record, error) {
+	rows, err := db.writeDB.Queryx("SELECT * FROM " + table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ret []goqu.Record
+	for rows.Next() {
+		row := make(map[string]interface{})
+		if err := rows.MapScan(row); err != nil {
+			return nil, err
+		}
+		ret = append(ret, goqu.Record(row))
+	}
+
+	return ret, rows.Err()
 }
 
 // restoreAccounts replaces the default account made by the migrations.
