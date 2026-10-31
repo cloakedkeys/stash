@@ -32,10 +32,13 @@ func TestParseTagDate(t *testing.T) {
 }
 
 func TestParseTagTrack(t *testing.T) {
-	for in, want := range map[string]int{"3": 3, "3/12": 3, " 07 ": 7} {
-		got := parseTagTrack(in)
-		require.NotNil(t, got, in)
-		assert.Equal(t, want, *got)
+	for _, tt := range []struct {
+		in   string
+		want int
+	}{{"3", 3}, {"3/12", 3}, {" 07 ", 7}} {
+		got := parseTagTrack(tt.in)
+		require.NotNil(t, got, tt.in)
+		assert.Equal(t, tt.want, *got)
 	}
 	for _, in := range []string{"", "A1", "-1"} {
 		assert.Nil(t, parseTagTrack(in), in)

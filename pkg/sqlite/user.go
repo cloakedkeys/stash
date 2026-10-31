@@ -49,13 +49,17 @@ func (r *userRow) fromUser(o models.User) {
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
 }
 
-// encodeLibraryLimit stores no limit as NULL. encoding/json can't fail on the struct.
+// encodeLibraryLimit stores no limit as NULL. encoding/json can't fail on the
+// struct, but if it ever did, an empty limit is stored, which allows nothing.
 func encodeLibraryLimit(l *models.LibraryLimit) zero.String {
 	if l == nil {
 		return zero.String{}
 	}
 
-	b, _ := json.Marshal(l)
+	b, err := json.Marshal(l)
+	if err != nil {
+		return zero.StringFrom("{}")
+	}
 	return zero.StringFrom(string(b))
 }
 
