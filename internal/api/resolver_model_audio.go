@@ -9,7 +9,6 @@ import (
 	"github.com/stashapp/stash/internal/api/urlbuilders"
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/pkg/models"
-	"github.com/stashapp/stash/pkg/session"
 	"github.com/stashapp/stash/pkg/signedurl"
 )
 
@@ -102,22 +101,9 @@ func (r *audioResolver) Paths(ctx context.Context, obj *models.Audio) (*AudioPat
 	config := manager.GetInstance().Config
 	builder := urlbuilders.NewAudioURLBuilder(baseURL, obj)
 
-	var streamPath string
-	if config.HasCredentials() {
-		userID := session.GetCurrentUserID(ctx)
-		if userID == nil {
-			return nil, fmt.Errorf("user ID not found")
-		}
-
-		// Sign the stream prefix
-		streamURL := builder.GetStreamURL("")
-		streamURL.RawQuery = signedParams(config, *userID, signedurl.DerivePrefix(streamURL.Path)).Encode()
-		streamPath = streamURL.String()
-	} else {
-		apiKey := config.GetAPIKey()
-		streamURL := builder.GetStreamURL(apiKey)
-		streamPath = streamURL.String()
-	}
+	streamURL := builder.GetStreamURL("")
+	signURL(ctx, config, streamURL, signedurl.DerivePrefix(streamURL.Path))
+	streamPath := streamURL.String()
 
 	screenshotPath := builder.GetScreenshotURL()
 
@@ -219,9 +205,10 @@ func (r *audioResolver) AudioStreams(ctx context.Context, obj *models.Audio) ([]
 
 	baseURL, _ := ctx.Value(BaseURLCtxKey).(string)
 	builder := urlbuilders.NewAudioURLBuilder(baseURL, obj)
-	apiKey := config.GetAPIKey()
+	streamURL := builder.GetStreamURL("")
+	signURL(ctx, config, streamURL, signedurl.DerivePrefix(streamURL.Path))
 
-	return manager.GetAudioStreamPaths(obj, builder.GetStreamURL(apiKey))
+	return manager.GetAudioStreamPaths(obj, streamURL)
 }
 
 func (r *audioResolver) Urls(ctx context.Context, obj *models.Audio) ([]string, error) {

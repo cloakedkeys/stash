@@ -1350,8 +1350,8 @@ func makeScene(i int) *models.Scene {
 		TagIDs:         models.NewRelatedIDs(tids),
 		Groups:         models.NewRelatedGroups(groups),
 		StashIDs:       models.NewRelatedStashIDs(sceneStashIDs(i)),
-		PlayDuration:   getScenePlayDuration(i),
-		ResumeTime:     getSceneResumeTime(i),
+		PlayDuration:   getPlayDuration(i),
+		ResumeTime:     getResumeTime(i),
 	}
 }
 

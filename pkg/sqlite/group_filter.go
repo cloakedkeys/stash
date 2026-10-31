@@ -274,7 +274,7 @@ var selectGroupOCountSQL = utils.StrFormat(
 		"UNION ALL "+
 		"SELECT COUNT({audios_o_dates}.{audio_o_date}) as o_counter from {groups_audios} a "+
 		"LEFT JOIN {audios} ON {audios}.id = a.{audio_id} "+
-		"LEFT JOIN {audios_o_dates} ON {audios_o_dates}.{audio_id} = {audios}.id "+
+		"LEFT JOIN {audios_o_dates} ON {audios_o_dates}.{audio_id} = {audios}.id AND {audios_o_dates}.user_id = %[1]d "+
 		"WHERE a.{group_id} = {group}.id "+
 		")",
 	map[string]interface{}{

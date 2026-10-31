@@ -17,6 +17,7 @@ import (
 	"github.com/stashapp/stash/pkg/models/mocks"
 	"github.com/stashapp/stash/pkg/session"
 	"github.com/stashapp/stash/pkg/user"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -103,7 +104,15 @@ func TestMultiUserHTTPPermissions(t *testing.T) {
 		`scanFile(input:{path:"example.mp4"}) { id }`,
 		`verifyPaths(input:{})`,
 		`purgeMissing(input:{})`,
+		`audioCreate(input:{title:"Audio"}) { id }`,
+		`audioUpdate(input:{id:"1",title:"Changed"}) { id }`,
+		`audioMerge(input:{source:["1"],destination:"2"}) { id }`,
+		`bulkAudioUpdate(input:{ids:["1"],title:"Changed"}) { id }`,
+		`audiosDestroy(input:{ids:["1"]})`,
+		`audiosUpdate(input:[{id:"1",title:"Changed"}]) { id }`,
+		`audioAssignFile(input:{audio_id:"1",file_id:"1"})`,
 		`backupDatabase(input:{})`,
+		`submitStashBoxFingerprints(input:{scene_ids:[],stash_box_endpoint:"https://example.invalid/graphql"})`,
 	} {
 		t.Run(mutation, func(t *testing.T) {
 			w := request("mutation { "+mutation+" }", "read-key", nil)
@@ -115,6 +124,18 @@ func TestMultiUserHTTPPermissions(t *testing.T) {
 		require.Contains(t, w.Body.String(), `"id":"42"`)
 		require.NotContains(t, w.Body.String(), `"errors"`)
 	}
+	db.Audio.On("AddO", mock.Anything, 42, []time.Time(nil)).Return([]time.Time{}, nil).Once()
+	w = request(`mutation { audioAddO(id:"42") { count } }`, "read-key", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotContains(t, w.Body.String(), "unauthorized")
+	require.NotContains(t, w.Body.String(), `"errors"`)
+
+	db.Audio.On("SaveActivity", mock.Anything, 42, mock.Anything, mock.Anything).Return(true, nil).Once()
+	w = request(`mutation { audioSaveActivity(id:"42",resume_time:12.5,playDuration:3.2) }`, "read-key", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotContains(t, w.Body.String(), "unauthorized")
+	require.NotContains(t, w.Body.String(), `"errors"`)
+	db.Audio.AssertExpectations(t)
 	w = request(`{ users { name } }`, "read-key", nil)
 	require.Contains(t, w.Body.String(), "unauthorized")
 	w = request(`{ users { name } }`, "admin-key", nil)

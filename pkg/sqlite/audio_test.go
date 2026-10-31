@@ -15,6 +15,7 @@ import (
 	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/sliceutil/intslice"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func loadAudioRelationships(ctx context.Context, expected models.Audio, actual *models.Audio) error {
@@ -4221,4 +4222,362 @@ func TestAudioStore_CountUniqueViews(t *testing.T) {
 
 		return nil
 	})
+}
+
+func TestAudioStore_UserData(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		qb := db.Audio
+		now := time.Now().UTC()
+		first := models.Audio{Title: "Audio privacy A", CreatedAt: now, UpdatedAt: now}
+		second := models.Audio{Title: "Audio privacy B", CreatedAt: now, UpdatedAt: now}
+		require.NoError(t, qb.Create(ctx, &first, nil))
+		require.NoError(t, qb.Create(ctx, &second, nil))
+
+		other := models.User{
+			Username: "audio-privacy-user",
+			Roles:    models.Roles{models.RoleEnumModify},
+		}
+		require.NoError(t, db.User.Create(ctx, &other, ""))
+		otherCtx := models.WithUserID(ctx, other.ID)
+		guestCtx := models.WithUserID(ctx, 0)
+
+		userOneDurationBefore, err := qb.PlayDuration(ctx)
+		require.NoError(t, err)
+		userTwoDurationBefore, err := qb.PlayDuration(otherCtx)
+		require.NoError(t, err)
+
+		setRating := func(c context.Context, audioID int, value int) {
+			_, err := qb.UpdatePartial(c, audioID, models.AudioPartial{Rating: models.NewOptionalInt(value)})
+			require.NoError(t, err)
+		}
+		setActivity := func(c context.Context, audioID int, resume, duration float64) {
+			_, err := qb.SaveActivity(c, audioID, &resume, &duration)
+			require.NoError(t, err)
+		}
+
+		setRating(ctx, first.ID, 25)
+		setRating(ctx, second.ID, 75)
+		setActivity(ctx, first.ID, 1.5, 3)
+		setActivity(ctx, second.ID, 2.5, 4)
+
+		setRating(otherCtx, first.ID, 85)
+		setRating(otherCtx, second.ID, 35)
+		setActivity(otherCtx, first.ID, 10.5, 2)
+		setActivity(otherCtx, second.ID, 20.5, 8)
+
+		verifyAudio := func(c context.Context, id int, rating int, resume, duration float64) {
+			audio, err := qb.Find(c, id)
+			require.NoError(t, err)
+			require.NotNil(t, audio)
+			assert.Equal(t, &rating, audio.Rating)
+			assert.Equal(t, resume, audio.ResumeTime)
+			assert.Equal(t, duration, audio.PlayDuration)
+		}
+		verifyAudio(ctx, first.ID, 25, 1.5, 3)
+		verifyAudio(ctx, second.ID, 75, 2.5, 4)
+		verifyAudio(otherCtx, first.ID, 85, 10.5, 2)
+		verifyAudio(otherCtx, second.ID, 35, 20.5, 8)
+
+		guestAudio, err := qb.Find(guestCtx, first.ID)
+		require.NoError(t, err)
+		require.NotNil(t, guestAudio)
+		assert.Nil(t, guestAudio.Rating)
+		assert.Zero(t, guestAudio.ResumeTime)
+		assert.Zero(t, guestAudio.PlayDuration)
+
+		idEnd := second.ID
+		audioIDFilter := &models.AudioFilterType{
+			ID: &models.IntCriterionInput{Value: first.ID, Value2: &idEnd, Modifier: models.CriterionModifierBetween},
+		}
+		sort := "rating"
+		direction := models.SortDirectionEnumDesc
+		findFilter := &models.FindFilterType{Sort: &sort, Direction: &direction}
+		queryIDs := func(c context.Context) []int {
+			audios := queryAudio(c, t, qb, audioIDFilter, findFilter)
+			ids := make([]int, len(audios))
+			for i, audio := range audios {
+				ids[i] = audio.ID
+			}
+			return ids
+		}
+		assert.Equal(t, []int{second.ID, first.ID}, queryIDs(ctx))
+		assert.Equal(t, []int{first.ID, second.ID}, queryIDs(otherCtx))
+
+		ratingFilter := func(value int) *models.AudioFilterType {
+			return &models.AudioFilterType{
+				ID:        audioIDFilter.ID,
+				Rating100: &models.IntCriterionInput{Value: value, Modifier: models.CriterionModifierEquals},
+			}
+		}
+		assert.Equal(t, []int{second.ID}, audioIDsFromQuery(queryAudio(ctx, t, qb, ratingFilter(75), nil)))
+		assert.Equal(t, []int{first.ID}, audioIDsFromQuery(queryAudio(otherCtx, t, qb, ratingFilter(85), nil)))
+
+		userOneDurationAfter, err := qb.PlayDuration(ctx)
+		require.NoError(t, err)
+		userTwoDurationAfter, err := qb.PlayDuration(otherCtx)
+		require.NoError(t, err)
+		assert.InDelta(t, userOneDurationBefore+7, userOneDurationAfter, 0.001)
+		assert.InDelta(t, userTwoDurationBefore+10, userTwoDurationAfter, 0.001)
+
+		_, err = qb.ResetActivity(ctx, first.ID, true, true)
+		require.NoError(t, err)
+		verifyAudio(ctx, first.ID, 25, 0, 0)
+		verifyAudio(otherCtx, first.ID, 85, 10.5, 2)
+
+		return nil
+	})
+}
+
+func TestAudioStore_UserHistoryAndAggregateCounts(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		other := models.User{
+			Username: "audio-history-user",
+			Roles:    models.Roles{models.RoleEnumModify},
+		}
+		require.NoError(t, db.User.Create(ctx, &other, ""))
+		otherCtx := models.WithUserID(ctx, other.ID)
+
+		now := time.Now().UTC()
+		newGroup := func(name string) models.Group {
+			group := models.NewGroup()
+			group.Name = name
+			require.NoError(t, db.Group.Create(ctx, &group))
+			return group
+		}
+		newPerformer := func(name string) models.Performer {
+			performer := models.NewPerformer()
+			performer.Name = name
+			input := models.CreatePerformerInput{Performer: &performer}
+			require.NoError(t, db.Performer.Create(ctx, &input))
+			return performer
+		}
+		newStudio := func(name string) models.Studio {
+			studio := models.NewStudio()
+			studio.Name = name
+			input := models.CreateStudioInput{Studio: &studio}
+			require.NoError(t, db.Studio.Create(ctx, &input))
+			return studio
+		}
+		groupA := newGroup("Audio privacy group A")
+		groupB := newGroup("Audio privacy group B")
+		performerA := newPerformer("Audio privacy performer A")
+		performerB := newPerformer("Audio privacy performer B")
+		studioA := newStudio("Audio privacy studio A")
+		studioB := newStudio("Audio privacy studio B")
+
+		newAudio := func(title string, group models.Group, performer models.Performer, studio models.Studio) models.Audio {
+			audio := models.Audio{
+				Title:        title,
+				CreatedAt:    now,
+				UpdatedAt:    now,
+				StudioID:     &studio.ID,
+				Groups:       models.NewRelatedGroupsAudio([]models.GroupsAudios{{GroupID: group.ID}}),
+				PerformerIDs: models.NewRelatedIDs([]int{performer.ID}),
+			}
+			require.NoError(t, db.Audio.Create(ctx, &audio, nil))
+			return audio
+		}
+		audioA := newAudio("Audio privacy history A", groupA, performerA, studioA)
+		audioB := newAudio("Audio privacy history B", groupB, performerB, studioB)
+
+		date := func(day int) time.Time { return time.Date(2022, 1, day, 0, 0, 0, 0, time.UTC) }
+		for _, history := range []struct {
+			ctx     context.Context
+			audioID int
+			dates   []time.Time
+		}{
+			{ctx, audioA.ID, []time.Time{date(1), date(2)}},
+			{ctx, audioB.ID, []time.Time{date(3)}},
+			{otherCtx, audioB.ID, []time.Time{date(4), date(5)}},
+		} {
+			_, err := db.Audio.AddO(history.ctx, history.audioID, history.dates)
+			require.NoError(t, err)
+		}
+		for _, history := range []struct {
+			ctx     context.Context
+			audioID int
+			date    time.Time
+		}{
+			{ctx, audioA.ID, date(1)},
+			{ctx, audioB.ID, date(2)},
+			{otherCtx, audioA.ID, date(3)},
+			{otherCtx, audioB.ID, date(4)},
+		} {
+			_, err := db.Audio.AddViews(history.ctx, history.audioID, []time.Time{history.date})
+			require.NoError(t, err)
+		}
+
+		for _, expected := range []struct {
+			ctx     context.Context
+			audioID int
+			oCount  int
+			plays   int
+		}{
+			{ctx, audioA.ID, 2, 1},
+			{ctx, audioB.ID, 1, 1},
+			{otherCtx, audioA.ID, 0, 1},
+			{otherCtx, audioB.ID, 2, 1},
+		} {
+			oCount, err := db.Audio.GetOCount(expected.ctx, expected.audioID)
+			require.NoError(t, err)
+			assert.Equal(t, expected.oCount, oCount)
+			playCount, err := db.Audio.CountViews(expected.ctx, expected.audioID)
+			require.NoError(t, err)
+			assert.Equal(t, expected.plays, playCount)
+		}
+
+		assertAggregateCount := func(c context.Context, groupID int, performerID int, studioID int, want int) {
+			groupCount, err := db.Audio.OCountByGroupID(c, groupID)
+			require.NoError(t, err)
+			assert.Equal(t, want, groupCount)
+			performerCount, err := db.Audio.OCountByPerformerID(c, performerID)
+			require.NoError(t, err)
+			assert.Equal(t, want, performerCount)
+			studioCount, err := db.Audio.OCountByStudioID(c, studioID, 0)
+			require.NoError(t, err)
+			assert.Equal(t, want, studioCount)
+			studioTreeCount, err := db.Audio.OCountByStudioID(c, studioID, -1)
+			require.NoError(t, err)
+			assert.Equal(t, want, studioTreeCount)
+		}
+		assertAggregateCount(ctx, groupA.ID, performerA.ID, studioA.ID, 2)
+		assertAggregateCount(ctx, groupB.ID, performerB.ID, studioB.ID, 1)
+		assertAggregateCount(otherCtx, groupA.ID, performerA.ID, studioA.ID, 0)
+		assertAggregateCount(otherCtx, groupB.ID, performerB.ID, studioB.ID, 2)
+
+		idEnd := audioB.ID
+		audioRange := &models.IntCriterionInput{Value: audioA.ID, Value2: &idEnd, Modifier: models.CriterionModifierBetween}
+		queryIDsForOCount := func(c context.Context, count int) []int {
+			filter := &models.AudioFilterType{
+				ID:       audioRange,
+				OCounter: &models.IntCriterionInput{Value: count, Modifier: models.CriterionModifierEquals},
+			}
+			return audioIDsFromQuery(queryAudio(c, t, db.Audio, filter, nil))
+		}
+		assert.Equal(t, []int{audioA.ID}, queryIDsForOCount(ctx, 2))
+		assert.Equal(t, []int{audioB.ID}, queryIDsForOCount(otherCtx, 2))
+
+		assertAggregateOrder := func(c context.Context, want []string) {
+			sort := "o_counter"
+			direction := models.SortDirectionEnumDesc
+			find := &models.FindFilterType{Sort: &sort, Direction: &direction}
+			nameFilter := func() *models.StringCriterionInput {
+				return &models.StringCriterionInput{Value: "Audio privacy", Modifier: models.CriterionModifierIncludes}
+			}
+			groups, _, err := db.Group.Query(c, &models.GroupFilterType{Name: nameFilter()}, find)
+			require.NoError(t, err)
+			groupNames := make([]string, len(groups))
+			for i, group := range groups {
+				groupNames[i] = group.Name
+			}
+			assert.Equal(t, want, groupNames)
+
+			performers, _, err := db.Performer.Query(c, &models.PerformerFilterType{Name: nameFilter()}, find)
+			require.NoError(t, err)
+			performerNames := make([]string, len(performers))
+			for i, performer := range performers {
+				performerNames[i] = performer.Name
+			}
+			assert.Equal(t, []string{"Audio privacy performer " + suffixFromName(want[0]), "Audio privacy performer " + suffixFromName(want[1])}, performerNames)
+
+			studios, _, err := db.Studio.Query(c, &models.StudioFilterType{Name: nameFilter()}, find)
+			require.NoError(t, err)
+			studioNames := make([]string, len(studios))
+			for i, studio := range studios {
+				studioNames[i] = studio.Name
+			}
+			assert.Equal(t, []string{"Audio privacy studio " + suffixFromName(want[0]), "Audio privacy studio " + suffixFromName(want[1])}, studioNames)
+		}
+		assertAggregateOrder(ctx, []string{"Audio privacy group A", "Audio privacy group B"})
+		assertAggregateOrder(otherCtx, []string{"Audio privacy group B", "Audio privacy group A"})
+
+		return nil
+	})
+}
+
+func TestAudioStore_MergeUserData(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		qb := db.Audio
+		now := time.Now().UTC()
+		destination := models.Audio{Title: "Audio privacy merge destination", CreatedAt: now, UpdatedAt: now}
+		source := models.Audio{Title: "Audio privacy merge source", CreatedAt: now, UpdatedAt: now}
+		require.NoError(t, qb.Create(ctx, &destination, nil))
+		require.NoError(t, qb.Create(ctx, &source, nil))
+
+		other := models.User{
+			Username: "audio-merge-user",
+			Roles:    models.Roles{models.RoleEnumModify},
+		}
+		require.NoError(t, db.User.Create(ctx, &other, ""))
+		otherCtx := models.WithUserID(ctx, other.ID)
+
+		destinationRating := 80
+		sourceRating := 25
+		otherSourceRating := 60
+		_, err := qb.UpdatePartial(ctx, destination.ID, models.AudioPartial{
+			Rating:       models.NewOptionalInt(destinationRating),
+			ResumeTime:   models.NewOptionalFloat64(5),
+			PlayDuration: models.NewOptionalFloat64(10),
+		})
+		require.NoError(t, err)
+		_, err = qb.UpdatePartial(ctx, source.ID, models.AudioPartial{
+			Rating:       models.NewOptionalInt(sourceRating),
+			ResumeTime:   models.NewOptionalFloat64(15),
+			PlayDuration: models.NewOptionalFloat64(2),
+		})
+		require.NoError(t, err)
+		_, err = qb.UpdatePartial(otherCtx, source.ID, models.AudioPartial{
+			Rating:       models.NewOptionalInt(otherSourceRating),
+			ResumeTime:   models.NewOptionalFloat64(20),
+			PlayDuration: models.NewOptionalFloat64(7),
+		})
+		require.NoError(t, err)
+
+		playDate := time.Date(2022, 2, 1, 0, 0, 0, 0, time.UTC)
+		oDate := time.Date(2022, 2, 2, 0, 0, 0, 0, time.UTC)
+		_, err = qb.AddViews(ctx, source.ID, []time.Time{playDate})
+		require.NoError(t, err)
+		_, err = qb.AddO(ctx, source.ID, []time.Time{oDate})
+		require.NoError(t, err)
+		_, err = qb.AddViews(otherCtx, source.ID, []time.Time{playDate})
+		require.NoError(t, err)
+		_, err = qb.AddO(otherCtx, source.ID, []time.Time{oDate})
+		require.NoError(t, err)
+
+		require.NoError(t, qb.MergeUserData(ctx, destination.ID, []int{source.ID}, true, true))
+
+		merged, err := qb.Find(ctx, destination.ID)
+		require.NoError(t, err)
+		assert.Equal(t, &destinationRating, merged.Rating)
+		assert.Equal(t, 5.0, merged.ResumeTime)
+		assert.Equal(t, 12.0, merged.PlayDuration)
+		merged, err = qb.Find(otherCtx, destination.ID)
+		require.NoError(t, err)
+		assert.Equal(t, &otherSourceRating, merged.Rating)
+		assert.Equal(t, 20.0, merged.ResumeTime)
+		assert.Equal(t, 7.0, merged.PlayDuration)
+
+		for _, c := range []context.Context{ctx, otherCtx} {
+			playCount, err := qb.CountViews(c, destination.ID)
+			require.NoError(t, err)
+			assert.Equal(t, 1, playCount)
+			oCount, err := qb.GetOCount(c, destination.ID)
+			require.NoError(t, err)
+			assert.Equal(t, 1, oCount)
+		}
+
+		return nil
+	})
+}
+
+func audioIDsFromQuery(audios []*models.Audio) []int {
+	ids := make([]int, len(audios))
+	for i, audio := range audios {
+		ids[i] = audio.ID
+	}
+	return ids
+}
+
+func suffixFromName(name string) string {
+	return name[len(name)-1:]
 }

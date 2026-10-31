@@ -1248,6 +1248,24 @@ func (_m *AudioReaderWriter) ResetActivity(ctx context.Context, audioID int, res
 	return r0, r1
 }
 
+// MergeUserData provides a mock function with given fields: ctx, destinationID, sourceIDs, includePlayHistory, includeOHistory
+func (_m *AudioReaderWriter) MergeUserData(ctx context.Context, destinationID int, sourceIDs []int, includePlayHistory bool, includeOHistory bool) error {
+	ret := _m.Called(ctx, destinationID, sourceIDs, includePlayHistory, includeOHistory)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MergeUserData")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, int, []int, bool, bool) error); ok {
+		r0 = rf(ctx, destinationID, sourceIDs, includePlayHistory, includeOHistory)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // ResetO provides a mock function with given fields: ctx, id
 func (_m *AudioReaderWriter) ResetO(ctx context.Context, id int) (int, error) {
 	ret := _m.Called(ctx, id)
