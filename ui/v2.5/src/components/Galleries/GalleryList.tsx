@@ -16,6 +16,7 @@ import { DeleteGalleriesDialog } from "./DeleteGalleriesDialog";
 import { ExportDialog } from "../Shared/ExportDialog";
 import { reverseMap, sortFieldToColumn } from "src/utils/data";
 import { GenerateDialog } from "../Dialogs/GenerateDialog";
+import { IdentifyDialog } from "../Dialogs/IdentifyDialog/IdentifyDialog";
 import { GalleryListTable } from "./GalleryListTable";
 import { GalleryCardGrid } from "./GalleryCardGrid";
 import { View } from "../List/views";
@@ -459,6 +460,18 @@ export const FilteredGalleryList = PatchComponent(
       {
         text: `${intl.formatMessage({ id: "actions.generate" })}…`,
         onClick: onGenerate,
+        isDisplayed: () => hasSelection,
+      },
+      {
+        text: `${intl.formatMessage({ id: "actions.identify" })}…`,
+        onClick: () =>
+          showModal(
+            <IdentifyDialog
+              selectedIds={Array.from(selectedIds.values())}
+              type="gallery"
+              onClose={() => closeModal()}
+            />
+          ),
         isDisplayed: () => hasSelection,
       },
       {
