@@ -208,21 +208,27 @@ func (r *repository) buildQueryBody(body string, whereClauses []string, havingCl
 	return body
 }
 
-func (r *repository) buildCombinedQuery(body, sort, pagination string) string {
+// buildCombinedQuery pages the rows of body, which must have id and sort_order
+// columns. A sort or filter on files gives one row per file, so each item is
+// kept once, at its first position.
+func (r *repository) buildCombinedQuery(body, pagination string) string {
 	return `
 		WITH base_query AS (
 			` + body + `
-			` + sort + `
+		),
+		items AS (
+			SELECT id, MIN(sort_order) AS sort_order FROM base_query GROUP BY id
 		),
 		total AS (
-			SELECT COUNT(*) AS total_count FROM base_query
+			SELECT COUNT(*) AS total_count FROM items
 		)
-		SELECT base_query.id, total.total_count
-		FROM base_query, total
+		SELECT items.id, total.total_count
+		FROM items, total
+		ORDER BY items.sort_order
 		` + pagination
 }
 
-func (r *repository) executeFindQuery(ctx context.Context, body string, args []interface{}, sort string, pagination string, whereClauses []string, havingClauses []string, withClauses []string, groupByClauses []string, recursiveWith bool) ([]int, int, error) {
+func (r *repository) executeFindQuery(ctx context.Context, body string, args []interface{}, pagination string, whereClauses []string, havingClauses []string, withClauses []string, groupByClauses []string, recursiveWith bool) ([]int, int, error) {
 	body = r.buildQueryBody(body, whereClauses, havingClauses, groupByClauses)
 
 	withClause := ""
@@ -235,7 +241,7 @@ func (r *repository) executeFindQuery(ctx context.Context, body string, args []i
 	}
 
 	// Perform query and fetch result
-	combinedQuery := r.buildCombinedQuery(withClause+body, sort, pagination)
+	combinedQuery := r.buildCombinedQuery(withClause+body, pagination)
 
 	var obj *RowsWithCounts
 	var err error

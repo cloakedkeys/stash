@@ -1317,6 +1317,7 @@ var sceneSortOptions = sortOptions{
 	"perceptual_similarity",
 	"random",
 	"rating",
+	"resolution",
 	"studio",
 	"tag_count",
 	"title",
@@ -1407,8 +1408,8 @@ func (qb *SceneStore) setSceneSort(ctx context.Context, query *queryBuilder, fin
 			},
 		)
 
-		query.sort += " ORDER BY fingerprints_phash.fingerprint " + direction + ", files.size DESC"
-		query.addGroupBy("fingerprints_phash.fingerprint", "files.size")
+		query.sort += " ORDER BY " + phashColumn("fingerprints_phash") + " " + direction + ", files.size DESC"
+		query.addGroupBy("fingerprints_phash.type", "fingerprints_phash.fingerprint", "files.size")
 	case "bitrate":
 		sort = "bit_rate"
 		addVideoFileTable()
@@ -1429,7 +1430,8 @@ func (qb *SceneStore) setSceneSort(ctx context.Context, query *queryBuilder, fin
 		query.addGroupBy(agg...)
 	case "resolution":
 		addVideoFileTable()
-		query.sort += fmt.Sprintf(" ORDER BY MIN(%s.width, %s.height) %s", videoFileTable, videoFileTable, getSortDirection(direction))
+		query.sort += fmt.Sprintf(" ORDER BY LEAST(%s.width, %s.height) %s", videoFileTable, videoFileTable, getSortDirection(direction))
+		query.addGroupBy(videoFileTable+".width", videoFileTable+".height")
 	case "filesize":
 		query.sort += getFileSizeSort(sceneTable, scenesFilesTable, sceneIDColumn, direction)
 	case "duration":

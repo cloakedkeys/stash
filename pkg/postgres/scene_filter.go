@@ -172,7 +172,7 @@ func (qb *sceneFilterHandler) criterionHandler() criterionHandler {
 					"scene_last_view",
 					fmt.Sprintf("scene_last_view.%s = scenes.id", sceneIDColumn),
 				)
-				h := timestampCriterionHandler{sceneFilter.LastPlayedAt, "IFNULL(last_played_at, datetime(0))", nil}
+				h := timestampCriterionHandler{sceneFilter.LastPlayedAt, "COALESCE(last_played_at, '1970-01-01 00:00:00'::timestamp)", nil}
 				h.handle(ctx, f)
 			}
 		}),
@@ -265,7 +265,7 @@ func (qb *sceneFilterHandler) criterionHandler() criterionHandler {
 			relatedRepo:    sceneMarkerRepository.repository,
 			relatedHandler: &sceneMarkerFilterHandler{sceneFilter.MarkersFilter},
 			joinFn: func(f *filterBuilder) {
-				f.addInnerJoin("scene_markers", "", "scenes.id")
+				f.addInnerJoin("scene_markers", "", "scene_markers.scene_id = scenes.id")
 			},
 		},
 	}

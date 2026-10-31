@@ -265,12 +265,12 @@ func (qb *fileFilterHandler) hashesCriterionHandler(hashes []*models.Fingerprint
 				if distance > 0 {
 					// needed to avoid a type mismatch
 					f.addWhere(fmt.Sprintf("%s.type = 'phash'", t))
-					f.addWhere(fmt.Sprintf("phash_distance(CAST(%s.fingerprint AS bigint), ?) < ?", t), value, distance)
+					f.addWhere("phash_distance("+phashColumn(t)+", ?) < ?", value, distance)
 				} else {
 					intCriterionHandler(&models.IntCriterionInput{
 						Value:    int(value),
 						Modifier: models.CriterionModifierEquals,
-					}, "CAST("+t+".fingerprint AS bigint)", nil)(ctx, f)
+					}, phashColumn(t), nil)(ctx, f)
 				}
 			} else {
 				// All other fingerprint types (md5, oshash, sha1, etc.) are stored as strings

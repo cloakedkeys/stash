@@ -1179,6 +1179,12 @@ func (h *relatedFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 	f.addWhere(fmt.Sprintf("%s IN ("+subQuery.toSQL(false)+")", h.relatedIDCol), subQuery.allArgs()...)
 }
 
+// phashColumn reads a stored phash as a number. Other kinds of fingerprint share
+// the column and aren't numbers, so they become null rather than fail the cast.
+func phashColumn(table string) string {
+	return fmt.Sprintf("CASE WHEN %[1]s.type = 'phash' THEN CAST(%[1]s.fingerprint AS bigint) END", table)
+}
+
 type phashDistanceCriterionHandler struct {
 	// assumes that applicable fingerprints table is joined as fingerprints_phash
 	joinFn    func(f *filterBuilder)
@@ -1201,18 +1207,14 @@ func (h *phashDistanceCriterionHandler) handle(ctx context.Context, f *filterBui
 
 	switch {
 	case phashDistance.Modifier == models.CriterionModifierEquals && distance > 0:
-		// needed to avoid a type mismatch
-		f.addWhere("typeof(fingerprints_phash.fingerprint) = 'integer'")
-		f.addWhere("phash_distance(fingerprints_phash.fingerprint, ?) < ?", value, distance)
+		f.addWhere("phash_distance("+phashColumn("fingerprints_phash")+", ?) < ?", value, distance)
 	case phashDistance.Modifier == models.CriterionModifierNotEquals && distance > 0:
-		// needed to avoid a type mismatch
-		f.addWhere("typeof(fingerprints_phash.fingerprint) = 'integer'")
-		f.addWhere("phash_distance(fingerprints_phash.fingerprint, ?) > ?", value, distance)
+		f.addWhere("phash_distance("+phashColumn("fingerprints_phash")+", ?) > ?", value, distance)
 	default:
 		intCriterionHandler(&models.IntCriterionInput{
 			Value:    int(value),
 			Modifier: phashDistance.Modifier,
-		}, "fingerprints_phash.fingerprint", nil)(ctx, f)
+		}, phashColumn("fingerprints_phash"), nil)(ctx, f)
 	}
 }
 
