@@ -128,7 +128,7 @@ func (qb *performerFilterHandler) criterionHandler() criterionHandler {
 		stringCriterionHandler(filter.Disambiguation, tableName+".disambiguation"),
 		stringCriterionHandler(filter.Details, tableName+".details"),
 
-		boolCriterionHandler(filter.FilterFavorites, tableName+".favorite", nil),
+		performerUserData.boolCriterionHandler(filter.FilterFavorites, performerUserData.columnOrDefault("favorite", "false")),
 		boolCriterionHandler(filter.IgnoreAutoTag, tableName+".ignore_auto_tag", nil),
 
 		yearFilterCriterionHandler(filter.BirthYear, tableName+".birthdate"),
@@ -182,7 +182,7 @@ func (qb *performerFilterHandler) criterionHandler() criterionHandler {
 		&dateCriterionHandler{filter.CareerEnd, tableName + ".career_end", nil},
 		stringCriterionHandler(filter.Tattoos, tableName+".tattoos"),
 		stringCriterionHandler(filter.Piercings, tableName+".piercings"),
-		intCriterionHandler(filter.Rating100, tableName+".rating", nil),
+		performerUserData.intCriterionHandler(filter.Rating100, performerUserData.column("rating")),
 		stringCriterionHandler(filter.HairColor, tableName+".hair_color"),
 		qb.urlsCriterionHandler(filter.URL),
 		intCriterionHandler(filter.Weight, tableName+".weight", nil),
@@ -217,6 +217,7 @@ func (qb *performerFilterHandler) criterionHandler() criterionHandler {
 
 		qb.tagCountCriterionHandler(filter.TagCount),
 		qb.sceneCountCriterionHandler(filter.SceneCount),
+		qb.audioCountCriterionHandler(filter.AudioCount),
 		qb.markerCountCriterionHandler(filter.MarkerCount),
 		qb.imageCountCriterionHandler(filter.ImageCount),
 		qb.galleryCountCriterionHandler(filter.GalleryCount),
@@ -243,6 +244,15 @@ func (qb *performerFilterHandler) criterionHandler() criterionHandler {
 			relatedHandler: &sceneFilterHandler{filter.ScenesFilter},
 			joinFn: func(f *filterBuilder) {
 				performerRepository.scenes.innerJoin(f, "", "performers.id")
+			},
+		},
+
+		&relatedFilterHandler{
+			relatedIDCol:   "performers_audios.audio_id",
+			relatedRepo:    audioRepository.repository,
+			relatedHandler: &audioFilterHandler{filter.AudiosFilter},
+			joinFn: func(f *filterBuilder) {
+				performerRepository.audios.innerJoin(f, "", "performers.id")
 			},
 		},
 
@@ -349,12 +359,15 @@ func (qb *performerFilterHandler) performerIsMissingCriterionHandler(isMissing *
 			case "tags":
 				f.addLeftJoin(performersTagsTable, "tags_join", "tags_join.performer_id = performers.id")
 				f.addWhere("tags_join.performer_id IS NULL")
+			case "rating":
+				performerUserData.join(ctx, f)
+				f.addWhere(performerUserData.column("rating") + " IS NULL")
 			default:
 				if err := validateIsMissing(*isMissing, []string{
 					"disambiguation", "gender", "birthdate", "death_date",
 					"ethnicity", "country", "hair_color", "eye_color", "height", "weight",
 					"measurements", "fake_tits", "penis_length", "circumcised",
-					"career_start", "career_end", "tattoos", "piercings", "details", "rating",
+					"career_start", "career_end", "tattoos", "piercings", "details",
 				}); err != nil {
 					f.setError(err)
 					return
@@ -456,6 +469,16 @@ func (qb *performerFilterHandler) markerCountCriterionHandler(count *models.IntC
 	}
 }
 
+func (qb *performerFilterHandler) audioCountCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
+	h := countCriterionHandlerBuilder{
+		primaryTable: performerTable,
+		joinTable:    performersAudiosTable,
+		primaryFK:    performerIDColumn,
+	}
+
+	return h.handler(count)
+}
+
 func (qb *performerFilterHandler) imageCountCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
 	h := countCriterionHandlerBuilder{
 		primaryTable: performerTable,
@@ -476,22 +499,28 @@ func (qb *performerFilterHandler) galleryCountCriterionHandler(count *models.Int
 	return h.handler(count)
 }
 
-// used for sorting and filtering on performer o-count
+// used for sorting and filtering on performer o-count.
+// Must be formatted with the current user ID.
 var selectPerformerOCountSQL = utils.StrFormat(
 	"SELECT SUM(o_counter) "+
 		"FROM ("+
-		"SELECT SUM(o_counter) as o_counter from {performers_images} s "+
-		"LEFT JOIN {images} ON {images}.id = s.{images_id} "+
+		"SELECT SUM({images_user_data}.o_counter) as o_counter from {performers_images} s "+
+		"LEFT JOIN {images_user_data} ON {images_user_data}.{images_id} = s.{images_id} AND {images_user_data}.user_id = %[1]d "+
 		"WHERE s.{performer_id} = {performers}.id "+
 		"UNION ALL "+
-		"SELECT SUM(o_counter) as o_counter from {performers_galleries} s "+
-		"LEFT JOIN {galleries} ON {galleries}.id = s.{gallery_id} "+
+		"SELECT SUM({galleries_user_data}.o_counter) as o_counter from {performers_galleries} s "+
+		"LEFT JOIN {galleries_user_data} ON {galleries_user_data}.{gallery_id} = s.{gallery_id} AND {galleries_user_data}.user_id = %[1]d "+
 		"WHERE s.{performer_id} = {performers}.id "+
 		"UNION ALL "+
 		"SELECT COUNT({scenes_o_dates}.{o_date}) as o_counter from {performers_scenes} s "+
 		"LEFT JOIN {scenes} ON {scenes}.id = s.{scene_id} "+
-		"LEFT JOIN {scenes_o_dates} ON {scenes_o_dates}.{scene_id} = {scenes}.id "+
+		"LEFT JOIN {scenes_o_dates} ON {scenes_o_dates}.{scene_id} = {scenes}.id AND {scenes_o_dates}.user_id = %[1]d "+
 		"WHERE s.{performer_id} = {performers}.id "+
+		"UNION ALL "+
+		"SELECT COUNT({audios_o_dates}.{audio_o_date}) as o_counter from {performers_audios} a "+
+		"LEFT JOIN {audios} ON {audios}.id = a.{audio_id} "+
+		"LEFT JOIN {audios_o_dates} ON {audios_o_dates}.{audio_id} = {audios}.id "+
+		"WHERE a.{performer_id} = {performers}.id "+
 		")",
 	map[string]interface{}{
 		"performers_images":    performersImagesTable,
@@ -507,15 +536,23 @@ var selectPerformerOCountSQL = utils.StrFormat(
 		"scene_id":             sceneIDColumn,
 		"scenes_o_dates":       scenesODatesTable,
 		"o_date":               sceneODateColumn,
+		"images_user_data":     imagesUserDataTable,
+		"galleries_user_data":  galleriesUserDataTable,
+		"performers_audios":    performersAudiosTable,
+		"audios":               audioTable,
+		"audio_id":             audioIDColumn,
+		"audios_o_dates":       audiosODatesTable,
+		"audio_o_date":         audioODateColumn,
 	},
 )
 
-// used for sorting and filtering play count on performer view count
+// used for sorting and filtering play count on performer view count.
+// Must be formatted with the current user ID.
 var selectPerformerPlayCountSQL = utils.StrFormat(
 	"SELECT COUNT(DISTINCT {view_date}) FROM ("+
 		"SELECT {view_date} FROM {performers_scenes} s "+
 		"LEFT JOIN {scenes} ON {scenes}.id = s.{scene_id} "+
-		"LEFT JOIN {scenes_view_dates} ON {scenes_view_dates}.{scene_id} = {scenes}.id "+
+		"LEFT JOIN {scenes_view_dates} ON {scenes_view_dates}.{scene_id} = {scenes}.id AND {scenes_view_dates}.user_id = %[1]d "+
 		"WHERE s.{performer_id} = {performers}.id"+
 		")",
 	map[string]interface{}{
@@ -535,7 +572,7 @@ func (qb *performerFilterHandler) oCounterCriterionHandler(count *models.IntCrit
 			return
 		}
 
-		lhs := "(" + selectPerformerOCountSQL + ")"
+		lhs := "(" + fmt.Sprintf(selectPerformerOCountSQL, currentUserID(ctx)) + ")"
 		clause, args := getIntCriterionWhereClause(lhs, *count)
 
 		f.addWhere(clause, args...)
@@ -548,7 +585,7 @@ func (qb *performerFilterHandler) playCounterCriterionHandler(count *models.IntC
 			return
 		}
 
-		lhs := "(" + selectPerformerPlayCountSQL + ")"
+		lhs := "(" + fmt.Sprintf(selectPerformerPlayCountSQL, currentUserID(ctx)) + ")"
 		clause, args := getIntCriterionWhereClause(lhs, *count)
 
 		f.addWhere(clause, args...)

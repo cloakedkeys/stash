@@ -3477,7 +3477,7 @@ func TestImageQueryCustomFields(t *testing.T) {
 
 func TestImageStore_UserData(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Image
+		qb := db.Image()
 
 		newImage := models.Image{
 			Title: "user data",
@@ -3489,7 +3489,7 @@ func TestImageStore_UserData(t *testing.T) {
 			Username: "other",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 		guestCtx := models.WithUserID(ctx, 0)
 

@@ -29,7 +29,7 @@ type Database interface {
 	DatabaseBackend() DatabaseType
 	ExecSQL(ctx context.Context, query string, args []interface{}) (*int64, *int64, error)
 	IsLocked(err error) bool
-	Open(dbPath string) error
+	Open(ctx context.Context, dbPath string) error
 	Optimise(ctx context.Context) error
 	QuerySQL(ctx context.Context, query string, args []interface{}) ([]string, [][]interface{}, error)
 	ReInitialise() error
@@ -39,13 +39,17 @@ type Database interface {
 	Reset() error
 	RestoreFromBackup(backupPath string) error
 	Rollback(ctx context.Context) error
-	RunAllMigrations() error
+	RunAllMigrations(ctx context.Context) error
 	SetBlobStoreOptions(options BlobStoreOptions)
 	Vacuum(ctx context.Context) error
 	Version() uint
 	WithDatabase(ctx context.Context) (context.Context, error)
 	NewMigrator() (MigrateStore, error)
 
+	User() UserStore
+	UserUIConfig() models.UserUIConfigReaderWriter
+	UserSchemaVersion() uint
+	Audio() AudioStore
 	VoiceActor() models.VoiceActorReaderWriter
 	Blobs() BlobStore
 	File() FileStore

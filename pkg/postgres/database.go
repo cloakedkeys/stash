@@ -29,7 +29,7 @@ const (
 	dbConnTimeout = 30 * time.Second
 )
 
-var appSchemaVersion uint = 14
+var appSchemaVersion uint = 16
 
 //go:embed migrations/*.sql
 var migrationsBox embed.FS
@@ -41,10 +41,13 @@ type storeRepository struct {
 	Image          *ImageStore
 	Gallery        *GalleryStore
 	GalleryChapter *GalleryChapterStore
+	Audio          *AudioStore
 	Scene          *SceneStore
 	SceneMarker    *SceneMarkerStore
 	VoiceActor     *VoiceActorStore
 	Performer      *PerformerStore
+	User           *UserStore
+	UserUIConfig   *UserUIConfigStore
 	SavedFilter    *SavedFilterStore
 	Studio         *StudioStore
 	Tag            *TagStore
@@ -78,6 +81,9 @@ func NewDatabase() *Database {
 		File:           fileStore,
 		Folder:         folderStore,
 		Scene:          NewSceneStore(r, blobStore),
+		Audio:          NewAudioStore(r, blobStore),
+		User:           NewUserStore(),
+		UserUIConfig:   NewUserUIConfigStore(),
 		SceneMarker:    NewSceneMarkerStore(),
 		Image:          NewImageStore(r),
 		Gallery:        galleryStore,
@@ -112,6 +118,9 @@ func (db *Database) Ready() error {
 		return database.ErrDatabaseNotInitialized
 	}
 
+	if db.needsMigration() {
+		return &database.MigrationNeededError{CurrentSchemaVersion: db.schemaVersion, RequiredSchemaVersion: appSchemaVersion}
+	}
 	return nil
 }
 
@@ -119,7 +128,7 @@ func (db *Database) Ready() error {
 // performs a full migration to the latest schema version. Otherwise, any
 // necessary migrations must be run separately using RunMigrations.
 // Returns true if the database is new.
-func (db *Database) Open(dbPath string) error {
+func (db *Database) Open(ctx context.Context, dbPath string) error {
 	db.lock()
 	defer db.unlock()
 
@@ -136,7 +145,7 @@ func (db *Database) Open(dbPath string) error {
 
 	if isNew {
 		// new database, just run the migrations
-		if err := db.RunAllMigrations(); err != nil {
+		if err := db.RunAllMigrations(ctx); err != nil {
 			return fmt.Errorf("error running initial schema migrations: %w", err)
 		}
 	} else {
@@ -147,13 +156,6 @@ func (db *Database) Open(dbPath string) error {
 			}
 		}
 
-		// if migration is needed, then don't open the connection
-		if db.needsMigration() {
-			return &database.MigrationNeededError{
-				CurrentSchemaVersion:  databaseSchemaVersion,
-				RequiredSchemaVersion: appSchemaVersion,
-			}
-		}
 	}
 
 	if err := db.initialise(); err != nil {
@@ -294,7 +296,7 @@ func (db *Database) Reset() error {
 		return err
 	}
 
-	if err := db.Open(databasePath); err != nil {
+	if err := db.Open(context.Background(), databasePath); err != nil {
 		return fmt.Errorf("[reset DB] unable to initialize: %w", err)
 	}
 

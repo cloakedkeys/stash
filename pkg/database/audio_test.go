@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package sqlite_test
+package database_test
 
 import (
 	"context"
@@ -19,33 +19,33 @@ import (
 
 func loadAudioRelationships(ctx context.Context, expected models.Audio, actual *models.Audio) error {
 	if expected.URLs.Loaded() {
-		if err := actual.LoadURLs(ctx, db.Audio); err != nil {
+		if err := actual.LoadURLs(ctx, db.Audio()); err != nil {
 			return err
 		}
 	}
 
 	if expected.GalleryIDs.Loaded() {
-		if err := actual.LoadGalleryIDs(ctx, db.Audio); err != nil {
+		if err := actual.LoadGalleryIDs(ctx, db.Audio()); err != nil {
 			return err
 		}
 	}
 	if expected.TagIDs.Loaded() {
-		if err := actual.LoadTagIDs(ctx, db.Audio); err != nil {
+		if err := actual.LoadTagIDs(ctx, db.Audio()); err != nil {
 			return err
 		}
 	}
 	if expected.PerformerIDs.Loaded() {
-		if err := actual.LoadPerformerIDs(ctx, db.Audio); err != nil {
+		if err := actual.LoadPerformerIDs(ctx, db.Audio()); err != nil {
 			return err
 		}
 	}
 	if expected.Groups.Loaded() {
-		if err := actual.LoadGroups(ctx, db.Audio); err != nil {
+		if err := actual.LoadGroups(ctx, db.Audio()); err != nil {
 			return err
 		}
 	}
 	if expected.Files.Loaded() {
-		if err := actual.LoadFiles(ctx, db.Audio); err != nil {
+		if err := actual.LoadFiles(ctx, db.Audio()); err != nil {
 			return err
 		}
 	}
@@ -186,7 +186,7 @@ func Test_audioQueryBuilder_Create(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -384,7 +384,7 @@ func Test_audioQueryBuilder_Update(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
@@ -553,7 +553,7 @@ func Test_audioQueryBuilder_UpdatePartial(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		qb := db.Audio
+		qb := db.Audio()
 
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
@@ -1019,7 +1019,7 @@ func Test_audioQueryBuilder_UpdatePartialRelationships(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		qb := db.Audio
+		qb := db.Audio()
 
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
@@ -1091,7 +1091,7 @@ func Test_audioQueryBuilder_AddO(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1128,7 +1128,7 @@ func Test_audioQueryBuilder_DeleteO(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1165,7 +1165,7 @@ func Test_audioQueryBuilder_ResetO(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1203,7 +1203,7 @@ func Test_audioQueryBuilder_Destroy(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1275,7 +1275,7 @@ func Test_audioQueryBuilder_Find(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1346,7 +1346,7 @@ func Test_audioQueryBuilder_FindMany(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1416,7 +1416,7 @@ func Test_audioQueryBuilder_FindByChecksum(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1486,7 +1486,7 @@ func Test_audioQueryBuilder_FindByPath(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1509,7 +1509,7 @@ func Test_audioQueryBuilder_FindByPath(t *testing.T) {
 
 func TestAudioCountByPerformerID(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		count, err := sqb.CountByPerformerID(ctx, performerIDs[performerIdxWithAudio])
 
 		if err != nil {
@@ -1560,7 +1560,7 @@ func Test_audioStore_FindByFileID(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1606,7 +1606,7 @@ func Test_audioStore_CountByFileID(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1628,7 +1628,7 @@ func TestAudioQueryQ(t *testing.T) {
 	q := getAudioStringValue(audioIdx, titleField)
 
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		audioQueryQ(ctx, t, sqb, q, audioIdx)
 
@@ -1753,7 +1753,7 @@ func TestAudioQuery(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			results, err := db.Audio.Query(ctx, models.AudioQueryOptions{
+			results, err := db.Audio().Query(ctx, models.AudioQueryOptions{
 				AudioFilter: tt.filter,
 				QueryOptions: models.QueryOptions{
 					FindFilter: tt.findFilter,
@@ -1866,7 +1866,7 @@ func TestAudioQueryPath(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1965,7 +1965,7 @@ func TestAudioQueryPathOr(t *testing.T) {
 	}
 
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		audios := queryAudio(ctx, t, sqb, &audioFilter, nil)
 
@@ -2000,7 +2000,7 @@ func TestAudioQueryPathAndRating(t *testing.T) {
 	}
 
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		audios := queryAudio(ctx, t, sqb, &audioFilter, nil)
 
@@ -2039,7 +2039,7 @@ func TestAudioQueryPathNotRating(t *testing.T) {
 	}
 
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		audios := queryAudio(ctx, t, sqb, &audioFilter, nil)
 
@@ -2072,7 +2072,7 @@ func TestAudioIllegalQuery(t *testing.T) {
 	}
 
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		queryOptions := models.AudioQueryOptions{
 			AudioFilter: audioFilter,
@@ -2099,7 +2099,7 @@ func verifyAudioQuery(t *testing.T, filter models.AudioFilterType, verifyFn func
 	t.Helper()
 	withTxn(func(ctx context.Context) error {
 		t.Helper()
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		audios := queryAudio(ctx, t, sqb, &filter, nil)
 
@@ -2122,7 +2122,7 @@ func verifyAudioQuery(t *testing.T, filter models.AudioFilterType, verifyFn func
 
 func verifyAudiosPath(t *testing.T, pathCriterion models.StringCriterionInput) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		audioFilter := models.AudioFilterType{
 			Path: &pathCriterion,
 		}
@@ -2164,7 +2164,7 @@ func TestAudioQueryRating100(t *testing.T) {
 
 func verifyAudiosRating100(t *testing.T, ratingCriterion models.IntCriterionInput) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		audioFilter := models.AudioFilterType{
 			Rating100: &ratingCriterion,
 		}
@@ -2200,7 +2200,7 @@ func TestAudioQueryOCounter(t *testing.T) {
 
 func verifyAudiosOCounter(t *testing.T, oCounterCriterion models.IntCriterionInput) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		audioFilter := models.AudioFilterType{
 			OCounter: &oCounterCriterion,
 		}
@@ -2246,7 +2246,7 @@ func TestAudioQueryDuration(t *testing.T) {
 
 func verifyAudiosDuration(t *testing.T, durationCriterion models.IntCriterionInput) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		audioFilter := models.AudioFilterType{
 			Duration: &durationCriterion,
 		}
@@ -2254,7 +2254,7 @@ func verifyAudiosDuration(t *testing.T, durationCriterion models.IntCriterionInp
 		audios := queryAudio(ctx, t, sqb, &audioFilter, nil)
 
 		for _, audio := range audios {
-			if err := audio.LoadPrimaryFile(ctx, db.File); err != nil {
+			if err := audio.LoadPrimaryFile(ctx, db.File()); err != nil {
 				t.Errorf("Error querying audio files: %v", err)
 				return nil
 			}
@@ -2275,7 +2275,7 @@ func verifyAudiosDuration(t *testing.T, durationCriterion models.IntCriterionInp
 
 func TestAudioQueryIsMissingStudio(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		isMissing := "studio"
 		audioFilter := models.AudioFilterType{
 			IsMissing: &isMissing,
@@ -2304,7 +2304,7 @@ func TestAudioQueryIsMissingStudio(t *testing.T) {
 
 func TestAudioQueryIsMissingMovies(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		isMissing := "movie"
 		audioFilter := models.AudioFilterType{
 			IsMissing: &isMissing,
@@ -2333,7 +2333,7 @@ func TestAudioQueryIsMissingMovies(t *testing.T) {
 
 func TestAudioQueryIsMissingGalleries(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		isMissing := "galleries"
 		audioFilter := models.AudioFilterType{
 			IsMissing: &isMissing,
@@ -2365,7 +2365,7 @@ func TestAudioQueryIsMissingGalleries(t *testing.T) {
 
 func TestAudioQueryGalleries(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		galleryCriterion := models.MultiCriterionInput{
 			Value: []string{
@@ -2421,7 +2421,7 @@ func TestAudioQueryGalleries(t *testing.T) {
 
 func TestAudioQueryGalleriesFilter(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		titleCriterion := models.StringCriterionInput{
 			Value:    getGalleryStringValue(galleryIdxWithAudio, titleField),
@@ -2447,7 +2447,7 @@ func TestAudioQueryGalleriesFilter(t *testing.T) {
 
 func Test_audioStore_FindByGalleryID(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		audios, err := sqb.FindByGalleryID(ctx, galleryIDs[galleryIdxWithTwoAudios])
 		if err != nil {
@@ -2475,7 +2475,7 @@ func Test_audioStore_FindByGalleryID(t *testing.T) {
 
 func Test_audioStore_AddGalleryIDs(t *testing.T) {
 	runWithRollbackTxn(t, "AddGalleryIDs", func(t *testing.T, ctx context.Context) {
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		audioID := audioIDs[audioIdxWithGallery]
 		newGalleryID := galleryIDs[galleryIdxWithScene]
@@ -2514,7 +2514,7 @@ func Test_audioStore_AddGalleryIDs(t *testing.T) {
 
 func TestAudioQueryIsMissingPerformers(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		isMissing := "performers"
 		audioFilter := models.AudioFilterType{
 			IsMissing: &isMissing,
@@ -2545,7 +2545,7 @@ func TestAudioQueryIsMissingPerformers(t *testing.T) {
 
 func TestAudioQueryIsMissingDate(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		isMissing := "date"
 		audioFilter := models.AudioFilterType{
 			IsMissing: &isMissing,
@@ -2567,7 +2567,7 @@ func TestAudioQueryIsMissingDate(t *testing.T) {
 
 func TestAudioQueryIsMissingTags(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		isMissing := "tags"
 		audioFilter := models.AudioFilterType{
 			IsMissing: &isMissing,
@@ -2593,7 +2593,7 @@ func TestAudioQueryIsMissingTags(t *testing.T) {
 
 func TestAudioQueryIsMissingRating(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		isMissing := "rating"
 		audioFilter := models.AudioFilterType{
 			IsMissing: &isMissing,
@@ -2725,7 +2725,7 @@ func TestAudioQueryPerformers(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			results, err := db.Audio.Query(ctx, models.AudioQueryOptions{
+			results, err := db.Audio().Query(ctx, models.AudioQueryOptions{
 				AudioFilter: &models.AudioFilterType{
 					Performers: &tt.filter,
 				},
@@ -2859,7 +2859,7 @@ func TestAudioQueryTags(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			results, err := db.Audio.Query(ctx, models.AudioQueryOptions{
+			results, err := db.Audio().Query(ctx, models.AudioQueryOptions{
 				AudioFilter: &models.AudioFilterType{
 					Tags: &tt.filter,
 				},
@@ -3056,7 +3056,7 @@ func TestAudioQueryPerformerTags(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			results, err := db.Audio.Query(ctx, models.AudioQueryOptions{
+			results, err := db.Audio().Query(ctx, models.AudioQueryOptions{
 				AudioFilter: tt.filter,
 				QueryOptions: models.QueryOptions{
 					FindFilter: tt.findFilter,
@@ -3150,7 +3150,7 @@ func TestAudioQueryStudio(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -3176,7 +3176,7 @@ func TestAudioQueryStudio(t *testing.T) {
 
 func TestAudioQueryStudioDepth(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		depth := 2
 		studioCriterion := models.HierarchicalMultiCriterionInput{
 			Value: []string{
@@ -3305,7 +3305,7 @@ func TestAudioGroups(t *testing.T) {
 				findFilter.Q = &tt.q
 			}
 
-			results, err := db.Audio.Query(ctx, models.AudioQueryOptions{
+			results, err := db.Audio().Query(ctx, models.AudioQueryOptions{
 				AudioFilter: audioFilter,
 				QueryOptions: models.QueryOptions{
 					FindFilter: findFilter,
@@ -3415,7 +3415,7 @@ func TestAudioQuerySorting(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -3467,7 +3467,7 @@ func TestAudioQueryPagination(t *testing.T) {
 	}
 
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		audios := queryAudio(ctx, t, sqb, nil, &findFilter)
 
 		assert.Len(t, audios, 1)
@@ -3515,7 +3515,7 @@ func TestAudioQueryTagCount(t *testing.T) {
 
 func verifyAudiosTagCount(t *testing.T, tagCountCriterion models.IntCriterionInput) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		audioFilter := models.AudioFilterType{
 			TagCount: &tagCountCriterion,
 		}
@@ -3556,7 +3556,7 @@ func TestAudioQueryPerformerCount(t *testing.T) {
 
 func verifyAudiosPerformerCount(t *testing.T, performerCountCriterion models.IntCriterionInput) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 		audioFilter := models.AudioFilterType{
 			PerformerCount: &performerCountCriterion,
 		}
@@ -3579,7 +3579,7 @@ func verifyAudiosPerformerCount(t *testing.T, performerCountCriterion models.Int
 
 func TestAudioFindByMovieID(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		audios, err := sqb.FindByGroupID(ctx, groupIDs[groupIdxWithAudio])
 
@@ -3604,7 +3604,7 @@ func TestAudioFindByMovieID(t *testing.T) {
 
 func TestAudioFindByPerformerID(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Audio
+		sqb := db.Audio()
 
 		audios, err := sqb.FindByPerformerID(ctx, performerIDs[performerIdxWithAudio])
 
@@ -3629,7 +3629,7 @@ func TestAudioFindByPerformerID(t *testing.T) {
 
 func TestAudioUpdateAudioCover(t *testing.T) {
 	if err := withTxn(func(ctx context.Context) error {
-		qb := db.Audio
+		qb := db.Audio()
 
 		audioID := audioIDs[audioIdxWithGallery]
 
@@ -3641,7 +3641,7 @@ func TestAudioUpdateAudioCover(t *testing.T) {
 
 func TestAudioQueryQTrim(t *testing.T) {
 	if err := withTxn(func(ctx context.Context) error {
-		qb := db.Audio
+		qb := db.Audio()
 
 		expectedID := audioIDs[audioIdxWithSpacedName]
 
@@ -3683,7 +3683,7 @@ func TestAudioQueryQTrim(t *testing.T) {
 }
 
 func TestAudioStore_All(t *testing.T) {
-	qb := db.Audio
+	qb := db.Audio()
 
 	withRollbackTxn(func(ctx context.Context) error {
 		got, err := qb.All(ctx)
@@ -3726,7 +3726,7 @@ func TestAudioStore_AssignFiles(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3762,7 +3762,7 @@ func TestAudioStore_AddView(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3853,7 +3853,7 @@ func TestAudioStore_SaveActivity(t *testing.T) {
 		},
 	}
 
-	qb := db.Audio
+	qb := db.Audio()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -4115,7 +4115,7 @@ func TestAudioQueryCustomFields(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			result, err := db.Audio.Query(ctx, models.AudioQueryOptions{
+			result, err := db.Audio().Query(ctx, models.AudioQueryOptions{
 				AudioFilter: tt.filter,
 			})
 			if (err != nil) != tt.wantErr {
@@ -4152,7 +4152,7 @@ func TestAudioQueryCustomFields(t *testing.T) {
 // TODO - this should be in history_test and generalised
 func TestAudioStore_CountAllViews(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Audio
+		qb := db.Audio()
 
 		audioID := audioIDs[audioIdx1WithPerformer]
 
@@ -4185,7 +4185,7 @@ func TestAudioStore_CountAllViews(t *testing.T) {
 
 func TestAudioStore_CountUniqueViews(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Audio
+		qb := db.Audio()
 
 		audioID := audioIDs[audioIdx1WithPerformer]
 

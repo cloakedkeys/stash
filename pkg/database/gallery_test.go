@@ -30,7 +30,7 @@ func loadGalleryRelationships(ctx context.Context, expected models.Gallery, actu
 		}
 	}
 	if expected.AudioIDs.Loaded() {
-		if err := actual.LoadAudioIDs(ctx, db.Gallery); err != nil {
+		if err := actual.LoadAudioIDs(ctx, db.Gallery()); err != nil {
 			return err
 		}
 	}
@@ -1369,7 +1369,7 @@ func Test_galleryQueryBuilder_FindByAudioID(t *testing.T) {
 		},
 	}
 
-	qb := db.Gallery
+	qb := db.Gallery()
 
 	for _, tt := range tests {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
@@ -1393,7 +1393,7 @@ func Test_galleryQueryBuilder_FindByAudioID(t *testing.T) {
 func Test_galleryQueryBuilder_AudioIDs(t *testing.T) {
 	runWithRollbackTxn(t, "GetAudioIDs/AddAudioIDs", func(t *testing.T, ctx context.Context) {
 		assert := assert.New(t)
-		qb := db.Gallery
+		qb := db.Gallery()
 
 		galleryID := galleryIDs[galleryIdxWithAudio]
 
@@ -1430,7 +1430,7 @@ func Test_galleryQueryBuilder_AudioIDs(t *testing.T) {
 
 func TestGalleryQueryAudios(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Gallery
+		sqb := db.Gallery()
 
 		audioCriterion := models.MultiCriterionInput{
 			Value: []string{
@@ -1461,7 +1461,7 @@ func TestGalleryQueryAudios(t *testing.T) {
 
 func TestGalleryQueryIsMissingAudios(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		sqb := db.Gallery
+		sqb := db.Gallery()
 		isMissing := "audios"
 		galleryFilter := models.GalleryFilterType{
 			IsMissing: &isMissing,
@@ -3916,7 +3916,7 @@ func TestGalleryQueryCustomFields(t *testing.T) {
 
 func TestGalleryStore_UserData(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Gallery
+		qb := db.Gallery()
 
 		newGallery := models.Gallery{
 			Title: "user data",
@@ -3928,7 +3928,7 @@ func TestGalleryStore_UserData(t *testing.T) {
 			Username: "other",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 		guestCtx := models.WithUserID(ctx, 0)
 
@@ -3974,57 +3974,57 @@ func TestGalleryStore_UserData(t *testing.T) {
 func TestGalleryStore_UserCounters(t *testing.T) {
 	require.NoError(t, withRollbackTxn(func(ctx context.Context) error {
 		parent := models.Studio{Name: "counter parent"}
-		require.NoError(t, db.Studio.Create(ctx, &models.CreateStudioInput{Studio: &parent}))
+		require.NoError(t, db.Studio().Create(ctx, &models.CreateStudioInput{Studio: &parent}))
 		child := models.Studio{Name: "counter child", ParentID: &parent.ID}
-		require.NoError(t, db.Studio.Create(ctx, &models.CreateStudioInput{Studio: &child}))
+		require.NoError(t, db.Studio().Create(ctx, &models.CreateStudioInput{Studio: &child}))
 		performer := models.Performer{Name: "counter performer"}
-		require.NoError(t, db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &performer}))
+		require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &performer}))
 		gallery := models.Gallery{Title: "counter gallery", OCounter: 4, StudioID: &child.ID, PerformerIDs: models.NewRelatedIDs([]int{performer.ID})}
-		require.NoError(t, db.Gallery.Create(ctx, &models.CreateGalleryInput{Gallery: &gallery}))
+		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &gallery}))
 		other := models.User{Username: "counter other", Roles: models.Roles{models.RoleEnumRead}}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 		guestCtx := models.WithUserID(ctx, 0)
 		for _, test := range []struct {
 			ctx  context.Context
 			want int
 		}{{ctx, 4}, {otherCtx, 0}, {guestCtx, 0}} {
-			found, err := db.Gallery.Find(test.ctx, gallery.ID)
+			found, err := db.Gallery().Find(test.ctx, gallery.ID)
 			require.NoError(t, err)
 			require.Equal(t, test.want, found.OCounter)
-			count, err := db.Gallery.OCountByPerformerID(test.ctx, performer.ID)
+			count, err := db.Gallery().OCountByPerformerID(test.ctx, performer.ID)
 			require.NoError(t, err)
 			require.Equal(t, test.want, count)
-			count, err = db.Gallery.OCountByStudioID(test.ctx, parent.ID, -1)
+			count, err = db.Gallery().OCountByStudioID(test.ctx, parent.ID, -1)
 			require.NoError(t, err)
 			require.Equal(t, test.want, count)
-			count, err = db.Gallery.OCountByStudioID(test.ctx, child.ID, 0)
+			count, err = db.Gallery().OCountByStudioID(test.ctx, child.ID, 0)
 			require.NoError(t, err)
 			require.Equal(t, test.want, count)
 		}
-		count, err := db.Gallery.IncrementOCounter(otherCtx, gallery.ID)
+		count, err := db.Gallery().IncrementOCounter(otherCtx, gallery.ID)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
-		count, err = db.Gallery.DecrementOCounter(otherCtx, gallery.ID)
+		count, err = db.Gallery().DecrementOCounter(otherCtx, gallery.ID)
 		require.NoError(t, err)
 		require.Zero(t, count)
-		_, err = db.Gallery.IncrementOCounter(guestCtx, gallery.ID)
+		_, err = db.Gallery().IncrementOCounter(guestCtx, gallery.ID)
 		require.Error(t, err)
 		for _, c := range []context.Context{ctx, otherCtx, guestCtx} {
 			for _, sort := range []string{"o_counter", "rating"} {
-				_, _, err := db.Gallery.Query(c, nil, &models.FindFilterType{Sort: &sort})
+				_, _, err := db.Gallery().Query(c, nil, &models.FindFilterType{Sort: &sort})
 				require.NoError(t, err)
 			}
 			for _, sort := range []string{"o_counter", "o_counter_all", "favorite"} {
-				_, _, err := db.Studio.Query(c, nil, &models.FindFilterType{Sort: &sort})
+				_, _, err := db.Studio().Query(c, nil, &models.FindFilterType{Sort: &sort})
 				require.NoError(t, err)
 			}
 			for _, sort := range []string{"o_counter", "favorite"} {
-				_, _, err := db.Performer.Query(c, nil, &models.FindFilterType{Sort: &sort})
+				_, _, err := db.Performer().Query(c, nil, &models.FindFilterType{Sort: &sort})
 				require.NoError(t, err)
 			}
 			sort := "favorite"
-			_, _, err := db.Tag.Query(c, nil, &models.FindFilterType{Sort: &sort})
+			_, _, err := db.Tag().Query(c, nil, &models.FindFilterType{Sort: &sort})
 			require.NoError(t, err)
 		}
 		return nil

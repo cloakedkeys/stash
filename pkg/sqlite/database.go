@@ -126,7 +126,7 @@ func (db *Database) Ready() error {
 	}
 
 	if db.needsMigration() {
-		return &MigrationNeededError{
+		return &database.MigrationNeededError{
 			CurrentSchemaVersion:  db.schemaVersion,
 			RequiredSchemaVersion: appSchemaVersion,
 		}

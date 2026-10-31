@@ -410,3 +410,9 @@ func getFileSizeSort(primaryTable, joinTable, primaryFK, direction string) strin
 
 // getStringSearchClause returns a sqlClause for searching strings in the provided columns.
 // It is used for includes and excludes string criteria.
+
+func getUserCountSort(primaryTable, joinTable, primaryFK string, userID int, direction string) string {
+	return fmt.Sprintf(" ORDER BY (SELECT COUNT(*) FROM %s AS sort WHERE sort.%s = %s.id AND sort.%s = %d) %s", joinTable, primaryFK, primaryTable, userIDColumn, userID, getSortDirection(direction))
+}
+
+// getFileSizeSort sorts by the combined size of all files attached to the primary object.

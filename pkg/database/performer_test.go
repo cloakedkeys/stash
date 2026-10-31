@@ -3191,7 +3191,7 @@ func TestPerformerQueryOCounter(t *testing.T) {
 
 		assert.NotContains(t, queryPerformerIDsWithOCount(ctx, t, 1), performerID)
 
-		if _, err := db.Scene.AddO(ctx, sceneIDs[sceneIdxWithPerformer], nil); err != nil {
+		if _, err := db.Scene().AddO(ctx, sceneIDs[sceneIdxWithPerformer], nil); err != nil {
 			t.Fatalf("Error adding scene o-date: %v", err)
 		}
 
@@ -3204,13 +3204,13 @@ func TestPerformerQueryOCounter(t *testing.T) {
 
 		assert.NotContains(t, queryPerformerIDsWithOCount(ctx, t, 1), performerID)
 
-		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+		if _, err := db.Audio().AddO(ctx, audioID, nil); err != nil {
 			t.Fatalf("Error adding audio o-date: %v", err)
 		}
 
 		assert.Contains(t, queryPerformerIDsWithOCount(ctx, t, 1), performerID)
 
-		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+		if _, err := db.Audio().AddO(ctx, audioID, nil); err != nil {
 			t.Fatalf("Error adding audio o-date: %v", err)
 		}
 
@@ -3222,7 +3222,7 @@ func TestPerformerQueryOCounter(t *testing.T) {
 		audioID := audioIDs[audioIdxWithGroup]
 
 		// add the scene's performer to the audio, so that both o-counts contribute
-		if _, err := db.Audio.UpdatePartial(ctx, audioID, models.AudioPartial{
+		if _, err := db.Audio().UpdatePartial(ctx, audioID, models.AudioPartial{
 			PerformerIDs: &models.UpdateIDs{
 				IDs:  []int{performerID},
 				Mode: models.RelationshipUpdateModeAdd,
@@ -3231,10 +3231,10 @@ func TestPerformerQueryOCounter(t *testing.T) {
 			t.Fatalf("Error adding performer to audio: %v", err)
 		}
 
-		if _, err := db.Scene.AddO(ctx, sceneIDs[sceneIdxWithPerformer], nil); err != nil {
+		if _, err := db.Scene().AddO(ctx, sceneIDs[sceneIdxWithPerformer], nil); err != nil {
 			t.Fatalf("Error adding scene o-date: %v", err)
 		}
-		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+		if _, err := db.Audio().AddO(ctx, audioID, nil); err != nil {
 			t.Fatalf("Error adding audio o-date: %v", err)
 		}
 
@@ -3250,7 +3250,7 @@ func TestPerformerQueryOCounter(t *testing.T) {
 
 func TestPerformerStore_UserData(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Performer
+		qb := db.Performer()
 
 		newPerformer := models.Performer{
 			Name: "user data",
@@ -3262,13 +3262,13 @@ func TestPerformerStore_UserData(t *testing.T) {
 			Title:        "user data performer scene",
 			PerformerIDs: models.NewRelatedIDs([]int{performerID}),
 		}
-		require.NoError(t, db.Scene.Create(ctx, &scene, nil))
+		require.NoError(t, db.Scene().Create(ctx, &scene, nil))
 
 		other := models.User{
 			Username: "other",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 		guestCtx := models.WithUserID(ctx, 0)
 
@@ -3311,7 +3311,7 @@ func TestPerformerStore_UserData(t *testing.T) {
 		// filtering scenes by performer favorite only matches the current user's favorites
 		findSceneIDs := func(c context.Context, favorite bool) []int {
 			var ids []int
-			for _, s := range queryScene(c, t, db.Scene, &models.SceneFilterType{PerformerFavorite: &favorite}, allResults) {
+			for _, s := range queryScene(c, t, db.Scene(), &models.SceneFilterType{PerformerFavorite: &favorite}, allResults) {
 				ids = append(ids, s.ID)
 			}
 			return ids

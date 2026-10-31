@@ -27,7 +27,6 @@ import (
 	"github.com/stashapp/stash/pkg/plugin"
 	"github.com/stashapp/stash/pkg/scraper"
 	"github.com/stashapp/stash/pkg/session"
-	"github.com/stashapp/stash/pkg/sqlite"
 	"github.com/stashapp/stash/pkg/user"
 	"github.com/stashapp/stash/pkg/utils"
 
@@ -345,7 +344,7 @@ func (s *Manager) Setup(ctx context.Context, input SetupInput) error {
 func (s *Manager) PostMigrate(ctx context.Context) error {
 	// reinitialise the user service as it may be using the legacy service
 	s.UserService = &user.Service{
-		Store:  s.Database.User,
+		Store:  s.Database.User(),
 		Config: s.Config,
 	}
 

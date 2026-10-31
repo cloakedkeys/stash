@@ -5775,7 +5775,7 @@ func TestSceneQueryPerformerAgeUsesProductionDate(t *testing.T) {
 
 func TestSceneStore_UserData(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Scene
+		qb := db.Scene()
 
 		newScene := models.Scene{
 			Title: "user data",
@@ -5787,7 +5787,7 @@ func TestSceneStore_UserData(t *testing.T) {
 			Username: "other",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 		guestCtx := models.WithUserID(ctx, 0)
 
@@ -5846,7 +5846,7 @@ func TestSceneStore_UserData(t *testing.T) {
 
 func TestSceneStore_UserHistory(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Scene
+		qb := db.Scene()
 
 		newScene := models.Scene{
 			Title: "user history",
@@ -5858,7 +5858,7 @@ func TestSceneStore_UserHistory(t *testing.T) {
 			Username: "other",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 
 		_, err := qb.AddO(ctx, sceneID, nil)
@@ -5921,7 +5921,7 @@ func TestSceneStore_UserHistory(t *testing.T) {
 
 func TestSceneStore_MergeUserData(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Scene
+		qb := db.Scene()
 
 		src := models.Scene{Title: "merge source"}
 		require.NoError(t, qb.Create(ctx, &src, nil))
@@ -5932,7 +5932,7 @@ func TestSceneStore_MergeUserData(t *testing.T) {
 			Username: "other",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 
 		// the other user has history and a rating on the source only

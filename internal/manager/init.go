@@ -14,8 +14,8 @@ import (
 	"github.com/stashapp/stash/internal/dlna"
 	"github.com/stashapp/stash/internal/log"
 	"github.com/stashapp/stash/internal/manager/config"
-	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/audio"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/gallery"
@@ -68,8 +68,8 @@ func Initialize(cfg *config.Config, l *log.Logger) (*Manager, error) {
 	}
 
 	audioService := &audio.Service{
-		File:        db.File,
-		Repository:  db.Audio,
+		File:        db.File(),
+		Repository:  db.Audio(),
 		PluginCache: pluginCache,
 		Paths:       mgrPaths,
 	}
@@ -132,7 +132,7 @@ func Initialize(cfg *config.Config, l *log.Logger) (*Manager, error) {
 	dlnaService.SetActivityUserResolver(mgr)
 
 	mgr.UserService = &user.Service{
-		Store:  db.User,
+		Store:  db.User(),
 		Config: cfg,
 	}
 
@@ -303,7 +303,7 @@ func (s *Manager) postInit(ctx context.Context) error {
 	s.RefreshStreamManager()
 
 	// initialise the user service - only do this is the database schema is >= 97, which is when the user table was added
-	const minimumUserSchemaVersion = 97
+	minimumUserSchemaVersion := s.Database.UserSchemaVersion()
 	if s.Database.Version() >= minimumUserSchemaVersion {
 		if err := s.Repository.TxnManager.WithReadTxn(ctx, func(ctx context.Context) error {
 			if err := s.UserService.Init(ctx); err != nil {

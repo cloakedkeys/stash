@@ -9,10 +9,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/doug-martin/goqu/v9"
 	"github.com/stashapp/stash/pkg/models"
 )
 
 type VoiceActorStore struct{}
+
+var voiceActorUserData = userDataTable{
+	table:       "voice_actors_user_data",
+	idColumn:    "voice_actor_id",
+	objectTable: "voice_actors",
+}
+
+func voiceActorFrom(ctx context.Context) string {
+	return fmt.Sprintf("voice_actors LEFT JOIN voice_actors_user_data ON voice_actors_user_data.voice_actor_id = voice_actors.id AND voice_actors_user_data.user_id = %d", currentUserID(ctx))
+}
+
+const voiceActorColumns = "voice_actors.*, COALESCE(voice_actors_user_data.favorite, false) AS favorite"
 
 type voiceActorRow struct {
 	ID        int       `db:"id"`
@@ -38,7 +51,7 @@ func (r voiceActorRow) resolve() (*models.VoiceActor, error) {
 
 func (s *VoiceActorStore) find(ctx context.Context, where string, args ...interface{}) (*models.VoiceActor, error) {
 	var row voiceActorRow
-	err := dbWrapper.Get(ctx, &row, "SELECT * FROM voice_actors WHERE "+where, args...)
+	err := dbWrapper.Get(ctx, &row, "SELECT "+voiceActorColumns+" FROM "+voiceActorFrom(ctx)+" WHERE "+where, args...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -77,14 +90,14 @@ func (s *VoiceActorStore) Query(ctx context.Context, filter *models.FindFilterTy
 		}
 	}
 	if favorite != nil {
-		where += " AND favorite = ?"
+		where += " AND COALESCE(voice_actors_user_data.favorite, false) = ?"
 		args = append(args, *favorite)
 	}
 	var count int
-	if err := dbWrapper.Get(ctx, &count, "SELECT COUNT(*) FROM voice_actors WHERE "+where, args...); err != nil {
+	if err := dbWrapper.Get(ctx, &count, "SELECT COUNT(*) FROM "+voiceActorFrom(ctx)+" WHERE "+where, args...); err != nil {
 		return nil, 0, err
 	}
-	query := "SELECT * FROM voice_actors WHERE " + where + " ORDER BY " + order
+	query := "SELECT " + voiceActorColumns + " FROM " + voiceActorFrom(ctx) + " WHERE " + where + " ORDER BY " + order
 	if perPage != -1 {
 		if perPage < 1 {
 			perPage = 40
@@ -144,7 +157,7 @@ func voiceActorValues(v *models.VoiceActor) ([]interface{}, error) {
 	if v.UpdatedAt.IsZero() {
 		v.UpdatedAt = v.CreatedAt
 	}
-	return []interface{}{v.Name, v.Details, string(aliases), string(urls), v.Favorite, Timestamp{Timestamp: v.CreatedAt}, Timestamp{Timestamp: v.UpdatedAt}}, nil
+	return []interface{}{v.Name, v.Details, string(aliases), string(urls), Timestamp{Timestamp: v.CreatedAt}, Timestamp{Timestamp: v.UpdatedAt}}, nil
 }
 
 func (s *VoiceActorStore) Create(ctx context.Context, v *models.VoiceActor) error {
@@ -152,8 +165,10 @@ func (s *VoiceActorStore) Create(ctx context.Context, v *models.VoiceActor) erro
 	if err != nil {
 		return err
 	}
-	return dbWrapper.Get(ctx, &v.ID, "INSERT INTO voice_actors (name,details,aliases,urls,favorite,created_at,updated_at) VALUES (?,?,?,?,?,?,?) RETURNING id", args...)
-
+	if err := dbWrapper.Get(ctx, &v.ID, "INSERT INTO voice_actors (name,details,aliases,urls,created_at,updated_at) VALUES (?,?,?,?,?,?) RETURNING id", args...); err != nil {
+		return err
+	}
+	return voiceActorUserData.upsert(ctx, v.ID, goqu.Record{"favorite": v.Favorite})
 }
 func (s *VoiceActorStore) Update(ctx context.Context, v *models.VoiceActor) error {
 	args, err := voiceActorValues(v)
@@ -161,8 +176,11 @@ func (s *VoiceActorStore) Update(ctx context.Context, v *models.VoiceActor) erro
 		return err
 	}
 	args = append(args, v.ID)
-	_, err = dbWrapper.Exec(ctx, "UPDATE voice_actors SET name=?,details=?,aliases=?,urls=?,favorite=?,created_at=?,updated_at=? WHERE id=?", args...)
-	return err
+	_, err = dbWrapper.Exec(ctx, "UPDATE voice_actors SET name=?,details=?,aliases=?,urls=?,created_at=?,updated_at=? WHERE id=?", args...)
+	if err != nil {
+		return err
+	}
+	return voiceActorUserData.upsert(ctx, v.ID, goqu.Record{"favorite": v.Favorite})
 }
 func (s *VoiceActorStore) Destroy(ctx context.Context, id int) error {
 	_, err := dbWrapper.Exec(ctx, "DELETE FROM voice_actors WHERE id=?", id)
@@ -170,7 +188,7 @@ func (s *VoiceActorStore) Destroy(ctx context.Context, id int) error {
 }
 func (s *VoiceActorStore) FindBySceneID(ctx context.Context, id int) ([]*models.VoiceActor, error) {
 	var rows []voiceActorRow
-	if err := dbWrapper.Select(ctx, &rows, "SELECT v.* FROM voice_actors v JOIN scenes_voice_actors c ON c.voice_actor_id=v.id WHERE c.scene_id=? ORDER BY v.name COLLATE \"natural_ci\",v.id", id); err != nil {
+	if err := dbWrapper.Select(ctx, &rows, "SELECT "+voiceActorColumns+" FROM "+voiceActorFrom(ctx)+" JOIN scenes_voice_actors c ON c.voice_actor_id=voice_actors.id WHERE c.scene_id=? ORDER BY voice_actors.name COLLATE \"natural_ci\",voice_actors.id", id); err != nil {
 		return nil, err
 	}
 	ret := make([]*models.VoiceActor, 0, len(rows))

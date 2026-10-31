@@ -22,7 +22,7 @@ type Anonymiser struct {
 
 func NewAnonymiser(db *Database, outPath string) (*sqlite.Anonymiser, error) {
 	newDB := &Anonymiser{Database: sqlite.NewDatabase(), sourceDB: db}
-	if err := newDB.Open(outPath); err != nil {
+	if err := newDB.Open(context.Background(), outPath); err != nil {
 		return nil, fmt.Errorf("opening %s: %w", outPath, err)
 	}
 

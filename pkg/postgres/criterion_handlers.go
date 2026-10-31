@@ -568,12 +568,17 @@ type countCriterionHandlerBuilder struct {
 	primaryTable string
 	joinTable    string
 	primaryFK    string
+	perUser      bool
 }
 
 func (m *countCriterionHandlerBuilder) handler(criterion *models.IntCriterionInput) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if criterion != nil {
 			clause, args := getCountCriterionClause(m.primaryTable, m.joinTable, m.primaryFK, *criterion)
+			if m.perUser {
+				lhs := fmt.Sprintf("(SELECT COUNT(*) FROM %s s WHERE s.%s = %s.id AND s.%s = %d)", m.joinTable, m.primaryFK, m.primaryTable, userIDColumn, currentUserID(ctx))
+				clause, args = getIntCriterionWhereClause(lhs, *criterion)
+			}
 
 			f.addWhere(clause, args...)
 		}

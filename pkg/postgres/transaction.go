@@ -123,7 +123,7 @@ func (db *Database) IsLocked(err error) bool {
 
 func (db *Database) Repository() models.Repository {
 	return models.Repository{
-		TxnManager:     db,
+		TxnManager:     models.TxnManager{Manager: db, DatabaseProvider: db},
 		Blob:           db.Blobs(),
 		File:           db.File(),
 		Folder:         db.Folder(),
@@ -131,6 +131,8 @@ func (db *Database) Repository() models.Repository {
 		GalleryChapter: db.GalleryChapter(),
 		Image:          db.Image(),
 		Group:          db.Group(),
+		Audio:          db.Audio(),
+		UserUIConfig:   db.UserUIConfig(),
 		VoiceActor:     db.VoiceActor(),
 		Performer:      db.Performer(),
 		Scene:          db.Scene(),

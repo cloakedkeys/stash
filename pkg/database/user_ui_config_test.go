@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package sqlite_test
+package database_test
 
 import (
 	"context"
@@ -14,13 +14,13 @@ import (
 
 func TestUserUIConfigStore(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.UserUIConfig
+		qb := db.UserUIConfig()
 
 		other := models.User{
 			Username: "other",
 			Roles:    models.Roles{models.RoleEnumRead},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 		guestCtx := models.WithUserID(ctx, 0)
 

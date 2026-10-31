@@ -106,13 +106,13 @@ func TestSavedFilterDestroy(t *testing.T) {
 
 func TestSavedFilterPerUser(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.SavedFilter
+		qb := db.SavedFilter()
 
 		other := models.User{
 			Username: "other",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 		guestCtx := models.WithUserID(ctx, 0)
 

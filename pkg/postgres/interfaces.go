@@ -49,3 +49,10 @@ func (db *Database) NewMigrator() (database.MigrateStore, error) {
 }
 
 func (db *Database) VoiceActor() models.VoiceActorReaderWriter { return db.storeRepository.VoiceActor }
+
+func (db *Database) User() database.UserStore { return db.storeRepository.User }
+func (db *Database) UserUIConfig() models.UserUIConfigReaderWriter {
+	return db.storeRepository.UserUIConfig
+}
+func (db *Database) Audio() database.AudioStore { return db.storeRepository.Audio }
+func (db *Database) UserSchemaVersion() uint         { return 15 }

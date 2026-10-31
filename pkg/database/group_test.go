@@ -2583,7 +2583,7 @@ func TestGroupQueryOCounter(t *testing.T) {
 
 		assert.NotContains(t, queryGroupIDsWithOCount(ctx, t, 1), groupID)
 
-		if _, err := db.Scene.AddO(ctx, sceneIDs[sceneIdxWithGroup], nil); err != nil {
+		if _, err := db.Scene().AddO(ctx, sceneIDs[sceneIdxWithGroup], nil); err != nil {
 			t.Fatalf("Error adding scene o-date: %v", err)
 		}
 
@@ -2596,13 +2596,13 @@ func TestGroupQueryOCounter(t *testing.T) {
 
 		assert.NotContains(t, queryGroupIDsWithOCount(ctx, t, 1), groupID)
 
-		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+		if _, err := db.Audio().AddO(ctx, audioID, nil); err != nil {
 			t.Fatalf("Error adding audio o-date: %v", err)
 		}
 
 		assert.Contains(t, queryGroupIDsWithOCount(ctx, t, 1), groupID)
 
-		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+		if _, err := db.Audio().AddO(ctx, audioID, nil); err != nil {
 			t.Fatalf("Error adding audio o-date: %v", err)
 		}
 
@@ -2614,7 +2614,7 @@ func TestGroupQueryOCounter(t *testing.T) {
 		audioID := audioIDs[audioIdxWithGroup]
 
 		// add the audio to the scene's group, so that both o-counts contribute
-		if _, err := db.Audio.UpdatePartial(ctx, audioID, models.AudioPartial{
+		if _, err := db.Audio().UpdatePartial(ctx, audioID, models.AudioPartial{
 			GroupIDs: &models.UpdateGroupIDsAudio{
 				Groups: []models.GroupsAudios{{GroupID: groupID}},
 				Mode:   models.RelationshipUpdateModeAdd,
@@ -2623,10 +2623,10 @@ func TestGroupQueryOCounter(t *testing.T) {
 			t.Fatalf("Error adding audio to group: %v", err)
 		}
 
-		if _, err := db.Scene.AddO(ctx, sceneIDs[sceneIdxWithGroup], nil); err != nil {
+		if _, err := db.Scene().AddO(ctx, sceneIDs[sceneIdxWithGroup], nil); err != nil {
 			t.Fatalf("Error adding scene o-date: %v", err)
 		}
-		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+		if _, err := db.Audio().AddO(ctx, audioID, nil); err != nil {
 			t.Fatalf("Error adding audio o-date: %v", err)
 		}
 
@@ -2644,7 +2644,7 @@ func TestGroupQueryOCounter(t *testing.T) {
 
 func TestGroupStore_UserData(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Group
+		qb := db.Group()
 
 		newGroup := models.Group{
 			Name: "user data",
@@ -2656,7 +2656,7 @@ func TestGroupStore_UserData(t *testing.T) {
 			Username: "other",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 		guestCtx := models.WithUserID(ctx, 0)
 

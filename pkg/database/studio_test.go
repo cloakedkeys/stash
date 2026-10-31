@@ -2369,7 +2369,7 @@ func TestStudioQuerySortPerformerCountAll(t *testing.T) {
 
 func TestStudioStore_UserData(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Studio
+		qb := db.Studio()
 
 		newStudio := models.Studio{
 			Name: "user data",
@@ -2381,7 +2381,7 @@ func TestStudioStore_UserData(t *testing.T) {
 			Username: "other",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 		guestCtx := models.WithUserID(ctx, 0)
 

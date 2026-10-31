@@ -57,7 +57,7 @@ func getNewDB() {
 		fmt.Printf("Postgres backend for tests detected\n")
 		db = postgres.NewDatabase()
 
-		if err := db.Open(*val); err != nil {
+		if err := db.Open(context.Background(), *val); err != nil {
 			panic(fmt.Sprintf("Could not initialize database: %s", err.Error()))
 		}
 	} else {
@@ -73,7 +73,7 @@ func getNewDB() {
 		f.Close()
 		databaseFile := f.Name()
 
-		if err := db.Open(databaseFile); err != nil {
+		if err := db.Open(context.Background(), databaseFile); err != nil {
 			panic(fmt.Sprintf("Could not initialize database: %s", err.Error()))
 		}
 	}

@@ -756,7 +756,7 @@ func createTestUser(ctx context.Context) error {
 		Username: "test",
 		Roles:    models.Roles{models.RoleEnumAdmin},
 	}
-	if err := db.User.Create(ctx, &u, ""); err != nil {
+	if err := db.User().Create(ctx, &u, ""); err != nil {
 		return err
 	}
 
@@ -795,7 +795,7 @@ func getNewDB() {
 		fmt.Printf("Postgres backend for tests detected\n")
 		db = postgres.NewDatabase()
 
-		if err := db.Open(*val); err != nil {
+		if err := db.Open(context.Background(), *val); err != nil {
 			panic(fmt.Sprintf("Could not initialize database: %s", err.Error()))
 		}
 	} else {
@@ -811,7 +811,7 @@ func getNewDB() {
 		f.Close()
 		databaseFile := f.Name()
 
-		if err := db.Open(databaseFile); err != nil {
+		if err := db.Open(context.Background(), databaseFile); err != nil {
 			panic(fmt.Sprintf("Could not initialize database: %s", err.Error()))
 		}
 	}
@@ -1365,8 +1365,8 @@ func makeScene(i int) *models.Scene {
 		TagIDs:         models.NewRelatedIDs(tids),
 		Groups:         models.NewRelatedGroups(groups),
 		StashIDs:       models.NewRelatedStashIDs(sceneStashIDs(i)),
-		PlayDuration:   getScenePlayDuration(i),
-		ResumeTime:     getSceneResumeTime(i),
+		PlayDuration:   getPlayDuration(i),
+		ResumeTime:     getResumeTime(i),
 	}
 }
 
@@ -1467,8 +1467,8 @@ func getAudioCustomFields(index int) map[string]interface{} {
 }
 
 func createAudios(ctx context.Context, n int) error {
-	sqb := db.Audio
-	fqb := db.File
+	sqb := db.Audio()
+	fqb := db.File()
 
 	for i := 0; i < n; i++ {
 		f := makeAudioFile(i)
