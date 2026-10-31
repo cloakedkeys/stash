@@ -54,7 +54,7 @@ func handleUnauthorized(w http.ResponseWriter, r *http.Request) {
 // Returns the matched user, or nil if the request is not a valid signed request.
 func authenticateSignedRequest(ctx context.Context, r *http.Request, txnMgr models.TxnManager, g UserAuthenticator) (*models.User, error) {
 	// Only apply to scene stream paths (used by AirPlay/Chromecast devices that can't pass cookies)
-	if !strings.HasPrefix(r.URL.Path, "/scene/") {
+	if !strings.HasPrefix(r.URL.Path, "/scene/") && !strings.HasPrefix(r.URL.Path, "/audio/") {
 		return nil, nil
 	}
 

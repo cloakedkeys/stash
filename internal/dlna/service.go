@@ -20,6 +20,7 @@ type Repository struct {
 
 	SceneFinder     SceneFinder
 	FileGetter      models.FileGetter
+	AudioFinder     AudioFinder
 	StudioFinder    StudioFinder
 	TagFinder       TagFinder
 	PerformerFinder PerformerFinder
@@ -30,6 +31,7 @@ func NewRepository(repo models.Repository) Repository {
 	return Repository{
 		TxnManager:      repo.TxnManager,
 		FileGetter:      repo.File,
+		AudioFinder:     repo.Audio,
 		SceneFinder:     repo.Scene,
 		StudioFinder:    repo.Studio,
 		TagFinder:       repo.Tag,
