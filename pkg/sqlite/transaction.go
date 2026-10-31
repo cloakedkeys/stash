@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/mattn/go-sqlite3"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 )
@@ -26,6 +27,10 @@ func (db *Database) WithDatabase(ctx context.Context) (context.Context, error) {
 		return ctx, nil
 	}
 
+	if db.readDB == nil {
+		return ctx, database.ErrDatabaseNotInitialized
+	}
+
 	return context.WithValue(ctx, dbKey, db.readDB), nil
 }
 
@@ -35,6 +40,10 @@ func (db *Database) Begin(ctx context.Context, writable bool) (context.Context, 
 		logger.Error(string(debug.Stack()))
 
 		return nil, fmt.Errorf("already in transaction")
+	}
+
+	if db.readDB == nil {
+		return nil, fmt.Errorf("database not ready: %w", database.ErrDatabaseNotInitialized)
 	}
 
 	dbtx := db.readDB
