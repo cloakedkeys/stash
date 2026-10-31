@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/jmoiron/sqlx"
@@ -126,4 +127,63 @@ INSERT INTO voice_actors(id,name,favorite,created_at,updated_at) VALUES(1,'voice
 			}
 		})
 	}
+}
+
+func TestResetKeepsAccounts(t *testing.T) {
+	ctx := context.Background()
+	config.InitializeEmpty()
+	db := sqlite.NewDatabase()
+	require.NoError(t, db.Open(ctx, filepath.Join(t.TempDir(), "stash.sqlite")))
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	admins := models.Roles{models.RoleEnumAdmin}
+	now := time.Now().UTC().Truncate(time.Second)
+	first := models.User{Username: "first-admin", Roles: admins, CreatedAt: now, UpdatedAt: now}
+	second := models.User{Username: "listener", Roles: models.Roles{models.RoleEnumRead}, Notes: "kept", CreatedAt: now, UpdatedAt: now}
+	require.NoError(t, txn.WithTxn(ctx, db, func(ctx context.Context) error {
+		if err := db.User().Create(ctx, &first, "hash-one"); err != nil {
+			return err
+		}
+		if err := db.User().SetUserAPIKey(ctx, first.ID, "key-one"); err != nil {
+			return err
+		}
+		return db.User().Create(ctx, &second, "hash-two")
+	}))
+
+	before := map[string]*models.User{}
+	require.NoError(t, txn.WithReadTxn(ctx, db, func(ctx context.Context) error {
+		all, err := db.User().All(ctx)
+		require.NoError(t, err)
+		for _, u := range all {
+			before[u.Username] = u
+		}
+		return nil
+	}))
+	require.NoError(t, db.Reset())
+
+	require.NoError(t, txn.WithReadTxn(ctx, db, func(ctx context.Context) error {
+		all, err := db.User().All(ctx)
+		require.NoError(t, err)
+		require.Len(t, all, len(before))
+		for _, u := range all {
+			was := before[u.Username]
+			require.NotNil(t, was, u.Username)
+			require.Equal(t, was.ID, u.ID)
+			require.Equal(t, was.ApiKeyHash, u.ApiKeyHash)
+			require.Equal(t, was.Notes, u.Notes)
+			require.Equal(t, was.Locked, u.Locked)
+			require.ElementsMatch(t, was.Roles, u.Roles)
+			require.True(t, was.UpdatedAt.Equal(u.UpdatedAt), "ending old sessions depends on this time")
+		}
+		hash, err := db.User().GetPasswordHash(ctx, first.ID)
+		require.NoError(t, err)
+		require.Equal(t, "hash-one", hash)
+		require.Equal(t, "key-one", before["first-admin"].ApiKeyHash)
+		return nil
+	}))
+
+	// a new account doesn't collide with the restored ids
+	require.NoError(t, txn.WithTxn(ctx, db, func(ctx context.Context) error {
+		return db.User().Create(ctx, &models.User{Username: "after-reset", Roles: admins, CreatedAt: now, UpdatedAt: now}, "hash-three")
+	}))
 }

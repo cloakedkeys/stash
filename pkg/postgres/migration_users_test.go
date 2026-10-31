@@ -214,3 +214,78 @@ func TestNativeUserMigrationFailsClosed(t *testing.T) {
 		return nil
 	}))
 }
+
+func TestResetKeepsAccounts(t *testing.T) {
+	ctx := context.Background()
+	dsn := os.Getenv("PGSQL_TEST")
+	if dsn == "" {
+		t.Skip("PGSQL_TEST is required")
+	}
+	config.InitializeEmpty()
+
+	// Reset drops the public schema, so it gets a database of its own
+	admin, err := sqlx.Open("pgx", dsn)
+	require.NoError(t, err)
+	name := fmt.Sprintf("reset_accounts_%d", time.Now().UnixNano())
+	_, err = admin.Exec("CREATE DATABASE " + name)
+	require.NoError(t, err)
+	u, err := url.Parse(dsn)
+	require.NoError(t, err)
+	u.Path = "/" + name
+
+	db := NewDatabase()
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		_, err := admin.Exec("DROP DATABASE " + name + " WITH (FORCE)")
+		require.NoError(t, err)
+		require.NoError(t, admin.Close())
+	})
+	require.NoError(t, db.Open(ctx, u.String()))
+
+	admins := models.Roles{models.RoleEnumAdmin}
+	now := time.Now().UTC().Truncate(time.Second)
+	first := models.User{Username: "first-admin", Roles: admins, CreatedAt: now, UpdatedAt: now}
+	second := models.User{Username: "listener", Roles: models.Roles{models.RoleEnumRead}, Notes: "kept", CreatedAt: now, UpdatedAt: now}
+	require.NoError(t, txn.WithTxn(ctx, db, func(ctx context.Context) error {
+		if err := db.User().Create(ctx, &first, "hash-one"); err != nil {
+			return err
+		}
+		if err := db.User().SetUserAPIKey(ctx, first.ID, "key-one"); err != nil {
+			return err
+		}
+		return db.User().Create(ctx, &second, "hash-two")
+	}))
+	_, err = db.writeDB.Exec(`INSERT INTO user_ui_config(user_id,config) VALUES($1,'{"theme":"kept"}')`, second.ID)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Reset())
+
+	require.NoError(t, txn.WithReadTxn(ctx, db, func(ctx context.Context) error {
+		all, err := db.User().All(ctx)
+		require.NoError(t, err)
+		byName := map[string]*models.User{}
+		for _, u := range all {
+			byName[u.Username] = u
+		}
+		require.Len(t, byName, 3, "the default account and both created accounts")
+		require.Equal(t, first.ID, byName["first-admin"].ID)
+		hash, err := db.User().GetPasswordHash(ctx, first.ID)
+		require.NoError(t, err)
+		require.Equal(t, "hash-one", hash)
+		require.Equal(t, "key-one", byName["first-admin"].ApiKeyHash)
+		require.True(t, now.Equal(byName["listener"].UpdatedAt), "ending old sessions depends on this time")
+		require.True(t, byName["first-admin"].Roles.HasRole(models.RoleEnumAdmin))
+		require.Equal(t, second.ID, byName["listener"].ID)
+		require.Equal(t, "kept", byName["listener"].Notes)
+		require.True(t, byName["listener"].Roles.HasRole(models.RoleEnumRead))
+		return nil
+	}))
+	var uiConfig string
+	require.NoError(t, db.writeDB.Get(&uiConfig, "SELECT config FROM user_ui_config WHERE user_id=$1", second.ID))
+	require.Contains(t, uiConfig, "kept")
+
+	// a new account doesn't collide with the restored ids
+	require.NoError(t, txn.WithTxn(ctx, db, func(ctx context.Context) error {
+		return db.User().Create(ctx, &models.User{Username: "after-reset", Roles: admins, CreatedAt: now, UpdatedAt: now}, "hash-three")
+	}))
+}

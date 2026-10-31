@@ -292,12 +292,24 @@ END$$;
 
 func (db *Database) Reset() error {
 	databasePath := db.dbPath
+	accounts, err := db.readAccounts()
+	if err != nil {
+		return fmt.Errorf("[reset DB] reading accounts: %w", err)
+	}
+
 	if err := db.Remove(); err != nil {
+		return err
+	}
+	if err := db.Close(); err != nil {
 		return err
 	}
 
 	if err := db.Open(context.Background(), databasePath); err != nil {
 		return fmt.Errorf("[reset DB] unable to initialize: %w", err)
+	}
+
+	if err := db.restoreAccounts(accounts); err != nil {
+		return fmt.Errorf("[reset DB] restoring accounts: %w", err)
 	}
 
 	return nil
