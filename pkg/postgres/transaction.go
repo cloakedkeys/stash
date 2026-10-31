@@ -28,7 +28,7 @@ func (db *Database) WithDatabase(ctx context.Context) (context.Context, error) {
 	}
 
 	if db.readDB == nil {
-		return nil, database.ErrDatabaseNotInitialized
+		return ctx, database.ErrDatabaseNotInitialized
 	}
 
 	return context.WithValue(ctx, dbKey, db.readDB), nil
