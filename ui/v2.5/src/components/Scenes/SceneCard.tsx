@@ -61,6 +61,7 @@ export const ScenePreview: React.FC<IScenePreviewProps> = React.memo(
     volume,
   }) => {
     const videoEl = useRef<HTMLVideoElement>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
 
     const [showing, setShowing] = useState(false);
     // WebKit sets up a media player for every video that has a src, so don't
@@ -102,7 +103,7 @@ export const ScenePreview: React.FC<IScenePreviewProps> = React.memo(
     return (
       <div className={cx("scene-card-preview", { portrait: isPortrait })}>
         <img
-          className="scene-card-preview-image"
+          className={cx("scene-card-preview-image", { "d-none": isPlaying })}
           loading="lazy"
           src={image}
           alt=""
@@ -116,6 +117,11 @@ export const ScenePreview: React.FC<IScenePreviewProps> = React.memo(
           preload="none"
           ref={videoEl}
           src={loadVideo ? video : undefined}
+          onLoadStart={() => setIsPlaying(false)}
+          onPlaying={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => setIsPlaying(false)}
+          onError={() => setIsPlaying(false)}
         />
         <PreviewScrubber
           vttPath={vttPath}
