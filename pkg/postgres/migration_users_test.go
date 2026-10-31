@@ -260,6 +260,24 @@ func TestNativeUserMigrationDatabaseFailureRetried(t *testing.T) {
 	require.Empty(t, cfg.GetLegacyUsername())
 }
 
+func TestReadConnectionsAreAllReadOnly(t *testing.T) {
+	ctx := context.Background()
+	config.InitializeEmpty()
+	db := NewDatabase()
+	require.NoError(t, db.Open(ctx, migrationFixture(t)))
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	// hold several connections at once so that the pool has to open new ones
+	for i := 0; i < maxReadConnections; i++ {
+		conn, err := db.readDB.Connx(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		_, err = conn.ExecContext(ctx, "CREATE TEMPORARY TABLE read_only_check(id int) ON COMMIT DROP")
+		require.Errorf(t, err, "connection %d must be read only", i)
+		require.Contains(t, err.Error(), "read-only")
+	}
+}
+
 func TestResetKeepsAccounts(t *testing.T) {
 	ctx := context.Background()
 	dsn := os.Getenv("PGSQL_TEST")

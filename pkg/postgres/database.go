@@ -12,7 +12,8 @@ import (
 	"time"
 
 	_ "github.com/doug-martin/goqu/v9/dialect/postgres"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/stashapp/stash/pkg/database"
@@ -212,28 +213,31 @@ func (db *Database) Close() error {
 }
 
 func (db *Database) open(disableForeignKeys bool, writable bool) (conn *sqlx.DB, err error) {
-	conn, err = sqlx.Open("pgx", db.dbPath)
+	cfg, err := pgx.ParseConfig(db.dbPath)
 
 	if err != nil {
 		return nil, fmt.Errorf("db.Open(): %w", err)
 	}
 
+	// these only apply to one session, so every connection in the pool needs them
+	var settings []string
 	if disableForeignKeys {
-		_, err = conn.Exec("SET session_replication_role = replica;")
-
-		if err != nil {
-			return nil, fmt.Errorf("conn.Exec(): %w", err)
-		}
+		settings = append(settings, "SET session_replication_role = replica;")
 	}
 	if !writable {
-		_, err = conn.Exec("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;")
-
-		if err != nil {
-			return nil, fmt.Errorf("conn.Exec(): %w", err)
-		}
+		settings = append(settings, "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;")
 	}
 
-	return conn, nil
+	sqlDB := stdlib.OpenDB(*cfg, stdlib.OptionAfterConnect(func(ctx context.Context, c *pgx.Conn) error {
+		for _, setting := range settings {
+			if _, err := c.Exec(ctx, setting); err != nil {
+				return fmt.Errorf("conn.Exec(): %w", err)
+			}
+		}
+		return nil
+	}))
+
+	return sqlx.NewDb(sqlDB, "pgx"), nil
 }
 
 func (db *Database) initialise() error {
@@ -254,10 +258,13 @@ func (db *Database) openReadDB() error {
 	)
 	var err error
 	db.readDB, err = db.open(disableForeignKeys, writable)
+	if err != nil {
+		return err
+	}
 	db.readDB.SetMaxOpenConns(maxReadConnections)
 	db.readDB.SetMaxIdleConns(maxReadConnections)
 	db.readDB.SetConnMaxIdleTime(dbConnTimeout)
-	return err
+	return nil
 }
 
 func (db *Database) openWriteDB() error {
@@ -267,10 +274,13 @@ func (db *Database) openWriteDB() error {
 	)
 	var err error
 	db.writeDB, err = db.open(disableForeignKeys, writable)
+	if err != nil {
+		return err
+	}
 	db.writeDB.SetMaxOpenConns(maxWriteConnections)
 	db.writeDB.SetMaxIdleConns(maxWriteConnections)
 	db.writeDB.SetConnMaxIdleTime(dbConnTimeout)
-	return err
+	return nil
 }
 
 func (db *Database) Remove() (err error) {
