@@ -273,6 +273,13 @@ textarea.scene-description {
       top: 0;
       transition-delay: 0.2s;
     }
+
+    // hide the cover behind a playing preview, so it doesn't show through
+    // the letterboxing of a contained video. Tied to hover so the cover is
+    // back as soon as the pointer leaves, before the video has paused.
+    .scene-card-preview.playing .scene-card-preview-image {
+      visibility: hidden;
+    }
   }
 }
 

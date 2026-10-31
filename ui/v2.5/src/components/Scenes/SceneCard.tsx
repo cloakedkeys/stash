@@ -101,9 +101,14 @@ export const ScenePreview: React.FC<IScenePreviewProps> = React.memo(
     }, [volume, soundActive]);
 
     return (
-      <div className={cx("scene-card-preview", { portrait: isPortrait })}>
+      <div
+        className={cx("scene-card-preview", {
+          portrait: isPortrait,
+          playing: isPlaying,
+        })}
+      >
         <img
-          className={cx("scene-card-preview-image", { "d-none": isPlaying })}
+          className="scene-card-preview-image"
           loading="lazy"
           src={image}
           alt=""
