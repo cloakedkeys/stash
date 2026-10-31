@@ -56,6 +56,7 @@ const allMenuItems = [
   { id: "galleries", headingID: "galleries" },
   { id: "folders", headingID: "folders" },
   { id: "performers", headingID: "performers" },
+  { id: "voice-actors", headingID: "voice_actors" },
   { id: "studios", headingID: "studios" },
   { id: "tags", headingID: "tags" },
 ];

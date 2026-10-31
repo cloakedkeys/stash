@@ -28,6 +28,8 @@ type Importer struct {
 	FileFinder          models.FileFinder
 	StudioWriter        models.StudioFinderCreator
 	GalleryFinder       models.GalleryFinder
+	VoiceActorWriter    models.VoiceActorReaderWriter
+	voiceActorIDs       []int
 	PerformerWriter     models.PerformerFinderCreator
 	GroupWriter         models.GroupFinderCreator
 	TagWriter           models.TagFinderCreator
@@ -45,6 +47,9 @@ type Importer struct {
 
 func (i *Importer) PreImport(ctx context.Context) error {
 	i.scene = i.sceneJSONToScene(i.Input)
+	if err := i.populateVoiceActors(ctx); err != nil {
+		return err
+	}
 
 	if err := i.populateFiles(ctx); err != nil {
 		return err
@@ -454,6 +459,11 @@ func (i *Importer) addOHistory(ctx context.Context) error {
 }
 
 func (i *Importer) PostImport(ctx context.Context, id int) error {
+	if i.Input.VoiceActors != nil {
+		if err := i.VoiceActorWriter.SetScene(ctx, id, i.voiceActorIDs); err != nil {
+			return err
+		}
+	}
 	if len(i.coverImageData) > 0 {
 		if err := i.ReaderWriter.UpdateCover(ctx, id, i.coverImageData); err != nil {
 			return fmt.Errorf("error setting scene images: %v", err)

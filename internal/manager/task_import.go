@@ -128,6 +128,7 @@ func (t *ImportTask) Start(ctx context.Context) {
 
 	t.ImportSavedFilters(ctx)
 	t.ImportTags(ctx)
+	t.ImportVoiceActors(ctx)
 	t.ImportPerformers(ctx)
 	t.ImportStudios(ctx)
 	t.ImportGroups(ctx)
@@ -699,9 +700,10 @@ func (t *ImportTask) ImportScenes(ctx context.Context) {
 
 		if err := r.WithTxn(ctx, func(ctx context.Context) error {
 			sceneImporter := &scene.Importer{
-				ReaderWriter: r.Scene,
-				Input:        *sceneJSON,
-				FileFinder:   r.File,
+				VoiceActorWriter: r.VoiceActor,
+				ReaderWriter:     r.Scene,
+				Input:            *sceneJSON,
+				FileFinder:       r.File,
 
 				FileNamingAlgorithm: t.fileNamingAlgorithm,
 				MissingRefBehaviour: t.MissingRefBehaviour,

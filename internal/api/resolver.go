@@ -55,6 +55,8 @@ func (r *Resolver) GalleryChapter() GalleryChapterResolver {
 func (r *Resolver) Mutation() MutationResolver {
 	return &mutationResolver{r}
 }
+func (r *Resolver) VoiceActor() VoiceActorResolver { return &voiceActorResolver{r} }
+
 func (r *Resolver) Performer() PerformerResolver {
 	return &performerResolver{r}
 }
@@ -122,6 +124,7 @@ type subscriptionResolver struct{ *Resolver }
 type galleryResolver struct{ *Resolver }
 type galleryChapterResolver struct{ *Resolver }
 type performerResolver struct{ *Resolver }
+type voiceActorResolver struct{ *Resolver }
 type sceneResolver struct{ *Resolver }
 type sceneMarkerResolver struct{ *Resolver }
 type imageResolver struct{ *Resolver }

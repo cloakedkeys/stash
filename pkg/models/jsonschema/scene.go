@@ -56,17 +56,18 @@ type Scene struct {
 	// deprecated - for import only
 	OCounter int `json:"o_counter,omitempty"`
 
-	Details    string        `json:"details,omitempty"`
-	Director   string        `json:"director,omitempty"`
-	Galleries  []GalleryRef  `json:"galleries,omitempty"`
-	Performers []string      `json:"performers,omitempty"`
-	Groups     []SceneGroup  `json:"movies,omitempty"`
-	Tags       []string      `json:"tags,omitempty"`
-	Markers    []SceneMarker `json:"markers,omitempty"`
-	Files      []string      `json:"files,omitempty"`
-	Cover      string        `json:"cover,omitempty"`
-	CreatedAt  json.JSONTime `json:"created_at,omitempty"`
-	UpdatedAt  json.JSONTime `json:"updated_at,omitempty"`
+	Details     string        `json:"details,omitempty"`
+	Director    string        `json:"director,omitempty"`
+	Galleries   []GalleryRef  `json:"galleries,omitempty"`
+	VoiceActors []string      `json:"voice_actors"`
+	Performers  []string      `json:"performers,omitempty"`
+	Groups      []SceneGroup  `json:"movies,omitempty"`
+	Tags        []string      `json:"tags,omitempty"`
+	Markers     []SceneMarker `json:"markers,omitempty"`
+	Files       []string      `json:"files,omitempty"`
+	Cover       string        `json:"cover,omitempty"`
+	CreatedAt   json.JSONTime `json:"created_at,omitempty"`
+	UpdatedAt   json.JSONTime `json:"updated_at,omitempty"`
 
 	// deprecated - for import only
 	LastPlayedAt json.JSONTime `json:"last_played_at,omitempty"`

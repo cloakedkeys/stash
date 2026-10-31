@@ -79,6 +79,7 @@ type Scene {
   movies: [SceneMovie!]! @deprecated(reason: "Use groups")
   tags: [Tag!]!
   performers: [Performer!]!
+  voice_actors: [VoiceActor!]!
   stash_ids: [StashID!]!
 
   custom_fields: Map!
@@ -111,6 +112,7 @@ input SceneCreateInput {
   organized: Boolean
   studio_id: ID
   gallery_ids: [ID!]
+  voice_actor_ids: [ID!]
   performer_ids: [ID!]
   groups: [SceneGroupInput!]
   movies: [SceneMovieInput!] @deprecated(reason: "Use groups")
@@ -147,6 +149,7 @@ input SceneUpdateInput {
   organized: Boolean
   studio_id: ID
   gallery_ids: [ID!]
+  voice_actor_ids: [ID!]
   performer_ids: [ID!]
   groups: [SceneGroupInput!]
   movies: [SceneMovieInput!] @deprecated(reason: "Use groups")

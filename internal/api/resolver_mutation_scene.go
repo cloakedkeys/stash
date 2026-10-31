@@ -116,7 +116,17 @@ func (r *mutationResolver) SceneCreate(ctx context.Context, input models.SceneCr
 			CoverImage:   coverImageData,
 			CustomFields: customFields,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		ids, err := handleIDList(input.VoiceActorIds, "voice_actor_ids")
+		if err != nil {
+			return err
+		}
+		if len(ids) > 0 {
+			return r.repository.VoiceActor.SetScene(ctx, ret.ID, ids)
+		}
+		return nil
 	}); err != nil {
 		return nil, err
 	}
@@ -333,6 +343,16 @@ func (r *mutationResolver) sceneUpdate(ctx context.Context, input models.SceneUp
 	scene, err := qb.UpdatePartial(ctx, sceneID, *updatedScene)
 	if err != nil {
 		return nil, err
+	}
+
+	if translator.hasField("voice_actor_ids") {
+		ids, err := handleIDList(input.VoiceActorIds, "voice_actor_ids")
+		if err != nil {
+			return nil, err
+		}
+		if err := r.repository.VoiceActor.SetScene(ctx, scene.ID, ids); err != nil {
+			return nil, err
+		}
 	}
 
 	if coverImageIncluded {
@@ -620,6 +640,7 @@ func (r *mutationResolver) SceneMerge(ctx context.Context, input SceneMergeInput
 	}
 
 	var values *models.ScenePartial
+	var voiceActorIDs *[]int
 	var coverImageData []byte
 	var customFields *models.CustomFieldsInput
 
@@ -631,6 +652,13 @@ func (r *mutationResolver) SceneMerge(ctx context.Context, input SceneMergeInput
 		values, err = scenePartialFromInput(*input.Values, translator)
 		if err != nil {
 			return nil, err
+		}
+		if translator.hasField("voice_actor_ids") {
+			ids, err := handleIDList(input.Values.VoiceActorIds, "voice_actor_ids")
+			if err != nil {
+				return nil, err
+			}
+			voiceActorIDs = &ids
 		}
 
 		if input.Values.CoverImage != nil {
@@ -660,6 +688,13 @@ func (r *mutationResolver) SceneMerge(ctx context.Context, input SceneMergeInput
 
 	var ret *models.Scene
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if voiceActorIDs != nil {
+			if err := r.repository.VoiceActor.SetScene(ctx, destID, *voiceActorIDs); err != nil {
+				return err
+			}
+		} else if err := r.repository.VoiceActor.MergeScenes(ctx, destID, srcIDs); err != nil {
+			return err
+		}
 		if err := r.Resolver.sceneService.Merge(ctx, srcIDs, destID, fileDeleter, scene.MergeOptions{
 			ScenePartial:       *values,
 			IncludePlayHistory: utils.IsTrue(input.PlayHistory),

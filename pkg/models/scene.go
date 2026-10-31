@@ -188,6 +188,7 @@ type SceneCreateInput struct {
 	Organized      *bool             `json:"organized"`
 	StudioID       *string           `json:"studio_id"`
 	GalleryIds     []string          `json:"gallery_ids"`
+	VoiceActorIds  []string          `json:"voice_actor_ids"`
 	PerformerIds   []string          `json:"performer_ids"`
 	Movies         []SceneMovieInput `json:"movies"`
 	Groups         []SceneGroupInput `json:"groups"`
@@ -218,6 +219,7 @@ type SceneUpdateInput struct {
 	Organized        *bool             `json:"organized"`
 	StudioID         *string           `json:"studio_id"`
 	GalleryIds       []string          `json:"gallery_ids"`
+	VoiceActorIds    []string          `json:"voice_actor_ids"`
 	PerformerIds     []string          `json:"performer_ids"`
 	Movies           []SceneMovieInput `json:"movies"`
 	Groups           []SceneGroupInput `json:"groups"`

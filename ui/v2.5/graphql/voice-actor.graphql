@@ -1,0 +1,52 @@
+fragment VoiceActorData on VoiceActor {
+  id
+  name
+  details
+  aliases
+  urls
+  favorite
+  created_at
+  updated_at
+  scene_count
+}
+
+query FindVoiceActors($filter: FindFilterType, $favorite: Boolean) {
+  findVoiceActors(filter: $filter, favorite: $favorite) {
+    count
+    voice_actors {
+      ...VoiceActorData
+    }
+  }
+}
+
+query FindVoiceActor($id: ID!) {
+  findVoiceActor(id: $id) {
+    ...VoiceActorData
+    scenes {
+      id
+      title
+      paths {
+        screenshot
+      }
+      files {
+        basename
+      }
+    }
+  }
+}
+
+mutation VoiceActorCreate($input: VoiceActorCreateInput!) {
+  voiceActorCreate(input: $input) {
+    ...VoiceActorData
+  }
+}
+
+mutation VoiceActorUpdate($input: VoiceActorUpdateInput!) {
+  voiceActorUpdate(input: $input) {
+    ...VoiceActorData
+  }
+}
+
+mutation VoiceActorDestroy($id: ID!) {
+  voiceActorDestroy(id: $id)
+}

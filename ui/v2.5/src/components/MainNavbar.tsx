@@ -44,6 +44,7 @@ import { baseURL } from "src/core/createClient";
 import { PatchComponent } from "src/patch";
 
 const messages = defineMessages({
+  voiceActors: { id: "voice_actors", defaultMessage: "Voice actors" },
   scenes: {
     id: "scenes",
     defaultMessage: "Scenes",
@@ -146,6 +147,13 @@ const allMenuItems: INavbarMenuItem[] = [
     href: "/performers",
     icon: faUser,
     hotkey: "g p",
+    userCreatable: true,
+  },
+  {
+    name: "voice-actors",
+    message: messages.voiceActors,
+    href: "/voice-actors",
+    icon: faUser,
     userCreatable: true,
   },
   {

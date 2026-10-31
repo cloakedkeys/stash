@@ -1,0 +1,35 @@
+"A person credited for voice work, independently of on-screen performers."
+type VoiceActor {
+  id: ID!
+  name: String!
+  details: String!
+  aliases: [String!]!
+  urls: [String!]!
+  favorite: Boolean!
+  created_at: Time!
+  updated_at: Time!
+  scenes: [Scene!]!
+  scene_count: Int!
+}
+
+input VoiceActorCreateInput {
+  name: String!
+  details: String
+  aliases: [String!]
+  urls: [String!]
+  favorite: Boolean
+}
+
+input VoiceActorUpdateInput {
+  id: ID!
+  name: String
+  details: String
+  aliases: [String!]
+  urls: [String!]
+  favorite: Boolean
+}
+
+type FindVoiceActorsResult {
+  count: Int!
+  voice_actors: [VoiceActor!]!
+}

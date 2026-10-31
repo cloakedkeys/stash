@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { FormattedMessage, useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import TextUtils from "src/utils/text";
@@ -119,6 +120,27 @@ export const SceneDetailPanel: React.FC<ISceneDetailProps> = (props) => {
           {renderDetails()}
           {renderTags()}
           {renderPerformers()}
+          {props.scene.voice_actors.length > 0 && (
+            <section className="my-3">
+              <h6>
+                <FormattedMessage
+                  id="voice_actors"
+                  defaultMessage="Voice actors"
+                />
+              </h6>
+              <div className="d-flex flex-wrap">
+                {props.scene.voice_actors.map((actor) => (
+                  <Link
+                    className="btn btn-secondary mr-2 mb-2"
+                    to={`/voice-actors/${actor.id}`}
+                    key={actor.id}
+                  >
+                    {actor.name}
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
           <CustomFields values={props.scene.custom_fields} fullWidth />
         </div>
       </div>

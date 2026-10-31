@@ -1,5 +1,7 @@
 "The query root for this schema"
 type Query {
+  findVoiceActor(id: ID!): VoiceActor
+  findVoiceActors(filter: FindFilterType, favorite: Boolean): FindVoiceActorsResult!
   # Filters
   findSavedFilter(id: ID!): SavedFilter
   findSavedFilters(mode: FilterMode): [SavedFilter!]!
@@ -286,6 +288,9 @@ type Query {
 }
 
 type Mutation {
+  voiceActorCreate(input: VoiceActorCreateInput!): VoiceActor!
+  voiceActorUpdate(input: VoiceActorUpdateInput!): VoiceActor!
+  voiceActorDestroy(id: ID!): Boolean!
   setup(input: SetupInput!): Boolean!
 
   "Migrates the schema to the required version. Returns the job ID"

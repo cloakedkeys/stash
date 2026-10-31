@@ -52,6 +52,10 @@ import {
   PerformerSelect,
 } from "src/components/Performers/PerformerSelect";
 import { formikUtils } from "src/utils/form";
+import {
+  VoiceActorSelect,
+  VoiceActorOption,
+} from "src/components/VoiceActors/VoiceActorSelect";
 import { Studio, StudioSelect } from "src/components/Studios/StudioSelect";
 import { Gallery, GallerySelect } from "src/components/Galleries/GallerySelect";
 import { Group } from "src/components/Groups/GroupSelect";
@@ -96,6 +100,10 @@ export const SceneEditPanel: React.FC<IProps> = ({
   const [performers, setPerformers, setInitialPerformers] = useInitialState<
     Performer[]
   >(scene.performers ?? []);
+  const [voiceActors, setVoiceActors] = useState<VoiceActorOption[]>([]);
+  useEffect(() => {
+    setVoiceActors(scene.voice_actors ?? []);
+  }, [scene.voice_actors]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [studio, setStudio] = useState<Studio | null>(null);
 
@@ -165,6 +173,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
     director: yup.string().ensure(),
     gallery_ids: yup.array(yup.string().required()).defined(),
     studio_id: yup.string().required().nullable(),
+    voice_actor_ids: yup.array(yup.string().required()).defined(),
     performer_ids: yup.array(yup.string().required()).defined(),
     groups: yup
       .array(
@@ -191,6 +200,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
       director: scene.director ?? "",
       gallery_ids: (scene.galleries ?? []).map((g) => g.id),
       studio_id: scene.studio?.id ?? null,
+      voice_actor_ids: (scene.voice_actors ?? []).map((p) => p.id),
       performer_ids: (scene.performers ?? []).map((p) => p.id),
       groups: (scene.groups ?? []).map((m) => {
         return { group_id: m.group.id, scene_index: m.scene_index ?? null };
@@ -393,6 +403,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
         const initialPerformers = scene.performers ?? [];
         setPerformers(initialPerformers);
         setInitialPerformers(initialPerformers);
+        setVoiceActors(scene.voice_actors ?? []);
         setGroups(scene.groups?.map((m) => m.group) ?? []);
         setStudio(scene.studio ?? null);
         resetTagsState();
@@ -977,6 +988,27 @@ export const SceneEditPanel: React.FC<IProps> = ({
             {renderGalleriesField()}
             {renderStudioField()}
             {renderPerformersField()}
+            {renderField(
+              "voice_actor_ids",
+              intl.formatMessage({
+                id: "voice_actors",
+                defaultMessage: "Voice actors",
+              }),
+              autoSaveField(
+                "voice_actor_ids",
+                <VoiceActorSelect
+                  values={voiceActors}
+                  onSelect={(items) => {
+                    setVoiceActors(items);
+                    formik.setFieldValue(
+                      "voice_actor_ids",
+                      items.map((item) => item.id)
+                    );
+                  }}
+                />
+              ),
+              fullWidthProps
+            )}
             {renderGroupsField()}
             {renderTagsField()}
 

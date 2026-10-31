@@ -1,4 +1,8 @@
 fragment SceneData on Scene {
+  voice_actors {
+    id
+    name
+  }
   id
   title
   code

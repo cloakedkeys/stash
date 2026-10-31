@@ -42,13 +42,15 @@ type ExportTask struct {
 
 	fileNamingAlgorithm models.HashAlgorithm
 
-	scenes     *exportSpec
-	images     *exportSpec
-	performers *exportSpec
-	groups     *exportSpec
-	tags       *exportSpec
-	studios    *exportSpec
-	galleries  *exportSpec
+	scenes           *exportSpec
+	images           *exportSpec
+	voiceActors      *exportSpec
+	voiceActorsMutex sync.Mutex
+	performers       *exportSpec
+	groups           *exportSpec
+	tags             *exportSpec
+	studios          *exportSpec
+	galleries        *exportSpec
 
 	includeDependencies bool
 
@@ -64,6 +66,7 @@ type ExportObjectsInput struct {
 	Scenes              *ExportObjectTypeInput `json:"scenes"`
 	Images              *ExportObjectTypeInput `json:"images"`
 	Studios             *ExportObjectTypeInput `json:"studios"`
+	VoiceActors         *ExportObjectTypeInput `json:"voice_actors"`
 	Performers          *ExportObjectTypeInput `json:"performers"`
 	Tags                *ExportObjectTypeInput `json:"tags"`
 	Groups              *ExportObjectTypeInput `json:"groups"`
@@ -113,6 +116,7 @@ func CreateExportTask(a models.HashAlgorithm, input ExportObjectsInput) *ExportT
 		scenes:              newExportSpec(input.Scenes),
 		images:              newExportSpec(input.Images),
 		performers:          newExportSpec(input.Performers),
+		voiceActors:         newExportSpec(input.VoiceActors),
 		groups:              newExportSpec(groupSpec),
 		tags:                newExportSpec(input.Tags),
 		studios:             newExportSpec(input.Studios),
@@ -176,6 +180,9 @@ func (t *ExportTask) Start(ctx context.Context, wg *sync.WaitGroup) {
 		t.ExportImages(ctx, workerCount)
 		t.ExportGalleries(ctx, workerCount)
 		t.ExportGroups(ctx, workerCount)
+		if err := t.exportVoiceActors(ctx); err != nil {
+			return err
+		}
 		t.ExportPerformers(ctx, workerCount)
 		t.ExportStudios(ctx, workerCount)
 		t.ExportTags(ctx, workerCount)
@@ -231,6 +238,7 @@ func (t *ExportTask) zipFiles(w io.Writer) error {
 
 	walkWarn(t.json.json.Tags, t.zipWalkFunc(u.json.Tags, z))
 	walkWarn(t.json.json.Galleries, t.zipWalkFunc(u.json.Galleries, z))
+	walkWarn(filepath.Join(t.baseDir, "voice_actors"), t.zipWalkFunc("voice_actors", z))
 	walkWarn(t.json.json.Performers, t.zipWalkFunc(u.json.Performers, z))
 	walkWarn(t.json.json.Studios, t.zipWalkFunc(u.json.Studios, z))
 	walkWarn(t.json.json.Groups, t.zipWalkFunc(u.json.Groups, z))
@@ -594,6 +602,25 @@ func (t *ExportTask) exportScene(ctx context.Context, wg *sync.WaitGroup, jobCha
 		}
 
 		newSceneJSON.Performers = performer.GetNames(performers)
+		voiceActors, err := t.repository.VoiceActor.FindBySceneID(ctx, s.ID)
+		if err != nil {
+			logger.Errorf("error exporting scene voice actors: %v", err)
+			continue
+		}
+		newSceneJSON.VoiceActors = []string{}
+		for _, actor := range voiceActors {
+			newSceneJSON.VoiceActors = append(newSceneJSON.VoiceActors, actor.Name)
+		}
+		if t.includeDependencies {
+			t.voiceActorsMutex.Lock()
+			if t.voiceActors == nil {
+				t.voiceActors = &exportSpec{}
+			}
+			for _, actor := range voiceActors {
+				t.voiceActors.IDs = sliceutil.AppendUnique(t.voiceActors.IDs, actor.ID)
+			}
+			t.voiceActorsMutex.Unlock()
+		}
 
 		newSceneJSON.Tags, err = scene.GetTagNames(ctx, tagReader, s)
 		if err != nil {

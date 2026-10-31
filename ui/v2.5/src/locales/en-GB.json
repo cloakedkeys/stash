@@ -1,4 +1,5 @@
 {
+  "voice_actors": "Voice actors",
   "actions": {
     "add": "Add",
     "add_directory": "Add directory",

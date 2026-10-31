@@ -329,7 +329,7 @@ var (
 	defaultVideoExtensions   = []string{"m4v", "mp4", "mov", "wmv", "avi", "mpg", "mpeg", "rmvb", "rm", "flv", "asf", "mkv", "webm", "f4v"}
 	defaultImageExtensions   = []string{"png", "jpg", "jpeg", "gif", "webp", "avif", "jxl"}
 	defaultGalleryExtensions = []string{"zip", "cbz"}
-	defaultMenuItems         = []string{"scenes", "images", "groups", "markers", "galleries", "folders", "performers", "studios", "tags"}
+	defaultMenuItems         = []string{"scenes", "images", "groups", "markers", "galleries", "folders", "performers", "voice-actors", "studios", "tags"}
 )
 
 type MissingConfigError struct {

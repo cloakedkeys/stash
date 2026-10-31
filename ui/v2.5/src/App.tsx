@@ -58,6 +58,10 @@ import { ErrorMessage } from "./components/Shared/ErrorMessage";
 import cx from "classnames";
 import Welcome from "./components/Setup/Welcome";
 
+const VoiceActors = lazyComponent(
+  () => import("./components/VoiceActors/VoiceActors")
+);
+
 const Performers = lazyComponent(
   () => import("./components/Performers/Performers")
 );
@@ -264,6 +268,7 @@ export const App: React.FC = () => {
             <Route path="/images" component={Images} />
             <Route path="/galleries" component={Galleries} />
             <Route path="/performers" component={Performers} />
+            <Route path="/voice-actors" component={VoiceActors} />
             <Route path="/tags" component={Tags} />
             <Route path="/studios" component={Studios} />
             <Route path="/groups" component={Groups} />
