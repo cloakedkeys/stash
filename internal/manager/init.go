@@ -41,8 +41,7 @@ func Initialize(cfg *config.Config, l *log.Logger) (*Manager, error) {
 
 	var db database.Database
 
-	upperUrl := strings.ToUpper(cfg.GetDatabasePath())
-	if strings.HasPrefix(upperUrl, string(database.PostgresBackend)+":") {
+	if database.IsPostgresPath(cfg.GetDatabasePath()) {
 		db = postgres.NewDatabase()
 	} else {
 		db = sqlite.NewDatabase()
