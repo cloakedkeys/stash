@@ -4610,3 +4610,35 @@ func TestAudioDestroyKeepsSharedCover(t *testing.T) {
 		return nil
 	}))
 }
+
+func TestAudioUpdateKeepsCover(t *testing.T) {
+	require.NoError(t, withRollbackTxn(func(ctx context.Context) error {
+		qb := db.Audio()
+		cover := []byte("cover kept when the audio is overwritten")
+
+		audio := models.Audio{Title: "overwritten by an import"}
+		audio.CreatedAt, audio.UpdatedAt = time.Now().UTC(), time.Now().UTC()
+		require.NoError(t, qb.Create(ctx, &audio, nil))
+		require.NoError(t, qb.UpdateCover(ctx, audio.ID, cover))
+
+		audio.Title = "new title"
+		require.NoError(t, qb.Update(ctx, &audio))
+
+		got, err := qb.GetCover(ctx, audio.ID)
+		require.NoError(t, err)
+		assert.Equal(t, cover, got)
+		return nil
+	}))
+}
+
+func TestAudioGetManyIDsByFileIDs(t *testing.T) {
+	require.NoError(t, withRollbackTxn(func(ctx context.Context) error {
+		idx := audioIdx1WithPerformer
+		got, err := db.Audio().GetManyIDsByFileIDs(ctx, []models.FileID{audioFileIDs[idx], invalidFileID})
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Equal(t, []int{audioIDs[idx]}, got[0])
+		assert.Empty(t, got[1])
+		return nil
+	}))
+}

@@ -56,7 +56,7 @@ type audioRow struct {
 	UpdatedAt     Timestamp   `db:"updated_at"`
 
 	// not used in resolutions or updates
-	CoverBlob zero.String `db:"cover_blob"`
+	CoverBlob zero.String `db:"cover_blob" goqu:"skipupdate"`
 }
 
 func (r *audioRow) fromAudio(o models.Audio) {
@@ -648,7 +648,7 @@ func (qb *AudioStore) FindByFileID(ctx context.Context, fileID models.FileID) ([
 }
 
 func (qb *AudioStore) GetManyIDsByFileIDs(ctx context.Context, fileIDs []models.FileID) ([][]int, error) {
-	sq := dialect.From(audiosFilesJoinTable).Select(audiosFilesJoinTable.Col(galleryIDColumn), audiosFilesJoinTable.Col(fileIDColumn)).Where(
+	sq := dialect.From(audiosFilesJoinTable).Select(audiosFilesJoinTable.Col(audioIDColumn), audiosFilesJoinTable.Col(fileIDColumn)).Where(
 		audiosFilesJoinTable.Col(fileIDColumn).In(fileIDs),
 	)
 
