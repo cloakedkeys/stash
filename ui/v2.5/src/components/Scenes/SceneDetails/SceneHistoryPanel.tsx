@@ -305,7 +305,7 @@ export const SceneHistoryPanel: React.FC<ISceneHistoryProps> = ({ scene }) => {
   function maybeRenderDialogs() {
     const clearHistoryMessageID = sfwContentMode
       ? "dialogs.clear_o_history_confirm_sfw"
-      : "dialogs.clear_play_history_confirm";
+      : "dialogs.clear_o_history_confirm";
     return (
       <>
         <AlertModal

@@ -72,7 +72,7 @@ type sceneRow struct {
 	CoverGenerated          bool        `db:"cover_generated"`
 
 	// not used in resolutions or updates
-	CoverBlob zero.String `db:"cover_blob"`
+	CoverBlob zero.String `db:"cover_blob" goqu:"skipupdate"`
 }
 
 func (r *sceneRow) fromScene(o models.Scene) {

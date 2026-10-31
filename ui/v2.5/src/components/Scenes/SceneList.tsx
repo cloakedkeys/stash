@@ -510,8 +510,8 @@ export const FilteredSceneList = PatchComponent(
     }, [cachedResult]);
 
     const queue = useMemo(
-      () => SceneQueue.fromListFilterModel(filter),
-      [filter]
+      () => SceneQueue.fromListFilterModel(effectiveFilter),
+      [effectiveFilter]
     );
 
     const playRandom = usePlayRandom(effectiveFilter, totalCount);

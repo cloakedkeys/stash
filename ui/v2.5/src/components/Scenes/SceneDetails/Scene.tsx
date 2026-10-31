@@ -453,10 +453,10 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
   }
 
   function maybeRenderMergeDialog() {
-    if (!scene.id) return;
+    if (!scene.id || !isMerging) return;
     return (
       <SceneMergeModal
-        show={isMerging}
+        show
         onClose={(mergedId) => {
           setIsMerging(false);
           if (mergedId !== undefined && mergedId !== scene.id) {

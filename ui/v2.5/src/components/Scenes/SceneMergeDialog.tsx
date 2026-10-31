@@ -732,8 +732,14 @@ interface ISceneMergeModalProps {
 export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
   "SceneMergeModal",
   ({ show, onClose, scenes }) => {
-    const [sourceScenes, setSourceScenes] = useState<Scene[]>([]);
-    const [destScene, setDestScene] = useState<Scene[]>([]);
+    // the first scene is the destination, the others are sources. Only taken when
+    // the dialog opens, so re-rendering the page can't change what was picked.
+    const [sourceScenes, setSourceScenes] = useState<Scene[]>(() =>
+      scenes.slice(1)
+    );
+    const [destScene, setDestScene] = useState<Scene[]>(() =>
+      scenes.slice(0, 1)
+    );
 
     const [loadedSources, setLoadedSources] = useState<GQL.SceneDataFragment[]>(
       []
@@ -755,17 +761,6 @@ export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
       () => (destScene[0] ? [destScene[0].id] : []),
       [destScene]
     );
-
-    useEffect(() => {
-      if (scenes.length > 0) {
-        // set the first scene as the destination, others as source
-        setDestScene([scenes[0]]);
-
-        if (scenes.length > 1) {
-          setSourceScenes(scenes.slice(1));
-        }
-      }
-    }, [scenes]);
 
     async function loadScenes() {
       const sceneIDs = sourceScenes.map((s) => parseInt(s.id, 10));

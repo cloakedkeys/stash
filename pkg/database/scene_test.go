@@ -4700,6 +4700,26 @@ func TestFindByPerformerID(t *testing.T) {
 	})
 }
 
+func TestSceneUpdateKeepsCover(t *testing.T) {
+	require.NoError(t, withRollbackTxn(func(ctx context.Context) error {
+		qb := db.Scene()
+		cover := []byte("cover kept when the scene is overwritten")
+
+		scene := models.Scene{Title: "overwritten by an import"}
+		scene.CreatedAt, scene.UpdatedAt = time.Now().UTC(), time.Now().UTC()
+		require.NoError(t, qb.Create(ctx, &scene, nil))
+		require.NoError(t, qb.UpdateCover(ctx, scene.ID, cover))
+
+		scene.Title = "new title"
+		require.NoError(t, qb.Update(ctx, &scene))
+
+		got, err := qb.GetCover(ctx, scene.ID)
+		require.NoError(t, err)
+		assert.Equal(t, cover, got)
+		return nil
+	}))
+}
+
 func TestSceneUpdateSceneCover(t *testing.T) {
 	if err := withTxn(func(ctx context.Context) error {
 		qb := db.Scene()
