@@ -560,6 +560,8 @@ input GalleryFilterType {
   rating100: IntCriterionInput
   "Filter by organized"
   organized: Boolean
+  "Filter by o-counter"
+  o_counter: IntCriterionInput
   "Filter by average image resolution"
   average_resolution: ResolutionCriterionInput
   "Filter to only include galleries that have chapters. `true` or `false`"

@@ -61,6 +61,7 @@ func Test_galleryQueryBuilder_Create(t *testing.T) {
 		code         = "1337"
 		url          = "url"
 		rating       = 60
+		ocounter     = 5
 		details      = "details"
 		photographer = "photographer"
 		createdAt    = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -87,6 +88,7 @@ func Test_galleryQueryBuilder_Create(t *testing.T) {
 				Photographer: photographer,
 				Rating:       &rating,
 				Organized:    true,
+				OCounter:     ocounter,
 				StudioID:     &studioIDs[studioIdxWithScene],
 				CreatedAt:    createdAt,
 				UpdatedAt:    updatedAt,
@@ -221,6 +223,7 @@ func Test_galleryQueryBuilder_Update(t *testing.T) {
 		code         = "code"
 		url          = "url"
 		rating       = 60
+		ocounter     = 5
 		details      = "details"
 		photographer = "photographer"
 		createdAt    = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -246,6 +249,7 @@ func Test_galleryQueryBuilder_Update(t *testing.T) {
 				Photographer: photographer,
 				Rating:       &rating,
 				Organized:    true,
+				OCounter:     ocounter,
 				StudioID:     &studioIDs[studioIdxWithScene],
 				Files: models.NewRelatedFiles([]models.File{
 					makeGalleryFileWithID(galleryIdxWithScene),
@@ -425,6 +429,7 @@ func Test_galleryQueryBuilder_UpdatePartial(t *testing.T) {
 		photographer = "photographer"
 		url          = "url"
 		rating       = 60
+		ocounter     = 5
 		createdAt    = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 		updatedAt    = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 
@@ -453,6 +458,7 @@ func Test_galleryQueryBuilder_UpdatePartial(t *testing.T) {
 				Date:      models.NewOptionalDate(date),
 				Rating:    models.NewOptionalInt(rating),
 				Organized: models.NewOptionalBool(true),
+				OCounter:  models.NewOptionalInt(ocounter),
 				StudioID:  models.NewOptionalInt(studioIDs[studioIdxWithGallery]),
 				CreatedAt: models.NewOptionalTime(createdAt),
 				UpdatedAt: models.NewOptionalTime(updatedAt),
@@ -480,6 +486,7 @@ func Test_galleryQueryBuilder_UpdatePartial(t *testing.T) {
 				Date:         &date,
 				Rating:       &rating,
 				Organized:    true,
+				OCounter:     ocounter,
 				StudioID:     &studioIDs[studioIdxWithGallery],
 				Files: models.NewRelatedFiles([]models.File{
 					makeGalleryFile(galleryIdxWithImage),
@@ -497,7 +504,8 @@ func Test_galleryQueryBuilder_UpdatePartial(t *testing.T) {
 			galleryIDs[galleryIdxWithImage],
 			clearGalleryPartial(),
 			models.Gallery{
-				ID: galleryIDs[galleryIdxWithImage],
+				ID:       galleryIDs[galleryIdxWithImage],
+				OCounter: getOCounter(galleryIdxWithImage),
 				Files: models.NewRelatedFiles([]models.File{
 					makeGalleryFile(galleryIdxWithImage),
 				}),
@@ -2758,6 +2766,196 @@ func verifyGalleriesPerformerCount(t *testing.T, performerCountCriterion models.
 
 		return nil
 	})
+}
+
+func TestGalleryQueryOCounter(t *testing.T) {
+	const oCounter = 1
+	oCounterCriterion := models.IntCriterionInput{
+		Value:    oCounter,
+		Modifier: models.CriterionModifierEquals,
+	}
+
+	verifyGalleriesOCounter(t, oCounterCriterion)
+
+	oCounterCriterion.Modifier = models.CriterionModifierNotEquals
+	verifyGalleriesOCounter(t, oCounterCriterion)
+
+	oCounterCriterion.Modifier = models.CriterionModifierGreaterThan
+	verifyGalleriesOCounter(t, oCounterCriterion)
+
+	oCounterCriterion.Modifier = models.CriterionModifierLessThan
+	verifyGalleriesOCounter(t, oCounterCriterion)
+}
+
+func verifyGalleriesOCounter(t *testing.T, oCounterCriterion models.IntCriterionInput) {
+	withTxn(func(ctx context.Context) error {
+		sqb := db.Gallery
+		galleryFilter := models.GalleryFilterType{
+			OCounter: &oCounterCriterion,
+		}
+
+		galleries := queryGallery(ctx, t, sqb, &galleryFilter, nil)
+		assert.Greater(t, len(galleries), 0)
+
+		for _, gallery := range galleries {
+			verifyInt(t, gallery.OCounter, oCounterCriterion)
+		}
+
+		return nil
+	})
+}
+
+func TestGalleryQuerySortOCounter(t *testing.T) {
+	withTxn(func(ctx context.Context) error {
+		sortBy := "o_counter"
+		direction := models.SortDirectionEnumDesc
+		findFilter := &models.FindFilterType{
+			Sort:      &sortBy,
+			Direction: &direction,
+		}
+
+		galleries := queryGallery(ctx, t, db.Gallery, nil, findFilter)
+		if assert.Greater(t, len(galleries), 1) {
+			assert.Equal(t, 2, galleries[0].OCounter)
+			for i := 1; i < len(galleries); i++ {
+				assert.LessOrEqual(t, galleries[i].OCounter, galleries[i-1].OCounter)
+			}
+		}
+
+		direction = models.SortDirectionEnumAsc
+		galleries = queryGallery(ctx, t, db.Gallery, nil, findFilter)
+		if assert.Greater(t, len(galleries), 1) {
+			assert.Equal(t, 0, galleries[0].OCounter)
+			for i := 1; i < len(galleries); i++ {
+				assert.GreaterOrEqual(t, galleries[i].OCounter, galleries[i-1].OCounter)
+			}
+		}
+
+		return nil
+	})
+}
+
+func Test_galleryQueryBuilder_IncrementOCounter(t *testing.T) {
+	tests := []struct {
+		name    string
+		id      int
+		want    int
+		wantErr bool
+	}{
+		{
+			"increment",
+			galleryIDs[1],
+			2,
+			false,
+		},
+		{
+			"invalid",
+			invalidID,
+			0,
+			true,
+		},
+	}
+
+	qb := db.Gallery
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			got, err := qb.IncrementOCounter(ctx, tt.id)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("galleryQueryBuilder.IncrementOCounter() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("galleryQueryBuilder.IncrementOCounter() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_galleryQueryBuilder_DecrementOCounter(t *testing.T) {
+	tests := []struct {
+		name    string
+		id      int
+		want    int
+		wantErr bool
+	}{
+		{
+			"decrement",
+			galleryIDs[2],
+			1,
+			false,
+		},
+		{
+			"zero",
+			galleryIDs[0],
+			0,
+			false,
+		},
+		{
+			"invalid",
+			invalidID,
+			0,
+			true,
+		},
+	}
+
+	qb := db.Gallery
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			got, err := qb.DecrementOCounter(ctx, tt.id)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("galleryQueryBuilder.DecrementOCounter() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("galleryQueryBuilder.DecrementOCounter() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_galleryQueryBuilder_ResetOCounter(t *testing.T) {
+	tests := []struct {
+		name    string
+		id      int
+		want    int
+		wantErr bool
+	}{
+		{
+			"reset",
+			galleryIDs[2],
+			0,
+			false,
+		},
+		{
+			"zero",
+			galleryIDs[0],
+			0,
+			false,
+		},
+		{
+			"invalid",
+			invalidID,
+			0,
+			true,
+		},
+	}
+
+	qb := db.Gallery
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			got, err := qb.ResetOCounter(ctx, tt.id)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("galleryQueryBuilder.ResetOCounter() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("galleryQueryBuilder.ResetOCounter() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestGalleryQueryAverageResolution(t *testing.T) {

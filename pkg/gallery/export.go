@@ -39,6 +39,7 @@ func ToBasicJSON(gallery *models.Gallery) (*jsonschema.Gallery, error) {
 	}
 
 	newGalleryJSON.Organized = gallery.Organized
+	newGalleryJSON.OCounter = gallery.OCounter
 
 	return &newGalleryJSON, nil
 }

@@ -18,6 +18,7 @@ type Gallery struct {
 	// Rating expressed in 1-100 scale
 	Rating    *int `json:"rating"`
 	Organized bool `json:"organized"`
+	OCounter  int  `json:"o_counter"`
 	StudioID  *int `json:"studio_id"`
 
 	// transient - not persisted
@@ -75,6 +76,7 @@ type GalleryPartial struct {
 	// Rating expressed in 1-100 scale
 	Rating    OptionalInt
 	Organized OptionalBool
+	OCounter  OptionalInt
 	StudioID  OptionalInt
 	// FileModTime OptionalTime
 	CreatedAt OptionalTime

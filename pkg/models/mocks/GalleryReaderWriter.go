@@ -142,6 +142,27 @@ func (_m *GalleryReaderWriter) Create(ctx context.Context, newGallery *models.Cr
 	return r0
 }
 
+// DecrementOCounter provides a mock function with given fields: ctx, id
+func (_m *GalleryReaderWriter) DecrementOCounter(ctx context.Context, id int) (int, error) {
+	ret := _m.Called(ctx, id)
+
+	var r0 int
+	if rf, ok := ret.Get(0).(func(context.Context, int) int); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Destroy provides a mock function with given fields: ctx, id
 func (_m *GalleryReaderWriter) Destroy(ctx context.Context, id int) error {
 	ret := _m.Called(ctx, id)
@@ -639,6 +660,27 @@ func (_m *GalleryReaderWriter) GetURLs(ctx context.Context, relatedID int) ([]st
 	return r0, r1
 }
 
+// IncrementOCounter provides a mock function with given fields: ctx, id
+func (_m *GalleryReaderWriter) IncrementOCounter(ctx context.Context, id int) (int, error) {
+	ret := _m.Called(ctx, id)
+
+	var r0 int
+	if rf, ok := ret.Get(0).(func(context.Context, int) int); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Query provides a mock function with given fields: ctx, galleryFilter, findFilter
 func (_m *GalleryReaderWriter) Query(ctx context.Context, galleryFilter *models.GalleryFilterType, findFilter *models.FindFilterType) ([]*models.Gallery, int, error) {
 	ret := _m.Called(ctx, galleryFilter, findFilter)
@@ -723,6 +765,27 @@ func (_m *GalleryReaderWriter) ResetCover(ctx context.Context, galleryID int) er
 	}
 
 	return r0
+}
+
+// ResetOCounter provides a mock function with given fields: ctx, id
+func (_m *GalleryReaderWriter) ResetOCounter(ctx context.Context, id int) (int, error) {
+	ret := _m.Called(ctx, id)
+
+	var r0 int
+	if rf, ok := ret.Get(0).(func(context.Context, int) int); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // SetCover provides a mock function with given fields: ctx, galleryID, coverImageID

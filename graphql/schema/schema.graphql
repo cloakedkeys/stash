@@ -363,6 +363,13 @@ type Mutation {
   galleryDestroy(input: GalleryDestroyInput!): Boolean!
   galleriesUpdate(input: [GalleryUpdateInput!]!): [Gallery]
 
+  "Increments the o-counter for a gallery. Returns the new value"
+  galleryIncrementO(id: ID!): Int!
+  "Decrements the o-counter for a gallery. Returns the new value"
+  galleryDecrementO(id: ID!): Int!
+  "Resets the o-counter for a gallery to 0. Returns the new value"
+  galleryResetO(id: ID!): Int!
+
   addGalleryImages(input: GalleryAddInput!): Boolean!
   removeGalleryImages(input: GalleryRemoveInput!): Boolean!
   setGalleryCover(input: GallerySetCoverInput!): Boolean!

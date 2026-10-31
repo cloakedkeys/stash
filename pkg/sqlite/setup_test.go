@@ -1419,6 +1419,7 @@ func makeGallery(i int, includeScenes bool) *models.Gallery {
 		}),
 		Rating:       getIntPtr(getRating(i)),
 		Date:         getObjectDate(i),
+		OCounter:     getOCounter(i),
 		StudioID:     studioID,
 		PerformerIDs: models.NewRelatedIDs(pids),
 		TagIDs:       models.NewRelatedIDs(tids),
