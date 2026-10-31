@@ -10,6 +10,7 @@ import (
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/scraper"
+	"github.com/stashapp/stash/pkg/session"
 	"golang.org/x/text/collate"
 )
 
@@ -22,7 +23,51 @@ func (r *queryResolver) Configuration(ctx context.Context) (*ConfigResult, error
 	}
 	ret.UI = ui
 
+	if !currentUserIsAdmin(ctx) {
+		redactConfig(ret)
+	}
+
 	return ret, nil
+}
+
+func currentUserIsAdmin(ctx context.Context) bool {
+	// there is no current user when no credentials are required
+	u := session.GetCurrentUser(ctx)
+	return u == nil || u.Roles.HasRole(models.RoleEnumAdmin)
+}
+
+// redactConfig removes credentials and the layout of the server from the
+// settings, leaving what the interface needs to work for other accounts.
+func redactConfig(c *ConfigResult) {
+	g := c.General
+	g.DatabasePath = ""
+	g.BackupDirectoryPath = ""
+	g.DeleteTrashPath = ""
+	g.GeneratedPath = ""
+	g.MetadataPath = ""
+	g.ConfigFilePath = ""
+	g.ScrapersPath = ""
+	g.PluginsPath = ""
+	g.CachePath = ""
+	g.BlobsPath = ""
+	g.FfmpegPath = ""
+	g.FfprobePath = ""
+	g.PythonPath = ""
+	g.LogFile = nil
+	g.CustomPerformerImageLocation = nil
+
+	stashBoxes := make([]*models.StashBox, len(g.StashBoxes))
+	for i, box := range g.StashBoxes {
+		redacted := *box
+		redacted.APIKey = ""
+		stashBoxes[i] = &redacted
+	}
+	g.StashBoxes = stashBoxes
+
+	empty := ""
+	c.Interface.HandyKey = &empty
+	c.Scraping.ScraperCDPPath = &empty
+	c.Dlna.WhitelistedIPs = []string{}
 }
 
 func (r *queryResolver) Directory(ctx context.Context, path, locale *string) (*Directory, error) {

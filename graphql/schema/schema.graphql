@@ -62,7 +62,7 @@ type Query {
   parseSceneFilenames(
     filter: FindFilterType
     config: SceneParserInput!
-  ): SceneParserResultType!
+  ): SceneParserResultType! @hasRole(role: MODIFY)
 
   "A function which queries SceneMarker objects"
   findSceneMarkers(
@@ -83,7 +83,7 @@ type Query {
   parseAudioFilenames(
     filter: FindFilterType
     config: AudioParserInput!
-  ): AudioParserResultType!
+  ): AudioParserResultType! @hasRole(role: MODIFY)
 
   findImage(id: ID, checksum: String): Image
 
@@ -158,7 +158,7 @@ type Query {
   "Organize scene markers by tag for a given scene ID"
   sceneMarkerTags(scene_id: ID!): [SceneMarkerTag!]!
 
-  logs: [LogEntry!]!
+  logs: [LogEntry!]! @hasRole(role: ADMIN)
 
   # Scrapers
 
@@ -172,76 +172,76 @@ type Query {
   scrapeSingleScene(
     source: ScraperSourceInput!
     input: ScrapeSingleSceneInput!
-  ): [ScrapedScene!]!
+  ): [ScrapedScene!]! @hasRole(role: MODIFY)
   "Scrape for multiple scenes"
   scrapeMultiScenes(
     source: ScraperSourceInput!
     input: ScrapeMultiScenesInput!
-  ): [[ScrapedScene!]!]!
+  ): [[ScrapedScene!]!]! @hasRole(role: MODIFY)
 
   "Scrape for a single studio"
   scrapeSingleStudio(
     source: ScraperSourceInput!
     input: ScrapeSingleStudioInput!
-  ): [ScrapedStudio!]!
+  ): [ScrapedStudio!]! @hasRole(role: MODIFY)
 
   "Scrape for a single tag"
   scrapeSingleTag(
     source: ScraperSourceInput!
     input: ScrapeSingleTagInput!
-  ): [ScrapedTag!]!
+  ): [ScrapedTag!]! @hasRole(role: MODIFY)
 
   "Scrape for a single performer"
   scrapeSinglePerformer(
     source: ScraperSourceInput!
     input: ScrapeSinglePerformerInput!
-  ): [ScrapedPerformer!]!
+  ): [ScrapedPerformer!]! @hasRole(role: MODIFY)
   "Scrape for multiple performers"
   scrapeMultiPerformers(
     source: ScraperSourceInput!
     input: ScrapeMultiPerformersInput!
-  ): [[ScrapedPerformer!]!]!
+  ): [[ScrapedPerformer!]!]! @hasRole(role: MODIFY)
 
   "Scrape for a single gallery"
   scrapeSingleGallery(
     source: ScraperSourceInput!
     input: ScrapeSingleGalleryInput!
-  ): [ScrapedGallery!]!
+  ): [ScrapedGallery!]! @hasRole(role: MODIFY)
 
   "Scrape for a single movie"
   scrapeSingleMovie(
     source: ScraperSourceInput!
     input: ScrapeSingleMovieInput!
-  ): [ScrapedMovie!]! @deprecated(reason: "Use scrapeSingleGroup instead")
+  ): [ScrapedMovie!]! @hasRole(role: MODIFY) @deprecated(reason: "Use scrapeSingleGroup instead")
 
   "Scrape for a single group"
   scrapeSingleGroup(
     source: ScraperSourceInput!
     input: ScrapeSingleGroupInput!
-  ): [ScrapedGroup!]!
+  ): [ScrapedGroup!]! @hasRole(role: MODIFY)
 
   "Scrape for a single image"
   scrapeSingleImage(
     source: ScraperSourceInput!
     input: ScrapeSingleImageInput!
-  ): [ScrapedImage!]!
+  ): [ScrapedImage!]! @hasRole(role: MODIFY)
 
   "Scrapes content based on a URL"
-  scrapeURL(url: String!, ty: ScrapeContentType!): ScrapedContent
+  scrapeURL(url: String!, ty: ScrapeContentType!): ScrapedContent @hasRole(role: MODIFY)
 
   "Scrapes a complete performer record based on a URL"
-  scrapePerformerURL(url: String!): ScrapedPerformer
+  scrapePerformerURL(url: String!): ScrapedPerformer @hasRole(role: MODIFY)
   "Scrapes a complete scene record based on a URL"
-  scrapeSceneURL(url: String!): ScrapedScene
+  scrapeSceneURL(url: String!): ScrapedScene @hasRole(role: MODIFY)
   "Scrapes a complete gallery record based on a URL"
-  scrapeGalleryURL(url: String!): ScrapedGallery
+  scrapeGalleryURL(url: String!): ScrapedGallery @hasRole(role: MODIFY)
   "Scrapes a complete image record based on a URL"
-  scrapeImageURL(url: String!): ScrapedImage
+  scrapeImageURL(url: String!): ScrapedImage @hasRole(role: MODIFY)
   "Scrapes a complete movie record based on a URL"
-  scrapeMovieURL(url: String!): ScrapedMovie
+  scrapeMovieURL(url: String!): ScrapedMovie @hasRole(role: MODIFY)
     @deprecated(reason: "Use scrapeGroupURL instead")
   "Scrapes a complete group record based on a URL"
-  scrapeGroupURL(url: String!): ScrapedGroup
+  scrapeGroupURL(url: String!): ScrapedGroup @hasRole(role: MODIFY)
 
   # Plugins
   "List loaded plugins"
@@ -251,9 +251,9 @@ type Query {
 
   # Packages
   "List installed packages"
-  installedPackages(type: PackageType!): [Package!]!
+  installedPackages(type: PackageType!): [Package!]! @hasRole(role: ADMIN)
   "List available packages"
-  availablePackages(type: PackageType!, source: String!): [Package!]!
+  availablePackages(type: PackageType!, source: String!): [Package!]! @hasRole(role: ADMIN)
 
   # Config
   "Returns the current, complete configuration"
@@ -264,11 +264,11 @@ type Query {
     path: String
     "Desired collation locale. Determines the order of the directory result. eg. 'en-US', 'pt-BR', ..."
     locale: String = "en"
-  ): Directory!
-  validateStashBoxCredentials(input: StashBoxInput!): StashBoxValidationResult!
+  ): Directory! @hasRole(role: MODIFY)
+  validateStashBoxCredentials(input: StashBoxInput!): StashBoxValidationResult! @hasRole(role: ADMIN)
 
   # Checks a Chrome CDP path. Tests the saved scraper CDP path when path is omitted.
-  validateCDPPath(path: String): CDPValidationResult!
+  validateCDPPath(path: String): CDPValidationResult! @hasRole(role: ADMIN)
 
   # System status
   systemStatus: SystemStatus!
@@ -750,7 +750,7 @@ type Subscription {
   "Update from the metadata manager"
   jobsSubscribe: JobStatusUpdate!
 
-  loggingSubscribe: [LogEntry!]!
+  loggingSubscribe: [LogEntry!]! @hasRole(role: ADMIN)
 
   scanCompleteSubscribe: Boolean!
 }

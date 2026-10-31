@@ -7,6 +7,11 @@ import (
 )
 
 func (r *configResultResolver) Plugins(ctx context.Context, obj *ConfigResult, include []string) (map[string]map[string]interface{}, error) {
+	// plugin settings can hold credentials
+	if !currentUserIsAdmin(ctx) {
+		return map[string]map[string]interface{}{}, nil
+	}
+
 	if len(include) == 0 {
 		ret := config.GetInstance().GetAllPluginConfiguration()
 		return ret, nil
