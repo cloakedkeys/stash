@@ -227,11 +227,25 @@ export const SceneEditPanel: React.FC<IProps> = ({
     !isNew &&
     ((stashConfig?.ui as IUIConfig)?.autoSaveConfirmedFields ?? false);
 
+  // Callers often set a field value and ask for a save in the same handler.
+  // Submitting straight away can send the values from before that change,
+  // so the save is only requested here and submitted after the next render.
+  // A request made while a save is running waits for it instead of being
+  // dropped.
+  const [autoSavePending, setAutoSavePending] = useState(false);
+
   function autoSave() {
-    if (autoSaveEnabled && !isSaving) {
-      formik.submitForm();
+    if (autoSaveEnabled) {
+      setAutoSavePending(true);
     }
   }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only a new request or the end of a save should submit
+  useEffect(() => {
+    if (!autoSavePending || isSaving) return;
+    setAutoSavePending(false);
+    formik.submitForm();
+  }, [autoSavePending, isSaving]);
 
   // save once focus leaves the field, so several picks in a row are one save
   function autoSaveField(field: keyof InputValues, control: React.ReactNode) {
