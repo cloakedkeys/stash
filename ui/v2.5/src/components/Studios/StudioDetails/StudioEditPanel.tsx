@@ -4,7 +4,7 @@ import * as GQL from "src/core/generated-graphql";
 import * as yup from "yup";
 import Mousetrap from "mousetrap";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
-import { ImageInput } from "src/components/Shared/ImageInput";
+import { DetailsEditNavbar } from "src/components/Shared/DetailsEditNavbar";
 import cx from "classnames";
 import { Button, Dropdown, Form } from "react-bootstrap";
 import { faPlus } from "@fortawesome/free-solid-svg-icons";
@@ -35,6 +35,7 @@ interface IStudioEditPanel {
   studio: Partial<GQL.StudioDataFragment>;
   onSubmit: (studio: GQL.StudioCreateInput, andNew?: boolean) => Promise<void>;
   onCancel: () => void;
+  onDelete?: () => void;
   setImage: (image?: string | null) => void;
   setEncodingImage: (loading: boolean) => void;
 }
@@ -43,6 +44,7 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
   studio,
   onSubmit,
   onCancel,
+  onDelete = () => {},
   setImage,
   setEncodingImage,
 }) => {
@@ -111,10 +113,8 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
     onSubmit: submit,
   });
 
-  const { tags, resetTagsState, updateTagsStateFromScraper, tagsControl } = useTagsEdit(
-    studio.tags,
-    (ids) => formik.setFieldValue("tag_ids", ids)
-  );
+  const { tags, resetTagsState, updateTagsStateFromScraper, tagsControl } =
+    useTagsEdit(studio.tags, (ids) => formik.setFieldValue("tag_ids", ids));
 
   function onSetParentStudio(item: Studio | null) {
     setParentStudio(item);
@@ -336,36 +336,26 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
 
   function renderButtons(classNames: string) {
     return (
-      <div className={cx("details-edit", "col-xl-9", classNames)}>
-        {!isNew && (
-          <Button className="mr-2" variant="primary" onClick={onCancel}>
-            <FormattedMessage id="actions.cancel" />
-          </Button>
-        )}
-        {renderScraperMenu()}
-        <ImageInput
-          isEditing
-          onImageChange={onImageChange}
-          onImageURL={onImageLoad}
-          acceptSVG
-        />
-        <div>
-          <Button
-            className="mr-2"
-            variant="danger"
-            onClick={() => onImageLoad(null)}
-          >
-            <FormattedMessage id="actions.clear_image" />
-          </Button>
-        </div>
-        <Button
-          variant="success"
-          disabled={(!isNew && !formik.dirty) || !isEqual(formik.errors, {})}
-          onClick={() => formik.submitForm()}
-        >
-          <FormattedMessage id="actions.save" />
-        </Button>
-      </div>
+      <DetailsEditNavbar
+        objectName={studio?.name ?? intl.formatMessage({ id: "studio" })}
+        classNames={cx("col-xl-9", classNames)}
+        isNew={isNew}
+        isEditing
+        onToggleEdit={onCancel}
+        onSave={formik.handleSubmit}
+        onSaveAndNew={isNew ? onSaveAndNewClick : undefined}
+        saveDisabled={
+          (!isNew && !formik.dirty) ||
+          !isEqual(formik.errors, {}) ||
+          customFieldsError !== undefined
+        }
+        onImageChange={onImageChange}
+        onImageChangeURL={onImageLoad}
+        onClearImage={() => onImageLoad(null)}
+        onDelete={onDelete}
+        customButtons={renderScraperMenu()}
+        acceptSVG
+      />
     );
   }
 

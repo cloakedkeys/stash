@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import {
@@ -91,10 +91,12 @@ export const StudioScrapeDialog: React.FC<IStudioScrapeDialogProps> = ({
   const allFields = [name, urls, details, aliases, tags, image, remoteSiteID];
 
   // don't show the dialog if nothing was scraped
-  if (allFields.every((r) => !r.scraped) && newTags.length === 0) {
-    onClose();
-    return <></>;
-  }
+  const noScrapedData =
+    allFields.every((r) => !r.scraped) && newTags.length === 0;
+  useEffect(() => {
+    if (noScrapedData) onClose();
+  }, [noScrapedData, onClose]);
+  if (noScrapedData) return null;
 
   function makeNewScrapedItem(): GQL.ScrapedStudio {
     return {
