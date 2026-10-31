@@ -1,0 +1,2 @@
+-- no schema changes
+-- comma-separated group aliases are split in post-migration
