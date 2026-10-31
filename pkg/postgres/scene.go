@@ -1336,12 +1336,13 @@ func (qb *SceneStore) setSceneSort(ctx context.Context, query *queryBuilder, fin
 		return err
 	}
 
+	// sort by the primary file, so that an item with several files is listed once
 	addFileTable := func() {
 		query.addJoins(
 			join{
 				sort:     true,
 				table:    scenesFilesTable,
-				onClause: "scenes_files.scene_id = scenes.id",
+				onClause: "scenes_files.scene_id = scenes.id AND scenes_files.\"primary\" = true",
 			},
 			join{
 				sort:     true,

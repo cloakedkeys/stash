@@ -1162,12 +1162,13 @@ func (qb *ImageStore) setImageSortAndPagination(ctx context.Context, q *queryBui
 			sort = "mod_time"
 		}
 
+		// sort by the primary file, so that an item with several files is listed once
 		addFilesJoin := func() {
 			q.addJoins(
 				join{
 					sort:     true,
 					table:    imagesFilesTable,
-					onClause: "images_files.image_id = images.id",
+					onClause: "images_files.image_id = images.id AND images_files.\"primary\" = true",
 				},
 				join{
 					sort:     true,

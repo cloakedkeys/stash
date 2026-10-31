@@ -5,10 +5,12 @@ package database_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Every sort option, with and without the totals shown in list views, must give
@@ -142,4 +144,107 @@ func TestQueryAllSortOptions(t *testing.T) {
 			}
 		}
 	}
+}
+
+// An item with several files must be listed once under every sort that looks at
+// its files, with and without a filter that joins them. Listing it twice makes
+// the whole query fail, since the items are then looked up by ID.
+func TestQueryAllSortOptionsSeveralFiles(t *testing.T) {
+	checkIDs := func(t *testing.T, ids []int) {
+		seen := make(map[int]bool)
+		for _, id := range ids {
+			assert.False(t, seen[id], "id %d listed more than once", id)
+			seen[id] = true
+		}
+	}
+
+	pathFilter := &models.StringCriterionInput{Value: "e", Modifier: models.CriterionModifierIncludes}
+	perPage := -1
+	find := func(sort string) *models.FindFilterType {
+		return &models.FindFilterType{Sort: &sort, PerPage: &perPage}
+	}
+
+	runSorts := func(name string, sorts []string, setup func(ctx context.Context) error, query func(ctx context.Context, t *testing.T, sort string, filtered bool) []int) {
+		for _, sort := range sorts {
+			for _, filtered := range []bool{false, true} {
+				runWithRollbackTxn(t, fmt.Sprintf("%s %s filtered %v", name, sort, filtered), func(t *testing.T, ctx context.Context) {
+					require.NoError(t, setup(ctx))
+					checkIDs(t, query(ctx, t, sort, filtered))
+				})
+			}
+		}
+	}
+
+	runSorts("scene", []string{"path", "title", "bitrate", "duration", "framerate", "file_mod_time", "resolution", "filesize", "perceptual_similarity"},
+		func(ctx context.Context) error {
+			return db.Scene().AssignFiles(ctx, sceneIDs[sceneIdxWithGroup], []models.FileID{sceneFileIDs[sceneIdxWithGallery]})
+		},
+		func(ctx context.Context, t *testing.T, sort string, filtered bool) []int {
+			f := &models.SceneFilterType{}
+			if filtered {
+				f.Path = pathFilter
+			}
+			r, err := db.Scene().Query(ctx, models.SceneQueryOptions{QueryOptions: models.QueryOptions{FindFilter: find(sort), Count: true}, SceneFilter: f})
+			require.NoError(t, err)
+			_, err = r.Resolve(ctx)
+			require.NoError(t, err)
+			return r.IDs
+		})
+
+	runSorts("audio", []string{"path", "title", "bitrate", "duration", "sample_rate", "file_mod_time", "filesize"},
+		func(ctx context.Context) error {
+			return db.Audio().AssignFiles(ctx, audioIDs[audioIdxWithGroup], []models.FileID{audioFileIDs[audioIdxWithGallery]})
+		},
+		func(ctx context.Context, t *testing.T, sort string, filtered bool) []int {
+			f := &models.AudioFilterType{}
+			if filtered {
+				f.Path = pathFilter
+			}
+			r, err := db.Audio().Query(ctx, models.AudioQueryOptions{QueryOptions: models.QueryOptions{FindFilter: find(sort), Count: true}, AudioFilter: f})
+			require.NoError(t, err)
+			_, err = r.Resolve(ctx)
+			require.NoError(t, err)
+			return r.IDs
+		})
+
+	runSorts("image", []string{"path", "title", "file_mod_time", "resolution", "filesize"},
+		func(ctx context.Context) error {
+			return db.Image().AddFileID(ctx, imageIDs[imageIdxWithGallery], imageFileIDs[imageIdx1WithGallery])
+		},
+		func(ctx context.Context, t *testing.T, sort string, filtered bool) []int {
+			f := &models.ImageFilterType{}
+			if filtered {
+				f.Path = pathFilter
+			}
+			r, err := db.Image().Query(ctx, models.ImageQueryOptions{QueryOptions: models.QueryOptions{FindFilter: find(sort), Count: true}, ImageFilter: f})
+			require.NoError(t, err)
+			_, err = r.Resolve(ctx)
+			require.NoError(t, err)
+			return r.IDs
+		})
+
+	runSorts("gallery", []string{"path", "title", "file_mod_time"},
+		func(ctx context.Context) error {
+			// not every gallery has a file
+			var withFiles []int
+			for i, id := range galleryFileIDs {
+				if id != 0 {
+					withFiles = append(withFiles, i)
+				}
+			}
+			return db.Gallery().AddFileID(ctx, galleryIDs[withFiles[0]], galleryFileIDs[withFiles[1]])
+		},
+		func(ctx context.Context, t *testing.T, sort string, filtered bool) []int {
+			f := &models.GalleryFilterType{}
+			if filtered {
+				f.Path = pathFilter
+			}
+			galleries, _, err := db.Gallery().Query(ctx, f, find(sort))
+			require.NoError(t, err)
+			ids := make([]int, len(galleries))
+			for i, g := range galleries {
+				ids[i] = g.ID
+			}
+			return ids
+		})
 }

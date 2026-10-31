@@ -1066,12 +1066,13 @@ func (qb *GalleryStore) setGallerySort(ctx context.Context, query *queryBuilder,
 		return err
 	}
 
+	// sort by the primary file, so that an item with several files is listed once
 	addFileTable := func() {
 		query.addJoins(
 			join{
 				sort:     true,
 				table:    galleriesFilesTable,
-				onClause: "galleries_files.gallery_id = galleries.id",
+				onClause: "galleries_files.gallery_id = galleries.id AND galleries_files.\"primary\" = true",
 			},
 			join{
 				sort:     true,

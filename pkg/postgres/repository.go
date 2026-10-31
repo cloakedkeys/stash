@@ -64,7 +64,7 @@ func (r *repository) exists(ctx context.Context, id int) (bool, error) {
 }
 
 func (r *repository) buildCountQuery(query string) string {
-	return "SELECT COUNT(*) as count FROM (" + query + ") as temp"
+	return "SELECT COUNT(DISTINCT temp.id) as count FROM (" + query + ") as temp"
 }
 
 func (r *repository) runCountQuery(ctx context.Context, query string, args []interface{}) (int, error) {
@@ -89,9 +89,13 @@ func (r *repository) runIdsQuery(ctx context.Context, query string, args []inter
 		return []int{}, fmt.Errorf("running query: %s [%v]: %w", query, args, err)
 	}
 
-	vsm := make([]int, len(result))
-	for i, v := range result {
-		vsm[i] = v.Int
+	seen := make(map[int]bool, len(result))
+	vsm := make([]int, 0, len(result))
+	for _, v := range result {
+		if !seen[v.Int] {
+			seen[v.Int] = true
+			vsm = append(vsm, v.Int)
+		}
 	}
 	return vsm, nil
 }
@@ -122,9 +126,13 @@ func (r *repository) runIdsWithCount(ctx context.Context, query string, args []i
 		return &rows, nil
 	}
 
-	rows.IDs = make([]int, len(result))
-	for i, row := range result {
-		rows.IDs[i] = row.ID
+	seen := make(map[int]bool, len(result))
+	rows.IDs = make([]int, 0, len(result))
+	for _, row := range result {
+		if !seen[row.ID] {
+			seen[row.ID] = true
+			rows.IDs = append(rows.IDs, row.ID)
+		}
 	}
 
 	rows.TotalCount = result[0].TotalCount
@@ -215,7 +223,7 @@ func (r *repository) buildCombinedQuery(body, sort, pagination string) string {
 			` + sort + `
 		),
 		total AS (
-			SELECT COUNT(*) AS total_count FROM base_query
+			SELECT COUNT(DISTINCT id) AS total_count FROM base_query
 		)
 		SELECT base_query.id, total.total_count
 		FROM base_query, total
