@@ -23,6 +23,11 @@ func TestRebindPlaceholders(t *testing.T) {
 		"a = $1 AND b = '$'":               "a = $1 AND b = '$'",
 		"x = 'open?":                       "x = 'open?",
 		"a$b$ = ? AND c$d$ = ?":            "a$b$ = $1 AND c$d$ = $2",
+		`a LIKE'C:\' AND b = ?`:            `a LIKE'C:\' AND b = $1`,
+		"/* a /* b */ why? */ c = ?":       "/* a /* b */ why? */ c = $1",
+		"/* open? /* c = ?":                "/* open? /* c = ?",
+		"a = $é$x?$é$ AND b = ?":           "a = $é$x?$é$ AND b = $1",
+		"é$$ = ?":                          "é$$ = $1",
 	} {
 		assert.Equal(t, want, rebindPlaceholders(query), query)
 	}

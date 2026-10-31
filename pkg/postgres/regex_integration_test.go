@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"math/rand"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -28,7 +29,7 @@ func regexTestPatterns() []string {
 	patterns := []string{
 		``, `foo`, `(?i)foo`, `foo(?i)bar`, `(?i)foo(?-i)bar`, `(?P<y>\d{4})`, `(?P<a>fo+)`, `\pL+`, `^\pL+$`, `\p{Greek}`, `\P{Greek}`, `\p{Cyrillic}+`, `\p{Han}`,
 		`\d+`, `^\d+$`, `\D`, `\w+`, `^\w+$`, `\W`, `\s`, `\S`, `\bfoo\b`, `\Bfoo`, `foo\B`, `\b`, `\B`, `^foo$`, `^$`, `$`, `^`, `(?m)^bar$`, `(?m)^foo`, `(?m)foo$`, `foo$`, `(?s)a.b`, `a.b`, `.`, `^.$`, `.*`, `^.*$`,
-		`\Afoo\z`, `foo\z`, `a{2,3}`, `^a{2}$`, `a{2,}`, `a{1000}`, `(a|b){200}`, `(?:ab){3}`, `x*?y`, `a+?`, `(?U)a+`, `a??`, `[[:alpha:]]+`, `[[:digit:]]`, `[[:^alpha:]]`, `[[:word:]]+`, `[^a-z]`, `[\d-]`, `[a-]`, `[\]]`, `[^\n]`, `\Qa.b\E`, `\x41`, `\x{1F600}`, `\x00`, `[\x00]`, `\101`,
+		`\Afoo\z`, `foo\z`, `a{2,3}`, `^a{2}$`, `a{2,}`, `a{1000}`, `a{0,1000}`, `(a|b){0,1000}`, `a{500,1000}`, `(ab?){0,500}`, `\pL{0,50}`, `(\pL\d){20}`, `(a|b){200}`, `(?:ab){3}`, `x*?y`, `a+?`, `(?U)a+`, `a??`, `[[:alpha:]]+`, `[[:digit:]]`, `[[:^alpha:]]`, `[[:word:]]+`, `[^a-z]`, `[\d-]`, `[a-]`, `[\]]`, `[^\n]`, `\Qa.b\E`, `\x41`, `\x{1F600}`, `\x00`, `[\x00]`, `\101`,
 		`é`, `(?i)É`, `(?i)ß`, `(?i)k`, `(?i)s`, `(?i)σ`, `(?i)straße`, `\.mp4$`, `(?i)\.mp4$`, `.*\.(mp4|mkv)$`, `MKV|MP4`, `^/data/.*`, `(a+)+$`, `\$`, `\\`, `\t`, `\n`, `\r?\n`, `日本語`, `[а-я]+`, `😀`, `[😀]`, `\(2020\)`, `Foo \(2020\)`, `Foo (2020)`, `Foo.*`, `Foo & Bar`, `a|`, `|a`, `()`, `(|a)`, `(a)(b)?`, `[^\x00-\x{10FFFF}]`, `howwomenorgasm\.com|switch\.com|getupclose\.com`,
 	}
 
@@ -158,4 +159,30 @@ func TestRegexMatchFromRawSQL(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "PostgreSQL's regular expression syntax")
+}
+
+func TestOpenRefusesOtherEncodings(t *testing.T) {
+	dsn := os.Getenv("PGSQL_TEST")
+	if dsn == "" {
+		t.Skip("PGSQL_TEST is required")
+	}
+
+	ctx := context.Background()
+	admin, err := pgx.Connect(ctx, dsn)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = admin.Close(ctx) })
+
+	const name = "stash_test_latin1"
+	_, err = admin.Exec(ctx, "CREATE DATABASE "+name+" ENCODING 'LATIN1' LOCALE 'C' TEMPLATE template0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = admin.Exec(ctx, "DROP DATABASE "+name+" WITH (FORCE)") })
+
+	u, err := url.Parse(dsn)
+	require.NoError(t, err)
+	u.Path = "/" + name
+
+	err = NewDatabase().Open(ctx, u.String())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "LATIN1")
+	assert.Contains(t, err.Error(), "UTF8")
 }

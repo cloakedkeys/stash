@@ -4,13 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"regexp/syntax"
+	"strconv"
 	"strings"
 	"unicode"
 )
 
-// maxTranslatedRegexLen limits how large a translated pattern can get. Repeats are written
-// out in full, so a short pattern such as `\pL{1000}` can translate to megabytes.
-const maxTranslatedRegexLen = 256 * 1024
+// maxTranslatedRegexLen limits how large a translated pattern can get, since character classes
+// are written out in full: \pL alone is about 9 KB.
+const maxTranslatedRegexLen = 64 * 1024
+
+// maxRegexRepeat is the largest count PostgreSQL accepts in a repeat such as a{2,3}.
+const maxRegexRepeat = 255
 
 var errRegexTooComplex = errors.New("regular expression is too complex")
 
@@ -33,9 +37,6 @@ func translateRegex(pattern string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	// replaces repeats, which PostgreSQL limits to 255, with their expanded form
-	re = re.Simplify()
 
 	var b strings.Builder
 	if err := writeRegex(&b, re); err != nil {
@@ -110,6 +111,39 @@ func writeRegexGroup(b *strings.Builder, re *syntax.Regexp, suffix string) error
 	return nil
 }
 
+// writeRegexRepeat writes a counted repeat, splitting counts above PostgreSQL's limit: a{500,1000}
+// becomes (a){255}(a){245,255}(a){0,255}(a){0,235}, which matches the same strings.
+func writeRegexRepeat(b *strings.Builder, re *syntax.Regexp) error {
+	var group strings.Builder
+	if err := writeRegexGroup(&group, re.Sub[0], ""); err != nil {
+		return err
+	}
+
+	repeat := func(count string) {
+		b.WriteString(group.String() + "{" + count + "}")
+	}
+
+	lo, hi := re.Min, re.Max
+	for lo > maxRegexRepeat {
+		repeat(strconv.Itoa(maxRegexRepeat))
+		lo -= maxRegexRepeat
+		if hi >= 0 {
+			hi -= maxRegexRepeat
+		}
+	}
+	if hi < 0 {
+		repeat(strconv.Itoa(lo) + ",")
+		return nil
+	}
+	for hi > maxRegexRepeat {
+		repeat(strconv.Itoa(lo) + "," + strconv.Itoa(maxRegexRepeat))
+		lo = 0
+		hi -= maxRegexRepeat
+	}
+	repeat(strconv.Itoa(lo) + "," + strconv.Itoa(hi))
+	return nil
+}
+
 func writeRegex(b *strings.Builder, re *syntax.Regexp) error {
 	if b.Len() > maxTranslatedRegexLen {
 		return errRegexTooComplex
@@ -150,6 +184,10 @@ func writeRegex(b *strings.Builder, re *syntax.Regexp) error {
 		return writeRegexGroup(b, re.Sub[0], "+")
 	case syntax.OpQuest:
 		return writeRegexGroup(b, re.Sub[0], "?")
+	case syntax.OpRepeat:
+		if err := writeRegexRepeat(b, re); err != nil {
+			return err
+		}
 	case syntax.OpConcat:
 		for _, sub := range re.Sub {
 			if err := writeRegex(b, sub); err != nil {

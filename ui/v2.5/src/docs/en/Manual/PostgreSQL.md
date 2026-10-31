@@ -8,7 +8,7 @@ Stash keeps its library in an SQLite file by default. It can use a PostgreSQL se
 
 - PostgreSQL 18 is the version Stash is tested with.
 - ICU support, which PostgreSQL packages and the official Docker images include.
-- An empty database, owned by the account Stash connects with.
+- An empty database using the UTF8 encoding, owned by the account Stash connects with. Stash won't start on any other encoding.
 - Permission for that account to change the `session_replication_role` setting, which Stash does every time it starts. Superuser accounts already have it, including the one the Docker example below creates.
 
 To create the account and database, run these as a PostgreSQL superuser. On Linux that is usually the `postgres` system user. Elsewhere, add `-U` and the superuser's name to each command, and `-h` and the address for a server on another computer.

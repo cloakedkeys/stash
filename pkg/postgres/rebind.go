@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-var dollarQuoteTag = regexp.MustCompile(`^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$`)
+var dollarQuoteTag = regexp.MustCompile(`^\$(?:[A-Za-z_\x{80}-\x{10FFFF}][A-Za-z0-9_\x{80}-\x{10FFFF}]*)?\$`)
 
 // rebindPlaceholders turns ? placeholders into PostgreSQL's $1, $2 and so on. A ? inside a
 // string, quoted name or comment isn't a placeholder, and is left alone. Raw SQL from plugins
@@ -27,14 +27,15 @@ func rebindPlaceholders(query string) string {
 			i++
 			continue
 		case c == '\'':
-			backslashEscapes := i > 0 && (query[i-1] == 'E' || query[i-1] == 'e')
+			// an E straight before the quote, unless it ends a word such as LIKE
+			backslashEscapes := i > 0 && (query[i-1] == 'E' || query[i-1] == 'e') && (i == 1 || !isIdentifierChar(query[i-2]))
 			end = quotedEnd(query, i, c, backslashEscapes)
 		case c == '"':
 			end = quotedEnd(query, i, c, false)
 		case strings.HasPrefix(query[i:], "--"):
 			end = endAfter(query, i, "\n")
 		case strings.HasPrefix(query[i:], "/*"):
-			end = endAfter(query, i+2, "*/")
+			end = commentEnd(query, i)
 		case c == '$' && (i == 0 || !isIdentifierChar(query[i-1])):
 			if tag := dollarQuoteTag.FindString(query[i:]); tag != "" {
 				end = endAfter(query, i+len(tag), tag)
@@ -49,7 +50,7 @@ func rebindPlaceholders(query string) string {
 // isIdentifierChar reports whether c can be part of a name: a $ after one, as in a$b$, doesn't
 // start a dollar-quoted string.
 func isIdentifierChar(c byte) bool {
-	return c == '_' || c == '$' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+	return c == '_' || c == '$' || c >= 0x80 || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 // quotedEnd returns the position after the closing quote. A doubled quote doesn't close it, since
@@ -63,6 +64,25 @@ func quotedEnd(query string, start int, quote byte, backslashEscapes bool) int {
 			}
 		case quote:
 			return i + 1
+		}
+	}
+	return len(query)
+}
+
+// commentEnd returns the position after a block comment starting at start. They can be nested.
+func commentEnd(query string, start int) int {
+	depth := 0
+	for i := start; i < len(query)-1; i++ {
+		switch query[i : i+2] {
+		case "/*":
+			depth++
+			i++
+		case "*/":
+			depth--
+			i++
+			if depth == 0 {
+				return i + 1
+			}
 		}
 	}
 	return len(query)

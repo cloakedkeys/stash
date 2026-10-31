@@ -18,6 +18,12 @@ func TestTranslateRegex(t *testing.T) {
 		"a.b":         `a[^\u000a]b`,
 		"(?s)a.b":     "a.b",
 		"(?P<y>a)":    "(?:a)",
+		"a{2,3}":      "(?:a){2,3}",
+		"a{2,}":       "(?:a){2,}",
+		"a{300}":      "(?:a){255}(?:a){45,45}",
+		"a{300,}":     "(?:a){255}(?:a){45,}",
+		"a{0,300}":    "(?:a){0,255}(?:a){0,45}",
+		"a{300,600}":  "(?:a){255}(?:a){45,255}(?:a){0,90}",
 		"a+?":         "(?:a)+",
 		`\x{1F600}`:   `\U0001f600`,
 		`\x00`:        `\Za`,
@@ -44,7 +50,8 @@ func TestTranslateRegexInvalid(t *testing.T) {
 
 func TestTranslateRegexTooComplex(t *testing.T) {
 	// valid in Go, but much too large once written out
-	_, err := translateRegex(`\pL{1000}`)
+	pattern := strings.Repeat(`\pL`, 10)
+	_, err := translateRegex(pattern)
 	require.ErrorIs(t, err, errRegexTooComplex)
-	assert.True(t, strings.Contains(err.Error(), `\pL{1000}`), "the error names the pattern")
+	assert.Contains(t, err.Error(), pattern, "the error names the pattern")
 }

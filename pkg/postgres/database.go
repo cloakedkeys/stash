@@ -135,6 +135,10 @@ func (db *Database) Open(ctx context.Context, dbPath string) error {
 
 	db.dbPath, _ = strings.CutPrefix(dbPath, string(database.PostgresBackend)+":")
 
+	if err := db.checkEncoding(ctx); err != nil {
+		return err
+	}
+
 	databaseSchemaVersion, err := db.getDatabaseSchemaVersion()
 	if err != nil {
 		return fmt.Errorf("getting database schema version: %w", err)
@@ -171,6 +175,25 @@ func (db *Database) Open(ctx context.Context, dbPath string) error {
 		}
 	}
 
+	return nil
+}
+
+// checkEncoding refuses a database that isn't UTF8. Translated regular expressions name characters
+// by their Unicode values, so on another encoding they could match the wrong rows with no error.
+func (db *Database) checkEncoding(ctx context.Context) error {
+	conn, err := db.open(false, false)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	var encoding string
+	if err := conn.GetContext(ctx, &encoding, "SELECT getdatabaseencoding()"); err != nil {
+		return fmt.Errorf("checking database encoding: %w", err)
+	}
+	if encoding != "UTF8" {
+		return fmt.Errorf("the database uses the %s encoding, but Stash needs UTF8: create it with createdb -E UTF8 -T template0", encoding)
+	}
 	return nil
 }
 

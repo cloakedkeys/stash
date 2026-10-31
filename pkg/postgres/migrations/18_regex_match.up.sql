@@ -10,11 +10,11 @@ EXCEPTION WHEN invalid_regular_expression THEN
 END
 $$ LANGUAGE plpgsql IMMUTABLE;
 
--- Nothing here needs plperl any more. Leave it if it was installed by another account, or if
--- something else in the database uses it.
+-- Nothing here needs plperl any more. Leave it if another account installed it, or if something
+-- else in the database uses it.
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'plperl' AND pg_has_role(extowner, 'USAGE')) THEN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'plperl' AND extowner = current_user::regrole) THEN
         DROP EXTENSION plperl;
     END IF;
 EXCEPTION WHEN dependent_objects_still_exist OR insufficient_privilege THEN
