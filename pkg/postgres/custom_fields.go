@@ -309,10 +309,18 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 	switch cc.Modifier {
 	case models.CriterionModifierEquals:
 		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("%s ILIKE %s", valueAsString, getInBinding(len(cv))), cv...)
+		clauses := make([]sqlClause, len(cv))
+		for i, v := range cv {
+			clauses[i] = makeClause(fmt.Sprintf("%s ILIKE ?", valueAsString), fmt.Sprint(v))
+		}
+		f.whereClauses = append(f.whereClauses, orClauses(clauses...))
 	case models.CriterionModifierNotEquals:
 		h.leftJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("(%s NOT IN %s OR %s.value IS NULL)", valueAsString, getInBinding(len(cv)), joinAs), cv...)
+		args := make([]interface{}, len(cv))
+		for i, v := range cv {
+			args[i] = fmt.Sprint(v)
+		}
+		f.addWhere(fmt.Sprintf("(%s NOT IN %s OR %s.value IS NULL)", valueAsString, getInBinding(len(cv)), joinAs), args...)
 	case models.CriterionModifierIncludes:
 		clauses := make([]sqlClause, len(cv))
 		for i, v := range cv {

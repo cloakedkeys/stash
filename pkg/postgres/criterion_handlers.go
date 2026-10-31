@@ -1238,18 +1238,14 @@ func (h *phashDistanceCriterionHandler) handle(ctx context.Context, f *filterBui
 
 	switch {
 	case phashDistance.Modifier == models.CriterionModifierEquals && distance > 0:
-		// needed to avoid a type mismatch
-		f.addWhere("typeof(fingerprints_phash.fingerprint) = 'integer'")
-		f.addWhere("phash_distance(fingerprints_phash.fingerprint, ?) < ?", value, distance)
+		f.addWhere("phash_distance(CAST(fingerprints_phash.fingerprint AS bigint), ?) < ?", value, distance)
 	case phashDistance.Modifier == models.CriterionModifierNotEquals && distance > 0:
-		// needed to avoid a type mismatch
-		f.addWhere("typeof(fingerprints_phash.fingerprint) = 'integer'")
-		f.addWhere("phash_distance(fingerprints_phash.fingerprint, ?) > ?", value, distance)
+		f.addWhere("phash_distance(CAST(fingerprints_phash.fingerprint AS bigint), ?) > ?", value, distance)
 	default:
 		intCriterionHandler(&models.IntCriterionInput{
 			Value:    int(value),
 			Modifier: phashDistance.Modifier,
-		}, "fingerprints_phash.fingerprint", nil)(ctx, f)
+		}, "CAST(fingerprints_phash.fingerprint AS bigint)", nil)(ctx, f)
 	}
 }
 

@@ -182,18 +182,12 @@ func (qb *galleryFilterHandler) criterionHandler() criterionHandler {
 		},
 
 		&relatedFilterHandler{
-			relatedIDCol: "gallery_folder.id",
+			relatedIDCol: "galleries.folder_id",
 			relatedRepo:  folderRepository.repository,
 			relatedHandler: &folderFilterHandler{
 				folderFilter: filter.FoldersFilter,
-				table:        "gallery_folder",
 				isRelated:    true,
 			},
-			joinFn: func(f *filterBuilder) {
-				f.addLeftJoin(folderTable, "gallery_folder", "galleries.folder_id = gallery_folder.id")
-			},
-			// don't use a subquery; join directly
-			directJoin: true,
 		},
 	}
 }
@@ -528,7 +522,6 @@ func (qb *galleryFilterHandler) performerAgeCriterionHandler(performerAge *model
 			f.addInnerJoin("performers_galleries", "", "galleries.id = performers_galleries.gallery_id")
 			f.addInnerJoin("performers", "", "performers_galleries.performer_id = performers.id")
 
-			f.addWhere("galleries.date != '' AND performers.birthdate != ''")
 			f.addWhere("galleries.date IS NOT NULL AND performers.birthdate IS NOT NULL")
 
 			ageCalc := "EXTRACT(YEAR FROM AGE(galleries.date, performers.birthdate))"

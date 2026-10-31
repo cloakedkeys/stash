@@ -96,7 +96,7 @@ func (qb *audioFilterHandler) criterionHandler() criterionHandler {
 					"audio_last_view",
 					fmt.Sprintf("audio_last_view.%s = audios.id", audioIDColumn),
 				)
-				h := timestampCriterionHandler{audioFilter.LastPlayedAt, "IFNULL(last_played_at, datetime(0))", nil}
+				h := timestampCriterionHandler{audioFilter.LastPlayedAt, "COALESCE(last_played_at, '1970-01-01 00:00:00'::timestamp)", nil}
 				h.handle(ctx, f)
 			}
 		}),
@@ -382,10 +382,9 @@ func (qb *audioFilterHandler) performerAgeCriterionHandler(performerAge *models.
 			f.addInnerJoin("performers_audios", "", "audios.id = performers_audios.audio_id")
 			f.addInnerJoin("performers", "", "performers_audios.performer_id = performers.id")
 
-			f.addWhere("audios.date != '' AND performers.birthdate != ''")
 			f.addWhere("audios.date IS NOT NULL AND performers.birthdate IS NOT NULL")
 
-			ageCalc := "cast(strftime('%Y.%m%d', audios.date) - strftime('%Y.%m%d', performers.birthdate) as int)"
+			ageCalc := "EXTRACT(YEAR FROM AGE(audios.date, performers.birthdate))"
 			whereClause, args := getIntWhereClause(ageCalc, performerAge.Modifier, performerAge.Value, performerAge.Value2)
 			f.addWhere(whereClause, args...)
 		}

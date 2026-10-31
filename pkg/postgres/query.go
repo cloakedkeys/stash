@@ -59,6 +59,30 @@ func (qb *queryBuilder) addGroupBy(columns ...string) {
 	}
 }
 
+// groupBy returns the group by columns for the query. Sort-only joins are left
+// out when not sorting, so columns from those tables must be left out as well.
+func (qb queryBuilder) groupBy(includeSortPagination bool) []string {
+	if includeSortPagination {
+		return qb.groupByClauses
+	}
+
+	sortOnly := make(map[string]bool)
+	for _, j := range qb.joins {
+		if j.sort {
+			sortOnly[j.alias()] = true
+		}
+	}
+
+	var ret []string
+	for _, column := range qb.groupByClauses {
+		table, _, found := strings.Cut(column, ".")
+		if !found || !sortOnly[table] {
+			ret = append(ret, column)
+		}
+	}
+	return ret
+}
+
 func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 	body := qb.body(includeSortPagination)
 
@@ -71,7 +95,7 @@ func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 		withClause = "WITH " + recursive + strings.Join(qb.withClauses, ", ") + " "
 	}
 
-	body = withClause + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupByClauses)
+	body = withClause + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupBy(includeSortPagination))
 	if includeSortPagination {
 		body += qb.sort
 		if qb.pagination != nil {
@@ -115,7 +139,7 @@ func (qb queryBuilder) executeCount(ctx context.Context) (int, error) {
 		withClause = "WITH " + recursive + strings.Join(qb.withClauses, ", ") + " "
 	}
 
-	body = qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupByClauses)
+	body = qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupBy(includeSortPagination))
 	countQuery := withClause + qb.repository.buildCountQuery(body)
 	return qb.repository.runCountQuery(ctx, countQuery, qb.allArgs())
 }

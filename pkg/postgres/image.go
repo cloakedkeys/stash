@@ -1139,6 +1139,7 @@ var imageSortOptions = sortOptions{
 	"performer_count",
 	"random",
 	"rating",
+	"resolution",
 	"tag_count",
 	"title",
 	"updated_at",
@@ -1210,7 +1211,8 @@ func (qb *ImageStore) setImageSortAndPagination(ctx context.Context, q *queryBui
 				table:    imageFileTable,
 				onClause: "images_files.file_id = image_files.file_id",
 			})
-			sortClause = " ORDER BY MIN(image_files.width, image_files.height) " + direction
+			sortClause = " ORDER BY LEAST(image_files.width, image_files.height) " + direction
+			q.addGroupBy("image_files.width", "image_files.height")
 		case "rating":
 			imageUserData.joinSort(ctx, q)
 			add, agg := getSort(sort, direction, imagesUserDataTable)
@@ -1223,6 +1225,7 @@ func (qb *ImageStore) setImageSortAndPagination(ctx context.Context, q *queryBui
 			addFilesJoin()
 			addFolderJoin()
 			sortClause = " ORDER BY COALESCE(images.title, files.basename) COLLATE \"natural_ci\" " + direction + ", folders.path COLLATE \"natural_ci\" " + direction
+			q.addGroupBy("files.basename", "folders.path")
 		case "performer_age":
 			// Looking at the youngest performer by default
 			aggregation := "MIN"
