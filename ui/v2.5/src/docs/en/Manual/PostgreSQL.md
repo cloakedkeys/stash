@@ -7,12 +7,12 @@ Stash keeps its library in an SQLite file by default. It can use a PostgreSQL se
 ## What the server needs
 
 - PostgreSQL 18 is the version Stash is tested with.
-- The `plperl` extension. On Debian and Ubuntu it is the `postgresql-plperl-18` package. Stash creates the extension itself, so its account must be allowed to: the owner of the database can, since `plperl` is a trusted extension.
+- The `plperl` extension. On Debian and Ubuntu it is the `postgresql-plperl-18` package, from the [PostgreSQL project's apt repository](https://www.postgresql.org/download/linux/debian/) if your system doesn't include version 18. Stash creates the extension itself, so its account must be allowed to: the owner of the database can, since `plperl` is a trusted extension.
 - ICU support, which PostgreSQL packages and the official Docker images include.
 - An empty database, owned by the account Stash connects with.
 - Permission for that account to change the `session_replication_role` setting, which Stash does every time it starts. Superuser accounts already have it, including the one the Docker example below creates.
 
-To create the account and database on the server, run these as the `postgres` user:
+To create the account and database, run these as a PostgreSQL superuser. On Linux that is usually the `postgres` system user. Elsewhere, add `-U` and the superuser's name to each command, and `-h` and the address for a server on another computer.
 
 ```shell
 createuser --pwprompt stash
