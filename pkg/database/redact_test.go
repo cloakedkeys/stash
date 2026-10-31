@@ -13,6 +13,7 @@ func TestRedactPath(t *testing.T) {
 		{"postgresql://user@host/db", "postgresql://user@host/db"},
 		{"postgresql://user:secret@host:5432/db?sslmode=disable", "postgresql://user:*****@host:5432/db?sslmode=disable"},
 		{"POSTGRESQL:postgresql://user:se@cret@host/db", "POSTGRESQL:postgresql://user:*****@host/db"},
+		{"postgresql://u:pw@host/db?application_name=a@b", "postgresql://u:*****@host/db?application_name=a@b"},
 		{"postgresql://host/db?user=me&password=secret&sslmode=disable", "postgresql://host/db?user=me&password=*****&sslmode=disable"},
 		{"host=h user=u password=secret dbname=d", "host=h user=u password=***** dbname=d"},
 		{"host=h password='se cr\\'et' dbname=d", "host=h password=***** dbname=d"},

@@ -5,7 +5,8 @@ import "regexp"
 const redactedPassword = "*****"
 
 var (
-	urlPassword     = regexp.MustCompile(`(://[^:/@\s]*:)\S*@`)
+	// the password runs to the last @ before the host part ends, as Go's URL parser reads it
+	urlPassword     = regexp.MustCompile(`(://[^:/@\s]*:)[^/?#\s]*@`)
 	keywordPassword = regexp.MustCompile(`(?i)(\bpassword\s*=\s*)('(?:[^'\\]|\\.)*'|[^\s&]*)`)
 )
 
