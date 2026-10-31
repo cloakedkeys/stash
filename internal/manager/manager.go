@@ -409,10 +409,10 @@ func (s *Manager) GetSystemStatus() *SystemStatus {
 	workingDir := fsutil.GetWorkingDirectory()
 	homeDir := fsutil.GetHomeDirectory()
 
-	database := s.Database
-	dbSchema := int(database.Version())
-	dbPath := database.DatabasePath()
-	appSchema := int(database.AppSchemaVersion())
+	db := s.Database
+	dbSchema := int(db.Version())
+	dbPath := database.RedactPath(db.DatabasePath())
+	appSchema := int(db.AppSchemaVersion())
 
 	status := SystemStatusEnumOk
 	if s.Config.IsNewSystem() {

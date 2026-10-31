@@ -14,6 +14,7 @@ import (
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/internal/manager/task"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
@@ -138,7 +139,7 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 	}
 
 	existingDBPath := c.GetDatabasePath()
-	if input.DatabasePath != nil && existingDBPath != *input.DatabasePath {
+	if input.DatabasePath != nil && existingDBPath != *input.DatabasePath && database.RedactPath(existingDBPath) != *input.DatabasePath {
 		if err := checkConfigOverride(config.Database); err != nil {
 			return makeConfigGeneralResult(), err
 		}
