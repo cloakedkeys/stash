@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/models"
@@ -70,7 +69,7 @@ func TestMultiUserHTTPPermissions(t *testing.T) {
 	r := newResolver(db)
 	r.userService = users
 	r.repository.VoiceActor = &apiVoiceActorStore{}
-	gql := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: r, Directives: DirectiveRoot{HasRole: HasRoleDirective, IsUserOwner: IsUserOwnerDirective}}))
+	gql := newTestGraphQLServer(r)
 	h := authenticateHandlerWithServices(tx, cfg, func() UserAuthenticator { return users }, sessions)(gql)
 	request := func(query, key string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		t.Helper()

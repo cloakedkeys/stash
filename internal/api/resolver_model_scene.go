@@ -135,12 +135,11 @@ func (r *sceneResolver) Paths(ctx context.Context, obj *models.Scene) (*ScenePat
 	objHash := obj.GetHash(config.GetVideoFileNamingAlgorithm())
 	vttPath := builder.GetSpriteVTTURL(objHash)
 	spritePath := builder.GetSpriteURL(objHash)
-	funscriptPath := builder.GetFunscriptURL().String()
 	interactiveCsvPath := builder.GetInteractiveCSVURL("")
 	signURL(ctx, config, interactiveCsvPath, builder.GetInteractiveCSVPath())
 	funscriptURL := builder.GetFunscriptURL()
 	signURL(ctx, config, funscriptURL, builder.GetFunscriptPath())
-	funscriptPath = funscriptURL.String()
+	funscriptPath := funscriptURL.String()
 	interactiveCSV := interactiveCsvPath.String()
 	interactiveHeatmap := builder.GetInteractiveHeatmapURL()
 
