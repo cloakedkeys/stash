@@ -32,6 +32,22 @@ func TestAuthenticationIsolationAndRevocation(t *testing.T) {
 	require.Equal(t, u.ID, keyUser.ID)
 	_, err = s.AuthenticateByAPIKey(ctx, "invalid")
 	require.ErrorIs(t, err, ErrAccessDenied)
+	// renaming keeps the key working, and someone taking the old name doesn't get it
+	delete(store.users, "reader")
+	u.Username = "renamed"
+	store.users[u.Username] = u
+	keyUser, err = s.AuthenticateByAPIKey(ctx, key)
+	require.NoError(t, err, "API key works after a rename")
+	require.Equal(t, u.ID, keyUser.ID)
+	other := &models.User{ID: 2, Username: "reader", Roles: models.Roles{models.RoleEnumRead}}
+	store.users[other.Username] = other
+	keyUser, err = s.AuthenticateByAPIKey(ctx, key)
+	require.NoError(t, err)
+	require.Equal(t, u.ID, keyUser.ID, "API key belongs to the renamed user")
+	delete(store.users, other.Username)
+	delete(store.users, u.Username)
+	u.Username = "reader"
+	store.users[u.Username] = u
 	u.ApiKeyHash = ""
 	_, err = s.AuthenticateByAPIKey(ctx, key)
 	require.ErrorIs(t, err, ErrAccessDenied, "cleared API key is denied")

@@ -79,8 +79,7 @@ type Service struct {
 	Store  UserSource
 	Config UserServiceConfig
 
-	startedAt time.Time
-
+	// singleUserModeMutex guards both singleUserMode and guestUserEnabled
 	singleUserModeMutex sync.RWMutex
 	singleUserMode      bool
 
@@ -102,14 +101,12 @@ func (s *Service) LoginRequired(ctx context.Context) (bool, error) {
 }
 
 func (s *Service) Init(ctx context.Context) error {
-	s.startedAt = time.Now()
+	s.singleUserModeMutex.Lock()
+	defer s.singleUserModeMutex.Unlock()
 
 	// determine if we are in single user mode
 	// don't do this for publically accessible instances
 	if !s.Config.GetPublicAccess() {
-		s.singleUserModeMutex.Lock()
-		defer s.singleUserModeMutex.Unlock()
-
 		count, err := s.Store.Count(ctx)
 		if err != nil {
 			return fmt.Errorf("error counting users during initialization: %w", err)
@@ -153,6 +150,9 @@ func (s *Service) Init(ctx context.Context) error {
 }
 
 func (s *Service) SetGuestUserEnabled(enabled bool) error {
+	s.singleUserModeMutex.Lock()
+	defer s.singleUserModeMutex.Unlock()
+
 	if enabled && s.singleUserMode {
 		return fmt.Errorf("cannot enable guest user in single user mode")
 	}
@@ -164,6 +164,9 @@ func (s *Service) SetGuestUserEnabled(enabled bool) error {
 // GetGuestUser returns the guest user if it exists, or nil if it does not exist.
 // The guest user is a special user that is used for unauthenticated access.
 func (s *Service) GetGuestUser(ctx context.Context) *models.User {
+	s.singleUserModeMutex.RLock()
+	defer s.singleUserModeMutex.RUnlock()
+
 	if !s.guestUserEnabled {
 		return nil
 	}
@@ -348,13 +351,8 @@ func (s *Service) AuthenticateSession(ctx context.Context, username string, logi
 		return nil, ErrAccessDenied
 	}
 
-	// check if the user is logging in after a restart
-	if s.startedAt.After(loginTime) {
-		logger.Infof("[authentication] user %s logged in before service start time", username)
-		return nil, ErrAccessDenied
-	}
-
 	// check if the user has been updated since the login time
+	// this is stored with the user, so it still applies after a restart
 	if u.UpdatedAt.After(loginTime) {
 		logger.Infof("[authentication] user %s has been updated since login", username)
 		return nil, ErrAccessDenied
@@ -383,35 +381,63 @@ func (s *Service) AuthenticateByAPIKey(ctx context.Context, apiKey string) (*mod
 		return nil, ErrInternalError
 	}
 
-	user, err := s.GetUser(ctx, username)
+	user, err := s.findUserWithAPIKey(ctx, username, apiKey)
 	if err != nil {
-		logger.Errorf("error getting user by username: %v", err)
-		return nil, ErrInternalError
-	}
-
-	if user == nil {
-		logger.Infof("[apikey authentication] user %s not found", username)
-		return nil, ErrAccessDenied
-	}
-
-	if userIsLocked(user) {
-		logger.Infof("[apikey authentication] user %s is locked", username)
-		return nil, ErrAccessDenied
-	}
-
-	match, err := checkApiKey(apiKey, user.ApiKeyHash)
-	if err != nil {
-		logger.Errorf("error checking api key hash for user %s: %v", username, err)
+		logger.Errorf("error finding user for api key: %v", err)
 		return nil, ErrInternalError
 	}
 
 	// ensure apikey matches
-	if !match {
+	if user == nil {
 		logger.Infof("[apikey authentication] invalid api key for user %s", username)
 		return nil, ErrAccessDenied
 	}
 
+	if userIsLocked(user) {
+		logger.Infof("[apikey authentication] user %s is locked", user.Username)
+		return nil, ErrAccessDenied
+	}
+
 	return user, nil
+}
+
+// findUserWithAPIKey returns the user that holds the provided api key, or nil if
+// there is none. The username comes from the key, and is the name of the user
+// when the key was generated. If the user has been renamed since then, the name
+// no longer finds them, so the other users are checked too. The key's signature
+// has already been checked, so outsiders can't cause this search.
+func (s *Service) findUserWithAPIKey(ctx context.Context, username, apiKey string) (*models.User, error) {
+	u, err := s.GetUser(ctx, username)
+	if err != nil {
+		return nil, fmt.Errorf("getting user by username: %w", err)
+	}
+
+	if u != nil {
+		match, err := checkApiKey(apiKey, u.ApiKeyHash)
+		if err != nil {
+			return nil, fmt.Errorf("checking api key hash for user %s: %w", u.Username, err)
+		}
+		if match {
+			return u, nil
+		}
+	}
+
+	users, err := s.AllUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting all users: %w", err)
+	}
+
+	for _, u := range users {
+		match, err := checkApiKey(apiKey, u.ApiKeyHash)
+		if err != nil {
+			return nil, fmt.Errorf("checking api key hash for user %s: %w", u.Username, err)
+		}
+		if match {
+			return u, nil
+		}
+	}
+
+	return nil, nil
 }
 
 func (s *Service) validateUsername(username string) error {
@@ -619,7 +645,7 @@ func (s *Service) ChangePassword(ctx context.Context, username, currentPassword,
 	}
 
 	// if we're in single user mode, allow changing password without validating current password since there is no other user
-	if s.singleUserMode {
+	if s.IsSingleUserMode() {
 		return s.ChangeUserPassword(ctx, username, newPassword)
 	}
 
@@ -713,7 +739,7 @@ func GenerateRandomPassword(length uint32) (string, error) {
 // ResetUserPassword resets the password for the specified user and returns the new password.
 // Used for emergency password resets from the command line when the user has been locked out.
 func (s *Service) ResetUserPassword(ctx context.Context, username string) (string, error) {
-	if s.singleUserMode {
+	if s.IsSingleUserMode() {
 		return "", errors.New("cannot reset user password in single user mode")
 	}
 
@@ -787,7 +813,7 @@ func (s *Service) GenerateAPIKey(ctx context.Context, username string) (string, 
 		return "", ErrCannotModifyGuestUser
 	}
 
-	if s.singleUserMode {
+	if s.IsSingleUserMode() {
 		// don't allow generating API key in single user mode since default user is meant to be used without password or API key
 		return "", errors.New("cannot generate API key in single user mode")
 	}
@@ -828,7 +854,7 @@ func (s *Service) ClearAPIKey(ctx context.Context, username string) error {
 		return ErrCannotModifyGuestUser
 	}
 
-	if s.singleUserMode {
+	if s.IsSingleUserMode() {
 		// don't allow clearing API key in single user mode since default user is meant to be used without password or API key
 		return errors.New("cannot clear API key in single user mode")
 	}
@@ -854,7 +880,7 @@ func (s *Service) ClearAPIKey(ctx context.Context, username string) error {
 }
 
 func (s *Service) DeleteUser(ctx context.Context, username string) error {
-	if s.singleUserMode {
+	if s.IsSingleUserMode() {
 		return errors.New("cannot delete user in single user mode")
 	}
 

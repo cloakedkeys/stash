@@ -65,13 +65,15 @@ func TestFreshLoginCookiePreservesRevocationPrecision(t *testing.T) {
 			require.NotZero(t, login.LoginTime.Nanosecond(), "cookie must retain subsecond login precision")
 			_, err = svc.AuthenticateSession(ctx, login.UserID, login.LoginTime)
 			require.NoError(t, err)
-			svc.startedAt = login.LoginTime.Add(time.Nanosecond)
-			_, err = svc.AuthenticateSession(ctx, login.UserID, login.LoginTime)
-			require.ErrorIs(t, err, ErrAccessDenied, "restart revokes even within the same second")
-			svc.startedAt = login.LoginTime.Add(-time.Nanosecond)
+			restarted := &Service{Store: store, Config: &mockConfig{}}
+			require.NoError(t, restarted.Init(ctx))
+			_, err = restarted.AuthenticateSession(ctx, login.UserID, login.LoginTime)
+			require.NoError(t, err, "a restart doesn't end a session")
 			u.UpdatedAt = login.LoginTime.Add(time.Nanosecond)
 			_, err = svc.AuthenticateSession(ctx, login.UserID, login.LoginTime)
 			require.ErrorIs(t, err, ErrAccessDenied, "user changes revoke even within the same second")
+			_, err = restarted.AuthenticateSession(ctx, login.UserID, login.LoginTime)
+			require.ErrorIs(t, err, ErrAccessDenied, "user changes still revoke after a restart")
 		})
 	}
 }
