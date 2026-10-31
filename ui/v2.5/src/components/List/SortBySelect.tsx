@@ -28,6 +28,14 @@ interface IMessageValue {
   message: string;
 }
 
+export const SortByIcon: React.FC<{
+  sortDirection: SortDirectionEnum;
+}> = ({ sortDirection }) => (
+  <Icon
+    icon={sortDirection === SortDirectionEnum.Asc ? faCaretUp : faCaretDown}
+  />
+);
+
 export const SortBySelect: React.FC<{
   className?: string;
   sortBy: string | undefined;
@@ -177,11 +185,7 @@ export const SortBySelect: React.FC<{
         }
       >
         <Button variant="secondary" onClick={onChangeSortDirection}>
-          <Icon
-            icon={
-              sortDirection === SortDirectionEnum.Asc ? faCaretUp : faCaretDown
-            }
-          />
+          <SortByIcon sortDirection={sortDirection} />
         </Button>
       </OverlayTrigger>
       {sortBy === "random" && (

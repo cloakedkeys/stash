@@ -11,6 +11,7 @@ import { Tagger } from "../Tagger/scenes/SceneTagger";
 import { IPlaySceneOptions, SceneQueue } from "src/models/sceneQueue";
 import { SceneWallPanel } from "./SceneWallPanel";
 import { SceneListTable } from "./SceneListTable";
+import { reverseMap, sortFieldToColumn } from "src/utils/data";
 import { EditScenesDialog } from "./EditScenesDialog";
 import { DeleteScenesDialog } from "./DeleteScenesDialog";
 import { GenerateDialog } from "../Dialogs/GenerateDialog";
@@ -179,15 +180,27 @@ function useAddKeybinds(filter: ListFilterModel, count: number) {
   }, [playRandom]);
 }
 
+// list table columns whose sort field has a different name
+const sceneColumnSortMap: Record<string, string> = {
+  scene_code: "code",
+};
+const sceneSortColumnMap = reverseMap(sceneColumnSortMap);
+
 const SceneList: React.FC<{
   scenes: GQL.SlimSceneDataFragment[];
   filter: ListFilterModel;
   selectedIds: Set<string>;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
   fromGroupId?: string;
+  onSort?: (value: string) => void;
 }> = PatchComponent(
   "SceneList",
-  ({ scenes, filter, selectedIds, onSelectChange, fromGroupId }) => {
+  ({ scenes, filter, selectedIds, onSelectChange, fromGroupId, onSort }) => {
+    const activeSortColumn = sortFieldToColumn(
+      sceneSortColumnMap,
+      filter.sortBy
+    );
+
     const queue = useMemo(
       () => SceneQueue.fromListFilterModel(filter),
       [filter]
@@ -216,6 +229,9 @@ const SceneList: React.FC<{
           queue={queue}
           selectedIds={selectedIds}
           onSelectChange={onSelectChange}
+          onSort={onSort}
+          sortBy={activeSortColumn}
+          sortDirection={filter.sortDirection}
         />
       );
     }
@@ -397,6 +413,20 @@ export const FilteredSceneList = PatchComponent(
       });
 
     const { filter, setFilter } = filterState;
+
+    const onSort = useCallback(
+      (value: string) => {
+        const backendField = sceneColumnSortMap[value] ?? value;
+        if (filter.sortBy === backendField) {
+          setFilter(filter.toggleSortDirection());
+        } else {
+          const newFilter = filter.setSortBy(backendField);
+          newFilter.sortDirection = GQL.SortDirectionEnum.Asc;
+          setFilter(newFilter);
+        }
+      },
+      [filter, setFilter]
+    );
 
     const { effectiveFilter, result, cachedResult, items, totalCount } =
       queryResult;
@@ -711,6 +741,7 @@ export const FilteredSceneList = PatchComponent(
                     selectedIds={selectedIds}
                     onSelectChange={onSelectChange}
                     fromGroupId={fromGroupId}
+                    onSort={onSort}
                   />
                 </LoadedContent>
 

@@ -2028,6 +2028,38 @@ func TestStudioQuerySortOCounterAll(t *testing.T) {
 	})
 }
 
+func TestStudioQuerySortFavorite(t *testing.T) {
+	withTxn(func(ctx context.Context) error {
+		sortBy := "favorite"
+		direction := models.SortDirectionEnumDesc
+		allPages := models.PerPageAll
+		findFilter := &models.FindFilterType{
+			Sort:      &sortBy,
+			Direction: &direction,
+			PerPage:   &allPages,
+		}
+
+		// descending: every favourite comes before every non-favourite
+		studios := queryStudios(ctx, t, nil, findFilter)
+		assert.True(t, len(studios) > 1)
+		assert.True(t, studios[0].Favorite)
+		assert.False(t, studios[len(studios)-1].Favorite)
+		for i := 1; i < len(studios); i++ {
+			if studios[i].Favorite {
+				assert.True(t, studios[i-1].Favorite, "favourite studio sorted after non-favourite")
+			}
+		}
+
+		// ascending: reversed
+		direction = models.SortDirectionEnumAsc
+		studios = queryStudios(ctx, t, nil, findFilter)
+		assert.False(t, studios[0].Favorite)
+		assert.True(t, studios[len(studios)-1].Favorite)
+
+		return nil
+	})
+}
+
 func TestStudioQuerySortPerformerCount(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
 		sortBy := "performer_count"

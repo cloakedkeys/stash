@@ -93,3 +93,21 @@ export function idToStoredID(o: { id: string; name: string }) {
     name: o.name,
   };
 }
+
+// Returns a map with the keys and values of the given map swapped.
+export function reverseMap(
+  map: Record<string, string>
+): Record<string, string> {
+  return Object.fromEntries(Object.entries(map).map(([k, v]) => [v, k]));
+}
+
+// Returns the list table column that matches the filter's sort field.
+// columnBySortField is the reverse of a column to sort field map; sort fields
+// without an entry share their name with the column.
+export function sortFieldToColumn(
+  columnBySortField: Record<string, string>,
+  sortBy?: string
+): string | undefined {
+  if (!sortBy) return undefined;
+  return columnBySortField[sortBy] ?? sortBy;
+}

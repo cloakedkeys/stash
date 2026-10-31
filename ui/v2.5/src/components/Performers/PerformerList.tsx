@@ -13,6 +13,7 @@ import { useFilteredItemList } from "../List/ItemList";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { DisplayMode } from "src/models/list-filter/types";
 import { PerformerTagger } from "../Tagger/performers/PerformerTagger";
+import { reverseMap, sortFieldToColumn } from "src/utils/data";
 import { ExportDialog } from "../Shared/ExportDialog";
 import { DeleteEntityDialog } from "../Shared/DeleteEntityDialog";
 import { IPerformerCardExtraCriteria } from "./PerformerCard";
@@ -191,6 +192,20 @@ export const FormatPenisLength = (penis_length?: number | null) => {
   );
 };
 
+// list table columns whose sort field has a different name.
+// The age column sorts by birthdate, so its direction is shown reversed.
+const performerColumnSortMap: Record<string, string> = {
+  height_cm: "height",
+  weight_kg: "weight",
+  penis_length_cm: "penis_length",
+  scene_count: "scenes_count",
+  gallery_count: "galleries_count",
+  image_count: "images_count",
+  age: "birthdate",
+  favourite: "favorite",
+};
+const performerSortColumnMap = reverseMap(performerColumnSortMap);
+
 interface IPerformerList {
   filterHook?: (filter: ListFilterModel) => ListFilterModel;
   view?: View;
@@ -205,9 +220,29 @@ const PerformerList: React.FC<{
   selectedIds: Set<string>;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
   extraCriteria?: IPerformerCardExtraCriteria;
+  onSort?: (value: string) => void;
 }> = PatchComponent(
   "PerformerList",
-  ({ performers, filter, selectedIds, onSelectChange, extraCriteria }) => {
+  ({
+    performers,
+    filter,
+    selectedIds,
+    onSelectChange,
+    extraCriteria,
+    onSort,
+  }) => {
+    const activeSortColumn = sortFieldToColumn(
+      performerSortColumnMap,
+      filter.sortBy
+    );
+
+    const displaySortDirection =
+      activeSortColumn === "age"
+        ? filter.sortDirection === GQL.SortDirectionEnum.Asc
+          ? GQL.SortDirectionEnum.Desc
+          : GQL.SortDirectionEnum.Asc
+        : filter.sortDirection;
+
     if (performers.length === 0 && filter.displayMode !== DisplayMode.Tagger) {
       return null;
     }
@@ -229,6 +264,9 @@ const PerformerList: React.FC<{
           performers={performers}
           selectedIds={selectedIds}
           onSelectChange={onSelectChange}
+          onSort={onSort}
+          sortBy={activeSortColumn}
+          sortDirection={displaySortDirection}
         />
       );
     }
@@ -402,6 +440,25 @@ export const FilteredPerformerList = PatchComponent(
       });
 
     const { filter, setFilter } = filterState;
+
+    const onSort = useCallback(
+      (value: string) => {
+        const backendField = performerColumnSortMap[value] ?? value;
+        if (filter.sortBy === backendField) {
+          setFilter(filter.toggleSortDirection());
+        } else {
+          const newFilter = filter.setSortBy(backendField);
+          // birthdate is inversely related to age; default Desc so
+          // youngest-first (Asc in the age column display)
+          newFilter.sortDirection =
+            value === "age"
+              ? GQL.SortDirectionEnum.Desc
+              : GQL.SortDirectionEnum.Asc;
+          setFilter(newFilter);
+        }
+      },
+      [filter, setFilter]
+    );
 
     const { effectiveFilter, result, cachedResult, items, totalCount } =
       queryResult;
@@ -637,6 +694,7 @@ export const FilteredPerformerList = PatchComponent(
                   selectedIds={selectedIds}
                   onSelectChange={onSelectChange}
                   extraCriteria={extraCriteria}
+                  onSort={onSort}
                 />
               </LoadedContent>
 

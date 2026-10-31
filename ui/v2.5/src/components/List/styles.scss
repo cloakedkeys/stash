@@ -920,7 +920,19 @@ ul.selectable-list {
 
   .table thead th {
     border: none;
+    padding-bottom: 0;
     white-space: nowrap;
+
+    &.sortable {
+      cursor: pointer;
+    }
+
+    .column-header {
+      align-items: center;
+      display: flex;
+      gap: 0.5rem;
+      justify-content: space-between;
+    }
   }
 
   tr {

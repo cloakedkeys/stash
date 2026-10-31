@@ -13,6 +13,7 @@ import {
   useTagsDestroy,
 } from "src/core/StashService";
 import { FormattedMessage, useIntl } from "react-intl";
+import { reverseMap, sortFieldToColumn } from "src/utils/data";
 import { DeleteEntityDialog } from "../Shared/DeleteEntityDialog";
 import { ExportDialog } from "../Shared/ExportDialog";
 import { tagRelationHook } from "../../core/tags";
@@ -50,14 +51,29 @@ import { FavoriteTagCriterionOption } from "src/models/list-filter/criteria/favo
 import { RatingCriterionOption } from "src/models/list-filter/criteria/rating";
 import { TagListTable } from "./TagListTable";
 
+// list table columns whose sort field has a different name
+const tagColumnSortMap: Record<string, string> = {
+  scene_count: "scenes_count",
+  gallery_count: "galleries_count",
+  image_count: "images_count",
+  group_count: "groups_count",
+  performer_count: "performers_count",
+  studio_count: "studios_count",
+  favourite: "favorite",
+};
+const tagSortColumnMap = reverseMap(tagColumnSortMap);
+
 const TagList: React.FC<{
   tags: GQL.TagListDataFragment[];
   filter: ListFilterModel;
   selectedIds: Set<string>;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
+  onSort?: (value: string) => void;
 }> = PatchComponent(
   "TagList",
-  ({ tags, filter, selectedIds, onSelectChange }) => {
+  ({ tags, filter, selectedIds, onSelectChange, onSort }) => {
+    const activeSortColumn = sortFieldToColumn(tagSortColumnMap, filter.sortBy);
+
     if (tags.length === 0 && filter.displayMode !== DisplayMode.Tagger) {
       return null;
     }
@@ -78,6 +94,9 @@ const TagList: React.FC<{
           tags={tags}
           selectedIds={selectedIds}
           onSelectChange={onSelectChange}
+          onSort={onSort}
+          sortBy={activeSortColumn}
+          sortDirection={filter.sortDirection}
         />
       );
     }
@@ -238,6 +257,20 @@ export const FilteredTagList = PatchComponent(
       });
 
     const { filter, setFilter } = filterState;
+
+    const onSort = useCallback(
+      (value: string) => {
+        const backendField = tagColumnSortMap[value] ?? value;
+        if (filter.sortBy === backendField) {
+          setFilter(filter.toggleSortDirection());
+        } else {
+          const newFilter = filter.setSortBy(backendField);
+          newFilter.sortDirection = GQL.SortDirectionEnum.Asc;
+          setFilter(newFilter);
+        }
+      },
+      [filter, setFilter]
+    );
 
     const { effectiveFilter, result, cachedResult, items, totalCount } =
       queryResult;
@@ -475,6 +508,7 @@ export const FilteredTagList = PatchComponent(
                   tags={items}
                   selectedIds={selectedIds}
                   onSelectChange={onSelectChange}
+                  onSort={onSort}
                 />
               </LoadedContent>
 
