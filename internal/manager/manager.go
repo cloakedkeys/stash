@@ -218,6 +218,10 @@ func (s *Manager) Setup(ctx context.Context, input SetupInput) error {
 	setSetupDefaults(&input)
 	cfg := s.Config
 
+	if !cfg.HasOverride(config.Database) && database.IsPostgresPath(input.DatabaseFile) {
+		return errors.New("PostgreSQL can't be chosen here. Set the STASH_DATABASE environment variable to the address and start Stash again. The PostgreSQL page in the manual has the steps")
+	}
+
 	// validate user credentials if we are in public mode
 	if cfg.GetPublicAccess() && (input.InitialUsername == "" || input.InitialPassword == "") {
 		return errors.New("initial username and password must be set when public access is enabled")
