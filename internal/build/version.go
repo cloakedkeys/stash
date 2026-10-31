@@ -11,21 +11,18 @@ var githash string
 var officialBuild string
 
 // updateRepo is the GitHub "owner/repo" that the built-in update check queries.
-// It can be overridden at build time via -ldflags, allowing forks to point the
-// update check at their own releases. It defaults to the upstream repository.
+// It is set at build time via -ldflags. Without it there is no update check,
+// since upstream's releases aren't updates to this copy: they would offer an
+// older version, with a different database schema.
 var updateRepo string
-
-const defaultUpdateRepo = "stashapp/stash"
 
 func Version() (string, string, string) {
 	return version, githash, buildstamp
 }
 
-// UpdateRepo returns the GitHub "owner/repo" used by the update check.
+// UpdateRepo returns the GitHub "owner/repo" used by the update check, or an
+// empty string if this build has no update check.
 func UpdateRepo() string {
-	if updateRepo == "" {
-		return defaultUpdateRepo
-	}
 	return updateRepo
 }
 
