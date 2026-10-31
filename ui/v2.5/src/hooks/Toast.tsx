@@ -5,6 +5,7 @@ import {
 import React, { useState, useContext, createContext, useMemo } from "react";
 import { Button, Toast } from "react-bootstrap";
 import { FormattedMessage } from "react-intl";
+import { Link } from "react-router-dom";
 import { Icon } from "src/components/Shared/Icon";
 import { ModalComponent } from "src/components/Shared/Modal";
 import { errorToString } from "src/utils";
@@ -25,6 +26,37 @@ interface IActiveToast extends IToast {
 const errorPriority = 100;
 // errors should stay on screen longer
 const errorDelay = 5000;
+
+// Server errors that ask the user to check the logs get this phrase turned
+// into a link to the logs page. Server messages are not translated, so the
+// English phrase is matched as-is.
+const checkLogsPhrase = "check the logs";
+
+function renderContent(
+  content: JSX.Element | string | undefined,
+  onLinkClick: () => void
+) {
+  if (typeof content !== "string") return content;
+
+  const index = content.indexOf(checkLogsPhrase);
+  if (index === -1) return content;
+
+  return (
+    <>
+      {content.slice(0, index)}
+      <Link
+        to="/settings?tab=logs"
+        onClick={(e) => {
+          e.stopPropagation();
+          onLinkClick();
+        }}
+      >
+        {checkLogsPhrase}
+      </Link>
+      {content.slice(index + checkLogsPhrase.length)}
+    </>
+  );
+}
 
 let toastID = 0;
 
@@ -56,7 +88,7 @@ export const ToastProvider: React.FC<React.PropsWithChildren<unknown>> = ({
       >
         <Toast.Header>
           <span className="mr-auto" onClick={() => expand()}>
-            {toast.content}
+            {renderContent(toast.content, () => setHiding(true))}
           </span>
           {toast.variant === "danger" && (
             <Button
@@ -110,7 +142,10 @@ export const ToastProvider: React.FC<React.PropsWithChildren<unknown>> = ({
             )
           }
         >
-          {toast?.content}
+          {renderContent(toast?.content, () => {
+            setToast(undefined);
+            setExpanded(false);
+          })}
         </ModalComponent>
       )}
       <div className={cx("toast-container row", { hidden: !toast || hiding })}>
