@@ -12,15 +12,10 @@ import { Icon } from "../Shared/Icon";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import useFocus from "src/utils/focus";
 import { useIntl } from "react-intl";
-import {
-  faCaretDown,
-  faCaretUp,
-  faCheck,
-} from "@fortawesome/free-solid-svg-icons";
+import { faCheck } from "@fortawesome/free-solid-svg-icons";
 import { useDebounce } from "src/hooks/debounce";
 import { ClearableInput } from "../Shared/ClearableInput";
 import { useStopWheelScroll } from "src/utils/form";
-import { SortDirectionEnum } from "src/core/generated-graphql";
 
 export function useDebouncedSearchInput(
   filter: ListFilterModel,
@@ -214,11 +209,3 @@ export const PageSizeSelector: React.FC<{
     </div>
   );
 };
-
-export const SortByIcon: React.FC<{
-  sortDirection: SortDirectionEnum;
-}> = ({ sortDirection }) => (
-  <Icon
-    icon={sortDirection === SortDirectionEnum.Asc ? faCaretUp : faCaretDown}
-  />
-);

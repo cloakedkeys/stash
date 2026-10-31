@@ -11,7 +11,7 @@ import { Tagger } from "../Tagger/scenes/SceneTagger";
 import { IPlaySceneOptions, SceneQueue } from "src/models/sceneQueue";
 import { SceneWallPanel } from "./SceneWallPanel";
 import { SceneListTable } from "./SceneListTable";
-import { getActiveSortColumn } from "src/utils/data";
+import { reverseMap, sortFieldToColumn } from "src/utils/data";
 import { EditScenesDialog } from "./EditScenesDialog";
 import { DeleteScenesDialog } from "./DeleteScenesDialog";
 import { GenerateDialog } from "../Dialogs/GenerateDialog";
@@ -180,9 +180,11 @@ function useAddKeybinds(filter: ListFilterModel, count: number) {
   }, [playRandom]);
 }
 
+// list table columns whose sort field has a different name
 const sceneColumnSortMap: Record<string, string> = {
   scene_code: "code",
 };
+const sceneSortColumnMap = reverseMap(sceneColumnSortMap);
 
 const SceneList: React.FC<{
   scenes: GQL.SlimSceneDataFragment[];
@@ -194,8 +196,8 @@ const SceneList: React.FC<{
 }> = PatchComponent(
   "SceneList",
   ({ scenes, filter, selectedIds, onSelectChange, fromGroupId, onSort }) => {
-    const activeSortColumn = getActiveSortColumn(
-      sceneColumnSortMap,
+    const activeSortColumn = sortFieldToColumn(
+      sceneSortColumnMap,
       filter.sortBy
     );
 

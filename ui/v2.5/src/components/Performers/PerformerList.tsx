@@ -13,7 +13,7 @@ import { useFilteredItemList } from "../List/ItemList";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { DisplayMode } from "src/models/list-filter/types";
 import { PerformerTagger } from "../Tagger/performers/PerformerTagger";
-import { getActiveSortColumn } from "src/utils/data";
+import { reverseMap, sortFieldToColumn } from "src/utils/data";
 import { ExportDialog } from "../Shared/ExportDialog";
 import { DeleteEntityDialog } from "../Shared/DeleteEntityDialog";
 import { IPerformerCardExtraCriteria } from "./PerformerCard";
@@ -192,6 +192,8 @@ export const FormatPenisLength = (penis_length?: number | null) => {
   );
 };
 
+// list table columns whose sort field has a different name.
+// The age column sorts by birthdate, so its direction is shown reversed.
 const performerColumnSortMap: Record<string, string> = {
   height_cm: "height",
   weight_kg: "weight",
@@ -202,6 +204,7 @@ const performerColumnSortMap: Record<string, string> = {
   age: "birthdate",
   favourite: "favorite",
 };
+const performerSortColumnMap = reverseMap(performerColumnSortMap);
 
 interface IPerformerList {
   filterHook?: (filter: ListFilterModel) => ListFilterModel;
@@ -228,8 +231,8 @@ const PerformerList: React.FC<{
     extraCriteria,
     onSort,
   }) => {
-    const activeSortColumn = getActiveSortColumn(
-      performerColumnSortMap,
+    const activeSortColumn = sortFieldToColumn(
+      performerSortColumnMap,
       filter.sortBy
     );
 

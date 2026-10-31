@@ -13,7 +13,7 @@ import { useFilteredItemList } from "../List/ItemList";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { DisplayMode } from "src/models/list-filter/types";
 import { ExportDialog } from "../Shared/ExportDialog";
-import { getActiveSortColumn } from "src/utils/data";
+import { reverseMap, sortFieldToColumn } from "src/utils/data";
 import { DeleteEntityDialog } from "../Shared/DeleteEntityDialog";
 import { StudioTagger } from "../Tagger/studios/StudioTagger";
 import { StudioCardGrid } from "./StudioCardGrid";
@@ -49,12 +49,14 @@ import { FavoriteStudioCriterionOption } from "src/models/list-filter/criteria/f
 import { Button } from "react-bootstrap";
 import cx from "classnames";
 
+// list table columns whose sort field has a different name
 const studioColumnSortMap: Record<string, string> = {
   scene_count: "scenes_count",
   image_count: "images_count",
   gallery_count: "galleries_count",
   favourite: "favorite",
 };
+const studioSortColumnMap = reverseMap(studioColumnSortMap);
 
 const StudioList: React.FC<{
   studios: GQL.StudioDataFragment[];
@@ -66,8 +68,8 @@ const StudioList: React.FC<{
 }> = PatchComponent(
   "StudioList",
   ({ studios, filter, selectedIds, onSelectChange, fromParent, onSort }) => {
-    const activeSortColumn = getActiveSortColumn(
-      studioColumnSortMap,
+    const activeSortColumn = sortFieldToColumn(
+      studioSortColumnMap,
       filter.sortBy
     );
 

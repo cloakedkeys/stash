@@ -3,7 +3,7 @@ import { Table, Form } from "react-bootstrap";
 import { CheckBoxSelect } from "../Shared/Select";
 import cx from "classnames";
 import { SortDirectionEnum } from "src/core/generated-graphql";
-import { SortByIcon } from "./ListFilter";
+import { SortByIcon } from "./SortBySelect";
 
 export interface IColumn {
   label: string;
@@ -112,23 +112,19 @@ export const ListTable = <T extends { id: string }>(
 
   const columnHeaders = useMemo(() => {
     return visibleColumns.map((column) => {
-      const isSortable = column.sortable !== false && onSort;
+      const onClick =
+        onSort && column.sortable !== false
+          ? () => onSort(column.value)
+          : undefined;
       const isActive = sortBy === column.value;
 
       return (
         <th
           key={column.value}
-          className={`${column.value}-head${isSortable ? " sortable" : ""}`}
-          onClick={isSortable ? () => onSort(column.value) : undefined}
-          style={isSortable ? { cursor: "pointer" } : undefined}
+          className={cx(`${column.value}-head`, { sortable: !!onClick })}
+          onClick={onClick}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
+          <div className="column-header">
             {column.label}
             {isActive && sortDirection && (
               <SortByIcon sortDirection={sortDirection} />

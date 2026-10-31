@@ -266,6 +266,38 @@ func TestTagQuerySort(t *testing.T) {
 	})
 }
 
+func TestTagQuerySortFavorite(t *testing.T) {
+	runWithRollbackTxn(t, "favorite sort", func(t *testing.T, ctx context.Context) {
+		// the fixture has no favourite tags, so add one
+		favorite := models.Tag{
+			Name:     "tag-favorite-sort",
+			Favorite: true,
+		}
+		if err := db.Tag.Create(ctx, &models.CreateTagInput{Tag: &favorite}); err != nil {
+			t.Fatalf("Error creating tag: %s", err.Error())
+		}
+
+		sortBy := "favorite"
+		dir := models.SortDirectionEnumDesc
+		allPages := models.PerPageAll
+		findFilter := &models.FindFilterType{
+			Sort:      &sortBy,
+			Direction: &dir,
+			PerPage:   &allPages,
+		}
+
+		tags := queryTags(ctx, t, db.Tag, nil, findFilter)
+		if !assert.True(t, len(tags) > 1) {
+			return
+		}
+		assert.Equal(t, favorite.ID, tags[0].ID)
+
+		dir = models.SortDirectionEnumAsc
+		tags = queryTags(ctx, t, db.Tag, nil, findFilter)
+		assert.Equal(t, favorite.ID, tags[len(tags)-1].ID)
+	})
+}
+
 func TestTagQueryName(t *testing.T) {
 	const tagIdx = 1
 	tagName := getSceneStringValue(tagIdx, "Name")

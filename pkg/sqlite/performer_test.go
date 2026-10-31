@@ -2532,6 +2532,82 @@ func TestPerformerQuerySortScenesCount(t *testing.T) {
 	})
 }
 
+func TestPerformerQuerySortFavorite(t *testing.T) {
+	sort := "favorite"
+	direction := models.SortDirectionEnumDesc
+	allPages := models.PerPageAll
+	findFilter := &models.FindFilterType{
+		Sort:      &sort,
+		Direction: &direction,
+		PerPage:   &allPages,
+	}
+
+	withTxn(func(ctx context.Context) error {
+		// descending: every favourite comes before every non-favourite
+		performers := queryPerformers(ctx, t, nil, findFilter)
+		assert.True(t, len(performers) > 1)
+		assert.True(t, performers[0].Favorite)
+		assert.False(t, performers[len(performers)-1].Favorite)
+		for i := 1; i < len(performers); i++ {
+			if performers[i].Favorite {
+				assert.True(t, performers[i-1].Favorite, "favourite performer sorted after non-favourite")
+			}
+		}
+
+		// ascending: reversed
+		direction = models.SortDirectionEnumAsc
+		performers = queryPerformers(ctx, t, nil, findFilter)
+		assert.False(t, performers[0].Favorite)
+		assert.True(t, performers[len(performers)-1].Favorite)
+
+		return nil
+	})
+}
+
+func TestPerformerQuerySortBirthdate(t *testing.T) {
+	runWithRollbackTxn(t, "birthdate sort puts missing birthdates last", func(t *testing.T, ctx context.Context) {
+		noBirthdate := models.Performer{
+			Name: "performer-no-birthdate-sort",
+		}
+		if err := db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &noBirthdate}); err != nil {
+			t.Fatalf("Error creating performer: %s", err.Error())
+		}
+
+		sort := "birthdate"
+		allPages := models.PerPageAll
+		for _, direction := range []models.SortDirectionEnum{models.SortDirectionEnumAsc, models.SortDirectionEnumDesc} {
+			dir := direction
+			findFilter := &models.FindFilterType{
+				Sort:      &sort,
+				Direction: &dir,
+				PerPage:   &allPages,
+			}
+
+			performers := queryPerformers(ctx, t, nil, findFilter)
+			if !assert.True(t, len(performers) > 2) {
+				return
+			}
+
+			// the performer without a birthdate is last in both directions
+			assert.Equal(t, noBirthdate.ID, performers[len(performers)-1].ID, "direction %s", dir)
+
+			// the rest are ordered by birthdate in the requested direction
+			for i := 1; i < len(performers)-1; i++ {
+				prev := performers[i-1].Birthdate
+				cur := performers[i].Birthdate
+				if !assert.NotNil(t, prev) || !assert.NotNil(t, cur) {
+					return
+				}
+				if dir == models.SortDirectionEnumAsc {
+					assert.False(t, cur.Time.Before(prev.Time), "birthdates not ascending")
+				} else {
+					assert.False(t, cur.Time.After(prev.Time), "birthdates not descending")
+				}
+			}
+		}
+	})
+}
+
 func TestPerformerCountByTagID(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
 		sqb := db.Performer

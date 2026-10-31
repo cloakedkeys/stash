@@ -252,7 +252,6 @@ export const StudioListTable: React.FC<IStudioListTableProps> = ({
       value: "performer_count",
       label: intl.formatMessage({ id: "performers" }),
       defaultShow: true,
-      sortable: false,
       render: PerformerCountCell,
     },
     {

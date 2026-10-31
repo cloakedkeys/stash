@@ -14,7 +14,7 @@ import GalleryWallCard from "./GalleryWallCard";
 import { EditGalleriesDialog } from "./EditGalleriesDialog";
 import { DeleteGalleriesDialog } from "./DeleteGalleriesDialog";
 import { ExportDialog } from "../Shared/ExportDialog";
-import { getActiveSortColumn } from "src/utils/data";
+import { reverseMap, sortFieldToColumn } from "src/utils/data";
 import { GenerateDialog } from "../Dialogs/GenerateDialog";
 import { GalleryListTable } from "./GalleryListTable";
 import { GalleryCardGrid } from "./GalleryCardGrid";
@@ -57,9 +57,11 @@ import { PerformerAgeCriterionOption } from "src/models/list-filter/galleries";
 import { SidebarFolderFilter } from "../List/Filters/FolderFilter";
 import { ParentFolderCriterionOption } from "src/models/list-filter/criteria/folder";
 
+// list table columns whose sort field has a different name
 const galleryColumnSortMap: Record<string, string> = {
   images: "images_count",
 };
+const gallerySortColumnMap = reverseMap(galleryColumnSortMap);
 
 const GalleryList: React.FC<{
   galleries: GQL.SlimGalleryDataFragment[];
@@ -70,8 +72,8 @@ const GalleryList: React.FC<{
 }> = PatchComponent(
   "GalleryList",
   ({ galleries, filter, selectedIds, onSelectChange, onSort }) => {
-    const activeSortColumn = getActiveSortColumn(
-      galleryColumnSortMap,
+    const activeSortColumn = sortFieldToColumn(
+      gallerySortColumnMap,
       filter.sortBy
     );
     const { configuration } = useConfigurationContext();
