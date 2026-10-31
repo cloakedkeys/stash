@@ -3045,6 +3045,66 @@ func TestPerformerMerge(t *testing.T) {
 	}
 }
 
+func TestPerformerOCounterIncludesGalleries(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		performer := models.Performer{Name: "TestPerformerOCounterGalleries"}
+		if err := db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &performer}); err != nil {
+			t.Fatalf("creating performer: %v", err)
+		}
+
+		image := models.Image{
+			Title:        "TestPerformerOCounterGalleries",
+			OCounter:     200,
+			PerformerIDs: models.NewRelatedIDs([]int{performer.ID}),
+		}
+		if err := db.Image.Create(ctx, &models.CreateImageInput{Image: &image}); err != nil {
+			t.Fatalf("creating image: %v", err)
+		}
+
+		gallery := models.Gallery{
+			Title:        "TestPerformerOCounterGalleries",
+			OCounter:     100,
+			PerformerIDs: models.NewRelatedIDs([]int{performer.ID}),
+		}
+		if err := db.Gallery.Create(ctx, &models.CreateGalleryInput{Gallery: &gallery}); err != nil {
+			t.Fatalf("creating gallery: %v", err)
+		}
+
+		got, err := db.Gallery.OCountByPerformerID(ctx, performer.ID)
+		if err != nil {
+			t.Fatalf("GalleryStore.OCountByPerformerID() error = %v", err)
+		}
+		assert.Equal(t, 100, got)
+
+		// the filter counts images and galleries together
+		performerFilter := models.PerformerFilterType{
+			OCounter: &models.IntCriterionInput{
+				Value:    300,
+				Modifier: models.CriterionModifierEquals,
+			},
+		}
+		performers := queryPerformers(ctx, t, &performerFilter, nil)
+		assert.Len(t, performers, 1)
+		if len(performers) == 1 {
+			assert.Equal(t, performer.ID, performers[0].ID)
+		}
+
+		// and so does the sort
+		sortBy := "o_counter"
+		direction := models.SortDirectionEnumDesc
+		performers = queryPerformers(ctx, t, nil, &models.FindFilterType{
+			Sort:      &sortBy,
+			Direction: &direction,
+		})
+		assert.Greater(t, len(performers), 0)
+		if len(performers) > 0 {
+			assert.Equal(t, performer.ID, performers[0].ID)
+		}
+
+		return nil
+	})
+}
+
 // TODO Update
 // TODO Destroy
 // TODO Find

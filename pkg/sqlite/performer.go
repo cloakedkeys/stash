@@ -681,7 +681,7 @@ func (qb *PerformerStore) QueryCount(ctx context.Context, performerFilter *model
 }
 
 func (qb *PerformerStore) sortByOCounter(direction string) string {
-	// need to sum the o_counter from scenes and images
+	// need to sum the o_counter from scenes, images and galleries
 	return " ORDER BY (" + selectPerformerOCountSQL + ") " + direction
 }
 

@@ -681,6 +681,27 @@ func (_m *GalleryReaderWriter) IncrementOCounter(ctx context.Context, id int) (i
 	return r0, r1
 }
 
+// OCountByPerformerID provides a mock function with given fields: ctx, performerID
+func (_m *GalleryReaderWriter) OCountByPerformerID(ctx context.Context, performerID int) (int, error) {
+	ret := _m.Called(ctx, performerID)
+
+	var r0 int
+	if rf, ok := ret.Get(0).(func(context.Context, int) int); ok {
+		r0 = rf(ctx, performerID)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, performerID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Query provides a mock function with given fields: ctx, galleryFilter, findFilter
 func (_m *GalleryReaderWriter) Query(ctx context.Context, galleryFilter *models.GalleryFilterType, findFilter *models.FindFilterType) ([]*models.Gallery, int, error) {
 	ret := _m.Called(ctx, galleryFilter, findFilter)

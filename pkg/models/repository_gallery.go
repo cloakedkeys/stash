@@ -34,6 +34,7 @@ type GalleryQueryer interface {
 type GalleryCounter interface {
 	Count(ctx context.Context) (int, error)
 	CountByFileID(ctx context.Context, fileID FileID) (int, error)
+	OCountByPerformerID(ctx context.Context, performerID int) (int, error)
 }
 
 // GalleryCreator provides methods to create galleries.
