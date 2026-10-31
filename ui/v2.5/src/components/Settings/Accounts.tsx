@@ -13,6 +13,7 @@ type Account = GQL.FindUsersForAccountsQuery["users"][number];
 type AccessLevel = "admin" | "modify" | "read";
 
 const refetchQueries = ["FindUsersForAccounts", "FindUsersForLibraryLimits"];
+const refetchAccounts = ["FindUsersForAccounts"];
 
 function accessLevel(roles: GQL.RoleEnum[]): AccessLevel {
   if (roles.includes(GQL.RoleEnum.Admin)) return "admin";
@@ -35,8 +36,9 @@ function rolesFor(level: AccessLevel, apiKey: boolean) {
 
 const AccountDialog: React.FC<{
   account?: Account;
+  isCurrent?: boolean;
   onClose: () => void;
-}> = ({ account, onClose }) => {
+}> = ({ account, isCurrent = false, onClose }) => {
   const intl = useIntl();
   const Toast = useToast();
   const [createUser, { loading: creating }] = GQL.useUserCreateMutation({
@@ -47,16 +49,22 @@ const AccountDialog: React.FC<{
   });
 
   const existingRoles = account?.roles ?? [GQL.RoleEnum.Read];
+  const initialLevel = accessLevel(existingRoles);
+  const initialApiKey = existingRoles.includes(GQL.RoleEnum.GenerateApiKey);
+  // a library limit only goes with read-only access
+  const limited = !!account?.library_limit;
   const [name, setName] = useState(account?.name ?? "");
   const [notes, setNotes] = useState(account?.notes ?? "");
   const [password, setPassword] = useState("");
-  const [level, setLevel] = useState(accessLevel(existingRoles));
-  const [apiKey, setApiKey] = useState(
-    existingRoles.includes(GQL.RoleEnum.GenerateApiKey)
-  );
+  const [level, setLevel] = useState(initialLevel);
+  const [apiKey, setApiKey] = useState(initialApiKey);
 
   async function save() {
-    const roles = rolesFor(level, apiKey);
+    // unchanged access keeps the stored roles exactly, so the account stays signed in
+    const roles =
+      account && level === initialLevel && apiKey === initialApiKey
+        ? existingRoles
+        : rolesFor(level, apiKey);
     try {
       if (account) {
         await updateUser({
@@ -102,6 +110,7 @@ const AccountDialog: React.FC<{
         <Form.Control
           className="text-input"
           autoComplete="off"
+          disabled={isCurrent}
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
         />
@@ -127,17 +136,23 @@ const AccountDialog: React.FC<{
         <Form.Control
           as="select"
           className="input-control"
+          disabled={isCurrent}
           value={level}
           onChange={(e) => setLevel(e.currentTarget.value as AccessLevel)}
         >
           {(["read", "modify", "admin"] as const).map((l) => (
-            <option key={l} value={l}>
+            <option key={l} value={l} disabled={limited && l !== "read"}>
               {intl.formatMessage({
                 id: `config.general.auth.accounts.access_${l}`,
               })}
             </option>
           ))}
         </Form.Control>
+        {limited && (
+          <Form.Text>
+            <FormattedMessage id="config.general.auth.accounts.limited_read_only" />
+          </Form.Text>
+        )}
       </Form.Group>
       {level !== "admin" && (
         <Form.Group>
@@ -268,9 +283,15 @@ export const Accounts: React.FC = () => {
   const intl = useIntl();
   const Toast = useToast();
   const currentUser = useCurrentUser();
-  const { data, loading } = GQL.useFindUsersForAccountsQuery();
-  const [lockUser] = GQL.useLockUserMutation({ refetchQueries });
-  const [unlockUser] = GQL.useUnlockUserMutation({ refetchQueries });
+  const { data, loading, error } = GQL.useFindUsersForAccountsQuery();
+  const [lockUser, { loading: locking }] = GQL.useLockUserMutation({
+    refetchQueries: refetchAccounts,
+    awaitRefetchQueries: true,
+  });
+  const [unlockUser, { loading: unlocking }] = GQL.useUnlockUserMutation({
+    refetchQueries: refetchAccounts,
+    awaitRefetchQueries: true,
+  });
 
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Account>();
@@ -296,7 +317,8 @@ export const Accounts: React.FC = () => {
         id: `config.general.auth.accounts.access_${accessLevel(account.roles ?? [])}`,
       }),
     ];
-    if (account.locked) {
+    // an account with no roles can't sign in, so it counts as locked
+    if (account.locked || !account.roles?.length) {
       parts.push(
         intl.formatMessage({ id: "config.general.auth.accounts.locked" })
       );
@@ -314,6 +336,7 @@ export const Accounts: React.FC = () => {
       subHeadingID="config.general.auth.accounts.description"
     >
       {loading && <LoadingIndicator inline small message="" />}
+      {error && <div className="text-danger">{error.message}</div>}
       {data?.users.map((account) => {
         const isCurrent = account.name === currentUser?.name;
         return (
@@ -326,10 +349,16 @@ export const Accounts: React.FC = () => {
               <Button onClick={() => setEditing(account)}>
                 <FormattedMessage id="actions.edit" />
               </Button>
-              <Button onClick={() => setResetting(account)}>
+              <Button
+                disabled={isCurrent}
+                onClick={() => setResetting(account)}
+              >
                 <FormattedMessage id="config.general.auth.accounts.reset_password" />
               </Button>
-              <Button disabled={isCurrent} onClick={() => toggleLock(account)}>
+              <Button
+                disabled={isCurrent || locking || unlocking}
+                onClick={() => toggleLock(account)}
+              >
                 <FormattedMessage
                   id={
                     account.locked
@@ -361,6 +390,7 @@ export const Accounts: React.FC = () => {
       {editing && (
         <AccountDialog
           account={editing}
+          isCurrent={editing.name === currentUser?.name}
           onClose={() => setEditing(undefined)}
         />
       )}

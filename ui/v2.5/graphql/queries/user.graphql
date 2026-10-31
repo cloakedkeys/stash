@@ -28,5 +28,8 @@ query FindUsersForAccounts {
     notes
     roles
     locked
+    library_limit {
+      folder_ids
+    }
   }
 }

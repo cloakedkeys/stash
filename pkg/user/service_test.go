@@ -245,6 +245,19 @@ func TestUpdateUserEndsSessionsOnlyForNameOrRoles(t *testing.T) {
 		t.Fatalf("editing notes changed the session timestamp from %v to %v", before, got)
 	}
 
+	editor := models.User{Username: "editor", Roles: models.Roles{models.RoleEnumModify, models.RoleEnumRead}}
+	if err := svc.CreateUser(ctx, editor, "password"); err != nil {
+		t.Fatalf("failed to create editor: %v", err)
+	}
+	editorBefore := time.Now().Add(-time.Hour)
+	store.users["editor"].UpdatedAt = editorBefore
+	if err := svc.UpdateUser(ctx, "editor", models.User{Username: "editor", Notes: "edited", Roles: models.Roles{models.RoleEnumRead, models.RoleEnumModify}}); err != nil {
+		t.Fatalf("failed to edit editor notes: %v", err)
+	}
+	if got := store.users["editor"].UpdatedAt; !got.Equal(editorBefore) {
+		t.Fatalf("the same roles in another order changed the session timestamp from %v to %v", editorBefore, got)
+	}
+
 	store.users["listener"].UpdatedAt = loginTime.Add(-2 * time.Hour)
 	if err := svc.UpdateUser(ctx, "listener", models.User{Username: "listener", Roles: models.Roles{models.RoleEnumModify}}); err != nil {
 		t.Fatalf("failed to change roles: %v", err)
