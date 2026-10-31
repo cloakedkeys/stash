@@ -658,13 +658,23 @@ func (qb *StudioStore) sortByLatestScene(direction string) string {
 	return " ORDER BY (" + selectStudioLatestSceneSQL + ") " + direction
 }
 
-func (qb *StudioStore) sortByPerformerCount(direction string) string {
+func (qb *StudioStore) sortByScenesCountAll(direction string) string {
 	return fmt.Sprintf(` ORDER BY (
-		SELECT COUNT(DISTINCT %[2]s.performer_id)
-		FROM %[4]s
-		INNER JOIN %[2]s ON %[2]s.scene_id = %[4]s.id
-		WHERE %[4]s.%[3]s = %[1]s.id
-	) %[5]s`, studioTable, performersScenesTable, studioIDColumn, sceneTable, getSortDirection(direction))
+		WITH RECURSIVE sub_studios AS (
+			SELECT s.id FROM %[1]s s WHERE s.id = %[1]s.id
+			UNION ALL
+			SELECT s.id FROM %[1]s s
+			INNER JOIN sub_studios ss ON s.parent_id = ss.id
+		)
+		SELECT COUNT(*) FROM %[2]s
+		WHERE %[2]s.%[3]s IN (SELECT id FROM sub_studios)
+	) %[4]s`, studioTable, sceneTable, studioIDColumn, getSortDirection(direction))
+}
+
+// performer counts include the studio's scenes, images and galleries, matching
+// the studio's performer_count field and filter
+func (qb *StudioStore) sortByPerformerCount(direction string) string {
+	return " ORDER BY (" + selectStudioPerformerCountSQL + ") " + getSortDirection(direction)
 }
 
 func (qb *StudioStore) sortByPerformerCountAll(direction string) string {
@@ -675,11 +685,24 @@ func (qb *StudioStore) sortByPerformerCountAll(direction string) string {
 			SELECT s.id FROM %[1]s s
 			INNER JOIN sub_studios ss ON s.parent_id = ss.id
 		)
-		SELECT COUNT(DISTINCT %[2]s.performer_id)
-		FROM sub_studios ss
-		INNER JOIN %[4]s sc ON sc.%[3]s = ss.id
-		INNER JOIN %[2]s ON %[2]s.scene_id = sc.id
-	) %[5]s`, studioTable, performersScenesTable, studioIDColumn, sceneTable, getSortDirection(direction))
+		SELECT COUNT(*) FROM (
+			SELECT %[2]s.performer_id FROM %[2]s
+			INNER JOIN %[3]s ON %[3]s.id = %[2]s.scene_id
+			WHERE %[3]s.studio_id IN (SELECT id FROM sub_studios)
+			UNION
+			SELECT %[4]s.performer_id FROM %[4]s
+			INNER JOIN %[5]s ON %[5]s.id = %[4]s.image_id
+			WHERE %[5]s.studio_id IN (SELECT id FROM sub_studios)
+			UNION
+			SELECT %[6]s.performer_id FROM %[6]s
+			INNER JOIN %[7]s ON %[7]s.id = %[6]s.gallery_id
+			WHERE %[7]s.studio_id IN (SELECT id FROM sub_studios)
+		)
+	) %[8]s`, studioTable,
+		performersScenesTable, sceneTable,
+		performersImagesTable, imageTable,
+		performersGalleriesTable, galleryTable,
+		getSortDirection(direction))
 }
 
 func (qb *StudioStore) sortByOCounter(direction string) string {
@@ -734,6 +757,7 @@ var studioSortOptions = sortOptions{
 	"performer_count",
 	"performer_count_all",
 	"scenes_count",
+	"scenes_count_all",
 	"scenes_duration",
 	"scenes_size",
 	"scene_markers_count",
@@ -765,6 +789,8 @@ func (qb *StudioStore) getStudioSort(findFilter *models.FindFilterType) (string,
 		sortQuery += getCountSort(studioTable, studiosTagsTable, studioIDColumn, direction)
 	case "scenes_count":
 		sortQuery += getCountSort(studioTable, sceneTable, studioIDColumn, direction)
+	case "scenes_count_all":
+		sortQuery += qb.sortByScenesCountAll(direction)
 	case "scenes_duration":
 		sortQuery += qb.sortByScenesDuration(direction)
 	case "scenes_size":

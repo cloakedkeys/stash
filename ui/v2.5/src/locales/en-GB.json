@@ -1505,6 +1505,7 @@
   "scene_code": "Studio Code",
   "scene_marker_count": "Scene Marker Count",
   "scene_count": "Scene Count",
+  "scene_count_all": "Scene Count (All)",
   "scenes_duration": "Scene Duration",
   "scenes_size": "Scene Size",
   "scene_created_at": "Scene Created At",

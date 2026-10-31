@@ -14,6 +14,7 @@ import { ListFilterModel } from "src/models/list-filter/filter";
 import { DisplayMode } from "src/models/list-filter/types";
 import { ExportDialog } from "../Shared/ExportDialog";
 import { reverseMap, sortFieldToColumn } from "src/utils/data";
+import { useConfigurationContext } from "src/hooks/Config";
 import { DeleteEntityDialog } from "../Shared/DeleteEntityDialog";
 import { StudioTagger } from "../Tagger/studios/StudioTagger";
 import { StudioCardGrid } from "./StudioCardGrid";
@@ -56,7 +57,23 @@ const studioColumnSortMap: Record<string, string> = {
   gallery_count: "galleries_count",
   favourite: "favorite",
 };
-const studioSortColumnMap = reverseMap(studioColumnSortMap);
+// with child studio content shown, these columns show totals that include
+// sub-studios, so sort by those totals
+const studioChildColumnSortMap: Record<string, string> = {
+  ...studioColumnSortMap,
+  scene_count: "scenes_count_all",
+  o_counter: "o_counter_all",
+  performer_count: "performer_count_all",
+};
+
+function getColumnSortMap(showChildContent: boolean) {
+  return showChildContent ? studioChildColumnSortMap : studioColumnSortMap;
+}
+
+function useShowChildStudioContent() {
+  const { configuration } = useConfigurationContext();
+  return configuration?.ui?.showChildStudioContent ?? false;
+}
 
 const StudioList: React.FC<{
   studios: GQL.StudioDataFragment[];
@@ -68,8 +85,9 @@ const StudioList: React.FC<{
 }> = PatchComponent(
   "StudioList",
   ({ studios, filter, selectedIds, onSelectChange, fromParent, onSort }) => {
+    const showChildContent = useShowChildStudioContent();
     const activeSortColumn = sortFieldToColumn(
-      studioSortColumnMap,
+      reverseMap(getColumnSortMap(showChildContent)),
       filter.sortBy
     );
 
@@ -256,9 +274,10 @@ export const FilteredStudioList = PatchComponent(
 
     const { filter, setFilter } = filterState;
 
+    const showChildContent = useShowChildStudioContent();
     const onSort = useCallback(
       (value: string) => {
-        const backendField = studioColumnSortMap[value] ?? value;
+        const backendField = getColumnSortMap(showChildContent)[value] ?? value;
         if (filter.sortBy === backendField) {
           setFilter(filter.toggleSortDirection());
         } else {
@@ -267,7 +286,7 @@ export const FilteredStudioList = PatchComponent(
           setFilter(newFilter);
         }
       },
-      [filter, setFilter]
+      [filter, setFilter, showChildContent]
     );
 
     const { effectiveFilter, result, cachedResult, items, totalCount } =

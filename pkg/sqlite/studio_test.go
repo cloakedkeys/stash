@@ -2123,6 +2123,71 @@ func TestStudioQuerySortFavorite(t *testing.T) {
 	})
 }
 
+// sorts used by the studio table match the counts it shows: performer counts
+// include images and galleries, and the _all sorts include sub-studios
+func TestStudioQuerySortMatchesShownCounts(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		parent := models.NewStudio()
+		parent.Name = "AAA TestStudioSortParent"
+		if err := db.Studio.Create(ctx, &models.CreateStudioInput{Studio: &parent}); err != nil {
+			t.Fatalf("creating studio: %v", err)
+		}
+		child := createStudioWithPerformers(ctx, t)
+		child.ParentID = &parent.ID
+		if err := db.Studio.Update(ctx, &models.UpdateStudioInput{Studio: child}); err != nil {
+			t.Fatalf("updating studio: %v", err)
+		}
+		for i := 0; i < 10; i++ {
+			scene := models.Scene{Title: "TestStudioSortScene", StudioID: &child.ID}
+			if err := db.Scene.Create(ctx, &scene, nil); err != nil {
+				t.Fatalf("creating scene: %v", err)
+			}
+		}
+
+		sorted := func(sortBy string) []int {
+			direction := models.SortDirectionEnumDesc
+			perPage := -1
+			studios := queryStudios(ctx, t, nil, &models.FindFilterType{
+				Sort:      &sortBy,
+				Direction: &direction,
+				PerPage:   &perPage,
+			})
+			ids := make([]int, len(studios))
+			for i, s := range studios {
+				ids[i] = s.ID
+			}
+			return ids
+		}
+		indexOf := func(ids []int, id int) int {
+			for i, v := range ids {
+				if v == id {
+					return i
+				}
+			}
+			t.Fatalf("studio %d not in results", id)
+			return -1
+		}
+
+		// the child has 3 performers across a scene, an image and a gallery;
+		// fixture studios have 1 at most
+		ids := sorted("performer_count")
+		assert.Equal(t, child.ID, ids[0])
+
+		// with sub-studios, the parent has the child's performers and scenes
+		ids = sorted("performer_count_all")
+		assert.Equal(t, []int{parent.ID, child.ID}, ids[:2])
+
+		ids = sorted("scenes_count_all")
+		assert.Equal(t, []int{parent.ID, child.ID}, ids[:2])
+
+		ids = sorted("scenes_count")
+		assert.Equal(t, child.ID, ids[0])
+		assert.Greater(t, indexOf(ids, parent.ID), 0)
+
+		return nil
+	})
+}
+
 func TestStudioQuerySortPerformerCount(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
 		sortBy := "performer_count"
