@@ -399,7 +399,7 @@ func resolveRemoteCDP(ctx context.Context, cdpPath string) (string, error) {
 			}
 			// addr is a valid IP
 			// replace the host part of the cdpURL with the IP
-			cdpURL.Host = strings.Replace(cdpURL.Host, hostname, addr[0].String(), 1)
+			setCDPHost(cdpURL, addr[0])
 			// use that for remote
 			remote = cdpURL.String()
 		}
@@ -415,6 +415,16 @@ func resolveRemoteCDP(ctx context.Context, cdpPath string) (string, error) {
 	}
 
 	return remote, nil
+}
+
+func setCDPHost(cdpURL *url.URL, ip net.IP) {
+	if port := cdpURL.Port(); port != "" {
+		cdpURL.Host = net.JoinHostPort(ip.String(), port)
+	} else if ip.To4() == nil {
+		cdpURL.Host = "[" + ip.String() + "]"
+	} else {
+		cdpURL.Host = ip.String()
+	}
 }
 
 // isJSONMimeType reports whether mimeType indicates JSON content.
