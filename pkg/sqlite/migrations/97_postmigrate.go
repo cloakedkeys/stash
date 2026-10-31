@@ -54,7 +54,9 @@ func (m *schema97Migrator) createInitialUser(ctx context.Context) error {
 	if !hasLegacyCredentials {
 		// create a default user with no password
 		logger.Warn("No credentials found in config file. Creating default user with no password.")
-		username = "admin"
+		if username == "" {
+			username = "admin"
+		}
 		password = ""
 	} else {
 		logger.Info("Credentials found in config file. Creating initial user with those credentials.")
@@ -64,11 +66,13 @@ func (m *schema97Migrator) createInitialUser(ctx context.Context) error {
 		}
 		password = encodedPassword
 
-		if apiKey != "" {
-			apiKey, err = user.HashAPIKey(apiKey)
-			if err != nil {
-				return fmt.Errorf("error hashing legacy API key: %w", err)
-			}
+	}
+
+	if apiKey != "" {
+		var err error
+		apiKey, err = user.HashAPIKey(apiKey)
+		if err != nil {
+			return fmt.Errorf("error hashing legacy API key: %w", err)
 		}
 	}
 
@@ -97,16 +101,17 @@ func (m *schema97Migrator) createInitialUser(ctx context.Context) error {
 		return fmt.Errorf("error creating initial user: %w", err)
 	}
 
-	// remove the legacy credentials from the config file, since they're now stored in the database
-	if err := m.removeLegacyCredentials(); err != nil {
-		return fmt.Errorf("error removing legacy credentials: %w", err)
-	}
-
 	// previously, public IPs were only rejected when credentials were not set.
 	// Enable public access to maintain access for systems with credentials.
 	if hasLegacyCredentials && !cfg.GetPublicAccess() {
 		logger.Info("Credentials were set in config file. Enabling public access to maintain existing behaviour.")
 		cfg.SetPublicAccess(true)
+	}
+
+	// Persist public access together with removing credentials so the next
+	// restart retains the same access as this migrated process.
+	if err := m.removeLegacyCredentials(); err != nil {
+		return fmt.Errorf("error removing legacy credentials: %w", err)
 	}
 
 	return nil
@@ -126,7 +131,7 @@ func (m *schema97Migrator) removeLegacyCredentials() error {
 	logger.Info("Removing legacy credentials from config file")
 
 	// save a backup of the original config file
-	backupPath := fmt.Sprintf("%s.86.%s", orgPath, time.Now().Format("20060102_150405"))
+	backupPath := fmt.Sprintf("%s.96.%s", orgPath, time.Now().Format("20060102_150405"))
 
 	data, err := c.Marshal()
 	if err != nil {

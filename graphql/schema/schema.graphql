@@ -391,11 +391,11 @@ type Mutation {
     @hasRole(role: MODIFY)
 
   "Increments the o-counter for a gallery. Returns the new value"
-  galleryIncrementO(id: ID!): Int!
+  galleryIncrementO(id: ID!): Int! @hasRole(role: READ)
   "Decrements the o-counter for a gallery. Returns the new value"
-  galleryDecrementO(id: ID!): Int!
+  galleryDecrementO(id: ID!): Int! @hasRole(role: READ)
   "Resets the o-counter for a gallery to 0. Returns the new value"
-  galleryResetO(id: ID!): Int!
+  galleryResetO(id: ID!): Int! @hasRole(role: READ)
 
   addGalleryImages(input: GalleryAddInput!): Boolean! @hasRole(role: MODIFY)
   removeGalleryImages(input: GalleryRemoveInput!): Boolean!
@@ -480,13 +480,13 @@ type Mutation {
   "Deletes file entries from the database without deleting the files from the filesystem"
   destroyFiles(ids: [ID!]!): Boolean! @hasRole(role: MODIFY)
 
-  fileSetFingerprints(input: FileSetFingerprintsInput!): Boolean!
+  fileSetFingerprints(input: FileSetFingerprintsInput!): Boolean! @hasRole(role: MODIFY)
   "Set the VR metadata of a video file. Fields not supplied are cleared."
-  fileSetVRMetadata(input: FileSetVRMetadataInput!): Boolean!
+  fileSetVRMetadata(input: FileSetVRMetadataInput!): Boolean! @hasRole(role: MODIFY)
   "Reveal the file in the system file manager"
-  revealFileInFileManager(id: ID!): Boolean!
+  revealFileInFileManager(id: ID!): Boolean! @hasRole(role: ADMIN)
   "Reveal the folder in the system file manager"
-  revealFolderInFileManager(id: ID!): Boolean!
+  revealFolderInFileManager(id: ID!): Boolean! @hasRole(role: ADMIN)
 
   # Saved filters
   saveFilter(input: SaveFilterInput!): SavedFilter! @hasRole(role: READ)
@@ -544,7 +544,7 @@ type Mutation {
   "Start a scan. Returns the job ID"
   metadataScan(input: ScanMetadataInput!): ID! @hasRole(role: ADMIN)
   "Scans a single file, returning the file metadata."
-  scanFile(input: ScanFileInput! ): BaseFile! @hasRole(role: ADMIN)
+  scanFile(input: ScanFileInput!): BaseFile! @hasRole(role: ADMIN)
   "Start generating content. Returns the job ID"
   metadataGenerate(input: GenerateMetadataInput!): ID! @hasRole(role: ADMIN)
   "Start auto-tagging. Returns the job ID"

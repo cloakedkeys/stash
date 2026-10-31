@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -51,6 +52,7 @@ func decodeLegacyHash(input string) (hash string, err error) {
 type LegacyService struct {
 	Username     string
 	PasswordHash string
+	APIKey       string
 }
 
 func (s *LegacyService) Init(ctx context.Context) error {
@@ -136,6 +138,9 @@ func (s *LegacyService) UnlockUser(ctx context.Context, username string) error {
 
 func checkLegacyHash(password, hash string) (bool, error) {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+		return false, nil
+	}
 	return err == nil, err
 }
 
@@ -179,7 +184,10 @@ func (s *LegacyService) AuthenticateSession(ctx context.Context, username string
 }
 
 func (s *LegacyService) AuthenticateByAPIKey(ctx context.Context, apiKey string) (*models.User, error) {
-	return nil, ErrUnsupported
+	if s.APIKey == "" || subtle.ConstantTimeCompare([]byte(apiKey), []byte(s.APIKey)) != 1 {
+		return nil, ErrAccessDenied
+	}
+	return s.GetUser(ctx, s.Username)
 }
 
 func (s *LegacyService) CreateUser(ctx context.Context, u models.User, password string) error {

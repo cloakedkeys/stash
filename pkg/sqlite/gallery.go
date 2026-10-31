@@ -44,7 +44,6 @@ type galleryRow struct {
 	DatePrecision null.Int    `db:"date_precision"`
 	Details       zero.String `db:"details"`
 	Photographer  zero.String `db:"photographer"`
-	OCounter      int         `db:"o_counter"`
 	Organized     bool        `db:"organized"`
 	StudioID      null.Int    `db:"studio_id,omitempty"`
 	FolderID      null.Int    `db:"folder_id,omitempty"`
@@ -61,7 +60,6 @@ func (r *galleryRow) fromGallery(o models.Gallery) {
 	r.Details = zero.StringFrom(o.Details)
 	r.Photographer = zero.StringFrom(o.Photographer)
 	r.Organized = o.Organized
-	r.OCounter = o.OCounter
 	r.StudioID = intFromPtr(o.StudioID)
 	r.FolderID = nullIntFromFolderIDPtr(o.FolderID)
 	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
@@ -73,16 +71,19 @@ type galleryUserDataRow struct {
 	GalleryID int `db:"gallery_id"`
 	UserID    int `db:"user_id"`
 	// expressed as 1-100
-	Rating null.Int `db:"rating"`
+	Rating   null.Int `db:"rating"`
+	OCounter int      `db:"o_counter"`
 }
 
 func (r galleryUserDataRow) apply(g *models.Gallery) {
 	g.Rating = nullIntPtr(r.Rating)
+	g.OCounter = r.OCounter
 }
 
 func galleryUserDataRecord(o models.Gallery) goqu.Record {
 	return goqu.Record{
-		"rating": intFromPtr(o.Rating),
+		"rating":    intFromPtr(o.Rating),
+		"o_counter": o.OCounter,
 	}
 }
 
@@ -91,6 +92,7 @@ func galleryUserDataPartialRecord(o models.GalleryPartial) goqu.Record {
 		Record: make(exp.Record),
 	}
 	r.setNullInt("rating", o.Rating)
+	r.setInt("o_counter", o.OCounter)
 	return goqu.Record(r.Record)
 }
 
@@ -112,7 +114,6 @@ func (r *galleryQueryRow) resolve() *models.Gallery {
 		Details:       r.Details.String,
 		Photographer:  r.Photographer.String,
 		Organized:     r.Organized,
-		OCounter:      r.OCounter,
 		StudioID:      nullIntPtr(r.StudioID),
 		FolderID:      nullIntFolderIDPtr(r.FolderID),
 		PrimaryFileID: nullIntFileIDPtr(r.PrimaryFileID),
@@ -140,7 +141,6 @@ func (r *galleryRowRecord) fromPartial(o models.GalleryPartial) {
 	r.setNullString("details", o.Details)
 	r.setNullString("photographer", o.Photographer)
 	r.setBool("organized", o.Organized)
-	r.setInt("o_counter", o.OCounter)
 	r.setNullInt("studio_id", o.StudioID)
 	r.setTimestamp("created_at", o.CreatedAt)
 	r.setTimestamp("updated_at", o.UpdatedAt)
@@ -231,7 +231,7 @@ func NewGalleryStore(fileStore *FileStore, folderStore *FolderStore) *GallerySto
 			fk:    galleriesCustomFieldsTable.Col(galleryIDColumn),
 		},
 		tableMgr:        galleryTableMgr,
-		oCounterManager: oCounterManager{galleryTableMgr},
+		oCounterManager: oCounterManager{tableMgr: galleryTableMgr, userData: galleryUserData},
 		fileStore:       fileStore,
 		folderStore:     folderStore,
 	}
@@ -648,9 +648,12 @@ func (qb *GalleryStore) CountByFileID(ctx context.Context, fileID models.FileID)
 }
 
 func (qb *GalleryStore) OCountByPerformerID(ctx context.Context, performerID int) (int, error) {
-	table := qb.table()
+	userData := galleryUserData.goquTable()
 	joinTable := performersGalleriesJoinTable
-	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table).InnerJoin(joinTable, goqu.On(table.Col(idColumn).Eq(joinTable.Col(galleryIDColumn)))).Where(joinTable.Col(performerIDColumn).Eq(performerID))
+	q := dialect.Select(goqu.COALESCE(goqu.SUM(userData.Col("o_counter")), 0)).From(userData).InnerJoin(joinTable, goqu.On(userData.Col(galleryIDColumn).Eq(joinTable.Col(galleryIDColumn)))).Where(
+		joinTable.Col(performerIDColumn).Eq(performerID),
+		userData.Col(userIDColumn).Eq(currentUserID(ctx)),
+	)
 
 	var ret int
 	if err := querySimple(ctx, q, &ret); err != nil {
@@ -668,10 +671,28 @@ func (qb *GalleryStore) OCountByStudioID(ctx context.Context, studioID int, dept
 	}
 
 	table := qb.table()
-	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table).Where(
+	userData := galleryUserData.goquTable()
+	q := dialect.Select(goqu.COALESCE(goqu.SUM(userData.Col("o_counter")), 0)).From(table).InnerJoin(userData, goqu.On(
+		userData.Col(galleryIDColumn).Eq(table.Col(idColumn)),
+		userData.Col(userIDColumn).Eq(currentUserID(ctx)),
+	)).Where(
 		table.Col(studioIDColumn).Eq(studioID),
 	)
 
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (qb *GalleryStore) OCount(ctx context.Context) (int, error) {
+	userData := galleryUserData.goquTable()
+
+	q := dialect.Select(goqu.COALESCE(goqu.SUM(userData.Col("o_counter")), 0)).From(userData).Where(
+		userData.Col(userIDColumn).Eq(currentUserID(ctx)),
+	)
+	var ret int
 	if err := querySimple(ctx, q, &ret); err != nil {
 		return 0, err
 	}
@@ -688,26 +709,25 @@ func (qb *GalleryStore) oCountByStudioIDRecursive(ctx context.Context, studioID 
 		INNER JOIN sub_studios ss ON s.parent_id = ss.id
 		WHERE ss.level < ? OR ? < 0
 	)
-	SELECT COALESCE(SUM(o_counter), 0) FROM galleries
+	SELECT COALESCE(SUM(galleries_user_data.o_counter), 0) FROM galleries
+	INNER JOIN galleries_user_data ON galleries_user_data.gallery_id = galleries.id AND galleries_user_data.user_id = ?
 	WHERE galleries.studio_id IN (SELECT id FROM sub_studios)`
 
-	var ret int
-	if err := dbWrapper.Get(ctx, &ret, q, studioID, depth, depth); err != nil {
+	rows, err := dbWrapper.QueryxContext(ctx, q, studioID, depth, depth, currentUserID(ctx))
+	if err != nil {
 		return 0, fmt.Errorf("querying gallery o_count by studio: %w", err)
 	}
+	defer rows.Close()
 
-	return ret, nil
-}
-
-func (qb *GalleryStore) OCount(ctx context.Context) (int, error) {
-	table := qb.table()
-
-	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table)
 	var ret int
-	if err := querySimple(ctx, q, &ret); err != nil {
-		return 0, err
+	for rows.Next() {
+		if err := rows.Scan(&ret); err != nil {
+			return 0, fmt.Errorf("scanning gallery o_count: %w", err)
+		}
 	}
-
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterating gallery o_count rows: %w", err)
+	}
 	return ret, nil
 }
 
@@ -1077,7 +1097,7 @@ func (qb *GalleryStore) setGallerySort(ctx context.Context, query *queryBuilder,
 		addFileTable()
 		addFolderTable()
 		query.sortAndPagination += " ORDER BY COALESCE(galleries.title, files.basename, basename(COALESCE(folders.path, ''))) COLLATE NATURAL_CI " + direction + ", file_folder.path COLLATE NATURAL_CI " + direction
-	case "rating":
+	case "rating", "o_counter":
 		galleryUserData.joinSort(ctx, query)
 		query.sortAndPagination += getSort(sort, direction, galleriesUserDataTable)
 	default:

@@ -820,7 +820,7 @@ func (qb *TagStore) Query(ctx context.Context, tagFilter *models.TagFilterType, 
 	}
 
 	var err error
-	query.sortAndPagination, err = qb.getTagSort(&query, findFilter)
+	query.sortAndPagination, err = qb.getTagSort(ctx, &query, findFilter)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -884,7 +884,7 @@ func (qb *TagStore) getDefaultTagSort() string {
 	return getSort("name", "ASC", "tags")
 }
 
-func (qb *TagStore) getTagSort(query *queryBuilder, findFilter *models.FindFilterType) (string, error) {
+func (qb *TagStore) getTagSort(ctx context.Context, query *queryBuilder, findFilter *models.FindFilterType) (string, error) {
 	var sort string
 	var direction string
 	if findFilter == nil {
@@ -922,6 +922,8 @@ func (qb *TagStore) getTagSort(query *queryBuilder, findFilter *models.FindFilte
 		sortQuery += getCountSort(tagTable, studiosTagsTable, tagIDColumn, direction)
 	case "movies_count", "groups_count":
 		sortQuery += getCountSort(tagTable, groupsTagsTable, tagIDColumn, direction)
+	case "favorite":
+		sortQuery += tagUserData.orderBy(ctx, sort, direction)
 	default:
 		sortQuery += getSort(sort, direction, "tags")
 	}

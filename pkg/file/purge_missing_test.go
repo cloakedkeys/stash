@@ -51,7 +51,7 @@ func TestPurgeMissingFinishesWhenDeleteFails(t *testing.T) {
 
 	purger := &MissingPurger{
 		Repository: Repository{
-			TxnManager: db,
+			TxnManager: db.Repository().TxnManager,
 			File:       db.File,
 			Folder:     db.Folder,
 		},

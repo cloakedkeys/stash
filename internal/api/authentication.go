@@ -143,11 +143,17 @@ type authenticationConfig interface {
 }
 
 func authenticateHandler(txnMgr models.TxnManager, cfg authenticationConfig) func(http.Handler) http.Handler {
+	return authenticateHandlerWithServices(txnMgr, cfg, func() UserAuthenticator {
+		return manager.GetInstance().UserService
+	}, manager.GetInstance().SessionStore)
+}
+
+func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticationConfig, getUsers func() UserAuthenticator, sessions *session.Store) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 
-			g := manager.GetInstance().UserService
+			g := getUsers()
 			singleUserMode := g.IsSingleUserMode()
 			publicAccess := cfg.GetPublicAccess()
 
@@ -174,7 +180,7 @@ func authenticateHandler(txnMgr models.TxnManager, cfg authenticationConfig) fun
 			if cfg.IsNewSystem() {
 				expectedUsername, _, startupTime := cfg.GetNewSystemCredentials()
 
-				session, _ := manager.GetInstance().SessionStore.GetSession(w, r)
+				session, _ := sessions.GetSession(w, r)
 				if !allowUnauthenticated(r) && expectedUsername != "" && (session == nil || session.UserID != expectedUsername || session.LoginTime.Before(startupTime)) {
 					handleUnauthorized(w, r)
 					return
@@ -254,7 +260,7 @@ func authenticateHandler(txnMgr models.TxnManager, cfg authenticationConfig) fun
 				} else if signedUser != nil {
 					u = signedUser
 				} else {
-					session, getErr := manager.GetInstance().SessionStore.GetSession(w, r)
+					session, getErr := sessions.GetSession(w, r)
 					if getErr != nil {
 						logger.Errorf("error getting session user ID: %v", getErr)
 						httpError(w, r, "internal server error", http.StatusInternalServerError)

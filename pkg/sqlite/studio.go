@@ -790,10 +790,11 @@ func (qb *StudioStore) sortByOCounter(ctx context.Context, direction string) str
 			INNER JOIN %[8]s ON %[5]s.id = %[8]s.image_id AND %[8]s.user_id = %[7]d
 			WHERE %[5]s.%[2]s = %[1]s.id
 		), 0) + COALESCE((
-			SELECT SUM(o_counter) FROM %[9]s
+			SELECT SUM(%[10]s.o_counter) FROM %[9]s
+			INNER JOIN %[10]s ON %[9]s.id = %[10]s.gallery_id AND %[10]s.user_id = %[7]d
 			WHERE %[9]s.%[2]s = %[1]s.id
 		), 0)
-	) %[6]s`, studioTable, studioIDColumn, sceneTable, scenesODatesTable, imageTable, getSortDirection(direction), currentUserID(ctx), imagesUserDataTable, galleryTable)
+	) %[6]s`, studioTable, studioIDColumn, sceneTable, scenesODatesTable, imageTable, getSortDirection(direction), currentUserID(ctx), imagesUserDataTable, galleryTable, galleriesUserDataTable)
 }
 
 func (qb *StudioStore) sortByOCounterAll(ctx context.Context, direction string) string {
@@ -813,10 +814,11 @@ func (qb *StudioStore) sortByOCounterAll(ctx context.Context, direction string) 
 			INNER JOIN %[8]s ON %[5]s.id = %[8]s.image_id AND %[8]s.user_id = %[7]d
 			WHERE %[5]s.%[2]s IN (SELECT id FROM sub_studios)
 		), 0) + COALESCE((
-			SELECT SUM(o_counter) FROM %[9]s
+			SELECT SUM(%[10]s.o_counter) FROM %[9]s
+			INNER JOIN %[10]s ON %[9]s.id = %[10]s.gallery_id AND %[10]s.user_id = %[7]d
 			WHERE %[9]s.%[2]s IN (SELECT id FROM sub_studios)
 		), 0)
-	) %[6]s`, studioTable, studioIDColumn, sceneTable, scenesODatesTable, imageTable, getSortDirection(direction), currentUserID(ctx), imagesUserDataTable, galleryTable)
+	) %[6]s`, studioTable, studioIDColumn, sceneTable, scenesODatesTable, imageTable, getSortDirection(direction), currentUserID(ctx), imagesUserDataTable, galleryTable, galleriesUserDataTable)
 }
 
 var studioSortOptions = sortOptions{
@@ -889,7 +891,7 @@ func (qb *StudioStore) getStudioSort(ctx context.Context, findFilter *models.Fin
 		sortQuery += qb.sortByPerformerCount(direction)
 	case "performer_count_all":
 		sortQuery += qb.sortByPerformerCountAll(direction)
-	case "rating":
+	case "rating", "favorite":
 		sortQuery += studioUserData.orderBy(ctx, sort, direction)
 	default:
 		sortQuery += getSort(sort, direction, "studios")

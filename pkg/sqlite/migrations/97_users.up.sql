@@ -100,6 +100,7 @@ CREATE TABLE `galleries_user_data` (
   `gallery_id` integer NOT NULL,
   `user_id` integer NOT NULL,
   `rating` tinyint,
+  `o_counter` integer NOT NULL DEFAULT 0,
   PRIMARY KEY (`gallery_id`, `user_id`),
   FOREIGN KEY (`gallery_id`) REFERENCES `galleries`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
@@ -107,11 +108,12 @@ CREATE TABLE `galleries_user_data` (
 
 CREATE INDEX `index_galleries_user_data_on_user_id` ON `galleries_user_data` (`user_id`);
 
-INSERT INTO `galleries_user_data` (`gallery_id`, `user_id`, `rating`)
-  SELECT `id`, 1, `rating` FROM `galleries`
-  WHERE `rating` IS NOT NULL;
+INSERT INTO `galleries_user_data` (`gallery_id`, `user_id`, `rating`, `o_counter`)
+  SELECT `id`, 1, `rating`, `o_counter` FROM `galleries`
+  WHERE `rating` IS NOT NULL OR `o_counter` != 0;
 
 ALTER TABLE `galleries` DROP COLUMN `rating`;
+ALTER TABLE `galleries` DROP COLUMN `o_counter`;
 
 CREATE TABLE `groups_user_data` (
   `group_id` integer NOT NULL,
@@ -184,6 +186,17 @@ INSERT INTO `tags_user_data` (`tag_id`, `user_id`, `favorite`)
   WHERE `favorite` = 1;
 
 ALTER TABLE `tags` DROP COLUMN `favorite`;
+
+CREATE TABLE voice_actors_user_data (
+  voice_actor_id INTEGER NOT NULL REFERENCES voice_actors(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  favorite BOOLEAN NOT NULL DEFAULT false,
+  PRIMARY KEY (voice_actor_id, user_id)
+);
+CREATE INDEX voice_actors_user_data_user_idx ON voice_actors_user_data(user_id);
+INSERT INTO voice_actors_user_data(voice_actor_id, user_id, favorite)
+  SELECT id, 1, favorite FROM voice_actors WHERE favorite = 1;
+ALTER TABLE voice_actors DROP COLUMN favorite;
 
 CREATE TABLE `saved_filters_new` (
   `id` integer not null primary key autoincrement,

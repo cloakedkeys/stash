@@ -488,8 +488,8 @@ var selectPerformerOCountSQL = utils.StrFormat(
 		"LEFT JOIN {images_user_data} ON {images_user_data}.{images_id} = s.{images_id} AND {images_user_data}.user_id = %[1]d "+
 		"WHERE s.{performer_id} = {performers}.id "+
 		"UNION ALL "+
-		"SELECT SUM(o_counter) as o_counter from {performers_galleries} s "+
-		"LEFT JOIN {galleries} ON {galleries}.id = s.{gallery_id} "+
+		"SELECT SUM({galleries_user_data}.o_counter) as o_counter from {performers_galleries} s "+
+		"LEFT JOIN {galleries_user_data} ON {galleries_user_data}.{gallery_id} = s.{gallery_id} AND {galleries_user_data}.user_id = %[1]d "+
 		"WHERE s.{performer_id} = {performers}.id "+
 		"UNION ALL "+
 		"SELECT COUNT({scenes_o_dates}.{o_date}) as o_counter from {performers_scenes} s "+
@@ -512,6 +512,7 @@ var selectPerformerOCountSQL = utils.StrFormat(
 		"scenes_o_dates":       scenesODatesTable,
 		"o_date":               sceneODateColumn,
 		"images_user_data":     imagesUserDataTable,
+		"galleries_user_data":  galleriesUserDataTable,
 	},
 )
 

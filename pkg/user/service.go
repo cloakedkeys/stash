@@ -363,6 +363,9 @@ func (s *Service) AuthenticateSession(ctx context.Context, username string, logi
 }
 
 func checkApiKey(apiKey, hash string) (bool, error) {
+	if hash == "" {
+		return false, nil
+	}
 	hasher := sha256Hasher{}
 	return hasher.CompareHash(apiKey, hash)
 }

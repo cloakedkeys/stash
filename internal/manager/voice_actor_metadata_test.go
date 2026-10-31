@@ -48,7 +48,7 @@ func TestVoiceActorMetadataRoundTrip(t *testing.T) {
 		{ID: 2, Name: "A:B", Details: "ADR"},
 	}}
 	db := metadataTxnManager{}
-	repo := models.Repository{TxnManager: &db, VoiceActor: store}
+	repo := models.Repository{TxnManager: models.TxnManager{Manager: &db}, VoiceActor: store}
 	dir := t.TempDir()
 	export := ExportTask{repository: repo, baseDir: dir, full: true}
 	require.NoError(t, export.exportVoiceActors(ctx))

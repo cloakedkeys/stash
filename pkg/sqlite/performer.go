@@ -951,7 +951,7 @@ func (qb *PerformerStore) getPerformerSort(ctx context.Context, findFilter *mode
 	case "birthdate":
 		colName := getColumn(performerTable, "birthdate")
 		sortQuery += " ORDER BY " + colName + " IS NULL, " + colName + " " + getSortDirection(direction)
-	case "rating":
+	case "rating", "favorite":
 		sortQuery += performerUserData.orderBy(ctx, sort, direction)
 	default:
 		sortQuery += getSort(sort, direction, "performers")
