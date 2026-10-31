@@ -33,9 +33,16 @@ const (
 	audioPlayDateColumn   = "play_date"
 	audiosODatesTable     = "audios_o_dates"
 	audioODateColumn      = "o_date"
+	audiosUserDataTable   = "audios_user_data"
 
 	audioCoverBlobColumn = "cover_blob"
 )
+
+var audioUserData = userDataTable{
+	table:       audiosUserDataTable,
+	idColumn:    audioIDColumn,
+	objectTable: audioTable,
+}
 
 type audioRow struct {
 	ID            int         `db:"id" goqu:"skipinsert"`
@@ -44,14 +51,10 @@ type audioRow struct {
 	Details       zero.String `db:"details"`
 	Date          NullDate    `db:"date"`
 	DatePrecision null.Int    `db:"date_precision"`
-	// expressed as 1-100
-	Rating       null.Int  `db:"rating"`
-	Organized    bool      `db:"organized"`
-	StudioID     null.Int  `db:"studio_id,omitempty"`
-	CreatedAt    Timestamp `db:"created_at"`
-	UpdatedAt    Timestamp `db:"updated_at"`
-	ResumeTime   float64   `db:"resume_time"`
-	PlayDuration float64   `db:"play_duration"`
+	Organized     bool        `db:"organized"`
+	StudioID      null.Int    `db:"studio_id,omitempty"`
+	CreatedAt     Timestamp   `db:"created_at"`
+	UpdatedAt     Timestamp   `db:"updated_at"`
 
 	// not used in resolutions or updates
 	CoverBlob zero.String `db:"cover_blob"`
@@ -64,13 +67,40 @@ func (r *audioRow) fromAudio(o models.Audio) {
 	r.Details = zero.StringFrom(o.Details)
 	r.Date = NullDateFromDatePtr(o.Date)
 	r.DatePrecision = datePrecisionFromDatePtr(o.Date)
-	r.Rating = intFromPtr(o.Rating)
 	r.Organized = o.Organized
 	r.StudioID = intFromPtr(o.StudioID)
 	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
-	r.ResumeTime = o.ResumeTime
-	r.PlayDuration = o.PlayDuration
+}
+
+type audioUserDataRow struct {
+	AudioID      int      `db:"audio_id"`
+	UserID       int      `db:"user_id"`
+	Rating       null.Int `db:"rating"`
+	ResumeTime   float64  `db:"resume_time"`
+	PlayDuration float64  `db:"play_duration"`
+}
+
+func (r audioUserDataRow) apply(a *models.Audio) {
+	a.Rating = nullIntPtr(r.Rating)
+	a.ResumeTime = r.ResumeTime
+	a.PlayDuration = r.PlayDuration
+}
+
+func audioUserDataRecord(a models.Audio) goqu.Record {
+	return goqu.Record{
+		"rating":        intFromPtr(a.Rating),
+		"resume_time":   a.ResumeTime,
+		"play_duration": a.PlayDuration,
+	}
+}
+
+func audioUserDataPartialRecord(a models.AudioPartial) goqu.Record {
+	r := updateRecord{Record: make(exp.Record)}
+	r.setNullInt("rating", a.Rating)
+	r.setFloat64("resume_time", a.ResumeTime)
+	r.setFloat64("play_duration", a.PlayDuration)
+	return goqu.Record(r.Record)
 }
 
 type audioQueryRow struct {
@@ -89,7 +119,6 @@ func (r *audioQueryRow) resolve() *models.Audio {
 		Code:      r.Code.String,
 		Details:   r.Details.String,
 		Date:      r.Date.DatePtr(r.DatePrecision),
-		Rating:    nullIntPtr(r.Rating),
 		Organized: r.Organized,
 		StudioID:  nullIntPtr(r.StudioID),
 
@@ -98,9 +127,6 @@ func (r *audioQueryRow) resolve() *models.Audio {
 
 		CreatedAt: r.CreatedAt.Timestamp,
 		UpdatedAt: r.UpdatedAt.Timestamp,
-
-		ResumeTime:   r.ResumeTime,
-		PlayDuration: r.PlayDuration,
 	}
 
 	if r.PrimaryFileFolderPath.Valid && r.PrimaryFileBasename.Valid {
@@ -119,13 +145,10 @@ func (r *audioRowRecord) fromPartial(o models.AudioPartial) {
 	r.setNullString("code", o.Code)
 	r.setNullString("details", o.Details)
 	r.setNullDate("date", "date_precision", o.Date)
-	r.setNullInt("rating", o.Rating)
 	r.setBool("organized", o.Organized)
 	r.setNullInt("studio_id", o.StudioID)
 	r.setTimestamp("created_at", o.CreatedAt)
 	r.setTimestamp("updated_at", o.UpdatedAt)
-	r.setFloat64("resume_time", o.ResumeTime)
-	r.setFloat64("play_duration", o.PlayDuration)
 }
 
 type audioRepositoryType struct {
@@ -262,6 +285,9 @@ func (qb *AudioStore) Create(ctx context.Context, newObject *models.Audio, fileI
 	if err != nil {
 		return err
 	}
+	if err := audioUserData.upsert(ctx, id, audioUserDataRecord(*newObject)); err != nil {
+		return err
+	}
 
 	if len(fileIDs) > 0 {
 		const firstPrimary = true
@@ -324,6 +350,9 @@ func (qb *AudioStore) UpdatePartial(ctx context.Context, id int, partial models.
 			return nil, err
 		}
 	}
+	if err := audioUserData.upsert(ctx, id, audioUserDataPartialRecord(partial)); err != nil {
+		return nil, err
+	}
 
 	if partial.URLs != nil {
 		if err := audiosURLsTableMgr.modifyJoins(ctx, id, partial.URLs.Values, partial.URLs.Mode); err != nil {
@@ -364,6 +393,9 @@ func (qb *AudioStore) Update(ctx context.Context, updatedObject *models.Audio) e
 	r.fromAudio(*updatedObject)
 
 	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
+		return err
+	}
+	if err := audioUserData.upsert(ctx, updatedObject.ID, audioUserDataRecord(*updatedObject)); err != nil {
 		return err
 	}
 
@@ -537,8 +569,41 @@ func (qb *AudioStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*mo
 	}); err != nil {
 		return nil, err
 	}
+	if err := qb.loadUserData(ctx, ret); err != nil {
+		return nil, err
+	}
 
 	return ret, nil
+}
+
+// loadUserData sets the current user's rating and playback activity on audios.
+func (qb *AudioStore) loadUserData(ctx context.Context, audios []*models.Audio) error {
+	if _, ok := models.UserIDFromContext(ctx); !ok || len(audios) == 0 {
+		return nil
+	}
+
+	byID := make(map[int]*models.Audio, len(audios))
+	ids := make([]int, len(audios))
+	for i, a := range audios {
+		byID[a.ID] = a
+		ids[i] = a.ID
+	}
+
+	return batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := audioUserData.selectForUser(ctx, batch)
+		const single = false
+		return queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+			var r audioUserDataRow
+			if err := rows.StructScan(&r); err != nil {
+				return err
+			}
+
+			if a := byID[r.AudioID]; a != nil {
+				r.apply(a)
+			}
+			return nil
+		})
+	})
 }
 
 func (qb *AudioStore) GetFiles(ctx context.Context, id int) ([]*models.AudioFile, error) {
@@ -728,7 +793,10 @@ func (qb *AudioStore) OCountByPerformerID(ctx context.Context, performerID int) 
 
 	q := dialect.Select(goqu.COUNT("*")).From(table).InnerJoin(
 		oHistoryTable,
-		goqu.On(table.Col(idColumn).Eq(oHistoryTable.Col(audioIDColumn))),
+		goqu.On(
+			table.Col(idColumn).Eq(oHistoryTable.Col(audioIDColumn)),
+			oHistoryTable.Col(userIDColumn).Eq(currentUserID(ctx)),
+		),
 	).InnerJoin(
 		joinTable,
 		goqu.On(
@@ -751,7 +819,10 @@ func (qb *AudioStore) OCountByGroupID(ctx context.Context, groupID int) (int, er
 
 	q := dialect.Select(goqu.COUNT("*")).From(table).InnerJoin(
 		oHistoryTable,
-		goqu.On(table.Col(idColumn).Eq(oHistoryTable.Col(audioIDColumn))),
+		goqu.On(
+			table.Col(idColumn).Eq(oHistoryTable.Col(audioIDColumn)),
+			oHistoryTable.Col(userIDColumn).Eq(currentUserID(ctx)),
+		),
 	).InnerJoin(
 		joinTable,
 		goqu.On(
@@ -779,7 +850,10 @@ func (qb *AudioStore) OCountByStudioID(ctx context.Context, studioID int, depth 
 
 	q := dialect.Select(goqu.COUNT("*")).From(table).InnerJoin(
 		oHistoryTable,
-		goqu.On(table.Col(idColumn).Eq(oHistoryTable.Col(audioIDColumn))),
+		goqu.On(
+			table.Col(idColumn).Eq(oHistoryTable.Col(audioIDColumn)),
+			oHistoryTable.Col(userIDColumn).Eq(currentUserID(ctx)),
+		),
 	).Where(table.Col(studioIDColumn).Eq(studioID))
 
 	if err := querySimple(ctx, q, &ret); err != nil {
@@ -800,9 +874,10 @@ func (qb *AudioStore) oCountByStudioIDRecursive(ctx context.Context, studioID in
 	)
 	SELECT COUNT(*) FROM audios
 	INNER JOIN audios_o_dates ON audios.id = audios_o_dates.audio_id
-	WHERE audios.studio_id IN (SELECT id FROM sub_studios)`
+	WHERE audios_o_dates.user_id = ?
+	AND audios.studio_id IN (SELECT id FROM sub_studios)`
 
-	rows, err := dbWrapper.QueryxContext(ctx, q, studioID, depth, depth)
+	rows, err := dbWrapper.QueryxContext(ctx, q, studioID, depth, depth, currentUserID(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("querying audio o_count by studio: %w", err)
 	}
@@ -881,9 +956,10 @@ func (qb *AudioStore) Duration(ctx context.Context) (float64, error) {
 }
 
 func (qb *AudioStore) PlayDuration(ctx context.Context) (float64, error) {
-	table := qb.table()
-
-	q := dialect.Select(goqu.COALESCE(goqu.SUM("play_duration"), 0)).From(table)
+	table := audioUserData.goquTable()
+	q := dialect.Select(goqu.COALESCE(goqu.SUM("play_duration"), 0)).From(table).Where(
+		table.Col(userIDColumn).Eq(currentUserID(ctx)),
+	)
 
 	var ret float64
 	if err := querySimple(ctx, q, &ret); err != nil {
@@ -957,7 +1033,7 @@ func (qb *AudioStore) makeQuery(ctx context.Context, audioFilter *models.AudioFi
 		return nil, err
 	}
 
-	if err := qb.setAudioSort(&query, findFilter); err != nil {
+	if err := qb.setAudioSort(ctx, &query, findFilter); err != nil {
 		return nil, err
 	}
 	query.sortAndPagination += getPagination(findFilter)
@@ -1085,7 +1161,7 @@ var audioSortOptions = sortOptions{
 	"performer_age",
 }
 
-func (qb *AudioStore) setAudioSort(query *queryBuilder, findFilter *models.FindFilterType) error {
+func (qb *AudioStore) setAudioSort(ctx context.Context, query *queryBuilder, findFilter *models.FindFilterType) error {
 	if findFilter == nil || findFilter.Sort == nil || *findFilter.Sort == "" {
 		return nil
 	}
@@ -1161,6 +1237,7 @@ func (qb *AudioStore) setAudioSort(query *queryBuilder, findFilter *models.FindF
 		addAudioFileTable()
 		query.sortAndPagination += getSort(sort, direction, audioFileTable)
 	case "filesize":
+		sort = "size"
 		addFileTable()
 		query.sortAndPagination += getSort(sort, direction, fileTable)
 	case "duration":
@@ -1171,13 +1248,19 @@ func (qb *AudioStore) setAudioSort(query *queryBuilder, findFilter *models.FindF
 		addFolderTable()
 		query.sortAndPagination += " ORDER BY COALESCE(audios.title, files.basename) COLLATE NATURAL_CI " + direction + ", folders.path COLLATE NATURAL_CI " + direction
 	case "play_count":
-		query.sortAndPagination += getCountSort(audioTable, audiosPlayDatesTable, audioIDColumn, direction)
+		query.sortAndPagination += getUserCountSort(audioTable, audiosPlayDatesTable, audioIDColumn, currentUserID(ctx), direction)
 	case "last_played_at":
-		query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT MAX(play_date) FROM %s AS sort WHERE sort.%s = %s.id) %s", audiosPlayDatesTable, audioIDColumn, audioTable, getSortDirection(direction))
+		query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT MAX(play_date) FROM %s AS sort WHERE sort.%s = %s.id AND sort.%s = %d) %s", audiosPlayDatesTable, audioIDColumn, audioTable, userIDColumn, currentUserID(ctx), getSortDirection(direction))
 	case "last_o_at":
-		query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT MAX(o_date) FROM %s AS sort WHERE sort.%s = %s.id) %s", audiosODatesTable, audioIDColumn, audioTable, getSortDirection(direction))
+		query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT MAX(o_date) FROM %s AS sort WHERE sort.%s = %s.id AND sort.%s = %d) %s", audiosODatesTable, audioIDColumn, audioTable, userIDColumn, currentUserID(ctx), getSortDirection(direction))
 	case "o_counter":
-		query.sortAndPagination += getCountSort(audioTable, audiosODatesTable, audioIDColumn, direction)
+		query.sortAndPagination += getUserCountSort(audioTable, audiosODatesTable, audioIDColumn, currentUserID(ctx), direction)
+	case "rating":
+		audioUserData.joinSort(ctx, query)
+		query.sortAndPagination += getSort(sort, direction, audiosUserDataTable)
+	case "resume_time", "play_duration":
+		audioUserData.joinSort(ctx, query)
+		query.sortAndPagination += " ORDER BY " + audioUserData.columnOrDefault(sort, "0") + " " + getSortDirection(direction)
 	case "performer_age":
 		// Looking at the youngest performer by default
 		aggregation := "MIN"
@@ -1219,20 +1302,21 @@ func (qb *AudioStore) SaveActivity(ctx context.Context, id int, resumeTime *floa
 		return false, err
 	}
 
-	record := goqu.Record{}
+	values := goqu.Record{}
+	updates := goqu.Record{}
 
 	if resumeTime != nil {
-		record["resume_time"] = resumeTime
+		values["resume_time"] = *resumeTime
+		updates["resume_time"] = goqu.I("excluded.resume_time")
 	}
 
 	if playDuration != nil {
-		record["play_duration"] = goqu.L("play_duration + ?", playDuration)
+		values["play_duration"] = *playDuration
+		updates["play_duration"] = goqu.L("play_duration + excluded.play_duration")
 	}
 
-	if len(record) > 0 {
-		if err := qb.tableMgr.updateByID(ctx, id, record); err != nil {
-			return false, err
-		}
+	if err := audioUserData.upsertWith(ctx, id, values, updates); err != nil {
+		return false, err
 	}
 
 	return true, nil
@@ -1243,23 +1327,70 @@ func (qb *AudioStore) ResetActivity(ctx context.Context, id int, resetResume boo
 		return false, err
 	}
 
-	record := goqu.Record{}
+	values := goqu.Record{}
 
 	if resetResume {
-		record["resume_time"] = 0.0
+		values["resume_time"] = 0.0
 	}
 
 	if resetDuration {
-		record["play_duration"] = 0.0
+		values["play_duration"] = 0.0
 	}
 
-	if len(record) > 0 {
-		if err := qb.tableMgr.updateByID(ctx, id, record); err != nil {
-			return false, err
-		}
+	if err := audioUserData.upsert(ctx, id, values); err != nil {
+		return false, err
 	}
 
 	return true, nil
+}
+
+// MergeUserData moves per-user playback data from source audios to the destination.
+// User data is always merged; play and O history are moved only when requested.
+func (qb *AudioStore) MergeUserData(ctx context.Context, destinationID int, sourceIDs []int, includePlayHistory bool, includeOHistory bool) error {
+	if len(sourceIDs) == 0 {
+		return nil
+	}
+
+	moveHistory := func(tableName string) error {
+		table := goqu.T(tableName)
+		q := dialect.Update(table).Set(goqu.Record{audioIDColumn: destinationID}).Where(table.Col(audioIDColumn).In(sourceIDs))
+		if _, err := exec(ctx, q); err != nil {
+			return fmt.Errorf("moving %s: %w", tableName, err)
+		}
+		return nil
+	}
+
+	if includePlayHistory {
+		if err := moveHistory(audiosPlayDatesTable); err != nil {
+			return err
+		}
+	}
+	if includeOHistory {
+		if err := moveHistory(audiosODatesTable); err != nil {
+			return err
+		}
+	}
+
+	table := audioUserData.goquTable()
+	q := dialect.Insert(table).Cols(audioIDColumn, userIDColumn, "rating", "resume_time", "play_duration").FromQuery(
+		dialect.From(table).Select(
+			goqu.V(destinationID),
+			table.Col(userIDColumn),
+			table.Col("rating"),
+			table.Col("resume_time"),
+			table.Col("play_duration"),
+		).Where(table.Col(audioIDColumn).In(sourceIDs)),
+	).OnConflict(goqu.DoUpdate(audioIDColumn+", "+userIDColumn, goqu.Record{
+		"rating":        goqu.L("COALESCE(rating, excluded.rating)"),
+		"resume_time":   goqu.L("CASE WHEN resume_time = 0 THEN excluded.resume_time ELSE resume_time END"),
+		"play_duration": goqu.L("play_duration + excluded.play_duration"),
+	}))
+
+	if _, err := exec(ctx, q); err != nil {
+		return fmt.Errorf("merging %s: %w", audiosUserDataTable, err)
+	}
+
+	return nil
 }
 
 func (qb *AudioStore) GetURLs(ctx context.Context, audioID int) ([]string, error) {

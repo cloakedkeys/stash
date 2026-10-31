@@ -105,6 +105,7 @@ type AudioWriter interface {
 	ViewHistoryWriter
 	SaveActivity(ctx context.Context, audioID int, resumeTime *float64, playDuration *float64) (bool, error)
 	ResetActivity(ctx context.Context, audioID int, resetResume bool, resetDuration bool) (bool, error)
+	MergeUserData(ctx context.Context, destinationID int, sourceIDs []int, includePlayHistory bool, includeOHistory bool) error
 	CustomFieldsWriter
 }
 
