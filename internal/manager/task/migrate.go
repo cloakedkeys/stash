@@ -69,7 +69,7 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 	// migration fails
 	backupPath := s.BackupPath
 	if backupPath == "" {
-		backupPath = db.DatabaseBackupPath(s.Config.GetBackupDirectoryPath())
+		backupPath = db.DatabaseBackupPath(s.Config.GetBackupDirectoryPathOrDefault())
 	} else {
 		// check if backup path is a filename or path
 		// filename goes into backup directory, path is kept as is
