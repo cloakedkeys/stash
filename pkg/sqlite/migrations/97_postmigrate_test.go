@@ -97,7 +97,7 @@ INSERT INTO voice_actors(id,name,favorite,created_at,updated_at) VALUES(1,'voice
 			require.Equal(t, 85, rating)
 			require.NoError(t, raw.Get(&count, "SELECT count(*) FROM voice_actors"))
 			require.Equal(t, 1, count)
-			service := &user.Service{Store: db.User, Config: cfg}
+			service := &user.Service{Store: db.User(), Config: cfg}
 			require.NoError(t, txn.WithReadTxn(ctx, db, func(ctx context.Context) error {
 				require.NoError(t, service.Init(ctx))
 				admin, err := service.GetUser(ctx, username)

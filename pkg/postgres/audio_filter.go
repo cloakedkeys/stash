@@ -74,7 +74,7 @@ func (qb *audioFilterHandler) criterionHandler() criterionHandler {
 			stringCriterionHandler(audioFilter.Checksum, "fingerprints_md5.fingerprint")(ctx, f)
 		}),
 
-		intCriterionHandler(audioFilter.Rating100, "audios.rating", nil),
+		audioUserData.intCriterionHandler(audioFilter.Rating100, audioUserData.column("rating")),
 		qb.oCountCriterionHandler(audioFilter.OCounter),
 		boolCriterionHandler(audioFilter.Organized, "audios.organized", nil),
 
@@ -86,13 +86,13 @@ func (qb *audioFilterHandler) criterionHandler() criterionHandler {
 		qb.isMissingCriterionHandler(audioFilter.IsMissing),
 		qb.urlsCriterionHandler(audioFilter.URL),
 
-		floatIntCriterionHandler(audioFilter.ResumeTime, "audios.resume_time", nil),
-		floatIntCriterionHandler(audioFilter.PlayDuration, "audios.play_duration", nil),
+		audioUserData.floatIntCriterionHandler(audioFilter.ResumeTime, audioUserData.columnOrDefault("resume_time", "0")),
+		audioUserData.floatIntCriterionHandler(audioFilter.PlayDuration, audioUserData.columnOrDefault("play_duration", "0")),
 		qb.playCountCriterionHandler(audioFilter.PlayCount),
 		criterionHandlerFunc(func(ctx context.Context, f *filterBuilder) {
 			if audioFilter.LastPlayedAt != nil {
 				f.addLeftJoin(
-					fmt.Sprintf("(SELECT %s, MAX(%s) as last_played_at FROM %s GROUP BY %s)", audioIDColumn, audioPlayDateColumn, audiosPlayDatesTable, audioIDColumn),
+					fmt.Sprintf("(SELECT %s, MAX(%s) as last_played_at FROM %s WHERE %s = %d GROUP BY %s)", audioIDColumn, audioPlayDateColumn, audiosPlayDatesTable, userIDColumn, currentUserID(ctx), audioIDColumn),
 					"audio_last_view",
 					fmt.Sprintf("audio_last_view.%s = audios.id", audioIDColumn),
 				)
@@ -207,6 +207,7 @@ func (qb *audioFilterHandler) playCountCriterionHandler(count *models.IntCriteri
 		primaryTable: audioTable,
 		joinTable:    audiosPlayDatesTable,
 		primaryFK:    audioIDColumn,
+		perUser:      true,
 	}
 
 	return h.handler(count)
@@ -217,6 +218,7 @@ func (qb *audioFilterHandler) oCountCriterionHandler(count *models.IntCriterionI
 		primaryTable: audioTable,
 		joinTable:    audiosODatesTable,
 		primaryFK:    audioIDColumn,
+		perUser:      true,
 	}
 
 	return h.handler(count)
@@ -263,8 +265,6 @@ func (qb *audioFilterHandler) isMissingCriterionHandler(isMissing *string) crite
 			case "performers":
 				audioRepository.performers.leftJoin(f, "performers_join", "audios.id")
 				f.addWhere("performers_join.audio_id IS NULL")
-			case "rating":
-				f.addWhere("audios.rating IS NULL")
 			case "date":
 				f.addWhere(`audios.date IS NULL`)
 			case "tags":
@@ -275,6 +275,9 @@ func (qb *audioFilterHandler) isMissingCriterionHandler(isMissing *string) crite
 				f.addWhere("galleries_join.audio_id IS NULL")
 			case "cover":
 				f.addWhere("audios.cover_blob IS NULL")
+			case "rating":
+				audioUserData.join(ctx, f)
+				f.addWhere(audioUserData.column("rating") + " IS NULL")
 			default:
 				if err := validateIsMissing(*isMissing, []string{
 					"title", "code", "details", "rating",
@@ -360,13 +363,13 @@ func (qb *audioFilterHandler) performerFavoriteCriterionHandler(performerfavorit
 
 			if *performerfavorite {
 				// contains at least one favorite
-				f.addLeftJoin("performers", "", "performers.id = performers_audios.performer_id")
-				f.addWhere("performers.favorite = 1")
+				f.addLeftJoin("performers_user_data", "audio_performer_user_data", fmt.Sprintf("audio_performer_user_data.performer_id = performers_audios.performer_id AND audio_performer_user_data.user_id = %d", currentUserID(ctx)))
+				f.addWhere("audio_performer_user_data.favorite = true")
 			} else {
 				// contains zero favorites
-				f.addLeftJoin(`(SELECT performers_audios.audio_id as id FROM performers_audios
-JOIN performers ON performers.id = performers_audios.performer_id
-GROUP BY performers_audios.audio_id HAVING SUM(performers.favorite) = 0)`, "nofaves", "audios.id = nofaves.id")
+				f.addLeftJoin(fmt.Sprintf(`(SELECT performers_audios.audio_id as id FROM performers_audios
+LEFT JOIN performers_user_data ON performers_user_data.performer_id = performers_audios.performer_id AND performers_user_data.user_id = %d
+GROUP BY performers_audios.audio_id HAVING SUM(COALESCE(performers_user_data.favorite::integer, 0)) = 0)`, currentUserID(ctx)), "nofaves", "audios.id = nofaves.id")
 				f.addWhere("performers_audios.audio_id IS NULL OR nofaves.id IS NOT NULL")
 			}
 		}

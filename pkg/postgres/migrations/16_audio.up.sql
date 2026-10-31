@@ -7,12 +7,9 @@ CREATE TABLE "audios" (
     "details" text,
     "date" date,
     "date_precision" smallint,
-    "rating" smallint,
     "studio_id" integer,
     "organized" boolean not null default false,
     "code" text,
-    "resume_time" double precision not null default 0,
-    "play_duration" double precision not null default 0,
     "cover_blob" varchar(255),
     "created_at" timestamptz not null,
     "updated_at" timestamptz not null,
@@ -20,6 +17,17 @@ CREATE TABLE "audios" (
     foreign key("cover_blob") references "blobs"("checksum") on delete SET NULL
 );
 CREATE INDEX "index_audios_on_studio_id" on "audios" ("studio_id");
+--------------------------------------------
+-- Per-user ratings and playback activity.
+CREATE TABLE audios_user_data (
+    audio_id integer NOT NULL REFERENCES audios(id) ON DELETE CASCADE,
+    user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rating smallint,
+    resume_time double precision NOT NULL DEFAULT 0,
+    play_duration double precision NOT NULL DEFAULT 0,
+    PRIMARY KEY (audio_id, user_id)
+);
+CREATE INDEX index_audios_user_data_on_user_id ON audios_user_data(user_id);
 --------------------------------------------
 -- audios_o_dates definition
 --
@@ -29,7 +37,8 @@ CREATE TABLE "audios_o_dates" (
     "o_date" timestamptz not null,
     foreign key("audio_id") references "audios"("id") on delete CASCADE
 );
-CREATE INDEX "index_audios_o_dates" ON "audios_o_dates" ("audio_id");
+CREATE INDEX "index_audios_o_dates" ON "audios_o_dates" ("audio_id", "user_id");
+CREATE INDEX "index_audios_o_dates_on_user_id" ON "audios_o_dates" ("user_id");
 --------------------------------------------
 -- audios_tags definition
 --
@@ -50,7 +59,8 @@ CREATE TABLE "audios_play_dates" (
     "play_date" timestamptz not null,
     foreign key("audio_id") references "audios"("id") on delete CASCADE
 );
-CREATE INDEX "index_audios_play_dates" ON "audios_play_dates" ("audio_id");
+CREATE INDEX "index_audios_play_dates" ON "audios_play_dates" ("audio_id", "user_id");
+CREATE INDEX "index_audios_play_dates_on_user_id" ON "audios_play_dates" ("user_id");
 --------------------------------------------
 -- groups_audios definition
 --

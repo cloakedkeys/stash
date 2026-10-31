@@ -4226,7 +4226,7 @@ func TestAudioStore_CountUniqueViews(t *testing.T) {
 
 func TestAudioStore_UserData(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Audio
+		qb := db.Audio()
 		now := time.Now().UTC()
 		first := models.Audio{Title: "Audio privacy A", CreatedAt: now, UpdatedAt: now}
 		second := models.Audio{Title: "Audio privacy B", CreatedAt: now, UpdatedAt: now}
@@ -4237,7 +4237,7 @@ func TestAudioStore_UserData(t *testing.T) {
 			Username: "audio-privacy-user",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 		guestCtx := models.WithUserID(ctx, 0)
 
@@ -4334,28 +4334,28 @@ func TestAudioStore_UserHistoryAndAggregateCounts(t *testing.T) {
 			Username: "audio-history-user",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 
 		now := time.Now().UTC()
 		newGroup := func(name string) models.Group {
 			group := models.NewGroup()
 			group.Name = name
-			require.NoError(t, db.Group.Create(ctx, &group))
+			require.NoError(t, db.Group().Create(ctx, &group))
 			return group
 		}
 		newPerformer := func(name string) models.Performer {
 			performer := models.NewPerformer()
 			performer.Name = name
 			input := models.CreatePerformerInput{Performer: &performer}
-			require.NoError(t, db.Performer.Create(ctx, &input))
+			require.NoError(t, db.Performer().Create(ctx, &input))
 			return performer
 		}
 		newStudio := func(name string) models.Studio {
 			studio := models.NewStudio()
 			studio.Name = name
 			input := models.CreateStudioInput{Studio: &studio}
-			require.NoError(t, db.Studio.Create(ctx, &input))
+			require.NoError(t, db.Studio().Create(ctx, &input))
 			return studio
 		}
 		groupA := newGroup("Audio privacy group A")
@@ -4374,7 +4374,7 @@ func TestAudioStore_UserHistoryAndAggregateCounts(t *testing.T) {
 				Groups:       models.NewRelatedGroupsAudio([]models.GroupsAudios{{GroupID: group.ID}}),
 				PerformerIDs: models.NewRelatedIDs([]int{performer.ID}),
 			}
-			require.NoError(t, db.Audio.Create(ctx, &audio, nil))
+			require.NoError(t, db.Audio().Create(ctx, &audio, nil))
 			return audio
 		}
 		audioA := newAudio("Audio privacy history A", groupA, performerA, studioA)
@@ -4390,7 +4390,7 @@ func TestAudioStore_UserHistoryAndAggregateCounts(t *testing.T) {
 			{ctx, audioB.ID, []time.Time{date(3)}},
 			{otherCtx, audioB.ID, []time.Time{date(4), date(5)}},
 		} {
-			_, err := db.Audio.AddO(history.ctx, history.audioID, history.dates)
+			_, err := db.Audio().AddO(history.ctx, history.audioID, history.dates)
 			require.NoError(t, err)
 		}
 		for _, history := range []struct {
@@ -4403,7 +4403,7 @@ func TestAudioStore_UserHistoryAndAggregateCounts(t *testing.T) {
 			{otherCtx, audioA.ID, date(3)},
 			{otherCtx, audioB.ID, date(4)},
 		} {
-			_, err := db.Audio.AddViews(history.ctx, history.audioID, []time.Time{history.date})
+			_, err := db.Audio().AddViews(history.ctx, history.audioID, []time.Time{history.date})
 			require.NoError(t, err)
 		}
 
@@ -4418,25 +4418,25 @@ func TestAudioStore_UserHistoryAndAggregateCounts(t *testing.T) {
 			{otherCtx, audioA.ID, 0, 1},
 			{otherCtx, audioB.ID, 2, 1},
 		} {
-			oCount, err := db.Audio.GetOCount(expected.ctx, expected.audioID)
+			oCount, err := db.Audio().GetOCount(expected.ctx, expected.audioID)
 			require.NoError(t, err)
 			assert.Equal(t, expected.oCount, oCount)
-			playCount, err := db.Audio.CountViews(expected.ctx, expected.audioID)
+			playCount, err := db.Audio().CountViews(expected.ctx, expected.audioID)
 			require.NoError(t, err)
 			assert.Equal(t, expected.plays, playCount)
 		}
 
 		assertAggregateCount := func(c context.Context, groupID int, performerID int, studioID int, want int) {
-			groupCount, err := db.Audio.OCountByGroupID(c, groupID)
+			groupCount, err := db.Audio().OCountByGroupID(c, groupID)
 			require.NoError(t, err)
 			assert.Equal(t, want, groupCount)
-			performerCount, err := db.Audio.OCountByPerformerID(c, performerID)
+			performerCount, err := db.Audio().OCountByPerformerID(c, performerID)
 			require.NoError(t, err)
 			assert.Equal(t, want, performerCount)
-			studioCount, err := db.Audio.OCountByStudioID(c, studioID, 0)
+			studioCount, err := db.Audio().OCountByStudioID(c, studioID, 0)
 			require.NoError(t, err)
 			assert.Equal(t, want, studioCount)
-			studioTreeCount, err := db.Audio.OCountByStudioID(c, studioID, -1)
+			studioTreeCount, err := db.Audio().OCountByStudioID(c, studioID, -1)
 			require.NoError(t, err)
 			assert.Equal(t, want, studioTreeCount)
 		}
@@ -4452,7 +4452,7 @@ func TestAudioStore_UserHistoryAndAggregateCounts(t *testing.T) {
 				ID:       audioRange,
 				OCounter: &models.IntCriterionInput{Value: count, Modifier: models.CriterionModifierEquals},
 			}
-			return audioIDsFromQuery(queryAudio(c, t, db.Audio, filter, nil))
+			return audioIDsFromQuery(queryAudio(c, t, db.Audio(), filter, nil))
 		}
 		assert.Equal(t, []int{audioA.ID}, queryIDsForOCount(ctx, 2))
 		assert.Equal(t, []int{audioB.ID}, queryIDsForOCount(otherCtx, 2))
@@ -4464,7 +4464,7 @@ func TestAudioStore_UserHistoryAndAggregateCounts(t *testing.T) {
 			nameFilter := func() *models.StringCriterionInput {
 				return &models.StringCriterionInput{Value: "Audio privacy", Modifier: models.CriterionModifierIncludes}
 			}
-			groups, _, err := db.Group.Query(c, &models.GroupFilterType{Name: nameFilter()}, find)
+			groups, _, err := db.Group().Query(c, &models.GroupFilterType{Name: nameFilter()}, find)
 			require.NoError(t, err)
 			groupNames := make([]string, len(groups))
 			for i, group := range groups {
@@ -4472,7 +4472,7 @@ func TestAudioStore_UserHistoryAndAggregateCounts(t *testing.T) {
 			}
 			assert.Equal(t, want, groupNames)
 
-			performers, _, err := db.Performer.Query(c, &models.PerformerFilterType{Name: nameFilter()}, find)
+			performers, _, err := db.Performer().Query(c, &models.PerformerFilterType{Name: nameFilter()}, find)
 			require.NoError(t, err)
 			performerNames := make([]string, len(performers))
 			for i, performer := range performers {
@@ -4480,7 +4480,7 @@ func TestAudioStore_UserHistoryAndAggregateCounts(t *testing.T) {
 			}
 			assert.Equal(t, []string{"Audio privacy performer " + suffixFromName(want[0]), "Audio privacy performer " + suffixFromName(want[1])}, performerNames)
 
-			studios, _, err := db.Studio.Query(c, &models.StudioFilterType{Name: nameFilter()}, find)
+			studios, _, err := db.Studio().Query(c, &models.StudioFilterType{Name: nameFilter()}, find)
 			require.NoError(t, err)
 			studioNames := make([]string, len(studios))
 			for i, studio := range studios {
@@ -4497,7 +4497,7 @@ func TestAudioStore_UserHistoryAndAggregateCounts(t *testing.T) {
 
 func TestAudioStore_MergeUserData(t *testing.T) {
 	withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Audio
+		qb := db.Audio()
 		now := time.Now().UTC()
 		destination := models.Audio{Title: "Audio privacy merge destination", CreatedAt: now, UpdatedAt: now}
 		source := models.Audio{Title: "Audio privacy merge source", CreatedAt: now, UpdatedAt: now}
@@ -4508,7 +4508,7 @@ func TestAudioStore_MergeUserData(t *testing.T) {
 			Username: "audio-merge-user",
 			Roles:    models.Roles{models.RoleEnumModify},
 		}
-		require.NoError(t, db.User.Create(ctx, &other, ""))
+		require.NoError(t, db.User().Create(ctx, &other, ""))
 		otherCtx := models.WithUserID(ctx, other.ID)
 
 		destinationRating := 80
