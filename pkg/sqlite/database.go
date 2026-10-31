@@ -69,6 +69,7 @@ type storeRepository struct {
 	Blobs          *BlobStore
 	File           *FileStore
 	Folder         *FolderStore
+	Audio          *AudioStore
 	Image          *ImageStore
 	Gallery        *GalleryStore
 	GalleryChapter *GalleryChapterStore
@@ -110,6 +111,7 @@ func NewDatabase() *Database {
 		Folder:         folderStore,
 		Scene:          NewSceneStore(r, blobStore),
 		SceneMarker:    NewSceneMarkerStore(),
+		Audio:          NewAudioStore(r, blobStore),
 		Image:          NewImageStore(r),
 		Gallery:        galleryStore,
 		GalleryChapter: NewGalleryChapterStore(),

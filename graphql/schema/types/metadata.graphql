@@ -380,6 +380,7 @@ input ExportObjectTypeInput {
 input ExportObjectsInput {
   voice_actors: ExportObjectTypeInput
   scenes: ExportObjectTypeInput
+  audios: ExportObjectTypeInput
   images: ExportObjectTypeInput
   studios: ExportObjectTypeInput
   performers: ExportObjectTypeInput
