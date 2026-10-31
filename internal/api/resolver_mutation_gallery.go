@@ -398,7 +398,8 @@ func (r *mutationResolver) GalleryDestroy(ctx context.Context, input models.Gall
 			}
 		}
 
-		return nil
+		// a folder gallery can be inside a zip, so its images are removed from the zip
+		return fileDeleter.PrepareZipRewrites(ctx, r.repository.File)
 	}); err != nil {
 		fileDeleter.Rollback()
 		return false, err
