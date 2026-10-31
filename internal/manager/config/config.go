@@ -106,8 +106,9 @@ const (
 	SpriteScreenshotSize        = "sprite_screenshot_width"
 	spriteScreenshotSizeDefault = 160
 
-	PreviewPreset                 = "preview_preset"
-	TranscodeHardwareAcceleration = "ffmpeg.hardware_acceleration"
+	PreviewPreset                  = "preview_preset"
+	TranscodeHardwareAcceleration  = "ffmpeg.hardware_acceleration"
+	GenerationHardwareAcceleration = "ffmpeg.hardware_acceleration_generate"
 
 	SequentialScanning        = "sequential_scanning"
 	SequentialScanningDefault = false
@@ -1144,6 +1145,10 @@ func (i *Config) GetMaxMarkerPreviewDuration() int {
 // mutation rejects non-positive input.
 func (i *Config) GetDefaultMarkerPreviewDuration() int {
 	return i.getInt(DefaultMarkerPreviewDuration)
+}
+
+func (i *Config) GetGenerationHardwareAcceleration() bool {
+	return i.getBool(GenerationHardwareAcceleration)
 }
 
 func (i *Config) GetMaxTranscodeSize() models.StreamingResolutionEnum {
