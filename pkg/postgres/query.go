@@ -95,19 +95,15 @@ func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 		withClause = "WITH " + recursive + strings.Join(qb.withClauses, ", ") + " "
 	}
 
+	body = withClause + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupBy(includeSortPagination))
 	if includeSortPagination {
-		// a sort or filter on files gives one row per file, so each item is
-		// kept once, at its first position
-		sorted := qb.withSortOrder()
-		body = sorted.body(includeSortPagination)
-		body = withClause + "SELECT sorted.id FROM (" + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupBy(includeSortPagination)) + ") AS sorted GROUP BY sorted.id ORDER BY MIN(sorted.sort_order)"
+		body += qb.sort
 		if qb.pagination != nil {
 			body += getPaginationSQL(qb.pagination)
 		}
-		return body
 	}
 
-	return withClause + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupBy(includeSortPagination))
+	return body
 }
 
 // withSortOrder returns a copy of the query with a sort_order column, the
@@ -117,9 +113,18 @@ func (qb queryBuilder) withSortOrder() queryBuilder {
 	return qb
 }
 
+// findIDs returns the IDs the query finds, sorted and paged. A sort or filter on
+// files gives one row per file, so each item is kept once, at its first position.
 func (qb queryBuilder) findIDs(ctx context.Context) ([]int, error) {
 	const includeSortPagination = true
-	sql := qb.toSQL(includeSortPagination)
+	sorted := qb.withSortOrder()
+	sorted.sort = ""
+	sorted.pagination = nil
+
+	sql := "SELECT sorted.id FROM (" + sorted.toSQL(includeSortPagination) + ") AS sorted GROUP BY sorted.id ORDER BY MIN(sorted.sort_order)"
+	if qb.pagination != nil {
+		sql += getPaginationSQL(qb.pagination)
+	}
 	return qb.repository.runIdsQuery(ctx, sql, qb.allArgs())
 }
 
