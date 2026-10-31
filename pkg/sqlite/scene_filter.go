@@ -265,7 +265,7 @@ func (qb *sceneFilterHandler) criterionHandler() criterionHandler {
 			relatedRepo:    sceneMarkerRepository.repository,
 			relatedHandler: &sceneMarkerFilterHandler{sceneFilter.MarkersFilter},
 			joinFn: func(f *filterBuilder) {
-				f.addInnerJoin("scene_markers", "", "scenes.id")
+				f.addInnerJoin("scene_markers", "", "scene_markers.scene_id = scenes.id")
 			},
 		},
 	}
