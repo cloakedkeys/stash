@@ -80,6 +80,7 @@ func (i *Importer) fileJSONToFile(ctx context.Context, fileJSON jsonschema.DirEn
 			Projection:       projectionPtr(ff.Projection),
 			StereoMode:       stereoModePtr(ff.StereoMode),
 			VRCorrections:    vrCorrectionsFromJSON(ff.VRCorrections),
+			VRPassthrough:    vrPassthroughFromJSON(ff.VRPassthrough),
 		}, nil
 	case *jsonschema.ImageFile:
 		baseFile, err := i.baseFileJSONToBaseFile(ctx, ff.BaseFile)
@@ -339,5 +340,22 @@ func vrCorrectionsFromJSON(jc *jsonschema.VRCorrections) *models.VRCorrections {
 	return &models.VRCorrections{
 		HorizontalOffset: jc.HorizontalOffset,
 		VerticalOffset:   jc.VerticalOffset,
+		Brightness:       jc.Brightness,
+		Contrast:         jc.Contrast,
+		Saturation:       jc.Saturation,
 	}
+}
+
+func vrPassthroughFromJSON(jp *jsonschema.VRPassthrough) *models.VRPassthrough {
+	if jp == nil {
+		return nil
+	}
+	ret := &models.VRPassthrough{AlphaPacked: jp.AlphaPacked}
+	for _, key := range jp.ChromaKeys {
+		ret.ChromaKeys = append(ret.ChromaKeys, models.VRChromaKey{
+			Hue: key.Hue, Saturation: key.Saturation, Value: key.Value,
+			Threshold: key.Threshold, Opacity: key.Opacity,
+		})
+	}
+	return ret
 }

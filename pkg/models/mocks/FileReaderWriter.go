@@ -395,13 +395,13 @@ func (_m *FileReaderWriter) ModifyFingerprints(ctx context.Context, fileID model
 	return r0
 }
 
-// ModifyVideoFileMetadata provides a mock function with given fields: ctx, fileID, projection, stereoMode, vrCorrections
-func (_m *FileReaderWriter) ModifyVideoFileMetadata(ctx context.Context, fileID models.FileID, projection *models.ProjectionEnum, stereoMode *models.StereoModeEnum, vrCorrections *models.VRCorrections) error {
-	ret := _m.Called(ctx, fileID, projection, stereoMode, vrCorrections)
+// ModifyVideoFileMetadata provides a mock function with given fields: ctx, fileID, projection, stereoMode, vrCorrections, vrPassthrough
+func (_m *FileReaderWriter) ModifyVideoFileMetadata(ctx context.Context, fileID models.FileID, projection *models.ProjectionEnum, stereoMode *models.StereoModeEnum, vrCorrections *models.VRCorrections, vrPassthrough *models.VRPassthrough) error {
+	ret := _m.Called(ctx, fileID, projection, stereoMode, vrCorrections, vrPassthrough)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, models.FileID, *models.ProjectionEnum, *models.StereoModeEnum, *models.VRCorrections) error); ok {
-		r0 = rf(ctx, fileID, projection, stereoMode, vrCorrections)
+	if rf, ok := ret.Get(0).(func(context.Context, models.FileID, *models.ProjectionEnum, *models.StereoModeEnum, *models.VRCorrections, *models.VRPassthrough) error); ok {
+		r0 = rf(ctx, fileID, projection, stereoMode, vrCorrections, vrPassthrough)
 	} else {
 		r0 = ret.Error(0)
 	}

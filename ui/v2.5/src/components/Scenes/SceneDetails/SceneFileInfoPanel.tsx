@@ -20,6 +20,7 @@ import { TextField, URLField, URLsField } from "src/utils/field";
 import { StashIDPill } from "src/components/Shared/StashID";
 import { PatchComponent } from "../../../patch";
 import { FileSize } from "src/components/Shared/FileSize";
+import { VRMetadataEditor } from "./VRMetadataEditor";
 
 interface IFileInfoPanelProps {
   sceneID: string;
@@ -144,6 +145,7 @@ const FileInfoPanel: React.FC<IFileInfoPanelProps> = (
             truncate
           />
         )}
+        <VRMetadataEditor file={props.file} />
       </dl>
       {props.ofMany && props.onSetPrimaryFile && !props.primary && (
         <div>

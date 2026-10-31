@@ -118,7 +118,7 @@ type ScanMetaDataFilterInput struct {
 	MinModTime *time.Time `json:"minModTime"`
 }
 
-func (s *Manager) makeScanner(rescan bool, minModTime time.Time) *file.Scanner {
+func (s *Manager) makeScanner(rescan bool, minModTime time.Time, inferVRMetadata bool) *file.Scanner {
 	cfg := config.GetInstance()
 	repo := s.Repository
 
@@ -127,7 +127,8 @@ func (s *Manager) makeScanner(rescan bool, minModTime time.Time) *file.Scanner {
 		FileDecorators: []file.Decorator{
 			&file.FilteredDecorator{
 				Decorator: &video.Decorator{
-					FFProbe: s.FFProbe,
+					FFProbe:         s.FFProbe,
+					InferVRMetadata: inferVRMetadata,
 				},
 				Filter: file.FilterFunc(videoFileFilter),
 			},
@@ -215,7 +216,7 @@ func (s *Manager) Scan(ctx context.Context, input ScanMetadataInput) (int, error
 		minModTime = *input.Filter.MinModTime
 	}
 
-	scanner := s.makeScanner(input.Rescan, minModTime)
+	scanner := s.makeScanner(input.Rescan, minModTime, input.InferVRMetadata)
 
 	// we want the generate task to run concurrently, but it shouldn't be created first
 	jobID := s.JobManager.Add(ctx, "Scanning...", job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error {
@@ -285,7 +286,7 @@ func (s *Manager) ScanFile(ctx context.Context, input ScanFileInput) (models.Fil
 
 	taskQueue := <-taskQueueChan
 
-	scanner := s.makeScanner(utils.IsTrue(input.Rescan), time.Time{})
+	scanner := s.makeScanner(utils.IsTrue(input.Rescan), time.Time{}, false)
 	scanner.FileHandlers = getScanHandlers(input.ScanGenerateOptions, taskQueue, nil)
 
 	scanJob := ScanJob{

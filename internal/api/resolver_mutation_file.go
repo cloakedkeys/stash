@@ -343,6 +343,19 @@ func (r *mutationResolver) FileSetVRMetadata(ctx context.Context, input FileSetV
 		vrCorrections = &models.VRCorrections{
 			HorizontalOffset: input.VrCorrections.HorizontalOffset,
 			VerticalOffset:   input.VrCorrections.VerticalOffset,
+			Brightness:       input.VrCorrections.Brightness,
+			Contrast:         input.VrCorrections.Contrast,
+			Saturation:       input.VrCorrections.Saturation,
+		}
+	}
+	var vrPassthrough *models.VRPassthrough
+	if input.VrPassthrough != nil {
+		vrPassthrough = &models.VRPassthrough{AlphaPacked: input.VrPassthrough.AlphaPacked}
+		for _, key := range input.VrPassthrough.ChromaKeys {
+			vrPassthrough.ChromaKeys = append(vrPassthrough.ChromaKeys, models.VRChromaKey{
+				Hue: key.Hue, Saturation: key.Saturation, Value: key.Value,
+				Threshold: key.Threshold, Opacity: key.Opacity,
+			})
 		}
 	}
 
@@ -358,7 +371,7 @@ func (r *mutationResolver) FileSetVRMetadata(ctx context.Context, input FileSetV
 			return fmt.Errorf("file with id %d is not a video file", fileID)
 		}
 
-		return r.repository.File.ModifyVideoFileMetadata(ctx, fileID, input.Projection, input.StereoMode, vrCorrections)
+		return r.repository.File.ModifyVideoFileMetadata(ctx, fileID, input.Projection, input.StereoMode, vrCorrections, vrPassthrough)
 	}); err != nil {
 		return false, err
 	}

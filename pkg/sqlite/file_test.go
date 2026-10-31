@@ -668,12 +668,20 @@ func TestFileStore_ModifyVRMetadata(t *testing.T) {
 	stereo := models.StereoModeEnumSBS
 	hOff := -0.5
 	vOff := 0.25
+	brightness := 0.1
+	contrast := 0.2
+	saturation := 0.3
+	hue := 120.0
+	threshold := 0.05
+	opacity := 0.9
+	alphaPacked := true
 
 	tests := []struct {
 		name        string
 		projection  *models.ProjectionEnum
 		stereoMode  *models.StereoModeEnum
 		corrections *models.VRCorrections
+		passthrough *models.VRPassthrough
 	}{
 		{
 			"set all fields",
@@ -682,6 +690,15 @@ func TestFileStore_ModifyVRMetadata(t *testing.T) {
 			&models.VRCorrections{
 				HorizontalOffset: &hOff,
 				VerticalOffset:   &vOff,
+				Brightness:       &brightness,
+				Contrast:         &contrast,
+				Saturation:       &saturation,
+			},
+			&models.VRPassthrough{
+				AlphaPacked: &alphaPacked,
+				ChromaKeys: []models.VRChromaKey{{
+					Hue: &hue, Threshold: &threshold, Opacity: &opacity,
+				}},
 			},
 		},
 		{
@@ -689,9 +706,11 @@ func TestFileStore_ModifyVRMetadata(t *testing.T) {
 			&proj,
 			nil,
 			nil,
+			nil,
 		},
 		{
 			"clear all",
+			nil,
 			nil,
 			nil,
 			nil,
@@ -709,7 +728,7 @@ func TestFileStore_ModifyVRMetadata(t *testing.T) {
 			assert.NoError(err)
 			assert.Len(before, 1)
 
-			err = qb.ModifyVideoFileMetadata(ctx, fileID, tt.projection, tt.stereoMode, tt.corrections)
+			err = qb.ModifyVideoFileMetadata(ctx, fileID, tt.projection, tt.stereoMode, tt.corrections, tt.passthrough)
 			assert.NoError(err)
 
 			files, err := qb.Find(ctx, fileID)
@@ -752,6 +771,8 @@ func TestFileStore_ModifyVRMetadata(t *testing.T) {
 			} else {
 				assert.Nil(vf.VRCorrections)
 			}
+
+			assert.Equal(tt.passthrough, vf.VRPassthrough)
 		})
 	}
 }

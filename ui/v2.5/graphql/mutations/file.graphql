@@ -2,6 +2,10 @@ mutation DeleteFiles($ids: [ID!]!) {
   deleteFiles(ids: $ids)
 }
 
+mutation FileSetVRMetadata($input: FileSetVRMetadataInput!) {
+  fileSetVRMetadata(input: $input)
+}
+
 mutation RevealFileInFileManager($id: ID!) {
   revealFileInFileManager(id: $id)
 }

@@ -22,6 +22,19 @@ fragment VideoFileData on VideoFile {
   vr_corrections {
     horizontal_offset
     vertical_offset
+    brightness
+    contrast
+    saturation
+  }
+  vr_passthrough {
+    alpha_packed
+    chroma_keys {
+      hue
+      saturation
+      value
+      threshold
+      opacity
+    }
   }
   fingerprints {
     type
@@ -94,6 +107,19 @@ fragment VisualFileData on VisualFile {
     vr_corrections {
       horizontal_offset
       vertical_offset
+      brightness
+      contrast
+      saturation
+    }
+    vr_passthrough {
+      alpha_packed
+      chroma_keys {
+        hue
+        saturation
+        value
+        threshold
+        opacity
+      }
     }
     fingerprints {
       type
