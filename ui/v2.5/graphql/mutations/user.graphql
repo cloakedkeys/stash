@@ -7,3 +7,31 @@ mutation UserSetLibraryLimit($input: UserSetLibraryLimitInput!) {
 mutation ChangePassword($input: UserChangePasswordInput!) {
   changePassword(input: $input)
 }
+
+mutation UserCreate($input: UserCreateInput!) {
+  userCreate(input: $input) {
+    name
+  }
+}
+
+mutation UserUpdate($input: UserUpdateInput!) {
+  userUpdate(input: $input) {
+    name
+  }
+}
+
+mutation UserDestroy($input: UserDestroyInput!) {
+  userDestroy(input: $input)
+}
+
+mutation LockUser($name: String!) {
+  lockUser(name: $name)
+}
+
+mutation UnlockUser($name: String!) {
+  unlockUser(name: $name)
+}
+
+mutation ChangeUserPassword($input: ChangeUserPasswordInput!) {
+  changeUserPassword(input: $input)
+}

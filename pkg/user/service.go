@@ -220,6 +220,21 @@ func (s *Service) AllUsers(ctx context.Context) ([]*models.User, error) {
 	return s.Store.All(ctx)
 }
 
+// sameRoles reports whether two role lists hold the same roles, in any order.
+func sameRoles(a, b models.Roles) bool {
+	for _, r := range a {
+		if !slices.Contains(b, r) {
+			return false
+		}
+	}
+	for _, r := range b {
+		if !slices.Contains(a, r) {
+			return false
+		}
+	}
+	return true
+}
+
 func userIsLocked(u *models.User) bool {
 	return u.Locked || len(u.Roles) == 0
 }
@@ -619,7 +634,7 @@ func (s *Service) UpdateUser(ctx context.Context, username string, updated model
 
 	// a change of name or roles ends the user's sessions. Editing the notes doesn't.
 	updated.UpdatedAt = existingUser.UpdatedAt
-	if username != updated.Username || !slices.Equal(existingRoles, updated.Roles) {
+	if username != updated.Username || !sameRoles(existingRoles, updated.Roles) {
 		updated.UpdatedAt = time.Now()
 	}
 
@@ -632,7 +647,7 @@ func (s *Service) UpdateUser(ctx context.Context, username string, updated model
 		logger.Infof("[user] updated name %q -> %q", username, updated.Username)
 	}
 
-	if !slices.Equal(existingRoles, updated.Roles) {
+	if !sameRoles(existingRoles, updated.Roles) {
 		logger.Infof("[user] updated roles for user %q", updated.Username)
 	}
 
