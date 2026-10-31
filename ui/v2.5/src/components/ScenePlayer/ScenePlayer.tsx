@@ -1129,17 +1129,24 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       return () => player.off("ended", ended);
     }, [getPlayer, onComplete]);
 
-    // Try to detect that the player has passed the end point of a Marker
+    // Try to detect that the player has passed the end point of a Marker.
+    // Only playing through the end point counts: seeking more than a second
+    // past it does not.
     useEffect(() => {
       const player = getPlayer();
       if (!player || !endTime) return;
+      const end = endTime;
+      // timeupdate fires several times a second, so only report the end once
+      // until playback goes back before the end point
+      let completed = false;
       function markerComplete(this: VideoJsPlayer) {
-        if (
-          !this.paused() &&
-          endTime &&
-          this.currentTime() >= endTime &&
-          this.currentTime() <= endTime + 1
-        ) {
+        const t = this.currentTime();
+        if (t < end) {
+          completed = false;
+          return;
+        }
+        if (!completed && !this.paused() && t <= end + 1) {
+          completed = true;
           onComplete();
         }
       }
