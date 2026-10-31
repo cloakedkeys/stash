@@ -152,6 +152,9 @@ func (qb *UserStore) selectDataset() *goqu.SelectDataset {
 		goqu.On(
 			userRolesJoinTable.Col(userIDColumn).Eq(qb.table().Col(idColumn)),
 		),
+	// resolving merges the role rows of each user, so they must be adjacent
+	).Order(
+		qb.table().Col(idColumn).Asc(),
 	)
 }
 
