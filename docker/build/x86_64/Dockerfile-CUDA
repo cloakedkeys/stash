@@ -44,7 +44,11 @@ RUN apt update && apt upgrade -y && apt install -y \
     # intel dependencies
     intel-media-va-driver-non-free vainfo \
     # python tools
-    python3 python3-pip && \
+    python3 python3-pip \
+    # postgresql backups, from PostgreSQL's own repository because Ubuntu's client is too old for newer servers
+    postgresql-common && \
+  /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y && \
+  apt install -y postgresql-client-18 && \
   # cleanup
   apt autoremove -y && apt clean && \
   rm -rf /var/lib/apt/lists/*
