@@ -736,33 +736,60 @@ func (s *Manager) batchTagAllPerformers(ctx context.Context, input StashBoxBatch
 	return tasks, err
 }
 
-func (s *Manager) SubmitStashBoxFingerprints(ctx context.Context, box *models.StashBox, sceneIDs []int) int {
-	j := job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error {
-		logger.Infof("Submitting fingerprints for %d scene(s) to stash-box endpoint %s", len(sceneIDs), box.Endpoint)
-
-		var scenes []*models.Scene
-		if err := s.Repository.WithReadTxn(ctx, func(ctx context.Context) error {
-			var err error
-			scenes, err = s.SceneService.FindByIDs(ctx, sceneIDs, scene.LoadStashIDs, scene.LoadFiles)
-			return err
-		}); err != nil {
+func newSubmitStashBoxFingerprintsJob(
+	endpoint string,
+	loadScenes func(context.Context) ([]*models.Scene, error),
+	submit func(context.Context, []*models.Scene, *job.Progress) (*stashbox.FingerprintSubmissionResult, error),
+) job.JobExec {
+	return job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error {
+		scenes, err := loadScenes(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
 			return fmt.Errorf("failed to load scenes for fingerprint submission: %w", err)
 		}
+		logger.Infof("Submitting fingerprints for %d scene(s) to stash-box endpoint %s", len(scenes), endpoint)
 
-		client := stashbox.NewClient(*box, stashbox.ExcludeTagPatterns(s.Config.GetScraperExcludeTagPatterns()))
-
-		result, err := client.SubmitFingerprints(ctx, scenes, progress)
+		result, err := submit(ctx, scenes, progress)
 
 		// log the summary on all paths, including when the submission aborts
 		// part-way through, so the outcome is always visible
-		if result.Failed > 0 {
-			logger.Warnf("Submitted %d fingerprint(s) to stash-box, %d failed", result.Succeeded, result.Failed)
-		} else {
-			logger.Infof("Submitted %d fingerprint(s) to stash-box", result.Succeeded)
+		if result != nil {
+			if result.Failed > 0 {
+				logger.Warnf("Submitted %d fingerprint(s) to stash-box, %d failed", result.Succeeded, result.Failed)
+			} else {
+				logger.Infof("Submitted %d fingerprint(s) to stash-box", result.Succeeded)
+			}
 		}
 
+		// The job manager treats a returned error as a failure. A canceled
+		// context already records the cancellation state, so let it finish
+		// normally and preserve the job's CANCELLED status.
+		if ctx.Err() != nil {
+			return nil
+		}
 		return err
 	})
+}
+
+func (s *Manager) SubmitStashBoxFingerprints(ctx context.Context, box *models.StashBox, sceneIDs []int) int {
+	j := newSubmitStashBoxFingerprintsJob(
+		box.Endpoint,
+		func(ctx context.Context) ([]*models.Scene, error) {
+			var scenes []*models.Scene
+			err := s.Repository.WithReadTxn(ctx, func(ctx context.Context) error {
+				var err error
+				scenes, err = s.SceneService.FindByIDs(ctx, sceneIDs, scene.LoadStashIDs, scene.LoadFiles)
+				return err
+			})
+			return scenes, err
+		},
+		func(ctx context.Context, scenes []*models.Scene, progress *job.Progress) (*stashbox.FingerprintSubmissionResult, error) {
+			client := stashbox.NewClient(*box, stashbox.ExcludeTagPatterns(s.Config.GetScraperExcludeTagPatterns()))
+			return client.SubmitFingerprints(ctx, scenes, progress)
+		},
+	)
 
 	return s.JobManager.Add(ctx, "Submitting fingerprints to stash-box...", j)
 }
