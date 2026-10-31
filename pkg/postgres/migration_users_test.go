@@ -144,9 +144,6 @@ INSERT INTO galleries(id,title,created_at,updated_at,rating) VALUES(1,'gallery',
 				}
 				return nil
 			}))
-			// Cookie login timestamps have second precision; exercise a session
-			// created after the service's initialization second.
-			time.Sleep(time.Second)
 			repo := db.Repository()
 			sessions := session.NewStore(cfg, service, &repo.TxnManager)
 			request := httptest.NewRequest("POST", "/login", strings.NewReader(url.Values{"username": {username}, "password": {password}}.Encode()))
@@ -170,4 +167,35 @@ INSERT INTO galleries(id,title,created_at,updated_at,rating) VALUES(1,'gallery',
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestNativeUserMigrationFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.InitializeEmpty()
+	// The backup can be written next to this directory, but replacing the
+	// config directory itself must fail after the migration clears the fields.
+	cfg.SetConfigFile(filepath.Join(t.TempDir(), "config.yml"))
+	require.NoError(t, os.Mkdir(cfg.GetConfigFile(), 0700))
+	cfg.SetString(config.LegacyUsername, "legacy-admin")
+	hash, err := bcrypt.GenerateFromPassword([]byte("legacy-password"), bcrypt.MinCost)
+	require.NoError(t, err)
+	cfg.SetString(config.LegacyPassword, string(hash))
+	db := NewDatabase()
+	db.dbPath = migrationFixture(t)
+	m, err := NewMigrator(db)
+	require.NoError(t, err)
+	t.Cleanup(m.Close)
+	for version := uint(1); version <= 14; version++ {
+		require.NoError(t, m.RunMigration(ctx, version))
+	}
+	require.Error(t, m.RunMigration(ctx, 15))
+	var locked bool
+	var passwordCount int
+	require.NoError(t, m.conn.Get(&locked, "SELECT locked FROM users WHERE id=1"))
+	require.True(t, locked, "failed migration must not expose a passwordless administrator")
+	require.NoError(t, m.conn.Get(&passwordCount, "SELECT count(*) FROM users WHERE password_hash IS NOT NULL"))
+	require.Zero(t, passwordCount, "credential update must roll back with config failure")
+	require.Equal(t, "legacy-admin", cfg.GetLegacyUsername())
+	require.Equal(t, string(hash), cfg.GetLegacyPasswordHash())
+	require.False(t, cfg.GetPublicAccess())
 }

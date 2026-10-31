@@ -14,7 +14,7 @@ import (
 
 // The SQL migration reserves a locked admin so foreign keys can be populated
 // before legacy credentials are read. A failed post-migration leaves it locked.
-func post15(ctx context.Context, db *sqlx.DB) error {
+func post15(ctx context.Context, db *sqlx.DB) (retErr error) {
 	if models.IsSetupContext(ctx) {
 		result, err := db.ExecContext(ctx, `DELETE FROM users WHERE id=1 AND locked
 AND NOT EXISTS (SELECT 1 FROM scenes_user_data)
@@ -43,6 +43,16 @@ AND NOT EXISTS (SELECT 1 FROM scenes_view_dates)`)
 	}
 	cfg := config.GetInstance()
 	username, password, apiKey := cfg.GetLegacyUsername(), cfg.GetLegacyPasswordHash(), cfg.GetLegacyAPIKey()
+	originalUsername, originalPassword, originalAPIKey := username, password, apiKey
+	originalPublicAccess := cfg.GetPublicAccess()
+	defer func() {
+		if retErr != nil {
+			cfg.SetString(config.LegacyUsername, originalUsername)
+			cfg.SetString(config.LegacyPassword, originalPassword)
+			cfg.SetString(config.LegacyAPIKey, originalAPIKey)
+			cfg.SetPublicAccess(originalPublicAccess)
+		}
+	}()
 	legacy := username != "" && password != ""
 	if username == "" {
 		username = "admin"

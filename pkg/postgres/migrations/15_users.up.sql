@@ -211,4 +211,3 @@ CREATE TABLE "user_ui_config" (
   "config" text NOT NULL,
   FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE
 );
-
