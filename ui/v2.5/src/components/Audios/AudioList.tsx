@@ -434,8 +434,8 @@ export const FilteredAudioList = PatchComponent(
     }, [cachedResult]);
 
     const queue = useMemo(
-      () => AudioQueue.fromListFilterModel(filter),
-      [filter]
+      () => AudioQueue.fromListFilterModel(effectiveFilter),
+      [effectiveFilter]
     );
 
     const playRandom = usePlayRandom(effectiveFilter, totalCount);

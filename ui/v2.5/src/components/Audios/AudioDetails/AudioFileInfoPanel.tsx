@@ -4,7 +4,7 @@ import { FormattedMessage, FormattedTime, useIntl } from "react-intl";
 import { TruncatedText } from "src/components/Shared/TruncatedText";
 import { DeleteFilesDialog } from "src/components/Shared/DeleteFilesDialog";
 import { RevealInFilesystemButton } from "src/components/Shared/RevealInFilesystemButton";
-import { ReassignFilesDialog } from "src/components/Shared/ReassignFilesDialog";
+import { ReassignAudioFileDialog } from "./ReassignAudioFileDialog";
 import * as GQL from "src/core/generated-graphql";
 import { mutateAudioSetPrimaryFile } from "src/core/StashService";
 import { useToast } from "src/hooks/Toast";
@@ -169,7 +169,7 @@ const _AudioFileInfoPanel: React.FC<IAudioFileInfoPanelProps> = (
           />
         )}
         {reassigningFile && (
-          <ReassignFilesDialog
+          <ReassignAudioFileDialog
             onClose={() => setReassigningFile(undefined)}
             selected={reassigningFile}
           />

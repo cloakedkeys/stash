@@ -305,10 +305,10 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
   }
 
   function maybeRenderMergeDialog() {
-    if (!audio.id) return;
+    if (!audio.id || !isMerging) return;
     return (
       <AudioMergeModal
-        show={isMerging}
+        show
         onClose={(mergedId) => {
           setIsMerging(false);
           if (mergedId !== undefined && mergedId !== audio.id) {

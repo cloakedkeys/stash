@@ -628,8 +628,12 @@ export const AudioMergeModal: React.FC<IAudioMergeModalProps> = ({
   onClose,
   audios,
 }) => {
-  const [sourceAudios, setSourceAudios] = useState<Audio[]>([]);
-  const [destAudio, setDestAudio] = useState<Audio[]>([]);
+  // the first audio is the destination, the others are sources. Only taken when
+  // the dialog opens, so re-rendering the page can't change what was picked.
+  const [sourceAudios, setSourceAudios] = useState<Audio[]>(() =>
+    audios.slice(1)
+  );
+  const [destAudio, setDestAudio] = useState<Audio[]>(() => audios.slice(0, 1));
 
   const [loadedSources, setLoadedSources] = useState<GQL.AudioDataFragment[]>(
     []
@@ -651,17 +655,6 @@ export const AudioMergeModal: React.FC<IAudioMergeModalProps> = ({
     () => (destAudio[0] ? [destAudio[0].id] : []),
     [destAudio]
   );
-
-  useEffect(() => {
-    if (audios.length > 0) {
-      // set the first audio as the destination, others as source
-      setDestAudio([audios[0]]);
-
-      if (audios.length > 1) {
-        setSourceAudios(audios.slice(1));
-      }
-    }
-  }, [audios]);
 
   async function loadAudios() {
     const audioIDs = sourceAudios.map((s) => s.id);

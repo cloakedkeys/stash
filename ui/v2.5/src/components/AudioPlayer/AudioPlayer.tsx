@@ -388,12 +388,14 @@ export const AudioPlayer: React.FC<IAudioPlayerProps> = PatchComponent(
         sourceIndex.current++;
         const time = this.currentTime() || startTime.current;
         const play = wantsPlay.current || auto.current;
+        const sources = loadedSources.current;
 
         this.error(null);
         this.src(next);
         this.load();
         this.one("canplay", () => {
-          if (time) this.currentTime(time);
+          // the track may have changed while this one was loading
+          if (time && loadedSources.current === sources) this.currentTime(time);
         });
         if (play) this.play();
       }
