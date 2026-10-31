@@ -46,6 +46,18 @@ func ScaledHeight(width, height, targetWidth int) int {
 	return (targetWidth * height / width) &^ 1
 }
 
+// ScaledShortSide returns the length of the shorter side a source would have
+// if scaled to targetWidth with preserved aspect ratio. This is the value
+// ScaleMax and HWMaxResFilter expect as reqHeight: for a landscape source it
+// is the scaled height, for a portrait source it is targetWidth itself.
+// Returns 0 if the source has no width (e.g. an audio-only file).
+func ScaledShortSide(width, height, targetWidth int) int {
+	if width == 0 {
+		return 0
+	}
+	return min(targetWidth, ScaledHeight(width, height, targetWidth))
+}
+
 // ScaleMax scales to reqHeight (0 = source height), optionally clamped to a
 // maxWidth x maxHeight rect. Aspect ratio is preserved.
 func (f VideoFilter) ScaleMax(width, height, reqHeight, maxWidth, maxHeight int) VideoFilter {

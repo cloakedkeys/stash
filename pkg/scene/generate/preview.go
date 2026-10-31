@@ -107,7 +107,7 @@ func (g *Generator) previewVideo(path string, width, height int, videoStreamDura
 
 		stepSize, offset := options.getStepSizeAndOffset(videoStreamDuration)
 
-		targetHeight := ffmpeg.ScaledHeight(width, height, scenePreviewWidth)
+		targetHeight := ffmpeg.ScaledShortSide(width, height, scenePreviewWidth)
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
 
 		segmentDuration := options.SegmentDuration
@@ -157,7 +157,7 @@ func (g *Generator) previewVideo(path string, width, height int, videoStreamDura
 
 func (g *Generator) previewVideoSingle(path string, width, height int, videoStreamDuration float64, options PreviewOptions, fallback bool, useVsync2 bool) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
-		targetHeight := ffmpeg.ScaledHeight(width, height, scenePreviewWidth)
+		targetHeight := ffmpeg.ScaledShortSide(width, height, scenePreviewWidth)
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
 
 		chunkOptions := previewChunkOptions{
@@ -181,7 +181,7 @@ type previewChunkOptions struct {
 }
 
 func (g Generator) previewVideoChunk(lockCtx *fsutil.LockContext, path string, width, height int, options previewChunkOptions, fallback bool, useVsync2 bool, codec ffmpeg.VideoCodec, fullhw bool) error {
-	targetHeight := ffmpeg.ScaledHeight(width, height, scenePreviewWidth)
+	targetHeight := ffmpeg.ScaledShortSide(width, height, scenePreviewWidth)
 
 	videoFilter := g.Encoder.HWMaxResFilter(codec, width, height, targetHeight, fullhw)
 

@@ -86,7 +86,7 @@ func (t *GenerateMarkersTask) determineMarkerCodec(ctx context.Context, videoFil
 	if !t.VideoPreview {
 		return ffmpeg.VideoCodecLibX264, false
 	}
-	targetHeight := ffmpeg.ScaledHeight(videoFile.Width, videoFile.Height, markerPreviewTargetWidth)
+	targetHeight := ffmpeg.ScaledShortSide(videoFile.Width, videoFile.Height, markerPreviewTargetWidth)
 	return t.generator.DetermineCodecAndHW(ctx, videoFile.Path, videoFile.Width, videoFile.Height, targetHeight)
 }
 

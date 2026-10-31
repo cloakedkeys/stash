@@ -85,7 +85,7 @@ type sceneMarkerOptions struct {
 
 func (g Generator) markerPreviewVideo(path string, width, height int, codec ffmpeg.VideoCodec, fullhw bool, options sceneMarkerOptions) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
-		targetHeight := ffmpeg.ScaledHeight(width, height, markerPreviewWidth)
+		targetHeight := ffmpeg.ScaledShortSide(width, height, markerPreviewWidth)
 
 		videoFilter := g.Encoder.HWMaxResFilter(codec, width, height, targetHeight, fullhw)
 

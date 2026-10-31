@@ -71,12 +71,9 @@ func (g Generator) transcode(path string, width, height int, options TranscodeOp
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
 		targetHeight := height
 		var videoFilter ffmpeg.VideoFilter
+		// MaxSize applies to the shorter side, which is what HWMaxResFilter expects
 		if options.MaxSize != 0 && options.MaxSize < min(width, height) {
-			if width >= height {
-				targetHeight = options.MaxSize
-			} else {
-				targetHeight = ffmpeg.ScaledHeight(width, height, options.MaxSize)
-			}
+			targetHeight = options.MaxSize
 		}
 
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
@@ -108,12 +105,9 @@ func (g Generator) transcodeVideo(path string, width, height int, options Transc
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
 		targetHeight := height
 		var videoFilter ffmpeg.VideoFilter
+		// MaxSize applies to the shorter side, which is what HWMaxResFilter expects
 		if options.MaxSize != 0 && options.MaxSize < min(width, height) {
-			if width >= height {
-				targetHeight = options.MaxSize
-			} else {
-				targetHeight = ffmpeg.ScaledHeight(width, height, options.MaxSize)
-			}
+			targetHeight = options.MaxSize
 		}
 
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
