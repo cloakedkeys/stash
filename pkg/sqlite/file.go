@@ -858,6 +858,9 @@ func (qb *FileStore) FindMissingInPaths(ctx context.Context, p []string, missing
 		q = q.Where(qb.table().Col("missing_since").IsNotNull())
 	}
 
+	// stable order so that callers can page through the results
+	q = q.Order(table.Col(idColumn).Asc())
+
 	if limit > -1 {
 		q = q.Limit(uint(limit))
 	}

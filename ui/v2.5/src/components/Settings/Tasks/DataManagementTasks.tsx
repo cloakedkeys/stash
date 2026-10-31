@@ -483,7 +483,7 @@ export const DataManagementTasks: React.FC<IDataManagementTasks> = ({
   }, [taskDefaults, loading]);
 
   function configureDefaults(partial: Record<string, object>) {
-    saveUI({ taskDefaults: { ...partial } });
+    saveUI({ taskDefaults: { ...taskDefaults, ...partial } });
   }
 
   function onSetVerifyOptions(s: GQL.VerifyPathsInput) {

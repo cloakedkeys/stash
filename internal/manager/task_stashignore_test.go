@@ -61,6 +61,6 @@ func TestStashIgnoreUsesTopmostLibraryRootWithNestedLibraries(t *testing.T) {
 	}
 
 	if verifyFilter.Accept(context.Background(), ignoredFile, info, "") {
-		t.Fatalf("expected clean filter to reject file due to parent .stashignore")
+		t.Fatalf("expected verify filter to reject file due to parent .stashignore")
 	}
 }

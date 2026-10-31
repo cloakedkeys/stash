@@ -51,8 +51,11 @@ func (j *verifyJob) Execute(ctx context.Context, progress *job.Progress) error {
 	if !j.options.DryRun && j.options.PurgeMissing {
 		// HACK - use purge job to clean empty galleries
 		pj := &purgeMissingJob{
-			// only need to provide repository
+			// only need to provide repository and the paths to clean
 			repository: j.repository,
+			options: file.PurgeMissingOptions{
+				Paths: j.options.Paths,
+			},
 		}
 		pj.cleanGalleries(ctx)
 	}

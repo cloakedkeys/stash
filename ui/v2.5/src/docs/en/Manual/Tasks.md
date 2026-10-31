@@ -115,6 +115,8 @@ This task will walk through your configured media directories and mark files and
 
 Files marked as missing may be removed by the Purge missing task. Files and folders can have their missing status cleared by running the scan task, assuming the scan task finds the file or folder in the filesystem.
 
+Care should be taken with this task, especially where the configured media directories may be inaccessible due to network issues. Files on a disconnected drive or share will be marked as missing, and will be removed if "Permanently remove missing files from the database" is enabled.
+
 ## Purge missing
 
 This task will remove files and folders marked as missing from the database, along with their associated metadata objects (e.g., scenes, images, and galleries) and generated files.
