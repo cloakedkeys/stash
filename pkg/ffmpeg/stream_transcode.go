@@ -198,13 +198,13 @@ func (sm *StreamManager) getTranscodeStream(ctx *fsutil.LockContext, options Tra
 	if err = cmd.Start(); err != nil {
 		return nil, err
 	}
-	ctx.AttachCommand(cmd)
+	wait := ctx.AttachCommand(cmd)
 
 	// stderr must be consumed or the process deadlocks
 	go func() {
 		errStr, _ := io.ReadAll(stderr)
 
-		errCmd := cmd.Wait()
+		errCmd := wait()
 
 		var err error
 

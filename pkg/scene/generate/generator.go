@@ -150,9 +150,9 @@ func (g Generator) generate(ctx *fsutil.LockContext, args []string) error {
 		return fmt.Errorf("error starting command: %w", err)
 	}
 
-	ctx.AttachCommand(cmd)
+	wait := ctx.AttachCommand(cmd)
 
-	if err := cmd.Wait(); err != nil {
+	if err := wait(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			exitErr.Stderr = stderr.Bytes()
@@ -178,9 +178,9 @@ func (g Generator) generateOutput(lockCtx *fsutil.LockContext, args []string) ([
 		return nil, fmt.Errorf("error starting command: %w", err)
 	}
 
-	lockCtx.AttachCommand(cmd)
+	wait := lockCtx.AttachCommand(cmd)
 
-	if err := cmd.Wait(); err != nil {
+	if err := wait(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			exitErr.Stderr = stderr.Bytes()

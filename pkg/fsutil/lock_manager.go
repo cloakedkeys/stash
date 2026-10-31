@@ -15,27 +15,49 @@ type LockContext struct {
 	context.Context
 	cancel context.CancelFunc
 
-	cmd *exec.Cmd
+	cmdMutex sync.Mutex
+	cmd      *lockedCommand
 }
 
-func (c *LockContext) AttachCommand(cmd *exec.Cmd) {
-	c.cmd = cmd
+type lockedCommand struct {
+	cmd  *exec.Cmd
+	once sync.Once
+	done chan struct{}
+	err  error
+}
+
+func (c *lockedCommand) wait() error {
+	c.once.Do(func() {
+		c.err = c.cmd.Wait()
+		close(c.done)
+	})
+	return c.err
+}
+
+// AttachCommand registers a started command and returns its wait function.
+// Both the caller and cancellation must use this function so Cmd.Wait is only
+// called once, including when a file is deleted during generation.
+func (c *LockContext) AttachCommand(cmd *exec.Cmd) func() error {
+	command := &lockedCommand{cmd: cmd, done: make(chan struct{})}
+	c.cmdMutex.Lock()
+	c.cmd = command
+	c.cmdMutex.Unlock()
+	return command.wait
 }
 
 func (c *LockContext) Cancel() {
 	c.cancel()
 
-	if c.cmd != nil {
+	c.cmdMutex.Lock()
+	command := c.cmd
+	c.cmdMutex.Unlock()
+	if command != nil {
 		// wait for the process to die before returning
 		// don't wait more than a few seconds
-		done := make(chan error)
-		go func() {
-			err := c.cmd.Wait()
-			done <- err
-		}()
+		go command.wait()
 
 		select {
-		case <-done:
+		case <-command.done:
 			return
 		case <-time.After(5 * time.Second):
 			return
