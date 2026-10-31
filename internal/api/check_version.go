@@ -26,7 +26,7 @@ const developmentTag string = "latest_develop"
 const defaultSHLength int = 8 // default length of SHA short hash returned by <git rev-parse --short HEAD>
 
 // apiReleasesURL and apiTagsURL build the GitHub API endpoints for the
-// repository configured via build.UpdateRepo (defaults to stashapp/stash).
+// repository configured via build.UpdateRepo.
 func apiReleasesURL() string {
 	return apiRepoBase + build.UpdateRepo() + "/releases"
 }
@@ -34,6 +34,9 @@ func apiReleasesURL() string {
 func apiTagsURL() string {
 	return apiRepoBase + build.UpdateRepo() + "/tags"
 }
+
+// errNoUpdateCheck is returned when the build has no repository to check.
+var errNoUpdateCheck = errors.New("this build doesn't check for updates")
 
 var stashReleases = func() map[string]string {
 	return map[string]string{
@@ -187,6 +190,10 @@ func makeGithubRequest(ctx context.Context, url string, output interface{}) erro
 // is used, otherwise it uses the release that is tagged with "latest_develop"
 // which is the latest pre-release build.
 func GetLatestRelease(ctx context.Context) (*LatestRelease, error) {
+	if build.UpdateRepo() == "" {
+		return nil, errNoUpdateCheck
+	}
+
 	arch := runtime.GOARCH
 
 	// https://en.wikipedia.org/wiki/Comparison_of_ARM_cores
@@ -300,6 +307,9 @@ func getReleaseHash(ctx context.Context, tagName string) (string, error) {
 
 func printLatestVersion(ctx context.Context) {
 	latestRelease, err := GetLatestRelease(ctx)
+	if errors.Is(err, errNoUpdateCheck) {
+		return
+	}
 	if err != nil {
 		logger.Errorf("Couldn't retrieve latest version: %v", err)
 	} else {
