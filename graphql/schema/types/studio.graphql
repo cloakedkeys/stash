@@ -13,6 +13,7 @@ type Studio {
   image_path: String # Resolver
   
   scene_count(depth: Int): Int! # Resolver
+  audio_count(depth: Int): Int! # Resolver
   image_count(depth: Int): Int! # Resolver
   gallery_count(depth: Int): Int! # Resolver
   performer_count(depth: Int): Int! # Resolver
@@ -49,8 +50,8 @@ input StudioCreateInput {
   "Duplicate aliases and those equal to name will be ignored (case-insensitive)"
   aliases: [String!]
   tag_ids: [ID!]
-  ignore_auto_tag: Boolean
-  organized: Boolean
+  ignore_auto_tag: Boolean @hasRole(role: ADMIN)
+  organized: Boolean @hasRole(role: ADMIN)
 
   custom_fields: Map
 }
@@ -72,8 +73,8 @@ input StudioUpdateInput {
   "Duplicate aliases and those equal to name will be ignored (case-insensitive)"
   aliases: [String!]
   tag_ids: [ID!]
-  ignore_auto_tag: Boolean
-  organized: Boolean
+  ignore_auto_tag: Boolean @hasRole(role: ADMIN)
+  organized: Boolean @hasRole(role: ADMIN)
 
   custom_fields: CustomFieldsInput
 }
@@ -88,8 +89,8 @@ input BulkStudioUpdateInput {
   favorite: Boolean
   details: String
   tag_ids: BulkUpdateIds
-  ignore_auto_tag: Boolean
-  organized: Boolean
+  ignore_auto_tag: Boolean @hasRole(role: ADMIN)
+  organized: Boolean @hasRole(role: ADMIN)
 }
 
 input StudioDestroyInput {

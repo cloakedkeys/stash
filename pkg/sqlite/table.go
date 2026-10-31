@@ -759,6 +759,128 @@ func (t *scenesGroupsTable) modifyJoins(ctx context.Context, id int, v []models.
 	return nil
 }
 
+type audiosGroupsTable struct {
+	table
+}
+
+type groupsAudiosRow struct {
+	AudioID    null.Int `db:"audio_id"`
+	GroupID    null.Int `db:"group_id"`
+	AudioIndex null.Int `db:"audio_index"`
+}
+
+func (r groupsAudiosRow) resolve(audioID int) models.GroupsAudios {
+	return models.GroupsAudios{
+		GroupID:    int(r.GroupID.Int64),
+		AudioIndex: nullIntPtr(r.AudioIndex),
+	}
+}
+
+func (t *audiosGroupsTable) get(ctx context.Context, id int) ([]models.GroupsAudios, error) {
+	q := dialect.Select("group_id", "audio_index").From(t.table.table).Where(t.idColumn.Eq(id))
+
+	const single = false
+	var ret []models.GroupsAudios
+	if err := queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+		var v groupsAudiosRow
+		if err := rows.StructScan(&v); err != nil {
+			return err
+		}
+
+		ret = append(ret, v.resolve(id))
+
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("getting audio groups from %s: %w", t.table.table.GetTable(), err)
+	}
+
+	return ret, nil
+}
+
+func (t *audiosGroupsTable) insertJoin(ctx context.Context, id int, v models.GroupsAudios) (sql.Result, error) {
+	q := dialect.Insert(t.table.table).Cols(t.idColumn.GetCol(), "group_id", "audio_index").Vals(
+		goqu.Vals{id, v.GroupID, intFromPtr(v.AudioIndex)},
+	)
+	ret, err := exec(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("inserting into %s: %w", t.table.table.GetTable(), err)
+	}
+
+	return ret, nil
+}
+
+func (t *audiosGroupsTable) insertJoins(ctx context.Context, id int, v []models.GroupsAudios) error {
+	for _, fk := range v {
+		if _, err := t.insertJoin(ctx, id, fk); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (t *audiosGroupsTable) replaceJoins(ctx context.Context, id int, v []models.GroupsAudios) error {
+	if err := t.destroy(ctx, []int{id}); err != nil {
+		return err
+	}
+
+	return t.insertJoins(ctx, id, v)
+}
+
+func (t *audiosGroupsTable) addJoins(ctx context.Context, id int, v []models.GroupsAudios) error {
+	// get existing foreign keys
+	fks, err := t.get(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// only add values that are not already present
+	var filtered []models.GroupsAudios
+	for _, vv := range v {
+		found := false
+
+		for _, e := range fks {
+			if vv.GroupID == e.GroupID {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			filtered = append(filtered, vv)
+		}
+	}
+	return t.insertJoins(ctx, id, filtered)
+}
+
+func (t *audiosGroupsTable) destroyJoins(ctx context.Context, id int, v []models.GroupsAudios) error {
+	for _, vv := range v {
+		q := dialect.Delete(t.table.table).Where(
+			t.idColumn.Eq(id),
+			t.table.table.Col("group_id").Eq(vv.GroupID),
+		)
+
+		if _, err := exec(ctx, q); err != nil {
+			return fmt.Errorf("destroying %s: %w", t.table.table.GetTable(), err)
+		}
+	}
+
+	return nil
+}
+
+func (t *audiosGroupsTable) modifyJoins(ctx context.Context, id int, v []models.GroupsAudios, mode models.RelationshipUpdateMode) error {
+	switch mode {
+	case models.RelationshipUpdateModeSet:
+		return t.replaceJoins(ctx, id, v)
+	case models.RelationshipUpdateModeAdd:
+		return t.addJoins(ctx, id, v)
+	case models.RelationshipUpdateModeRemove:
+		return t.destroyJoins(ctx, id, v)
+	}
+
+	return nil
+}
+
 type imageGalleriesTable struct {
 	joinTable
 }
@@ -895,9 +1017,16 @@ func (t *relatedFilesTable) setPrimary(ctx context.Context, id int, fileID model
 	return nil
 }
 
+// viewHistoryTable is a table of per-user history dates for an object.
+// All queries are scoped to the current user.
 type viewHistoryTable struct {
 	table
 	dateColumn exp.IdentifierExpression
+}
+
+// userClause returns the where clause restricting rows to the current user.
+func (t *viewHistoryTable) userClause(ctx context.Context) exp.Expression {
+	return t.table.table.Col(userIDColumn).Eq(currentUserID(ctx))
 }
 
 func (t *viewHistoryTable) getDates(ctx context.Context, id int) ([]time.Time, error) {
@@ -907,6 +1036,7 @@ func (t *viewHistoryTable) getDates(ctx context.Context, id int) ([]time.Time, e
 		t.dateColumn,
 	).From(table).Where(
 		t.idColumn.Eq(id),
+		t.userClause(ctx),
 	).Order(t.dateColumn.Desc())
 
 	const single = false
@@ -933,6 +1063,7 @@ func (t *viewHistoryTable) getManyDates(ctx context.Context, ids []int) ([][]tim
 		t.dateColumn,
 	).From(table).Where(
 		t.idColumn.In(ids),
+		t.userClause(ctx),
 	).Order(t.dateColumn.Desc())
 
 	ret := make([][]time.Time, len(ids))
@@ -960,6 +1091,7 @@ func (t *viewHistoryTable) getLastDate(ctx context.Context, id int) (*time.Time,
 	table := t.table.table
 	q := dialect.Select(t.dateColumn).From(table).Where(
 		t.idColumn.Eq(id),
+		t.userClause(ctx),
 	).Order(t.dateColumn.Desc()).Limit(1)
 
 	var date NullTimestamp
@@ -978,6 +1110,7 @@ func (t *viewHistoryTable) getManyLastDate(ctx context.Context, ids []int) ([]*t
 		goqu.MAX(t.dateColumn),
 	).From(table).Where(
 		t.idColumn.In(ids),
+		t.userClause(ctx),
 	).GroupBy(t.idColumn)
 
 	ret := make([]*time.Time, len(ids))
@@ -1011,7 +1144,7 @@ func (t *viewHistoryTable) getManyLastDate(ctx context.Context, ids []int) ([]*t
 
 func (t *viewHistoryTable) getCount(ctx context.Context, id int) (int, error) {
 	table := t.table.table
-	q := dialect.Select(goqu.COUNT("*")).From(table).Where(t.idColumn.Eq(id))
+	q := dialect.Select(goqu.COUNT("*")).From(table).Where(t.idColumn.Eq(id), t.userClause(ctx))
 
 	const single = true
 	var ret int
@@ -1035,6 +1168,7 @@ func (t *viewHistoryTable) getManyCount(ctx context.Context, ids []int) ([]int, 
 		goqu.COUNT(t.dateColumn),
 	).From(table).Where(
 		t.idColumn.In(ids),
+		t.userClause(ctx),
 	).GroupBy(t.idColumn)
 
 	ret := make([]int, len(ids))
@@ -1060,7 +1194,7 @@ func (t *viewHistoryTable) getManyCount(ctx context.Context, ids []int) ([]int, 
 
 func (t *viewHistoryTable) getAllCount(ctx context.Context) (int, error) {
 	table := t.table.table
-	q := dialect.Select(goqu.COUNT("*")).From(table)
+	q := dialect.Select(goqu.COUNT("*")).From(table).Where(t.userClause(ctx))
 
 	const single = true
 	var ret int
@@ -1078,7 +1212,7 @@ func (t *viewHistoryTable) getAllCount(ctx context.Context) (int, error) {
 
 func (t *viewHistoryTable) getUniqueCount(ctx context.Context) (int, error) {
 	table := t.table.table
-	q := dialect.Select(goqu.COUNT(goqu.DISTINCT(t.idColumn))).From(table)
+	q := dialect.Select(goqu.COUNT(goqu.DISTINCT(t.idColumn))).From(table).Where(t.userClause(ctx))
 
 	const single = true
 	var ret int
@@ -1097,14 +1231,19 @@ func (t *viewHistoryTable) getUniqueCount(ctx context.Context) (int, error) {
 func (t *viewHistoryTable) addDates(ctx context.Context, id int, dates []time.Time) ([]time.Time, error) {
 	table := t.table.table
 
+	userID, ok := models.UserIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("adding to %s: no current user", table.GetTable())
+	}
+
 	if len(dates) == 0 {
 		dates = []time.Time{time.Now()}
 	}
 
 	for _, d := range dates {
-		q := dialect.Insert(table).Cols(t.idColumn.GetCol(), t.dateColumn.GetCol()).Vals(
+		q := dialect.Insert(table).Cols(t.idColumn.GetCol(), userIDColumn, t.dateColumn.GetCol()).Vals(
 			// convert all dates to UTC
-			goqu.Vals{id, UTCTimestamp{Timestamp{d}}},
+			goqu.Vals{id, userID, UTCTimestamp{Timestamp{d}}},
 		)
 
 		if _, err := exec(ctx, q); err != nil {
@@ -1130,10 +1269,12 @@ func (t *viewHistoryTable) deleteDates(ctx context.Context, id int, dates []time
 			// delete the most recent
 			subquery = dialect.Select("rowid").From(table).Where(
 				t.idColumn.Eq(id),
+				t.userClause(ctx),
 			).Order(t.dateColumn.Desc()).Limit(1)
 		} else {
 			subquery = dialect.Select("rowid").From(table).Where(
 				t.idColumn.Eq(id),
+				t.userClause(ctx),
 				t.dateColumn.Eq(UTCTimestamp{Timestamp{date}}),
 			).Limit(1)
 		}
@@ -1150,7 +1291,7 @@ func (t *viewHistoryTable) deleteDates(ctx context.Context, id int, dates []time
 
 func (t *viewHistoryTable) deleteAllDates(ctx context.Context, id int) (int, error) {
 	table := t.table.table
-	q := dialect.Delete(table).Where(t.idColumn.Eq(id))
+	q := dialect.Delete(table).Where(t.idColumn.Eq(id), t.userClause(ctx))
 
 	if _, err := exec(ctx, q); err != nil {
 		return 0, fmt.Errorf("resetting dates for id %v: %w", id, err)

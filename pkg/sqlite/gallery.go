@@ -27,7 +27,14 @@ const (
 	galleryIDColumn          = "gallery_id"
 	galleriesURLsTable       = "gallery_urls"
 	galleriesURLColumn       = "url"
+	galleriesUserDataTable   = "galleries_user_data"
 )
+
+var galleryUserData = userDataTable{
+	table:       galleriesUserDataTable,
+	idColumn:    galleryIDColumn,
+	objectTable: galleryTable,
+}
 
 type galleryRow struct {
 	ID            int         `db:"id" goqu:"skipinsert"`
@@ -37,14 +44,11 @@ type galleryRow struct {
 	DatePrecision null.Int    `db:"date_precision"`
 	Details       zero.String `db:"details"`
 	Photographer  zero.String `db:"photographer"`
-	// expressed as 1-100
-	Rating    null.Int  `db:"rating"`
-	Organized bool      `db:"organized"`
-	OCounter  int       `db:"o_counter"`
-	StudioID  null.Int  `db:"studio_id,omitempty"`
-	FolderID  null.Int  `db:"folder_id,omitempty"`
-	CreatedAt Timestamp `db:"created_at"`
-	UpdatedAt Timestamp `db:"updated_at"`
+	Organized     bool        `db:"organized"`
+	StudioID      null.Int    `db:"studio_id,omitempty"`
+	FolderID      null.Int    `db:"folder_id,omitempty"`
+	CreatedAt     Timestamp   `db:"created_at"`
+	UpdatedAt     Timestamp   `db:"updated_at"`
 }
 
 func (r *galleryRow) fromGallery(o models.Gallery) {
@@ -55,13 +59,41 @@ func (r *galleryRow) fromGallery(o models.Gallery) {
 	r.DatePrecision = datePrecisionFromDatePtr(o.Date)
 	r.Details = zero.StringFrom(o.Details)
 	r.Photographer = zero.StringFrom(o.Photographer)
-	r.Rating = intFromPtr(o.Rating)
 	r.Organized = o.Organized
-	r.OCounter = o.OCounter
 	r.StudioID = intFromPtr(o.StudioID)
 	r.FolderID = nullIntFromFolderIDPtr(o.FolderID)
 	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
+}
+
+// galleryUserDataRow is a row of a user's data for a gallery.
+type galleryUserDataRow struct {
+	GalleryID int `db:"gallery_id"`
+	UserID    int `db:"user_id"`
+	// expressed as 1-100
+	Rating   null.Int `db:"rating"`
+	OCounter int      `db:"o_counter"`
+}
+
+func (r galleryUserDataRow) apply(g *models.Gallery) {
+	g.Rating = nullIntPtr(r.Rating)
+	g.OCounter = r.OCounter
+}
+
+func galleryUserDataRecord(o models.Gallery) goqu.Record {
+	return goqu.Record{
+		"rating":    intFromPtr(o.Rating),
+		"o_counter": o.OCounter,
+	}
+}
+
+func galleryUserDataPartialRecord(o models.GalleryPartial) goqu.Record {
+	r := updateRecord{
+		Record: make(exp.Record),
+	}
+	r.setNullInt("rating", o.Rating)
+	r.setInt("o_counter", o.OCounter)
+	return goqu.Record(r.Record)
 }
 
 type galleryQueryRow struct {
@@ -81,9 +113,7 @@ func (r *galleryQueryRow) resolve() *models.Gallery {
 		Date:          r.Date.DatePtr(r.DatePrecision),
 		Details:       r.Details.String,
 		Photographer:  r.Photographer.String,
-		Rating:        nullIntPtr(r.Rating),
 		Organized:     r.Organized,
-		OCounter:      r.OCounter,
 		StudioID:      nullIntPtr(r.StudioID),
 		FolderID:      nullIntFolderIDPtr(r.FolderID),
 		PrimaryFileID: nullIntFileIDPtr(r.PrimaryFileID),
@@ -110,9 +140,7 @@ func (r *galleryRowRecord) fromPartial(o models.GalleryPartial) {
 	r.setNullDate("date", "date_precision", o.Date)
 	r.setNullString("details", o.Details)
 	r.setNullString("photographer", o.Photographer)
-	r.setNullInt("rating", o.Rating)
 	r.setBool("organized", o.Organized)
-	r.setInt("o_counter", o.OCounter)
 	r.setNullInt("studio_id", o.StudioID)
 	r.setTimestamp("created_at", o.CreatedAt)
 	r.setTimestamp("updated_at", o.UpdatedAt)
@@ -124,6 +152,7 @@ type galleryRepositoryType struct {
 	images     joinRepository
 	tags       joinRepository
 	scenes     joinRepository
+	audios     joinRepository
 	files      filesRepository
 }
 
@@ -177,6 +206,13 @@ var (
 			},
 			fkColumn: sceneIDColumn,
 		},
+		audios: joinRepository{
+			repository: repository{
+				tableName: audiosGalleriesTable,
+				idColumn:  galleryIDColumn,
+			},
+			fkColumn: audioIDColumn,
+		},
 		files: filesRepository{
 			repository: repository{
 				tableName: galleriesFilesTable,
@@ -203,7 +239,7 @@ func NewGalleryStore(fileStore *FileStore, folderStore *FolderStore) *GallerySto
 			fk:    galleriesCustomFieldsTable.Col(galleryIDColumn),
 		},
 		tableMgr:        galleryTableMgr,
-		oCounterManager: oCounterManager{galleryTableMgr},
+		oCounterManager: oCounterManager{tableMgr: galleryTableMgr, userData: galleryUserData},
 		fileStore:       fileStore,
 		folderStore:     folderStore,
 	}
@@ -252,6 +288,10 @@ func (qb *GalleryStore) Create(ctx context.Context, newObject *models.CreateGall
 		return err
 	}
 
+	if err := galleryUserData.upsert(ctx, id, galleryUserDataRecord(*newObject.Gallery)); err != nil {
+		return err
+	}
+
 	if len(newObject.FileIDs) > 0 {
 		const firstPrimary = true
 		if err := galleriesFilesTableMgr.insertJoins(ctx, id, firstPrimary, newObject.FileIDs); err != nil {
@@ -280,6 +320,11 @@ func (qb *GalleryStore) Create(ctx context.Context, newObject *models.CreateGall
 			return err
 		}
 	}
+	if newObject.AudioIDs.Loaded() {
+		if err := galleriesAudiosTableMgr.insertJoins(ctx, id, newObject.AudioIDs.List()); err != nil {
+			return err
+		}
+	}
 
 	const partial = false
 	if err := qb.setCustomFields(ctx, id, newObject.CustomFields, partial); err != nil {
@@ -304,6 +349,10 @@ func (qb *GalleryStore) Update(ctx context.Context, updatedObject *models.Update
 		return err
 	}
 
+	if err := galleryUserData.upsert(ctx, updatedObject.ID, galleryUserDataRecord(*updatedObject.Gallery)); err != nil {
+		return err
+	}
+
 	if updatedObject.URLs.Loaded() {
 		if err := galleriesURLsTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.URLs.List()); err != nil {
 			return err
@@ -321,6 +370,11 @@ func (qb *GalleryStore) Update(ctx context.Context, updatedObject *models.Update
 	}
 	if updatedObject.SceneIDs.Loaded() {
 		if err := galleriesScenesTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.SceneIDs.List()); err != nil {
+			return err
+		}
+	}
+	if updatedObject.AudioIDs.Loaded() {
+		if err := galleriesAudiosTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.AudioIDs.List()); err != nil {
 			return err
 		}
 	}
@@ -358,6 +412,10 @@ func (qb *GalleryStore) UpdatePartial(ctx context.Context, id int, partial model
 		}
 	}
 
+	if err := galleryUserData.upsert(ctx, id, galleryUserDataPartialRecord(partial)); err != nil {
+		return nil, err
+	}
+
 	if partial.URLs != nil {
 		if err := galleriesURLsTableMgr.modifyJoins(ctx, id, partial.URLs.Values, partial.URLs.Mode); err != nil {
 			return nil, err
@@ -375,6 +433,11 @@ func (qb *GalleryStore) UpdatePartial(ctx context.Context, id int, partial model
 	}
 	if partial.SceneIDs != nil {
 		if err := galleriesScenesTableMgr.modifyJoins(ctx, id, partial.SceneIDs.IDs, partial.SceneIDs.Mode); err != nil {
+			return nil, err
+		}
+	}
+	if partial.AudioIDs != nil {
+		if err := galleriesAudiosTableMgr.modifyJoins(ctx, id, partial.AudioIDs.IDs, partial.AudioIDs.Mode); err != nil {
 			return nil, err
 		}
 	}
@@ -518,7 +581,41 @@ func (qb *GalleryStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*
 		return nil, err
 	}
 
+	if err := qb.loadUserData(ctx, ret); err != nil {
+		return nil, err
+	}
+
 	return ret, nil
+}
+
+// loadUserData sets the current user's data on the provided galleries.
+func (qb *GalleryStore) loadUserData(ctx context.Context, galleries []*models.Gallery) error {
+	if _, ok := models.UserIDFromContext(ctx); !ok || len(galleries) == 0 {
+		return nil
+	}
+
+	byID := make(map[int]*models.Gallery, len(galleries))
+	ids := make([]int, len(galleries))
+	for i, g := range galleries {
+		byID[g.ID] = g
+		ids[i] = g.ID
+	}
+
+	return batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := galleryUserData.selectForUser(ctx, batch)
+		const single = false
+		return queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+			var r galleryUserDataRow
+			if err := rows.StructScan(&r); err != nil {
+				return err
+			}
+
+			if g := byID[r.GalleryID]; g != nil {
+				r.apply(g)
+			}
+			return nil
+		})
+	})
 }
 
 func (qb *GalleryStore) FindByFileID(ctx context.Context, fileID models.FileID) ([]*models.Gallery, error) {
@@ -574,9 +671,12 @@ func (qb *GalleryStore) CountByFileID(ctx context.Context, fileID models.FileID)
 }
 
 func (qb *GalleryStore) OCountByPerformerID(ctx context.Context, performerID int) (int, error) {
-	table := qb.table()
+	userData := galleryUserData.goquTable()
 	joinTable := performersGalleriesJoinTable
-	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table).InnerJoin(joinTable, goqu.On(table.Col(idColumn).Eq(joinTable.Col(galleryIDColumn)))).Where(joinTable.Col(performerIDColumn).Eq(performerID))
+	q := dialect.Select(goqu.COALESCE(goqu.SUM(userData.Col("o_counter")), 0)).From(userData).InnerJoin(joinTable, goqu.On(userData.Col(galleryIDColumn).Eq(joinTable.Col(galleryIDColumn)))).Where(
+		joinTable.Col(performerIDColumn).Eq(performerID),
+		userData.Col(userIDColumn).Eq(currentUserID(ctx)),
+	)
 
 	var ret int
 	if err := querySimple(ctx, q, &ret); err != nil {
@@ -594,10 +694,28 @@ func (qb *GalleryStore) OCountByStudioID(ctx context.Context, studioID int, dept
 	}
 
 	table := qb.table()
-	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table).Where(
+	userData := galleryUserData.goquTable()
+	q := dialect.Select(goqu.COALESCE(goqu.SUM(userData.Col("o_counter")), 0)).From(table).InnerJoin(userData, goqu.On(
+		userData.Col(galleryIDColumn).Eq(table.Col(idColumn)),
+		userData.Col(userIDColumn).Eq(currentUserID(ctx)),
+	)).Where(
 		table.Col(studioIDColumn).Eq(studioID),
 	)
 
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (qb *GalleryStore) OCount(ctx context.Context) (int, error) {
+	userData := galleryUserData.goquTable()
+
+	q := dialect.Select(goqu.COALESCE(goqu.SUM(userData.Col("o_counter")), 0)).From(userData).Where(
+		userData.Col(userIDColumn).Eq(currentUserID(ctx)),
+	)
+	var ret int
 	if err := querySimple(ctx, q, &ret); err != nil {
 		return 0, err
 	}
@@ -614,26 +732,25 @@ func (qb *GalleryStore) oCountByStudioIDRecursive(ctx context.Context, studioID 
 		INNER JOIN sub_studios ss ON s.parent_id = ss.id
 		WHERE ss.level < ? OR ? < 0
 	)
-	SELECT COALESCE(SUM(o_counter), 0) FROM galleries
+	SELECT COALESCE(SUM(galleries_user_data.o_counter), 0) FROM galleries
+	INNER JOIN galleries_user_data ON galleries_user_data.gallery_id = galleries.id AND galleries_user_data.user_id = ?
 	WHERE galleries.studio_id IN (SELECT id FROM sub_studios)`
 
-	var ret int
-	if err := dbWrapper.Get(ctx, &ret, q, studioID, depth, depth); err != nil {
+	rows, err := dbWrapper.QueryxContext(ctx, q, studioID, depth, depth, currentUserID(ctx))
+	if err != nil {
 		return 0, fmt.Errorf("querying gallery o_count by studio: %w", err)
 	}
+	defer rows.Close()
 
-	return ret, nil
-}
-
-func (qb *GalleryStore) OCount(ctx context.Context) (int, error) {
-	table := qb.table()
-
-	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table)
 	var ret int
-	if err := querySimple(ctx, q, &ret); err != nil {
-		return 0, err
+	for rows.Next() {
+		if err := rows.Scan(&ret); err != nil {
+			return 0, fmt.Errorf("scanning gallery o_count: %w", err)
+		}
 	}
-
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterating gallery o_count rows: %w", err)
+	}
 	return ret, nil
 }
 
@@ -752,6 +869,19 @@ func (qb *GalleryStore) FindBySceneID(ctx context.Context, sceneID int) ([]*mode
 	return ret, nil
 }
 
+func (qb *GalleryStore) FindByAudioID(ctx context.Context, audioID int) ([]*models.Gallery, error) {
+	sq := dialect.From(audiosGalleriesJoinTable).Select(audiosGalleriesJoinTable.Col(galleryIDColumn)).Where(
+		audiosGalleriesJoinTable.Col(audioIDColumn).Eq(audioID),
+	)
+
+	ret, err := qb.findBySubquery(ctx, sq)
+	if err != nil {
+		return nil, fmt.Errorf("getting galleries for audio %d: %w", audioID, err)
+	}
+
+	return ret, nil
+}
+
 func (qb *GalleryStore) FindByImageID(ctx context.Context, imageID int) ([]*models.Gallery, error) {
 	sq := dialect.From(galleriesImagesJoinTable).Select(galleriesImagesJoinTable.Col(galleryIDColumn)).Where(
 		galleriesImagesJoinTable.Col(imageIDColumn).Eq(imageID),
@@ -855,7 +985,7 @@ func (qb *GalleryStore) makeQuery(ctx context.Context, galleryFilter *models.Gal
 		return nil, err
 	}
 
-	if err := qb.setGallerySort(&query, findFilter); err != nil {
+	if err := qb.setGallerySort(ctx, &query, findFilter); err != nil {
 		return nil, err
 	}
 	query.sortAndPagination += getPagination(findFilter)
@@ -909,7 +1039,7 @@ var gallerySortOptions = sortOptions{
 	"updated_at",
 }
 
-func (qb *GalleryStore) setGallerySort(query *queryBuilder, findFilter *models.FindFilterType) error {
+func (qb *GalleryStore) setGallerySort(ctx context.Context, query *queryBuilder, findFilter *models.FindFilterType) error {
 	if findFilter == nil || findFilter.Sort == nil || *findFilter.Sort == "" {
 		return nil
 	}
@@ -1003,6 +1133,9 @@ func (qb *GalleryStore) setGallerySort(query *queryBuilder, findFilter *models.F
 		addFileTable()
 		addFolderTable()
 		query.sortAndPagination += " ORDER BY COALESCE(galleries.title, files.basename, basename(COALESCE(folders.path, ''))) COLLATE NATURAL_CI " + direction + ", file_folder.path COLLATE NATURAL_CI " + direction
+	case "rating", "o_counter":
+		galleryUserData.joinSort(ctx, query)
+		query.sortAndPagination += getSort(sort, direction, galleriesUserDataTable)
 	default:
 		query.sortAndPagination += getSort(sort, direction, "galleries")
 	}
@@ -1061,4 +1194,12 @@ func (qb *GalleryStore) GetSceneIDs(ctx context.Context, id int) ([]int, error) 
 
 func (qb *GalleryStore) AddSceneIDs(ctx context.Context, galleryID int, sceneIDs []int) error {
 	return galleriesScenesTableMgr.insertJoins(ctx, galleryID, sceneIDs)
+}
+
+func (qb *GalleryStore) GetAudioIDs(ctx context.Context, id int) ([]int, error) {
+	return galleryRepository.audios.getIDs(ctx, id)
+}
+
+func (qb *GalleryStore) AddAudioIDs(ctx context.Context, galleryID int, audioIDs []int) error {
+	return galleriesAudiosTableMgr.insertJoins(ctx, galleryID, audioIDs)
 }

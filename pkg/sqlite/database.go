@@ -36,7 +36,7 @@ const (
 	cacheSizeEnv = "STASH_SQLITE_CACHE_SIZE"
 )
 
-var appSchemaVersion uint = 96
+var appSchemaVersion uint = 98
 
 //go:embed migrations/*.sql
 var migrationsBox embed.FS
@@ -45,6 +45,7 @@ type storeRepository struct {
 	Blobs          *BlobStore
 	File           *FileStore
 	Folder         *FolderStore
+	Audio          *AudioStore
 	Image          *ImageStore
 	Gallery        *GalleryStore
 	GalleryChapter *GalleryChapterStore
@@ -56,6 +57,8 @@ type storeRepository struct {
 	Studio         *StudioStore
 	Tag            *TagStore
 	Group          *GroupStore
+	User           *UserStore
+	UserUIConfig   *UserUIConfigStore
 }
 
 type Database struct {
@@ -86,6 +89,7 @@ func NewDatabase() *Database {
 		Folder:         folderStore,
 		Scene:          NewSceneStore(r, blobStore),
 		SceneMarker:    NewSceneMarkerStore(),
+		Audio:          NewAudioStore(r, blobStore),
 		Image:          NewImageStore(r),
 		Gallery:        galleryStore,
 		GalleryChapter: NewGalleryChapterStore(),
@@ -95,6 +99,8 @@ func NewDatabase() *Database {
 		Tag:            tagStore,
 		Group:          NewGroupStore(blobStore),
 		SavedFilter:    NewSavedFilterStore(),
+		User:           NewUserStore(),
+		UserUIConfig:   NewUserUIConfigStore(),
 	}
 
 	ret := &Database{
@@ -119,6 +125,13 @@ func (db *Database) Ready() error {
 		return database.ErrDatabaseNotInitialized
 	}
 
+	if db.needsMigration() {
+		return &MigrationNeededError{
+			CurrentSchemaVersion:  db.schemaVersion,
+			RequiredSchemaVersion: appSchemaVersion,
+		}
+	}
+
 	return nil
 }
 
@@ -126,7 +139,7 @@ func (db *Database) Ready() error {
 // performs a full migration to the latest schema version. Otherwise, any
 // necessary migrations must be run separately using RunMigrations.
 // Returns true if the database is new.
-func (db *Database) Open(dbPath string) error {
+func (db *Database) Open(ctx context.Context, dbPath string) error {
 	db.lock()
 	defer db.unlock()
 
@@ -143,7 +156,7 @@ func (db *Database) Open(dbPath string) error {
 
 	if isNew {
 		// new database, just run the migrations
-		if err := db.RunAllMigrations(); err != nil {
+		if err := db.RunAllMigrations(ctx); err != nil {
 			return fmt.Errorf("error running initial schema migrations: %w", err)
 		}
 	} else {
@@ -154,13 +167,8 @@ func (db *Database) Open(dbPath string) error {
 			}
 		}
 
-		// if migration is needed, then don't open the connection
-		if db.needsMigration() {
-			return &database.MigrationNeededError{
-				CurrentSchemaVersion:  databaseSchemaVersion,
-				RequiredSchemaVersion: appSchemaVersion,
-			}
-		}
+		// if migration is needed, then still open the connection
+		// but don't allow most operations to run until the migration is complete
 	}
 
 	if err := db.initialise(); err != nil {
@@ -314,7 +322,7 @@ func (db *Database) Reset() error {
 		return err
 	}
 
-	if err := db.Open(databasePath); err != nil {
+	if err := db.Open(context.Background(), databasePath); err != nil {
 		return fmt.Errorf("[reset DB] unable to initialize: %w", err)
 	}
 

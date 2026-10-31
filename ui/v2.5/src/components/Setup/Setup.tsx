@@ -654,13 +654,16 @@ const SetPathsStep: React.FC<IWizardStep> = ({ goBack, next }) => {
 };
 
 const StashExclusions: React.FC<{ stash: GQL.StashConfig }> = ({ stash }) => {
-  if (!stash.excludeImage && !stash.excludeVideo) {
+  if (!stash.excludeImage && !stash.excludeVideo && !stash.excludeAudio) {
     return null;
   }
 
   const excludes = [];
   if (stash.excludeVideo) {
     excludes.push("videos");
+  }
+  if (stash.excludeAudio) {
+    excludes.push("audio");
   }
   if (stash.excludeImage) {
     excludes.push("images");
@@ -670,46 +673,23 @@ const StashExclusions: React.FC<{ stash: GQL.StashConfig }> = ({ stash }) => {
 };
 
 function validateUsername(username: string) {
-  if (username.trim() !== username) {
+  if (!username || username.trim() !== username) {
     return false;
   }
 
   return true;
 }
 
-// bcrypt imposes a 72-byte maximum on passwords. Note this is a byte count,
-// not a character count: a multibyte UTF-8 password can be 72 characters but
-// well over 72 bytes. Validate up front so the wizard's Next button is
-// disabled and the user finds out before they submit (the backend rejects a
-// too-long password in Setup atomically, but failing here is friendlier).
-// See https://github.com/stashapp/stash/issues/7135.
-const MAX_PASSWORD_BYTES = 72;
-
-function passwordByteLength(password: string): number {
-  return new TextEncoder().encode(password).length;
-}
-
-function validatePassword(username: string, password: string) {
-  if (!username) return true;
-
-  if (!password.length) return false;
-  if (passwordByteLength(password) > MAX_PASSWORD_BYTES) return false;
-  return true;
-}
-
 const PasswordField: React.FC<{
   password: string;
   setPassword: React.Dispatch<React.SetStateAction<string>>;
-  isInvalid?: boolean;
-}> = ({ password, setPassword, isInvalid }) => {
+}> = ({ password, setPassword }) => {
   const [showPassword, setShowPassword] = useState(false);
   const intl = useIntl();
 
   const type = showPassword ? "text" : "password";
   const hideShowTextID = showPassword ? "actions.hide" : "actions.show";
   const icon = showPassword ? faEyeSlash : faEye;
-
-  const tooLong = passwordByteLength(password) > MAX_PASSWORD_BYTES;
 
   return (
     <div className="password-field-group">
@@ -721,7 +701,6 @@ const PasswordField: React.FC<{
         })}
         value={password}
         onChange={(e) => setPassword(e.currentTarget.value)}
-        isInvalid={isInvalid}
       />
       <Button
         variant="secondary"
@@ -731,17 +710,6 @@ const PasswordField: React.FC<{
       >
         <Icon icon={icon} />
       </Button>
-      <Form.Control.Feedback type="invalid">
-        {isInvalid
-          ? tooLong
-            ? intl.formatMessage({
-                id: "setup.credentials.password_too_long",
-              })
-            : intl.formatMessage({
-                id: "setup.credentials.password_invalid",
-              })
-          : null}
-      </Form.Control.Feedback>
     </div>
   );
 };
@@ -750,15 +718,15 @@ const CredentialsStep: React.FC<IWizardStep> = ({ goBack, next }) => {
   const { setupState } = useSetupContext();
   const intl = useIntl();
 
-  const [username, setUsername] = useState(setupState.initialUsername || "");
+  const [username, setUsername] = useState(
+    setupState.initialUsername || "admin"
+  );
   const [password, setPassword] = useState(setupState.initialPassword ?? "");
   const usernameValid = validateUsername(username);
-  const passwordValid = validatePassword(username, password);
-  const valid = usernameValid && passwordValid;
 
   function onNext() {
     const input: Partial<GQL.SetupInput> = {
-      initialUsername: username.trim() === "" ? undefined : username,
+      initialUsername: username,
       initialPassword: password === "" ? undefined : password,
     };
     next(input);
@@ -798,11 +766,7 @@ const CredentialsStep: React.FC<IWizardStep> = ({ goBack, next }) => {
             <FormattedMessage id="login.password" />:
           </Form.Label>
           <Form.Group id="password">
-            <PasswordField
-              password={password}
-              setPassword={setPassword}
-              isInvalid={!passwordValid}
-            />
+            <PasswordField password={password} setPassword={setPassword} />
           </Form.Group>
         </Form.Group>
       </section>
@@ -815,7 +779,7 @@ const CredentialsStep: React.FC<IWizardStep> = ({ goBack, next }) => {
           <Button
             variant="primary mx-2 p-5"
             onClick={() => onNext()}
-            disabled={!valid}
+            disabled={!usernameValid}
           >
             <FormattedMessage id="actions.next_action" />
           </Button>
@@ -942,28 +906,30 @@ const ConfirmStep: React.FC<IWizardStep> = ({ goBack, next }) => {
             </dd>
           </dl>
         )}
-        {initialUsername?.length && initialPassword?.length && (
-          <>
-            <dl>
-              <dt>
-                <FormattedMessage id="login.username" />
-              </dt>
-              <dd>
-                <code>{initialUsername}</code>
-              </dd>
-            </dl>
-            <dl>
-              <dt>
-                <FormattedMessage id="login.password" />
-              </dt>
-              <dd>
-                <code>********</code>
-              </dd>
-            </dl>
-          </>
-        )}
+        <dl>
+          <dt>
+            <FormattedMessage id="login.username" />
+          </dt>
+          <dd>
+            <code>{initialUsername}</code>
+          </dd>
+        </dl>
+        <dl>
+          <dt>
+            <FormattedMessage id="login.password" />
+          </dt>
+          <dd>
+            <code>
+              {initialPassword ? (
+                "********"
+              ) : (
+                <FormattedMessage id="setup.confirm.no_password_set" />
+              )}
+            </code>
+          </dd>
+        </dl>
       </section>
-      {initialUsername?.length && initialPassword?.length && (
+      {initialPassword && (
         <p className="lead">
           <Icon icon={faExclamationTriangle} className="text-warning" />
           <FormattedMessage id="setup.confirm.password_set_warning" />

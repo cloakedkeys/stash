@@ -57,8 +57,8 @@ func (qb *studioFilterHandler) criterionHandler() criterionHandler {
 		stringCriterionHandler(studioFilter.Name, studioTable+".name"),
 		stringCriterionHandler(studioFilter.Details, studioTable+".details"),
 		qb.urlsCriterionHandler(studioFilter.URL),
-		intCriterionHandler(studioFilter.Rating100, studioTable+".rating", nil),
-		boolCriterionHandler(studioFilter.Favorite, studioTable+".favorite", nil),
+		studioUserData.intCriterionHandler(studioFilter.Rating100, studioUserData.column("rating")),
+		studioUserData.boolCriterionHandler(studioFilter.Favorite, studioUserData.columnOrDefault("favorite", "0")),
 		boolCriterionHandler(studioFilter.IgnoreAutoTag, studioTable+".ignore_auto_tag", nil),
 		boolCriterionHandler(studioFilter.Organized, studioTable+".organized", nil),
 
@@ -84,6 +84,7 @@ func (qb *studioFilterHandler) criterionHandler() criterionHandler {
 		qb.isMissingCriterionHandler(studioFilter.IsMissing),
 		qb.tagCountCriterionHandler(studioFilter.TagCount),
 		qb.sceneCountCriterionHandler(studioFilter.SceneCount),
+		qb.audioCountCriterionHandler(studioFilter.AudioCount),
 		qb.imageCountCriterionHandler(studioFilter.ImageCount),
 		qb.galleryCountCriterionHandler(studioFilter.GalleryCount),
 		qb.groupCountCriterionHandler(studioFilter.GroupCount),
@@ -101,6 +102,15 @@ func (qb *studioFilterHandler) criterionHandler() criterionHandler {
 			relatedHandler: &sceneFilterHandler{studioFilter.ScenesFilter},
 			joinFn: func(f *filterBuilder) {
 				studioRepository.scenes.innerJoin(f, "", "studios.id")
+			},
+		},
+
+		&relatedFilterHandler{
+			relatedIDCol:   "audios.id",
+			relatedRepo:    audioRepository.repository,
+			relatedHandler: &audioFilterHandler{studioFilter.AudiosFilter},
+			joinFn: func(f *filterBuilder) {
+				studioRepository.audios.innerJoin(f, "", "studios.id")
 			},
 		},
 
@@ -158,9 +168,12 @@ func (qb *studioFilterHandler) isMissingCriterionHandler(isMissing *string) crit
 			case "tags":
 				f.addLeftJoin(studiosTagsTable, "tags_join", "tags_join.studio_id = studios.id")
 				f.addWhere("tags_join.studio_id IS NULL")
+			case "rating":
+				studioUserData.join(ctx, f)
+				f.addWhere(studioUserData.column("rating") + " IS NULL")
 			default:
 				if err := validateIsMissing(*isMissing, []string{
-					"details", "rating",
+					"details",
 				}); err != nil {
 					f.setError(err)
 					return
@@ -176,6 +189,17 @@ func (qb *studioFilterHandler) sceneCountCriterionHandler(sceneCount *models.Int
 		if sceneCount != nil {
 			f.addLeftJoin("scenes", "", "scenes.studio_id = studios.id")
 			clause, args := getIntCriterionWhereClause("count(distinct scenes.id)", *sceneCount)
+
+			f.addHaving(clause, args...)
+		}
+	}
+}
+
+func (qb *studioFilterHandler) audioCountCriterionHandler(audioCount *models.IntCriterionInput) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		if audioCount != nil {
+			f.addLeftJoin("audios", "", "audios.studio_id = studios.id")
+			clause, args := getIntCriterionWhereClause("count(distinct audios.id)", *audioCount)
 
 			f.addHaving(clause, args...)
 		}

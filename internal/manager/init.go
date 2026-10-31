@@ -15,6 +15,7 @@ import (
 	"github.com/stashapp/stash/internal/log"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/database"
+	"github.com/stashapp/stash/pkg/audio"
 	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/gallery"
@@ -29,13 +30,14 @@ import (
 	"github.com/stashapp/stash/pkg/scraper"
 	"github.com/stashapp/stash/pkg/session"
 	"github.com/stashapp/stash/pkg/sqlite"
+	"github.com/stashapp/stash/pkg/user"
 	"github.com/stashapp/stash/pkg/utils"
 	"github.com/stashapp/stash/ui"
 )
 
 // Called at startup
 func Initialize(cfg *config.Config, l *log.Logger) (*Manager, error) {
-	ctx := context.TODO()
+	ctx := context.Background()
 
 	var db database.Database
 
@@ -63,6 +65,13 @@ func Initialize(cfg *config.Config, l *log.Logger) (*Manager, error) {
 		PluginCache:      pluginCache,
 		Paths:            mgrPaths,
 		Config:           cfg,
+	}
+
+	audioService := &audio.Service{
+		File:        db.File,
+		Repository:  db.Audio,
+		PluginCache: pluginCache,
+		Paths:       mgrPaths,
 	}
 
 	imageService := &image.Service{
@@ -112,11 +121,19 @@ func Initialize(cfg *config.Config, l *log.Logger) (*Manager, error) {
 		Repository: repo,
 
 		SceneService:   sceneService,
+		AudioService:   audioService,
 		ImageService:   imageService,
 		GalleryService: galleryService,
 		GroupService:   groupService,
 
 		scanSubs: &subscriptionManager{},
+	}
+
+	dlnaService.SetActivityUserResolver(mgr)
+
+	mgr.UserService = &user.Service{
+		Store:  db.User,
+		Config: cfg,
 	}
 
 	if !cfg.IsNewSystem() {
@@ -136,9 +153,35 @@ func Initialize(cfg *config.Config, l *log.Logger) (*Manager, error) {
 			cfgFile += " "
 		}
 
+		// if public mode is enabled, generate credentials used for initial setup
+		if cfg.GetPublicAccess() {
+			username := "setup"
+			const defaultPasswordLength = 16
+			password, err := user.GenerateRandomPassword(defaultPasswordLength)
+			if err != nil {
+				return nil, fmt.Errorf("error generating random password: %w", err)
+			}
+
+			cfg.SetNewSystemCredentials(username, password)
+
+			fmt.Printf("-----------------------------------------------------------\n")
+			fmt.Printf("Public access is enabled but no config file was found. Generated credentials for initial setup:\n")
+			fmt.Printf("Username: %s\n", username)
+			fmt.Printf("Password: %s\n", password)
+			fmt.Printf("-----------------------------------------------------------\n")
+		}
+
+		// need to generate a session key that we will later use in the setup
+		// if we don't, we end up with bad cookie errors if a login was required
+		sessionKey, err := config.GenerateSessionStoreKey()
+		if err != nil {
+			return nil, fmt.Errorf("error generating session store key: %w", err)
+		}
+		cfg.SetSessionStoreKey(sessionKey)
+
 		// create temporary session store - this will be re-initialised
 		// after config is complete
-		mgr.SessionStore = session.NewStore(cfg)
+		mgr.SessionStore = session.NewStore(cfg, mgr.UserService, &repo.TxnManager)
 
 		logger.Warnf("config file %snot found. Assuming new system...", cfgFile)
 	}
@@ -197,7 +240,7 @@ func initJobManager(cfg *config.Config) *job.Manager {
 func (s *Manager) postInit(ctx context.Context) error {
 	s.RefreshConfig()
 
-	s.SessionStore = session.NewStore(s.Config)
+	s.SessionStore = session.NewStore(s.Config, s.UserService, &s.Repository.TxnManager)
 	s.PluginCache.RegisterSessionStore(s.SessionStore)
 
 	s.RefreshPluginCache()
@@ -235,7 +278,11 @@ func (s *Manager) postInit(ctx context.Context) error {
 		})
 	}
 
-	if err := s.Database.Open(s.Config.GetDatabasePath()); err != nil {
+	if err := s.Database.Open(ctx, s.Config.GetDatabasePath()); err != nil {
+		return err
+	}
+
+	if err := s.Database.Ready(); err != nil {
 		var migrationNeededErr *database.MigrationNeededError
 		if errors.As(err, &migrationNeededErr) {
 			logger.Warn(err)
@@ -254,6 +301,31 @@ func (s *Manager) postInit(ctx context.Context) error {
 
 	s.RefreshFFMpeg(ctx)
 	s.RefreshStreamManager()
+
+	// initialise the user service - only do this is the database schema is >= 97, which is when the user table was added
+	const minimumUserSchemaVersion = 97
+	if s.Database.Version() >= minimumUserSchemaVersion {
+		if err := s.Repository.TxnManager.WithReadTxn(ctx, func(ctx context.Context) error {
+			if err := s.UserService.Init(ctx); err != nil {
+				return fmt.Errorf("error initialising user service: %w", err)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+	} else {
+		// user table does not exist, use the legacy config based service
+		s.UserService = &user.LegacyService{
+			Username:     s.Config.GetLegacyUsername(),
+			PasswordHash: s.Config.GetLegacyPasswordHash(),
+			APIKey:       s.Config.GetLegacyAPIKey(),
+		}
+
+		// need to also set the session store to use the legacy user service
+		s.SessionStore.RegisterAuthenticator(s.UserService)
+
+		logger.Warn("User table not yet in database, using legacy user service loading user credentials from config file.")
+	}
 
 	return nil
 }

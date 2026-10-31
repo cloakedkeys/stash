@@ -48,6 +48,11 @@ models:
         fieldName: DurationFinite
       frame_rate:
         fieldName: FrameRateFinite
+  AudioFile:
+    fields:
+      # override float fields - #1572
+      duration:
+        fieldName: DurationFinite
   # movie is group under the hood
   Movie:
     model: github.com/stashapp/stash/pkg/models.Group
@@ -102,6 +107,8 @@ models:
     model: github.com/stashapp/stash/internal/manager.StashBoxBatchTagInput
   SceneStreamEndpoint:
     model: github.com/stashapp/stash/internal/manager.SceneStreamEndpoint
+  AudioStreamEndpoint:
+    model: github.com/stashapp/stash/internal/manager.AudioStreamEndpoint
   ExportObjectTypeInput:
     model: github.com/stashapp/stash/internal/manager.ExportObjectTypeInput
   ExportObjectsInput:
@@ -116,7 +123,7 @@ models:
   DLNAStatus:
     model: github.com/stashapp/stash/internal/dlna.Status
   DLNAIP:
-    model: github.com/stashapp/stash/internal/dlna.Dlnaip
+    model: github.com/stashapp/stash/internal/ip.IPTime
   IdentifySource:
     model: github.com/stashapp/stash/internal/identify.Source
   IdentifyMetadataTaskOptions:
@@ -131,6 +138,8 @@ models:
     model: github.com/stashapp/stash/internal/identify.FieldStrategy
   ScraperSource:
     model: github.com/stashapp/stash/pkg/scraper.Source
+  RoleEnum:
+    model: github.com/stashapp/stash/pkg/models.RoleEnum
   IdentifySourceInput:
     model: github.com/stashapp/stash/internal/identify.Source
   IdentifyFieldOptionsInput:

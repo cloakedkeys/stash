@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil"
@@ -1444,7 +1445,7 @@ func TestGroupQueryContainingGroups(t *testing.T) {
 				0,
 			},
 			"",
-			[]int{groupIdxWithParentAndChild, groupIdxWithParent, groupIdxWithGrandParent, groupIdxWithParentAndScene},
+			[]int{groupIdxWithParentAndChild, groupIdxWithParent, groupIdxWithGrandParent, groupIdxWithParentAndScene, groupIdxWithParentAndAudio},
 		},
 	}
 
@@ -1557,7 +1558,7 @@ func TestGroupQuerySubGroups(t *testing.T) {
 				0,
 			},
 			"",
-			[]int{groupIdxWithGrandChild, groupIdxWithChild, groupIdxWithParentAndChild, groupIdxWithChildWithScene},
+			[]int{groupIdxWithGrandChild, groupIdxWithChild, groupIdxWithParentAndChild, groupIdxWithChildWithScene, groupIdxWithChildWithAudio},
 		},
 	}
 
@@ -1612,7 +1613,7 @@ func TestGroupQueryContainingGroupCount(t *testing.T) {
 			1,
 			models.CriterionModifierEquals,
 			"",
-			[]int{groupIdxWithParent, groupIdxWithGrandParent, groupIdxWithParentAndChild, groupIdxWithParentAndScene},
+			[]int{groupIdxWithParent, groupIdxWithGrandParent, groupIdxWithParentAndChild, groupIdxWithParentAndScene, groupIdxWithParentAndAudio},
 		},
 		{
 			"not equals",
@@ -1633,7 +1634,7 @@ func TestGroupQueryContainingGroupCount(t *testing.T) {
 			0,
 			models.CriterionModifierGreaterThan,
 			"",
-			[]int{groupIdxWithParent, groupIdxWithGrandParent, groupIdxWithParentAndChild, groupIdxWithParentAndScene},
+			[]int{groupIdxWithParent, groupIdxWithGrandParent, groupIdxWithParentAndChild, groupIdxWithParentAndScene, groupIdxWithParentAndAudio},
 		},
 	}
 
@@ -1683,7 +1684,7 @@ func TestGroupQuerySubGroupCount(t *testing.T) {
 			1,
 			models.CriterionModifierEquals,
 			"",
-			[]int{groupIdxWithChild, groupIdxWithGrandChild, groupIdxWithParentAndChild, groupIdxWithChildWithScene},
+			[]int{groupIdxWithChild, groupIdxWithGrandChild, groupIdxWithParentAndChild, groupIdxWithChildWithScene, groupIdxWithChildWithAudio},
 		},
 		{
 			"not equals",
@@ -1704,7 +1705,7 @@ func TestGroupQuerySubGroupCount(t *testing.T) {
 			0,
 			models.CriterionModifierGreaterThan,
 			"",
-			[]int{groupIdxWithChild, groupIdxWithGrandChild, groupIdxWithParentAndChild, groupIdxWithChildWithScene},
+			[]int{groupIdxWithChild, groupIdxWithGrandChild, groupIdxWithParentAndChild, groupIdxWithChildWithScene, groupIdxWithChildWithAudio},
 		},
 	}
 
@@ -2563,9 +2564,137 @@ func TestGroupQuerySortPerformerCount(t *testing.T) {
 	})
 }
 
+func queryGroupIDsWithOCount(ctx context.Context, t *testing.T, oCount int) []int {
+	t.Helper()
+
+	groupFilter := models.GroupFilterType{
+		OCounter: &models.IntCriterionInput{
+			Value:    oCount,
+			Modifier: models.CriterionModifierEquals,
+		},
+	}
+
+	return groupsToIDs(queryGroups(ctx, t, &groupFilter, nil))
+}
+
+func TestGroupQueryOCounter(t *testing.T) {
+	runWithRollbackTxn(t, "scene o-count", func(t *testing.T, ctx context.Context) {
+		groupID := groupIDs[groupIdxWithScene]
+
+		assert.NotContains(t, queryGroupIDsWithOCount(ctx, t, 1), groupID)
+
+		if _, err := db.Scene.AddO(ctx, sceneIDs[sceneIdxWithGroup], nil); err != nil {
+			t.Fatalf("Error adding scene o-date: %v", err)
+		}
+
+		assert.Contains(t, queryGroupIDsWithOCount(ctx, t, 1), groupID)
+	})
+
+	runWithRollbackTxn(t, "audio o-count", func(t *testing.T, ctx context.Context) {
+		groupID := groupIDs[groupIdxWithAudio]
+		audioID := audioIDs[audioIdxWithGroup]
+
+		assert.NotContains(t, queryGroupIDsWithOCount(ctx, t, 1), groupID)
+
+		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+			t.Fatalf("Error adding audio o-date: %v", err)
+		}
+
+		assert.Contains(t, queryGroupIDsWithOCount(ctx, t, 1), groupID)
+
+		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+			t.Fatalf("Error adding audio o-date: %v", err)
+		}
+
+		assert.Contains(t, queryGroupIDsWithOCount(ctx, t, 2), groupID)
+	})
+
+	runWithRollbackTxn(t, "scene and audio o-counts combined", func(t *testing.T, ctx context.Context) {
+		groupID := groupIDs[groupIdxWithScene]
+		audioID := audioIDs[audioIdxWithGroup]
+
+		// add the audio to the scene's group, so that both o-counts contribute
+		if _, err := db.Audio.UpdatePartial(ctx, audioID, models.AudioPartial{
+			GroupIDs: &models.UpdateGroupIDsAudio{
+				Groups: []models.GroupsAudios{{GroupID: groupID}},
+				Mode:   models.RelationshipUpdateModeAdd,
+			},
+		}); err != nil {
+			t.Fatalf("Error adding audio to group: %v", err)
+		}
+
+		if _, err := db.Scene.AddO(ctx, sceneIDs[sceneIdxWithGroup], nil); err != nil {
+			t.Fatalf("Error adding scene o-date: %v", err)
+		}
+		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+			t.Fatalf("Error adding audio o-date: %v", err)
+		}
+
+		assert.NotContains(t, queryGroupIDsWithOCount(ctx, t, 1), groupID)
+		assert.Contains(t, queryGroupIDsWithOCount(ctx, t, 2), groupID)
+	})
+}
+
 // TODO Update
 // TODO Destroy - ensure image is destroyed
 // TODO Find
 // TODO Count
 // TODO All
 // TODO Query
+
+func TestGroupStore_UserData(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		qb := db.Group
+
+		newGroup := models.Group{
+			Name: "user data",
+		}
+		require.NoError(t, qb.Create(ctx, &newGroup))
+		groupID := newGroup.ID
+
+		other := models.User{
+			Username: "other",
+			Roles:    models.Roles{models.RoleEnumModify},
+		}
+		require.NoError(t, db.User.Create(ctx, &other, ""))
+		otherCtx := models.WithUserID(ctx, other.ID)
+		guestCtx := models.WithUserID(ctx, 0)
+
+		rating := 60
+		_, err := qb.UpdatePartial(ctx, groupID, models.GroupPartial{
+			Rating: models.NewOptionalInt(rating),
+		})
+		require.NoError(t, err)
+
+		// the user who set the rating sees it
+		g, err := qb.Find(ctx, groupID)
+		require.NoError(t, err)
+		assert.Equal(t, &rating, g.Rating)
+
+		// other users and the guest user do not
+		for name, c := range map[string]context.Context{"other user": otherCtx, "guest": guestCtx} {
+			g, err := qb.Find(c, groupID)
+			require.NoError(t, err)
+			assert.Nil(t, g.Rating, name)
+		}
+
+		// filtering by rating only matches the current user's rating
+		ratingFilter := &models.GroupFilterType{
+			Rating100: &models.IntCriterionInput{
+				Value:    rating,
+				Modifier: models.CriterionModifierEquals,
+			},
+		}
+		findIDs := func(c context.Context) []int {
+			var ids []int
+			for _, g := range queryGroups(c, t, ratingFilter, nil) {
+				ids = append(ids, g.ID)
+			}
+			return ids
+		}
+		assert.Contains(t, findIDs(ctx), groupID)
+		assert.NotContains(t, findIDs(otherCtx), groupID)
+
+		return nil
+	})
+}

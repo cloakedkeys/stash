@@ -33,7 +33,7 @@ func NewAnonymiser(db *Database, outPath string) (*Anonymiser, error) {
 	}
 
 	newDB := NewDatabase()
-	if err := newDB.Open(outPath); err != nil {
+	if err := newDB.Open(context.Background(), outPath); err != nil {
 		return nil, fmt.Errorf("opening %s: %w", outPath, err)
 	}
 
@@ -112,6 +112,7 @@ func (db *Anonymiser) deleteBlobs() error {
 		func() error { return db.truncateColumn(studioTable, studioImageBlobColumn) },
 		func() error { return db.truncateColumn(performerTable, performerImageBlobColumn) },
 		func() error { return db.truncateColumn(sceneTable, sceneCoverBlobColumn) },
+		func() error { return db.truncateColumn(audioTable, audioCoverBlobColumn) },
 		func() error { return db.truncateColumn(groupTable, groupFrontImageBlobColumn) },
 		func() error { return db.truncateColumn(groupTable, groupBackImageBlobColumn) },
 

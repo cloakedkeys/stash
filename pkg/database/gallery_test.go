@@ -29,6 +29,11 @@ func loadGalleryRelationships(ctx context.Context, expected models.Gallery, actu
 			return err
 		}
 	}
+	if expected.AudioIDs.Loaded() {
+		if err := actual.LoadAudioIDs(ctx, db.Gallery); err != nil {
+			return err
+		}
+	}
 	if expected.TagIDs.Loaded() {
 		if err := actual.LoadTagIDs(ctx, db.Gallery()); err != nil {
 			return err
@@ -1332,6 +1337,147 @@ func Test_galleryQueryBuilder_FindBySceneID(t *testing.T) {
 			assert.Equal(tt.want, got)
 		})
 	}
+}
+
+func Test_galleryQueryBuilder_FindByAudioID(t *testing.T) {
+	tests := []struct {
+		name    string
+		audioID int
+		want    []*models.Gallery
+		wantErr bool
+	}{
+		{
+			"valid",
+			audioIDs[audioIdxWithGallery],
+			[]*models.Gallery{makeGalleryWithID(galleryIdxWithAudio)},
+			false,
+		},
+		{
+			"two galleries",
+			audioIDs[audioIdxWithTwoGalleries],
+			[]*models.Gallery{
+				makeGalleryWithID(galleryIdxWithAudio),
+				makeGalleryWithID(galleryIdxWithTwoAudios),
+			},
+			false,
+		},
+		{
+			"none",
+			audioIDs[audioIdx1WithPerformer],
+			nil,
+			false,
+		},
+	}
+
+	qb := db.Gallery
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			assert := assert.New(t)
+			got, err := qb.FindByAudioID(ctx, tt.audioID)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("galleryQueryBuilder.FindByAudioID() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if err := postFindGalleries(ctx, tt.want, got); err != nil {
+				t.Errorf("loadGalleryRelationships() error = %v", err)
+				return
+			}
+
+			assert.Equal(tt.want, got)
+		})
+	}
+}
+
+func Test_galleryQueryBuilder_AudioIDs(t *testing.T) {
+	runWithRollbackTxn(t, "GetAudioIDs/AddAudioIDs", func(t *testing.T, ctx context.Context) {
+		assert := assert.New(t)
+		qb := db.Gallery
+
+		galleryID := galleryIDs[galleryIdxWithAudio]
+
+		got, err := qb.GetAudioIDs(ctx, galleryID)
+		if err != nil {
+			t.Errorf("galleryQueryBuilder.GetAudioIDs() error = %v", err)
+			return
+		}
+
+		assert.ElementsMatch([]int{
+			audioIDs[audioIdxWithGallery],
+			audioIDs[audioIdxWithTwoGalleries],
+		}, got)
+
+		newAudioID := audioIDs[audioIdx1WithPerformer]
+		if err := qb.AddAudioIDs(ctx, galleryID, []int{newAudioID}); err != nil {
+			t.Errorf("galleryQueryBuilder.AddAudioIDs() error = %v", err)
+			return
+		}
+
+		got, err = qb.GetAudioIDs(ctx, galleryID)
+		if err != nil {
+			t.Errorf("galleryQueryBuilder.GetAudioIDs() error = %v", err)
+			return
+		}
+
+		assert.ElementsMatch([]int{
+			audioIDs[audioIdxWithGallery],
+			audioIDs[audioIdxWithTwoGalleries],
+			newAudioID,
+		}, got)
+	})
+}
+
+func TestGalleryQueryAudios(t *testing.T) {
+	withTxn(func(ctx context.Context) error {
+		sqb := db.Gallery
+
+		audioCriterion := models.MultiCriterionInput{
+			Value: []string{
+				strconv.Itoa(audioIDs[audioIdxWithTwoGalleries]),
+			},
+			Modifier: models.CriterionModifierIncludes,
+		}
+
+		galleryFilter := models.GalleryFilterType{
+			Audios: &audioCriterion,
+		}
+
+		galleries := queryGallery(ctx, t, sqb, &galleryFilter, nil)
+
+		var ids []int
+		for _, g := range galleries {
+			ids = append(ids, g.ID)
+		}
+
+		assert.ElementsMatch(t, []int{
+			galleryIDs[galleryIdxWithAudio],
+			galleryIDs[galleryIdxWithTwoAudios],
+		}, ids)
+
+		return nil
+	})
+}
+
+func TestGalleryQueryIsMissingAudios(t *testing.T) {
+	withTxn(func(ctx context.Context) error {
+		sqb := db.Gallery
+		isMissing := "audios"
+		galleryFilter := models.GalleryFilterType{
+			IsMissing: &isMissing,
+		}
+
+		galleries := queryGallery(ctx, t, sqb, &galleryFilter, nil)
+
+		assert.NotEmpty(t, galleries)
+
+		for _, g := range galleries {
+			assert.NotEqual(t, galleryIDs[galleryIdxWithAudio], g.ID)
+			assert.NotEqual(t, galleryIDs[galleryIdxWithTwoAudios], g.ID)
+		}
+
+		return nil
+	})
 }
 
 func Test_galleryQueryBuilder_FindByImageID(t *testing.T) {
@@ -3767,3 +3913,120 @@ func TestGalleryQueryCustomFields(t *testing.T) {
 // TODO All
 // TODO Query
 // TODO Destroy
+
+func TestGalleryStore_UserData(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		qb := db.Gallery
+
+		newGallery := models.Gallery{
+			Title: "user data",
+		}
+		require.NoError(t, qb.Create(ctx, &models.CreateGalleryInput{Gallery: &newGallery}))
+		galleryID := newGallery.ID
+
+		other := models.User{
+			Username: "other",
+			Roles:    models.Roles{models.RoleEnumModify},
+		}
+		require.NoError(t, db.User.Create(ctx, &other, ""))
+		otherCtx := models.WithUserID(ctx, other.ID)
+		guestCtx := models.WithUserID(ctx, 0)
+
+		rating := 60
+		_, err := qb.UpdatePartial(ctx, galleryID, models.GalleryPartial{
+			Rating: models.NewOptionalInt(rating),
+		})
+		require.NoError(t, err)
+
+		// the user who set the rating sees it
+		g, err := qb.Find(ctx, galleryID)
+		require.NoError(t, err)
+		assert.Equal(t, &rating, g.Rating)
+
+		// other users and the guest user do not
+		for name, c := range map[string]context.Context{"other user": otherCtx, "guest": guestCtx} {
+			g, err := qb.Find(c, galleryID)
+			require.NoError(t, err)
+			assert.Nil(t, g.Rating, name)
+		}
+
+		// filtering by rating only matches the current user's rating
+		ratingFilter := &models.GalleryFilterType{
+			Rating100: &models.IntCriterionInput{
+				Value:    rating,
+				Modifier: models.CriterionModifierEquals,
+			},
+		}
+		findIDs := func(c context.Context) []int {
+			var ids []int
+			for _, g := range queryGallery(c, t, qb, ratingFilter, nil) {
+				ids = append(ids, g.ID)
+			}
+			return ids
+		}
+		assert.Contains(t, findIDs(ctx), galleryID)
+		assert.NotContains(t, findIDs(otherCtx), galleryID)
+
+		return nil
+	})
+}
+
+func TestGalleryStore_UserCounters(t *testing.T) {
+	require.NoError(t, withRollbackTxn(func(ctx context.Context) error {
+		parent := models.Studio{Name: "counter parent"}
+		require.NoError(t, db.Studio.Create(ctx, &models.CreateStudioInput{Studio: &parent}))
+		child := models.Studio{Name: "counter child", ParentID: &parent.ID}
+		require.NoError(t, db.Studio.Create(ctx, &models.CreateStudioInput{Studio: &child}))
+		performer := models.Performer{Name: "counter performer"}
+		require.NoError(t, db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &performer}))
+		gallery := models.Gallery{Title: "counter gallery", OCounter: 4, StudioID: &child.ID, PerformerIDs: models.NewRelatedIDs([]int{performer.ID})}
+		require.NoError(t, db.Gallery.Create(ctx, &models.CreateGalleryInput{Gallery: &gallery}))
+		other := models.User{Username: "counter other", Roles: models.Roles{models.RoleEnumRead}}
+		require.NoError(t, db.User.Create(ctx, &other, ""))
+		otherCtx := models.WithUserID(ctx, other.ID)
+		guestCtx := models.WithUserID(ctx, 0)
+		for _, test := range []struct {
+			ctx  context.Context
+			want int
+		}{{ctx, 4}, {otherCtx, 0}, {guestCtx, 0}} {
+			found, err := db.Gallery.Find(test.ctx, gallery.ID)
+			require.NoError(t, err)
+			require.Equal(t, test.want, found.OCounter)
+			count, err := db.Gallery.OCountByPerformerID(test.ctx, performer.ID)
+			require.NoError(t, err)
+			require.Equal(t, test.want, count)
+			count, err = db.Gallery.OCountByStudioID(test.ctx, parent.ID, -1)
+			require.NoError(t, err)
+			require.Equal(t, test.want, count)
+			count, err = db.Gallery.OCountByStudioID(test.ctx, child.ID, 0)
+			require.NoError(t, err)
+			require.Equal(t, test.want, count)
+		}
+		count, err := db.Gallery.IncrementOCounter(otherCtx, gallery.ID)
+		require.NoError(t, err)
+		require.Equal(t, 1, count)
+		count, err = db.Gallery.DecrementOCounter(otherCtx, gallery.ID)
+		require.NoError(t, err)
+		require.Zero(t, count)
+		_, err = db.Gallery.IncrementOCounter(guestCtx, gallery.ID)
+		require.Error(t, err)
+		for _, c := range []context.Context{ctx, otherCtx, guestCtx} {
+			for _, sort := range []string{"o_counter", "rating"} {
+				_, _, err := db.Gallery.Query(c, nil, &models.FindFilterType{Sort: &sort})
+				require.NoError(t, err)
+			}
+			for _, sort := range []string{"o_counter", "o_counter_all", "favorite"} {
+				_, _, err := db.Studio.Query(c, nil, &models.FindFilterType{Sort: &sort})
+				require.NoError(t, err)
+			}
+			for _, sort := range []string{"o_counter", "favorite"} {
+				_, _, err := db.Performer.Query(c, nil, &models.FindFilterType{Sort: &sort})
+				require.NoError(t, err)
+			}
+			sort := "favorite"
+			_, _, err := db.Tag.Query(c, nil, &models.FindFilterType{Sort: &sort})
+			require.NoError(t, err)
+		}
+		return nil
+	}))
+}

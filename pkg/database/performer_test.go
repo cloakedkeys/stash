@@ -15,6 +15,7 @@ import (
 	"github.com/stashapp/stash/pkg/models"
 	performerquery "github.com/stashapp/stash/pkg/performer"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var testCustomFields = map[string]interface{}{
@@ -2527,7 +2528,7 @@ func TestPerformerQuerySortScenesCount(t *testing.T) {
 		assert.True(t, len(performers) > 0)
 		lastPerformer := performers[len(performers)-1]
 
-		assert.Equal(t, performerIDs[performerIdxWithTwoSceneStudio], lastPerformer.ID)
+		assert.Equal(t, performerIDs[performerIdxWithTwoTags], lastPerformer.ID)
 
 		return nil
 	})
@@ -3171,7 +3172,155 @@ func TestPerformerOCounterIncludesGalleries(t *testing.T) {
 	})
 }
 
+func queryPerformerIDsWithOCount(ctx context.Context, t *testing.T, oCount int) []int {
+	t.Helper()
+
+	performerFilter := models.PerformerFilterType{
+		OCounter: &models.IntCriterionInput{
+			Value:    oCount,
+			Modifier: models.CriterionModifierEquals,
+		},
+	}
+
+	return performersToIDs(queryPerformers(ctx, t, &performerFilter, nil))
+}
+
+func TestPerformerQueryOCounter(t *testing.T) {
+	runWithRollbackTxn(t, "scene o-count", func(t *testing.T, ctx context.Context) {
+		performerID := performerIDs[performerIdxWithScene]
+
+		assert.NotContains(t, queryPerformerIDsWithOCount(ctx, t, 1), performerID)
+
+		if _, err := db.Scene.AddO(ctx, sceneIDs[sceneIdxWithPerformer], nil); err != nil {
+			t.Fatalf("Error adding scene o-date: %v", err)
+		}
+
+		assert.Contains(t, queryPerformerIDsWithOCount(ctx, t, 1), performerID)
+	})
+
+	runWithRollbackTxn(t, "audio o-count", func(t *testing.T, ctx context.Context) {
+		performerID := performerIDs[performerIdxWithAudio]
+		audioID := audioIDs[audioIdxWithPerformer]
+
+		assert.NotContains(t, queryPerformerIDsWithOCount(ctx, t, 1), performerID)
+
+		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+			t.Fatalf("Error adding audio o-date: %v", err)
+		}
+
+		assert.Contains(t, queryPerformerIDsWithOCount(ctx, t, 1), performerID)
+
+		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+			t.Fatalf("Error adding audio o-date: %v", err)
+		}
+
+		assert.Contains(t, queryPerformerIDsWithOCount(ctx, t, 2), performerID)
+	})
+
+	runWithRollbackTxn(t, "scene and audio o-counts combined", func(t *testing.T, ctx context.Context) {
+		performerID := performerIDs[performerIdxWithScene]
+		audioID := audioIDs[audioIdxWithGroup]
+
+		// add the scene's performer to the audio, so that both o-counts contribute
+		if _, err := db.Audio.UpdatePartial(ctx, audioID, models.AudioPartial{
+			PerformerIDs: &models.UpdateIDs{
+				IDs:  []int{performerID},
+				Mode: models.RelationshipUpdateModeAdd,
+			},
+		}); err != nil {
+			t.Fatalf("Error adding performer to audio: %v", err)
+		}
+
+		if _, err := db.Scene.AddO(ctx, sceneIDs[sceneIdxWithPerformer], nil); err != nil {
+			t.Fatalf("Error adding scene o-date: %v", err)
+		}
+		if _, err := db.Audio.AddO(ctx, audioID, nil); err != nil {
+			t.Fatalf("Error adding audio o-date: %v", err)
+		}
+
+		assert.NotContains(t, queryPerformerIDsWithOCount(ctx, t, 1), performerID)
+		assert.Contains(t, queryPerformerIDsWithOCount(ctx, t, 2), performerID)
+	})
+}
+
 // TODO Update
 // TODO Destroy
 // TODO Find
 // TODO Query
+
+func TestPerformerStore_UserData(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		qb := db.Performer
+
+		newPerformer := models.Performer{
+			Name: "user data",
+		}
+		require.NoError(t, qb.Create(ctx, &models.CreatePerformerInput{Performer: &newPerformer}))
+		performerID := newPerformer.ID
+
+		scene := models.Scene{
+			Title:        "user data performer scene",
+			PerformerIDs: models.NewRelatedIDs([]int{performerID}),
+		}
+		require.NoError(t, db.Scene.Create(ctx, &scene, nil))
+
+		other := models.User{
+			Username: "other",
+			Roles:    models.Roles{models.RoleEnumModify},
+		}
+		require.NoError(t, db.User.Create(ctx, &other, ""))
+		otherCtx := models.WithUserID(ctx, other.ID)
+		guestCtx := models.WithUserID(ctx, 0)
+
+		rating := 60
+		_, err := qb.UpdatePartial(ctx, performerID, models.PerformerPartial{
+			Rating:   models.NewOptionalInt(rating),
+			Favorite: models.NewOptionalBool(true),
+		})
+		require.NoError(t, err)
+
+		// the user who set the data sees it
+		p, err := qb.Find(ctx, performerID)
+		require.NoError(t, err)
+		assert.Equal(t, &rating, p.Rating)
+		assert.True(t, p.Favorite)
+
+		// other users and the guest user do not
+		for name, c := range map[string]context.Context{"other user": otherCtx, "guest": guestCtx} {
+			p, err := qb.Find(c, performerID)
+			require.NoError(t, err)
+			assert.Nil(t, p.Rating, name)
+			assert.False(t, p.Favorite, name)
+		}
+
+		// filtering by favorite only matches the current user's favorites
+		favorite := true
+		perPage := -1
+		allResults := &models.FindFilterType{PerPage: &perPage}
+		findIDs := func(c context.Context, favorite bool) []int {
+			var ids []int
+			for _, p := range queryPerformers(c, t, &models.PerformerFilterType{FilterFavorites: &favorite}, allResults) {
+				ids = append(ids, p.ID)
+			}
+			return ids
+		}
+		assert.Contains(t, findIDs(ctx, true), performerID)
+		assert.NotContains(t, findIDs(otherCtx, true), performerID)
+		assert.Contains(t, findIDs(otherCtx, false), performerID)
+
+		// filtering scenes by performer favorite only matches the current user's favorites
+		findSceneIDs := func(c context.Context, favorite bool) []int {
+			var ids []int
+			for _, s := range queryScene(c, t, db.Scene, &models.SceneFilterType{PerformerFavorite: &favorite}, allResults) {
+				ids = append(ids, s.ID)
+			}
+			return ids
+		}
+		assert.Contains(t, findSceneIDs(ctx, favorite), scene.ID)
+		assert.NotContains(t, findSceneIDs(ctx, !favorite), scene.ID)
+		assert.NotContains(t, findSceneIDs(otherCtx, favorite), scene.ID)
+		assert.Contains(t, findSceneIDs(otherCtx, !favorite), scene.ID)
+
+		return nil
+	})
+}

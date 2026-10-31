@@ -11,12 +11,14 @@ import { Helmet } from "react-helmet";
 import cloneDeep from "lodash-es/cloneDeep";
 import mergeWith from "lodash-es/mergeWith";
 import { ToastProvider } from "src/hooks/Toast";
+import { CurrentUserProvider } from "src/hooks/CurrentUser";
 import { LightboxProvider } from "src/hooks/Lightbox/context";
 import { initPolyfills } from "src/polyfills";
 
 import locales, { NestedMessage, registerCountry } from "src/locales";
 import {
   useConfiguration,
+  useMe,
   useConfigureUI,
   useSystemStatus,
 } from "src/core/StashService";
@@ -70,6 +72,7 @@ const FrontPage = lazyComponent(
 );
 const Scenes = lazyComponent(() => import("./components/Scenes/Scenes"));
 const Folders = lazyComponent(() => import("./components/Folders/Folders"));
+const Audios = lazyComponent(() => import("./components/Audios/Audios"));
 const Settings = lazyComponent(() => import("./components/Settings/Settings"));
 const Stats = lazyComponent(() => import("./components/Stats"));
 const Studios = lazyComponent(() => import("./components/Studios/Studios"));
@@ -83,6 +86,9 @@ const Images = lazyComponent(() => import("./components/Images/Images"));
 const Setup = lazyComponent(() => import("./components/Setup/Setup"));
 const Migrate = lazyComponent(() => import("./components/Setup/Migrate"));
 
+const AudioFilenameParser = lazyComponent(
+  () => import("./components/AudioFilenameParser/AudioFilenameParser")
+);
 const SceneFilenameParser = lazyComponent(
   () => import("./components/SceneFilenameParser/SceneFilenameParser")
 );
@@ -147,6 +153,7 @@ function translateLanguageLocale(l: string) {
 
 export const App: React.FC = () => {
   const config = useConfiguration();
+  const me = useMe();
   const [saveUI] = useConfigureUI();
 
   const { data: systemStatusData } = useSystemStatus();
@@ -265,6 +272,7 @@ export const App: React.FC = () => {
             <Route exact path="/" component={FrontPage} />
             <Route path="/scenes" component={Scenes} />
             <Route path="/folders" component={Folders} />
+            <Route path="/audios" component={Audios} />
             <Route path="/images" component={Images} />
             <Route path="/galleries" component={Galleries} />
             <Route path="/performers" component={Performers} />
@@ -277,6 +285,10 @@ export const App: React.FC = () => {
             <Route
               path="/sceneFilenameParser"
               component={SceneFilenameParser}
+            />
+            <Route
+              path="/audioFilenameParser"
+              component={AudioFilenameParser}
             />
             <Route
               path="/sceneDuplicateChecker"
@@ -343,7 +355,7 @@ export const App: React.FC = () => {
     );
   }
 
-  if (config.loading) {
+  if (config.loading || me.loading) {
     return renderSimple(<LoadingIndicator />);
   }
 
@@ -377,23 +389,25 @@ export const App: React.FC = () => {
           >
             <AppContainer>
               <ConfigurationProvider configuration={config.data!.configuration}>
-                {maybeRenderReleaseNotes()}
-                <ConnectionMonitor />
-                <TroubleshootingModeOverlay />
-                <Suspense fallback={<LoadingIndicator />}>
-                  <LightboxProvider>
-                    <ManualProvider>
-                      <InteractiveProvider>
-                        <Helmet
-                          {...titleProps}
-                          htmlAttributes={htmlAttributes}
-                        />
-                        {maybeRenderNavbar()}
-                        <MainContainer>{renderContent()}</MainContainer>
-                      </InteractiveProvider>
-                    </ManualProvider>
-                  </LightboxProvider>
-                </Suspense>
+                <CurrentUserProvider user={me.data?.me ?? null}>
+                  {maybeRenderReleaseNotes()}
+                  <ConnectionMonitor />
+                  <TroubleshootingModeOverlay />
+                  <Suspense fallback={<LoadingIndicator />}>
+                    <LightboxProvider>
+                      <ManualProvider>
+                        <InteractiveProvider>
+                          <Helmet
+                            {...titleProps}
+                            htmlAttributes={htmlAttributes}
+                          />
+                          {maybeRenderNavbar()}
+                          <MainContainer>{renderContent()}</MainContainer>
+                        </InteractiveProvider>
+                      </ManualProvider>
+                    </LightboxProvider>
+                  </Suspense>
+                </CurrentUserProvider>
               </ConfigurationProvider>
             </AppContainer>
           </PluginsLoader>

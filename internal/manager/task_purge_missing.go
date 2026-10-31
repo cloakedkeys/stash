@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/stashapp/stash/pkg/audio"
 	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/image"
@@ -223,11 +224,64 @@ func (h *purgeHandler) HandleFile(ctx context.Context, fileDeleter *file.Deleter
 	if err := h.handleRelatedScenes(ctx, fileDeleter, fileID); err != nil {
 		return err
 	}
+	if err := h.handleRelatedAudios(ctx, fileDeleter, fileID); err != nil {
+		return err
+	}
 	if err := h.handleRelatedGalleries(ctx, fileID); err != nil {
 		return err
 	}
 	if err := h.handleRelatedImages(ctx, fileDeleter, fileID); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (h *purgeHandler) handleRelatedAudios(ctx context.Context, fileDeleter *file.Deleter, fileID models.FileID) error {
+	mgr := GetInstance()
+	audioQB := mgr.Repository.Audio
+	audios, err := audioQB.FindByFileID(ctx, fileID)
+	if err != nil {
+		return err
+	}
+
+	audioFileDeleter := &audio.FileDeleter{
+		Deleter:        fileDeleter,
+		FileNamingAlgo: models.HashAlgorithmMd5,
+		Paths:          mgr.Paths,
+	}
+
+	for _, audioModel := range audios {
+		if err := audioModel.LoadFiles(ctx, audioQB); err != nil {
+			return err
+		}
+
+		if len(audioModel.Files.List()) <= 1 {
+			logger.Infof("Deleting audio %q since it has no other related files", audioModel.DisplayName())
+			if err := mgr.AudioService.Destroy(ctx, audioModel, audioFileDeleter, false, false); err != nil {
+				return err
+			}
+
+			mgr.PluginCache.RegisterPostHooks(ctx, audioModel.ID, hook.AudioDestroyPost, plugin.AudiosDestroyInput{
+				Checksum: audioModel.Checksum,
+				Path:     audioModel.Path,
+			}, nil)
+			continue
+		}
+
+		var newPrimaryID models.FileID
+		for _, relatedFile := range audioModel.Files.List() {
+			if relatedFile.ID != fileID {
+				newPrimaryID = relatedFile.ID
+				break
+			}
+		}
+
+		audioPartial := models.NewAudioPartial()
+		audioPartial.PrimaryFileID = &newPrimaryID
+		if _, err := mgr.Repository.Audio.UpdatePartial(ctx, audioModel.ID, audioPartial); err != nil {
+			return err
+		}
 	}
 
 	return nil
