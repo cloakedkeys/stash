@@ -59,20 +59,19 @@ func (r *userRow) resolve() *models.User {
 	return ret
 }
 
+// userUpdateRow only has the fields that can be edited. The API key, password
+// and creation time have to survive an update.
 type userUpdateRow struct {
-	ID        int         `db:"id" goqu:"skipinsert"`
-	Username  string      `db:"username"`
-	APIKey    zero.String `db:"api_key"`
-	CreatedAt Timestamp   `db:"created_at"`
-	UpdatedAt Timestamp   `db:"updated_at"`
-	Notes     string      `db:"notes"`
+	ID        int       `db:"id" goqu:"skipinsert"`
+	Username  string    `db:"username"`
+	UpdatedAt Timestamp `db:"updated_at"`
+	Notes     string    `db:"notes"`
 }
 
 func (r *userUpdateRow) fromUser(o models.User) {
 	r.ID = o.ID
 	r.Username = o.Username
 	r.Notes = o.Notes
-	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
 }
 
@@ -252,7 +251,9 @@ func (qb *UserStore) SetRoles(ctx context.Context, id int, roles models.Roles) e
 func (qb *UserStore) SetLock(ctx context.Context, id int, locked bool) error {
 	t := qb.table()
 	q := dialect.Update(t).Prepared(true).Set(
-		goqu.Record{"locked": locked},
+		// also update the timestamp so that sessions from before the lock are
+		// not valid again once the user is unlocked
+		goqu.Record{"locked": locked, "updated_at": Timestamp{Timestamp: time.Now()}},
 	).Where(t.Col("id").Eq(id))
 
 	if _, err := exec(ctx, q); err != nil {

@@ -19,6 +19,7 @@ var (
 	ErrUserNotExist             = errors.New("user not found")
 	ErrEmptyUsername            = errors.New("empty username")
 	ErrUsernameHasWhitespace    = errors.New("username has leading or trailing whitespace")
+	ErrUsernameReserved         = errors.New("username is reserved")
 	ErrDeleteLastAdminUser      = errors.New("final admin user cannot be deleted")
 	ErrRemoveLastAdminRole      = errors.New("final admin role cannot be removed")
 	ErrInternalError            = errors.New("internal error")
@@ -425,6 +426,11 @@ func (s *Service) validateUsername(username string) error {
 		return ErrUsernameHasWhitespace
 	}
 
+	// the guest user can't be changed, so an account of that name couldn't be managed
+	if strings.EqualFold(username, GuestUsername) {
+		return ErrUsernameReserved
+	}
+
 	return nil
 }
 
@@ -562,7 +568,7 @@ func (s *Service) UpdateUser(ctx context.Context, username string, updated model
 
 		hasAdmin := false
 		for _, u := range users {
-			if u.Username != existingUser.Username && u.Roles.HasRole(models.RoleEnumAdmin) {
+			if u.Username != existingUser.Username && u.Roles.HasRole(models.RoleEnumAdmin) && !userIsLocked(u) {
 				hasAdmin = true
 				break
 			}
@@ -574,6 +580,12 @@ func (s *Service) UpdateUser(ctx context.Context, username string, updated model
 	}
 
 	updated.ID = existingUser.ID
+
+	// a change of name or roles ends the user's sessions. Editing the notes doesn't.
+	updated.UpdatedAt = existingUser.UpdatedAt
+	if username != updated.Username || !slices.Equal(existingRoles, updated.Roles) {
+		updated.UpdatedAt = time.Now()
+	}
 
 	// update user in store
 	if err := s.Store.Update(ctx, &updated); err != nil {
@@ -865,7 +877,7 @@ func (s *Service) DeleteUser(ctx context.Context, username string) error {
 
 		hasAdmin := false
 		for _, u := range users {
-			if u.Username != username && u.Roles.HasRole(models.RoleEnumAdmin) {
+			if u.Username != username && u.Roles.HasRole(models.RoleEnumAdmin) && !userIsLocked(u) {
 				hasAdmin = true
 				break
 			}

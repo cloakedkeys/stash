@@ -2,7 +2,9 @@ package user
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/session"
@@ -152,5 +154,92 @@ func TestDeleteUser(t *testing.T) {
 	// delete non-admin user - should succeed
 	if err := svc.DeleteUser(ctx, "user1"); err != nil {
 		t.Fatalf("failed to delete non-admin user: %v", err)
+	}
+}
+
+func TestLockedAdminDoesNotCountAsRemainingAdmin(t *testing.T) {
+	store := newMockStore()
+	svc := &Service{Store: store, Config: &mockConfig{}}
+	ctx := session.SetCurrentUser(context.Background(), models.User{Username: "first"})
+
+	for _, name := range []string{"first", "second"} {
+		u := models.User{Username: name, Roles: models.Roles{models.RoleEnumAdmin}}
+		if err := svc.CreateUser(ctx, u, "password"); err != nil {
+			t.Fatalf("failed to create %s: %v", name, err)
+		}
+	}
+
+	if err := svc.LockUser(ctx, "second"); err != nil {
+		t.Fatalf("failed to lock second admin: %v", err)
+	}
+
+	if err := svc.UpdateUser(ctx, "first", models.User{Username: "first", Roles: models.Roles{models.RoleEnumRead}}); !errors.Is(err, ErrRemoveLastAdminRole) {
+		t.Fatalf("expected %v removing the role from the only usable admin, got %v", ErrRemoveLastAdminRole, err)
+	}
+
+	if err := svc.DeleteUser(ctx, "first"); !errors.Is(err, ErrDeleteLastAdminUser) {
+		t.Fatalf("expected %v deleting the only usable admin, got %v", ErrDeleteLastAdminUser, err)
+	}
+
+	if err := svc.UnlockUser(ctx, "second"); err != nil {
+		t.Fatalf("failed to unlock second admin: %v", err)
+	}
+
+	if err := svc.DeleteUser(ctx, "first"); err != nil {
+		t.Fatalf("failed to delete admin once another is usable: %v", err)
+	}
+}
+
+func TestGuestUsernameIsReserved(t *testing.T) {
+	store := newMockStore()
+	svc := &Service{Store: store, Config: &mockConfig{}}
+	ctx := context.Background()
+
+	admin := models.User{Username: "admin", Roles: models.Roles{models.RoleEnumAdmin}}
+	if err := svc.CreateUser(ctx, admin, "password"); err != nil {
+		t.Fatalf("failed to create admin: %v", err)
+	}
+
+	guest := models.User{Username: "Guest", Roles: models.Roles{models.RoleEnumRead}}
+	if err := svc.CreateUser(ctx, guest, "password"); !errors.Is(err, ErrUsernameReserved) {
+		t.Fatalf("expected %v creating a guest account, got %v", ErrUsernameReserved, err)
+	}
+
+	renamed := models.User{Username: "guest", Roles: models.Roles{models.RoleEnumAdmin}}
+	if err := svc.UpdateUser(ctx, "admin", renamed); !errors.Is(err, ErrUsernameReserved) {
+		t.Fatalf("expected %v renaming to guest, got %v", ErrUsernameReserved, err)
+	}
+}
+
+func TestUpdateUserEndsSessionsOnlyForNameOrRoles(t *testing.T) {
+	store := newMockStore()
+	svc := &Service{Store: store, Config: &mockConfig{}}
+	ctx := context.Background()
+
+	admin := models.User{Username: "admin", Roles: models.Roles{models.RoleEnumAdmin}}
+	if err := svc.CreateUser(ctx, admin, "password"); err != nil {
+		t.Fatalf("failed to create admin: %v", err)
+	}
+	listener := models.User{Username: "listener", Roles: models.Roles{models.RoleEnumRead}}
+	if err := svc.CreateUser(ctx, listener, "password"); err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+
+	loginTime := time.Now().Add(time.Hour)
+	before := store.users["listener"].UpdatedAt
+
+	if err := svc.UpdateUser(ctx, "listener", models.User{Username: "listener", Notes: "edited", Roles: models.Roles{models.RoleEnumRead}}); err != nil {
+		t.Fatalf("failed to edit notes: %v", err)
+	}
+	if got := store.users["listener"].UpdatedAt; !got.Equal(before) {
+		t.Fatalf("editing notes changed the session timestamp from %v to %v", before, got)
+	}
+
+	store.users["listener"].UpdatedAt = loginTime.Add(-2 * time.Hour)
+	if err := svc.UpdateUser(ctx, "listener", models.User{Username: "listener", Roles: models.Roles{models.RoleEnumModify}}); err != nil {
+		t.Fatalf("failed to change roles: %v", err)
+	}
+	if got := store.users["listener"].UpdatedAt; !got.After(loginTime.Add(-2 * time.Hour)) {
+		t.Fatalf("changing roles did not move the session timestamp: %v", got)
 	}
 }
