@@ -29,21 +29,24 @@ class MarkersPlugin extends videojs.getPlugin("plugin") {
   constructor(player: VideoJsPlayer) {
     super(player);
     player.ready(() => {
+      // the player may have been disposed by the time this runs, for
+      // example when moving to another scene
+      const playerEl = player.el();
+      if (!playerEl) return;
+
       const tooltip = videojs.dom.createEl("div") as HTMLElement;
       tooltip.className = "vjs-marker-tooltip";
       tooltip.style.visibility = "hidden";
 
-      const parent = player
-        .el()
-        .querySelector(".vjs-progress-holder .vjs-mouse-display");
+      const parent = playerEl.querySelector(
+        ".vjs-progress-holder .vjs-mouse-display"
+      );
       if (parent) parent.appendChild(tooltip);
       this.markerTooltip = tooltip;
 
-      this.defaultTooltip = player
-        .el()
-        .querySelector<HTMLElement>(
-          ".vjs-progress-holder .vjs-mouse-display .vjs-time-tooltip"
-        );
+      this.defaultTooltip = playerEl.querySelector<HTMLElement>(
+        ".vjs-progress-holder .vjs-mouse-display .vjs-time-tooltip"
+      );
     });
   }
 
@@ -62,12 +65,17 @@ class MarkersPlugin extends videojs.getPlugin("plugin") {
   }
 
   addDotMarker(marker: IMarker) {
+    // markers are added a frame after loading, when the player may already
+    // have been disposed
+    const playerEl = this.player.el();
+    if (!playerEl) return;
+
     const duration = this.player.duration();
     const markerSet: {
       dot?: HTMLDivElement;
       range?: HTMLDivElement;
     } = {};
-    const seekBar = this.player.el().querySelector(".vjs-progress-holder");
+    const seekBar = playerEl.querySelector(".vjs-progress-holder");
 
     markerSet.dot = videojs.dom.createEl("div") as HTMLDivElement;
     markerSet.dot.className = "vjs-marker";
@@ -112,9 +120,13 @@ class MarkersPlugin extends videojs.getPlugin("plugin") {
   }
 
   private renderRangeMarkers(markers: IMarker[], layer: number) {
+    // see addDotMarker
+    const playerEl = this.player.el();
+    if (!playerEl) return;
+
     const duration = this.player.duration();
-    const parent = this.player.el().querySelector(".vjs-progress-control");
-    const seekBar = this.player.el().querySelector(".vjs-progress-holder");
+    const parent = playerEl.querySelector(".vjs-progress-control");
+    const seekBar = playerEl.querySelector(".vjs-progress-holder");
     if (!seekBar || !parent || !duration) return;
 
     markers.forEach((marker) => {
