@@ -2,10 +2,15 @@ name: Test Postgres
 
 on:
   push:
-    branches: [ postgres-support-3 ]
+    branches:
+      - develop
+      - master
+      - 'releases/**'
   pull_request:
-  release:
-    types: [ published ]
+
+concurrency:
+  group: test-postgres-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test-postgres:
@@ -26,34 +31,31 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
 
     - name: Setup Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version-file: 'go.mod'
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+    - name: Generate Backend
+      run: make generate-backend
 
-    - name: Setup pnpm
-      uses: pnpm/action-setup@v4
-      with:
-        version: 9
-
-    - name: Build project
-      run: |
-        rm -f ui/v2.5/pnpm-workspace.yaml
-        make release
-
+    # migrations create functions in plperl
     - name: Install plperl in postgres container
       run: |
         docker exec postgres-db apt-get update
         docker exec postgres-db apt-get install -y postgresql-plperl-17
 
+    # backup tests run pg_dump and pg_restore, which must be as new as the server
+    - name: Install PostgreSQL client tools
+      run: |
+        sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+        sudo apt-get install -y postgresql-client-17
+        echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+    # one package at a time, since they share the database
     - name: Test
       env:
-        PGSQL_TEST: 'postgresql://username:password@localhost:5432/testdb'
-      run: go test -tags "db_integration" ./...
+        PGSQL_TEST: 'postgresql://username:password@localhost:5432/testdb?sslmode=disable'
+      run: go test -count=1 -p 1 -tags "sqlite_stat4 sqlite_math_functions integration" ./pkg/database ./pkg/postgres
