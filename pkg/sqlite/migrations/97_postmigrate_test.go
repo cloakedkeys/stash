@@ -82,10 +82,14 @@ INSERT INTO voice_actors(id,name,favorite,created_at,updated_at) VALUES(1,'voice
 			var result string
 			require.NoError(t, raw.Get(&result, "PRAGMA integrity_check"))
 			require.Equal(t, "ok", result)
-			rows, err := raw.Query("PRAGMA foreign_key_check")
-			require.NoError(t, err)
-			require.False(t, rows.Next(), "all migrated personal data belongs to the initial admin")
-			require.NoError(t, rows.Close())
+			// closed before the queries below, which share the connection
+			func() {
+				rows, err := raw.Query("PRAGMA foreign_key_check")
+				require.NoError(t, err)
+				defer rows.Close()
+				require.False(t, rows.Next(), "all migrated personal data belongs to the initial admin")
+				require.NoError(t, rows.Err())
+			}()
 			for _, table := range []string{"scenes_user_data", "images_user_data", "galleries_user_data", "groups_user_data", "performers_user_data", "studios_user_data", "tags_user_data", "voice_actors_user_data", "scenes_o_dates", "scenes_view_dates", "saved_filters"} {
 				var owner int
 				require.NoError(t, raw.Get(&owner, "SELECT user_id FROM "+table))
