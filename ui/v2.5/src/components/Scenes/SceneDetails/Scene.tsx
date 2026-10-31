@@ -19,6 +19,8 @@ import {
   useSceneUpdate,
   queryFindScenes,
   queryFindScenesByID,
+  queryFindSceneMarkers,
+  queryFindSceneMarkersByID,
   useSceneIncrementPlayCount,
 } from "src/core/StashService";
 
@@ -28,7 +30,12 @@ import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { Icon } from "src/components/Shared/Icon";
 import { Counter } from "src/components/Shared/Counter";
 import { useToast } from "src/hooks/Toast";
-import SceneQueue, { QueuedScene } from "src/models/sceneQueue";
+import SceneQueue, {
+  QueuedItem,
+  isCurrentQueuedItem,
+  isQueuedMarker,
+  queuedItemSceneID,
+} from "src/models/sceneQueue";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import Mousetrap from "mousetrap";
 import { OrganizedButton } from "./OrganizedButton";
@@ -142,11 +149,11 @@ const VideoFrameRateResolution: React.FC<{
 interface IProps {
   scene: GQL.SceneDataFragment;
   setTimestamp: (num: number) => void;
-  queueScenes: QueuedScene[];
+  queueScenes: QueuedItem[];
   onQueueNext: () => void;
   onQueuePrevious: () => void;
   onQueueRandom: () => void;
-  onQueueSceneClicked: (sceneID: string) => void;
+  onQueueSceneClicked: (item: QueuedItem) => void;
   onDelete: () => void;
   continuePlaylist: boolean;
   queueHasMoreScenes: boolean;
@@ -156,6 +163,7 @@ interface IProps {
   collapsed: boolean;
   setCollapsed: (state: boolean) => void;
   setContinuePlaylist: (value: boolean) => void;
+  initialTimestamp: number;
   onRefreshScene: () => Promise<void>;
 }
 
@@ -186,6 +194,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
     collapsed,
     setCollapsed,
     setContinuePlaylist,
+    initialTimestamp,
     onRefreshScene,
   } = props;
 
@@ -616,6 +625,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
             <QueueViewer
               scenes={queueScenes}
               currentID={scene.id}
+              currentMarkerSeconds={initialTimestamp}
               continue={continuePlaylist}
               setContinue={setContinuePlaylist}
               onSceneClicked={onQueueSceneClicked}
@@ -773,6 +783,26 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
   );
 });
 
+// fetch a page of a filtered queue, which holds either scenes or markers
+async function queryQueuePage(
+  filter: ListFilterModel
+): Promise<{ items: QueuedItem[]; count: number }> {
+  if (filter.mode === GQL.FilterMode.SceneMarkers) {
+    const query = await queryFindSceneMarkers(filter);
+    const { scene_markers, count } = query.data.findSceneMarkers;
+    return { items: scene_markers, count };
+  }
+
+  const query = await queryFindScenes(filter);
+  const { scenes, count } = query.data.findScenes;
+  return { items: scenes, count };
+}
+
+// the scene a queued item plays must have a file
+function isQueuedItemPlayable(item: QueuedItem) {
+  return isPlayable(isQueuedMarker(item) ? item.scene : item);
+}
+
 const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   location,
   history,
@@ -816,7 +846,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     }
   }, [configuration?.interface.continuePlaylistDefault, queryParams]);
 
-  const [queueScenes, setQueueScenes] = useState<QueuedScene[]>([]);
+  const [queueScenes, setQueueScenes] = useState<QueuedItem[]>([]);
 
   const [collapsed, setCollapsed] = useState(false);
   const [continuePlaylist, setContinuePlaylist] = useState(queryContinue);
@@ -825,13 +855,14 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   );
 
   const _setTimestamp = useRef<(value: number) => void>();
-  const initialTimestamp = useMemo(() => {
-    const t = queryParams.get("t");
-    if (!t) return 0;
+  // t is either a start time, or a start and end time separated by a comma
+  // (used when playing a marker)
+  const [initialTimestamp, initialEndstamp] = useMemo(() => {
+    const [start, end] = (queryParams.get("t") ?? "").split(",");
 
-    const n = Number(t);
-    if (Number.isNaN(n)) return 0;
-    return n;
+    const s = Number(start);
+    const e = end ? Number(end) : Number.NaN;
+    return [Number.isNaN(s) ? 0 : s, Number.isNaN(e) ? null : e] as const;
   }, [queryParams]);
 
   const [queueTotal, setQueueTotal] = useState(0);
@@ -842,8 +873,11 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     configuration?.interface.autostartVideoOnPlaySelected ?? false;
 
   const currentQueueIndex = useMemo(
-    () => queueScenes.findIndex((s) => s.id === id),
-    [queueScenes, id]
+    () =>
+      queueScenes.findIndex((s) =>
+        isCurrentQueuedItem(s, id, initialTimestamp)
+      ),
+    [queueScenes, id, initialTimestamp]
   );
 
   function getSetTimestamp(fn: (value: number) => void) {
@@ -867,9 +901,8 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
 
   useEffect(() => {
     async function getQueueFilterScenes(filter: ListFilterModel) {
-      const query = await queryFindScenes(filter);
-      const { scenes, count } = query.data.findScenes;
-      setQueueScenes(scenes);
+      const { items, count } = await queryQueuePage(filter);
+      setQueueScenes(items);
       setQueueTotal(count);
       setQueueStart((filter.currentPage - 1) * filter.itemsPerPage + 1);
     }
@@ -882,10 +915,20 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       setQueueStart(1);
     }
 
+    async function getQueueSceneMarkers(sceneMarkerIDs: number[]) {
+      const query = await queryFindSceneMarkersByID(sceneMarkerIDs);
+      const { scene_markers, count } = query.data.findSceneMarkers;
+      setQueueScenes(scene_markers);
+      setQueueTotal(count);
+      setQueueStart(1);
+    }
+
     if (sceneQueue.query) {
       getQueueFilterScenes(sceneQueue.query);
     } else if (sceneQueue.sceneIDs) {
       getQueueScenes(sceneQueue.sceneIDs);
+    } else if (sceneQueue.sceneMarkerIDs) {
+      getQueueSceneMarkers(sceneQueue.sceneMarkerIDs);
     }
   }, [sceneQueue]);
 
@@ -897,11 +940,10 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     const filterCopy = sceneQueue.query.clone();
     const newStart = queueStart - filterCopy.itemsPerPage;
     filterCopy.currentPage = Math.ceil(newStart / filterCopy.itemsPerPage);
-    const query = await queryFindScenes(filterCopy);
-    const { scenes } = query.data.findScenes;
+    const { items: scenes } = await queryQueuePage(filterCopy);
 
     // prepend scenes to scene list
-    const newScenes = (scenes as QueuedScene[]).concat(queueScenes);
+    const newScenes = scenes.concat(queueScenes);
     setQueueScenes(newScenes);
     setQueueStart(newStart);
 
@@ -920,8 +962,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     const filterCopy = sceneQueue.query.clone();
     const newStart = queueStart + queueScenes.length;
     filterCopy.currentPage = Math.ceil(newStart / filterCopy.itemsPerPage);
-    const query = await queryFindScenes(filterCopy);
-    const { scenes } = query.data.findScenes;
+    const { items: scenes } = await queryQueuePage(filterCopy);
 
     // append scenes to scene list
     const newScenes = queueScenes.concat(scenes);
@@ -930,8 +971,30 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     return scenes;
   }
 
-  function loadScene(sceneID: string, autoPlay?: boolean, newPage?: number) {
-    const sceneLink = sceneQueue.makeLink(sceneID, {
+  function loadQueueItem(
+    item: QueuedItem,
+    autoPlay?: boolean,
+    newPage?: number
+  ) {
+    if (isQueuedMarker(item)) {
+      const sceneLink = sceneQueue.makeLink(item.scene.id, {
+        newPage,
+        autoPlay,
+        continue: continuePlaylist,
+        start: item.seconds,
+        end: item.end_seconds,
+      });
+      history.replace(sceneLink);
+
+      // the scene page does not reload if the scene is the same, so move
+      // the player to the marker
+      if (item.scene.id === id) {
+        setTimestamp(item.seconds);
+      }
+      return;
+    }
+
+    const sceneLink = sceneQueue.makeLink(item.id, {
       newPage,
       autoPlay,
       continue: continuePlaylist,
@@ -945,11 +1008,12 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   async function queueNext(autoPlay: boolean, skipUnplayable = false) {
     if (currentQueueIndex === -1) return;
 
-    const canLoad = (s: QueuedScene) => !skipUnplayable || isPlayable(s);
+    const canLoad = (s: QueuedItem) =>
+      !skipUnplayable || isQueuedItemPlayable(s);
 
     const next = queueScenes.slice(currentQueueIndex + 1).find(canLoad);
     if (next) {
-      loadScene(next.id, autoPlay);
+      loadQueueItem(next, autoPlay);
     } else if (queueHasMoreScenes) {
       // if we're at the end of the queue, load more scenes
       const loadedScenes = await onQueueMoreScenes();
@@ -957,7 +1021,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       if (target) {
         // set the page to the next page
         const newPage = (sceneQueue.query?.currentPage ?? 0) + 1;
-        loadScene(target.id, autoPlay, newPage);
+        loadQueueItem(target, autoPlay, newPage);
       }
     }
   }
@@ -966,15 +1030,15 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     if (currentQueueIndex === -1) return;
 
     if (currentQueueIndex > 0) {
-      loadScene(queueScenes[currentQueueIndex - 1].id, autoPlay);
+      loadQueueItem(queueScenes[currentQueueIndex - 1], autoPlay);
     } else {
       // if we're at the beginning of the queue, load the previous page
       if (queueStart > 1) {
         const loadedScenes = await onQueueLessScenes();
         if (loadedScenes && loadedScenes.length > 0) {
           const newPage = (sceneQueue.query?.currentPage ?? 0) - 1;
-          loadScene(
-            loadedScenes[loadedScenes.length - 1].id,
+          loadQueueItem(
+            loadedScenes[loadedScenes.length - 1],
             autoPlay,
             newPage
           );
@@ -993,15 +1057,14 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       );
       const filterCopy = sceneQueue.query.clone();
       filterCopy.currentPage = page;
-      const queryResults = await queryFindScenes(filterCopy);
-      if (queryResults.data.findScenes.scenes.length > index) {
-        const { id: sceneID } = queryResults.data.findScenes.scenes[index];
-        // navigate to the image player page
-        loadScene(sceneID, autoPlay, page);
+      const { items } = await queryQueuePage(filterCopy);
+      if (items.length > index) {
+        // navigate to the scene player page
+        loadQueueItem(items[index], autoPlay, page);
       }
     } else if (queueTotal !== 0) {
       const index = Math.floor(Math.random() * queueTotal);
-      loadScene(queueScenes[index].id, autoPlay);
+      loadQueueItem(queueScenes[index], autoPlay);
     }
   }
 
@@ -1016,19 +1079,21 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     if (
       continuePlaylist &&
       currentQueueIndex >= 0 &&
-      currentQueueIndex < queueScenes.length - 1
+      currentQueueIndex < queueScenes.length - 1 &&
+      // a marker queue can hold other markers of the deleted scene
+      queuedItemSceneID(queueScenes[currentQueueIndex + 1]) !== id
     ) {
-      loadScene(queueScenes[currentQueueIndex + 1].id);
+      loadQueueItem(queueScenes[currentQueueIndex + 1]);
     } else {
       goBackOrReplace(history, "/scenes");
     }
   }
 
-  function getScenePage(sceneID: string) {
+  function getScenePage(item: QueuedItem) {
     if (!sceneQueue.query) return;
 
-    // find the page that the scene is on
-    const index = queueScenes.findIndex((s) => s.id === sceneID);
+    // find the page that the item is on
+    const index = queueScenes.indexOf(item);
 
     if (index === -1) return;
 
@@ -1036,8 +1101,8 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     return Math.floor((index + queueStart - 1) / perPage) + 1;
   }
 
-  function onQueueSceneClicked(sceneID: string) {
-    loadScene(sceneID, autoPlayOnSelected, getScenePage(sceneID));
+  function onQueueSceneClicked(item: QueuedItem) {
+    loadQueueItem(item, autoPlayOnSelected, getScenePage(item));
   }
 
   if (!scene) {
@@ -1065,6 +1130,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
         collapsed={collapsed}
         setCollapsed={setCollapsed}
         setContinuePlaylist={setContinuePlaylist}
+        initialTimestamp={initialTimestamp}
         onRefreshScene={onRefreshScene}
       />
       <div className={`scene-player-container ${collapsed ? "expanded" : ""}`}>
@@ -1076,6 +1142,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
             autoplay={autoplay}
             permitLoop={!continuePlaylist}
             initialTimestamp={initialTimestamp}
+            endTime={initialEndstamp}
             sendSetTimestamp={getSetTimestamp}
             onComplete={onComplete}
             onNext={() => queueNext(true)}

@@ -274,6 +274,7 @@ interface IScenePlayerProps {
   autoplay?: boolean;
   permitLoop?: boolean;
   initialTimestamp: number;
+  endTime?: number | null;
   sendSetTimestamp: (setTimestamp: (value: number) => void) => void;
   onComplete: () => void;
   onNext: () => void;
@@ -288,6 +289,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     autoplay,
     permitLoop = true,
     initialTimestamp: _initialTimestamp,
+    endTime,
     sendSetTimestamp,
     onComplete,
     onNext,
@@ -1126,6 +1128,26 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       return () => player.off("ended", ended);
     }, [getPlayer, onComplete]);
+
+    // Try to detect that the player has passed the end point of a Marker
+    useEffect(() => {
+      const player = getPlayer();
+      if (!player || !endTime) return;
+      function markerComplete(this: VideoJsPlayer) {
+        if (
+          !this.paused() &&
+          endTime &&
+          this.currentTime() >= endTime &&
+          this.currentTime() <= endTime + 1
+        ) {
+          onComplete();
+        }
+      }
+      player.on("timeupdate", markerComplete);
+      return () => {
+        player.off("timeupdate", markerComplete);
+      };
+    }, [getPlayer, onComplete, endTime]);
 
     // set up mediaSession plugin
     useEffect(() => {
