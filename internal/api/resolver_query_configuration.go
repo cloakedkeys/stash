@@ -9,6 +9,7 @@ import (
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/scraper"
 	"golang.org/x/text/collate"
 )
 
@@ -289,4 +290,23 @@ func (r *queryResolver) ValidateStashBoxCredentials(ctx context.Context, input c
 	}
 
 	return &result, nil
+}
+
+func (r *queryResolver) ValidateCDPPath(ctx context.Context, path *string) (*CDPValidationResult, error) {
+	cdpPath := config.GetInstance().GetScraperCDPPath()
+	if path != nil {
+		cdpPath = *path
+	}
+
+	status, err := scraper.ValidateCDPPath(ctx, cdpPath)
+	if err != nil {
+		return &CDPValidationResult{
+			Valid:  false,
+			Status: err.Error(),
+		}, nil
+	}
+	return &CDPValidationResult{
+		Valid:  true,
+		Status: status,
+	}, nil
 }

@@ -18,3 +18,10 @@ query ValidateStashBox($input: StashBoxInput!) {
     status
   }
 }
+
+query ValidateCDP($path: String) {
+  validateCDPPath(path: $path) {
+    valid
+    status
+  }
+}

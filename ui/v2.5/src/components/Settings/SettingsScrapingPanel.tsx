@@ -22,6 +22,7 @@ import { SettingSection } from "./SettingSection";
 import { BooleanSetting, StringListSetting, StringSetting } from "./Inputs";
 import { useSettings } from "./context";
 import { StashBoxSetting } from "./StashBoxConfiguration";
+import { CDPPathSetting } from "./CDPPathSetting";
 import { faSyncAlt } from "@fortawesome/free-solid-svg-icons";
 import {
   AvailableScraperPackages,
@@ -458,10 +459,7 @@ export const SettingsScrapingPanel: React.FC = () => {
           onChange={(v) => saveScraping({ scraperUserAgent: v })}
         />
 
-        <StringSetting
-          id="scraperCDPPath"
-          headingID="config.general.chrome_cdp_path"
-          subHeadingID="config.general.chrome_cdp_path_desc"
+        <CDPPathSetting
           value={scraping.scraperCDPPath ?? undefined}
           onChange={(v) => saveScraping({ scraperCDPPath: v })}
         />
