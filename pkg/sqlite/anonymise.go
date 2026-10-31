@@ -477,6 +477,7 @@ func (db *Anonymiser) anonymiseUsers(ctx context.Context) error {
 			"notes":         nil,
 			"api_key":       nil,
 			"password_hash": nil,
+			"library_limit": nil,
 		})
 
 		if _, err := exec(ctx, stmt); err != nil {

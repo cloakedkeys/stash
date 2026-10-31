@@ -8,6 +8,7 @@ import { useSettings } from "./context";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
 import { useToast } from "src/hooks/Toast";
 import { useCurrentUser, useIsAdmin } from "src/hooks/CurrentUser";
+import { LibraryLimits } from "./LibraryLimits";
 
 const PasswordInput: React.FC<{
   value: GQL.UserChangePasswordInput;
@@ -96,73 +97,78 @@ export const SettingsSecurityPanel: React.FC = () => {
   if (loading) return <LoadingIndicator />;
 
   return (
-    <SettingSection headingID="config.general.auth.authentication">
-      <ModalSetting<GQL.UserChangePasswordInput>
-        id="authentication-settings"
-        heading={intl.formatMessage({
-          id: "config.general.auth.change_password",
-          defaultMessage: "Change password",
-        })}
-        subHeading={intl.formatMessage({
-          id: "config.general.auth.change_password_desc",
-          defaultMessage: "Change the password for your account.",
-        })}
-        value={{ existingPassword: "", newPassword: "" }}
-        disabled={!user || user.name === "guest" || changingPassword}
-        onChange={onChangePassword}
-        renderField={(value, setValue) => (
-          <PasswordInput
-            value={value ?? { existingPassword: "", newPassword: "" }}
-            setValue={setValue}
-          />
-        )}
-        renderValue={() => user?.name}
-      />
-      <div className="setting" id="apikey">
-        <div>
-          <h3>{intl.formatMessage({ id: "config.general.auth.api_key" })}</h3>
-          {apiKey && (
-            <Form.Control
-              as="textarea"
-              aria-label={intl.formatMessage({
-                id: "config.general.auth.api_key",
-              })}
-              readOnly
-              rows={3}
-              value={apiKey}
+    <>
+      <SettingSection headingID="config.general.auth.authentication">
+        <ModalSetting<GQL.UserChangePasswordInput>
+          id="authentication-settings"
+          heading={intl.formatMessage({
+            id: "config.general.auth.change_password",
+            defaultMessage: "Change password",
+          })}
+          subHeading={intl.formatMessage({
+            id: "config.general.auth.change_password_desc",
+            defaultMessage: "Change the password for your account.",
+          })}
+          value={{ existingPassword: "", newPassword: "" }}
+          disabled={!user || user.name === "guest" || changingPassword}
+          onChange={onChangePassword}
+          renderField={(value, setValue) => (
+            <PasswordInput
+              value={value ?? { existingPassword: "", newPassword: "" }}
+              setValue={setValue}
             />
           )}
-          <div className="sub-heading">
-            <FormattedMessage
-              id="config.general.auth.api_key_once"
-              defaultMessage="Your API key is only shown when generated. Copy it before leaving this page."
-            />
+          renderValue={() => user?.name}
+        />
+        <div className="setting" id="apikey">
+          <div>
+            <h3>{intl.formatMessage({ id: "config.general.auth.api_key" })}</h3>
+            {apiKey && (
+              <Form.Control
+                as="textarea"
+                aria-label={intl.formatMessage({
+                  id: "config.general.auth.api_key",
+                })}
+                readOnly
+                rows={3}
+                value={apiKey}
+              />
+            )}
+            <div className="sub-heading">
+              <FormattedMessage
+                id="config.general.auth.api_key_once"
+                defaultMessage="Your API key is only shown when generated. Copy it before leaving this page."
+              />
+            </div>
+          </div>
+          <div>
+            <Button
+              disabled={!canGenerateAPIKey || generating}
+              onClick={() => onGenerateAPIKey(false)}
+            >
+              {intl.formatMessage({
+                id: "config.general.auth.generate_api_key",
+              })}
+            </Button>
+            <Button
+              variant="danger"
+              disabled={!canGenerateAPIKey || generating}
+              onClick={() => onGenerateAPIKey(true)}
+            >
+              {intl.formatMessage({ id: "config.general.auth.clear_api_key" })}
+            </Button>
           </div>
         </div>
-        <div>
-          <Button
-            disabled={!canGenerateAPIKey || generating}
-            onClick={() => onGenerateAPIKey(false)}
-          >
-            {intl.formatMessage({ id: "config.general.auth.generate_api_key" })}
-          </Button>
-          <Button
-            variant="danger"
-            disabled={!canGenerateAPIKey || generating}
-            onClick={() => onGenerateAPIKey(true)}
-          >
-            {intl.formatMessage({ id: "config.general.auth.clear_api_key" })}
-          </Button>
-        </div>
-      </div>
-      <NumberSetting
-        id="maxSessionAge"
-        headingID="config.general.auth.maximum_session_age"
-        subHeadingID="config.general.auth.maximum_session_age_desc"
-        value={general.maxSessionAge ?? undefined}
-        disabled={!isAdmin}
-        onChange={(value) => saveGeneral({ maxSessionAge: value })}
-      />
-    </SettingSection>
+        <NumberSetting
+          id="maxSessionAge"
+          headingID="config.general.auth.maximum_session_age"
+          subHeadingID="config.general.auth.maximum_session_age_desc"
+          value={general.maxSessionAge ?? undefined}
+          disabled={!isAdmin}
+          onChange={(value) => saveGeneral({ maxSessionAge: value })}
+        />
+      </SettingSection>
+      {isAdmin && <LibraryLimits />}
+    </>
   );
 };

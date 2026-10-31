@@ -208,6 +208,10 @@ func (r *queryResolver) MarkerStrings(ctx context.Context, q *string, sort *stri
 }
 
 func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
+	if models.LibraryLimitFromContext(ctx) != nil {
+		return r.limitedStats(ctx)
+	}
+
 	var ret StatsResultType
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		repo := r.repository

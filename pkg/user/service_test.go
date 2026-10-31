@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -101,6 +102,15 @@ func (m *mockStore) Destroy(ctx context.Context, id int) error {
 			delete(m.users, k)
 			delete(m.passwords, id)
 			return nil
+		}
+	}
+	return nil
+}
+
+func (m *mockStore) SetLibraryLimit(ctx context.Context, id int, limit *models.LibraryLimit) error {
+	for _, u := range m.users {
+		if u.ID == id {
+			u.LibraryLimit = limit
 		}
 	}
 	return nil
@@ -241,5 +251,56 @@ func TestUpdateUserEndsSessionsOnlyForNameOrRoles(t *testing.T) {
 	}
 	if got := store.users["listener"].UpdatedAt; !got.After(loginTime.Add(-2 * time.Hour)) {
 		t.Fatalf("changing roles did not move the session timestamp: %v", got)
+	}
+}
+
+func TestLibraryLimitOnlyForReadOnlyAccounts(t *testing.T) {
+	store := newMockStore()
+	svc := &Service{Store: store, Config: &mockConfig{}}
+	ctx := context.Background()
+	limit := &models.LibraryLimit{TagIDs: []int{3, 1, 3}}
+
+	if err := svc.CreateUser(ctx, models.User{Username: "admin", Roles: models.Roles{models.RoleEnumAdmin}}, "password"); err != nil {
+		t.Fatalf("failed to create admin: %v", err)
+	}
+
+	for _, role := range []models.RoleEnum{models.RoleEnumAdmin, models.RoleEnumModify} {
+		err := svc.CreateUser(ctx, models.User{Username: "limited-" + string(role), Roles: models.Roles{role}, LibraryLimit: limit}, "password")
+		if !errors.Is(err, ErrLibraryLimitRole) {
+			t.Fatalf("creating %s with a limit: got %v", role, err)
+		}
+	}
+
+	if err := svc.CreateUser(ctx, models.User{Username: "reader", Roles: models.Roles{models.RoleEnumRead}, LibraryLimit: limit}, "password"); err != nil {
+		t.Fatalf("failed to create limited reader: %v", err)
+	}
+
+	if err := svc.UpdateUser(ctx, "reader", models.User{Username: "reader", Roles: models.Roles{models.RoleEnumModify}}); !errors.Is(err, ErrLibraryLimitRole) {
+		t.Fatalf("giving a limited account the modify role: got %v", err)
+	}
+
+	if err := svc.SetLibraryLimit(ctx, "admin", limit); !errors.Is(err, ErrLibraryLimitRole) {
+		t.Fatalf("limiting an admin: got %v", err)
+	}
+
+	if err := svc.SetLibraryLimit(ctx, "missing", limit); !errors.Is(err, ErrUserNotExist) {
+		t.Fatalf("limiting a missing account: got %v", err)
+	}
+
+	if err := svc.SetLibraryLimit(ctx, "reader", limit); err != nil {
+		t.Fatalf("failed to limit reader: %v", err)
+	}
+	if got := store.users["reader"].LibraryLimit.TagIDs; !slices.Equal(got, []int{1, 3}) {
+		t.Fatalf("limit wasn't normalised: %v", got)
+	}
+
+	if err := svc.SetLibraryLimit(ctx, "reader", nil); err != nil {
+		t.Fatalf("failed to clear limit: %v", err)
+	}
+	if store.users["reader"].LibraryLimit != nil {
+		t.Fatal("limit wasn't cleared")
+	}
+	if err := svc.UpdateUser(ctx, "reader", models.User{Username: "reader", Roles: models.Roles{models.RoleEnumModify}}); err != nil {
+		t.Fatalf("giving an unlimited account the modify role: %v", err)
 	}
 }

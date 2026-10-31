@@ -15,6 +15,7 @@ import (
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
 
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 )
 
@@ -489,6 +490,11 @@ func (qb *AudioStore) FindByIDs(ctx context.Context, ids []int) ([]*models.Audio
 }
 
 func (qb *AudioStore) FindMany(ctx context.Context, ids []int) ([]*models.Audio, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Audios, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	audios := make([]*models.Audio, len(ids))
 
 	unsorted, err := qb.FindByIDs(ctx, ids)
@@ -549,6 +555,8 @@ func (qb *AudioStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.A
 }
 
 func (qb *AudioStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Audio, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Audios)
+
 	const single = false
 	var ret []*models.Audio
 	var lastID int
@@ -998,6 +1006,9 @@ func (qb *AudioStore) makeQuery(ctx context.Context, audioFilter *models.AudioFi
 	}
 
 	query := audioRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Audios); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, audioTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {

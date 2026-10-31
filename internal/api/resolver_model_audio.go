@@ -132,7 +132,7 @@ func (r *audioResolver) Galleries(ctx context.Context, obj *models.Audio) (ret [
 
 	var errs []error
 	ret, errs = loaders.From(ctx).GalleryByID.LoadAll(obj.GalleryIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *audioResolver) Groups(ctx context.Context, obj *models.Audio) (ret []*AudioGroup, err error) {
@@ -177,7 +177,7 @@ func (r *audioResolver) Tags(ctx context.Context, obj *models.Audio) (ret []*mod
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.TagIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *audioResolver) Performers(ctx context.Context, obj *models.Audio) (ret []*models.Performer, err error) {
@@ -191,7 +191,7 @@ func (r *audioResolver) Performers(ctx context.Context, obj *models.Audio) (ret 
 
 	var errs []error
 	ret, errs = loaders.From(ctx).PerformerByID.LoadAll(obj.PerformerIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *audioResolver) AudioStreams(ctx context.Context, obj *models.Audio) ([]*manager.AudioStreamEndpoint, error) {

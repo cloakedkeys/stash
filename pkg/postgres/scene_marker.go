@@ -12,6 +12,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"gopkg.in/guregu/null.v4"
 
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 )
 
@@ -195,6 +196,11 @@ func (qb *SceneMarkerStore) Find(ctx context.Context, id int) (*models.SceneMark
 }
 
 func (qb *SceneMarkerStore) FindMany(ctx context.Context, ids []int) ([]*models.SceneMarker, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.SceneMarkers, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	ret := make([]*models.SceneMarker, len(ids))
 
 	if len(ids) == 0 {
@@ -249,6 +255,8 @@ func (qb *SceneMarkerStore) get(ctx context.Context, q *goqu.SelectDataset) (*mo
 }
 
 func (qb *SceneMarkerStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.SceneMarker, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.SceneMarkers)
+
 	const single = false
 	var ret []*models.SceneMarker
 	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
@@ -319,6 +327,9 @@ func (qb *SceneMarkerStore) makeQuery(ctx context.Context, sceneMarkerFilter *mo
 	}
 
 	query := sceneMarkerRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.SceneMarkers); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, sceneMarkerTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
@@ -420,6 +431,8 @@ func (qb *SceneMarkerStore) setSceneMarkerSort(query *queryBuilder, findFilter *
 }
 
 func (qb *SceneMarkerStore) querySceneMarkers(ctx context.Context, query string, args []interface{}) ([]*models.SceneMarker, error) {
+	query = librarylimit.WrapQuery(ctx, query, librarylimit.SceneMarkers)
+
 	const single = false
 	var ret []*models.SceneMarker
 	if err := sceneMarkerRepository.queryFunc(ctx, query, args, single, func(r *sqlx.Rows) error {

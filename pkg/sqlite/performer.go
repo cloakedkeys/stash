@@ -10,6 +10,7 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/jmoiron/sqlx"
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/utils"
 	"gopkg.in/guregu/null.v4"
@@ -466,6 +467,11 @@ func (qb *PerformerStore) Find(ctx context.Context, id int) (*models.Performer, 
 }
 
 func (qb *PerformerStore) FindMany(ctx context.Context, ids []int) ([]*models.Performer, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Performers, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	tableMgr := performerTableMgr
 	ret := make([]*models.Performer, len(ids))
 
@@ -534,6 +540,8 @@ func (qb *PerformerStore) get(ctx context.Context, q *goqu.SelectDataset) (*mode
 }
 
 func (qb *PerformerStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Performer, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Performers)
+
 	const single = false
 	var ret []*models.Performer
 	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
@@ -722,6 +730,9 @@ func (qb *PerformerStore) makeQuery(ctx context.Context, performerFilter *models
 	}
 
 	query := performerRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Performers); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, performerTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {

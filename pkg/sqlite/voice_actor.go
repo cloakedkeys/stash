@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 )
 
@@ -51,6 +52,9 @@ func (r voiceActorRow) resolve() (*models.VoiceActor, error) {
 
 func (s *VoiceActorStore) find(ctx context.Context, where string, args ...interface{}) (*models.VoiceActor, error) {
 	var row voiceActorRow
+	if limit, ok := librarylimit.Where(ctx, librarylimit.VoiceActors); ok {
+		where = "(" + where + ") AND " + limit
+	}
 	err := dbWrapper.Get(ctx, &row, "SELECT "+voiceActorColumns+" FROM "+voiceActorFrom(ctx)+" WHERE "+where, args...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -92,6 +96,9 @@ func (s *VoiceActorStore) Query(ctx context.Context, filter *models.FindFilterTy
 	if favorite != nil {
 		where += " AND COALESCE(voice_actors_user_data.favorite, 0) = ?"
 		args = append(args, *favorite)
+	}
+	if limit, ok := librarylimit.Where(ctx, librarylimit.VoiceActors); ok {
+		where += " AND " + limit
 	}
 	var count int
 	if err := dbWrapper.Get(ctx, &count, "SELECT COUNT(*) FROM "+voiceActorFrom(ctx)+" WHERE "+where, args...); err != nil {

@@ -81,7 +81,7 @@ func (r *studioResolver) Tags(ctx context.Context, obj *models.Studio) (ret []*m
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.TagIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *studioResolver) SceneCount(ctx context.Context, obj *models.Studio, depth *int) (ret int, err error) {
@@ -167,6 +167,11 @@ func (r *studioResolver) MovieCount(ctx context.Context, obj *models.Studio, dep
 }
 
 func (r *studioResolver) OCounter(ctx context.Context, obj *models.Studio, depth *int) (ret int, err error) {
+	// this adds up everything from the studio
+	if models.LibraryLimitFromContext(ctx) != nil {
+		return 0, nil
+	}
+
 	var res_scene int
 	var res_audio int
 	var res_image int

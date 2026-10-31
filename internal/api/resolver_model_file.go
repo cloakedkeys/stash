@@ -52,7 +52,7 @@ func (r *imageFileResolver) Images(ctx context.Context, obj *ImageFile) ([]*mode
 
 	var errs []error
 	ret, errs := loaders.From(ctx).ImageByID.LoadAll(imageIDs)
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *videoFileResolver) ParentFolder(ctx context.Context, obj *VideoFile) (*models.Folder, error) {
@@ -70,7 +70,7 @@ func (r *videoFileResolver) Scenes(ctx context.Context, obj *VideoFile) ([]*mode
 
 	var errs []error
 	ret, errs := loaders.From(ctx).SceneByID.LoadAll(sceneIDs)
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *basicFileResolver) ParentFolder(ctx context.Context, obj *BasicFile) (*models.Folder, error) {
@@ -104,7 +104,7 @@ func (r *galleryFileResolver) Galleries(ctx context.Context, obj *GalleryFile) (
 
 	var errs []error
 	ret, errs := loaders.From(ctx).GalleryByID.LoadAll(galleryIDs)
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *imageFileResolver) ZipFile(ctx context.Context, obj *ImageFile) (*BasicFile, error) {

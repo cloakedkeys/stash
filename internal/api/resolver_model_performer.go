@@ -168,12 +168,12 @@ func (r *performerResolver) Tags(ctx context.Context, obj *models.Performer) (re
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.TagIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *performerResolver) SceneCount(ctx context.Context, obj *models.Performer) (ret int, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		ret, err = r.repository.Scene.CountByPerformerID(ctx, obj.ID)
+		ret, err = r.performerSceneCount(ctx, obj.ID)
 		return err
 	}); err != nil {
 		return 0, err
@@ -183,7 +183,7 @@ func (r *performerResolver) SceneCount(ctx context.Context, obj *models.Performe
 }
 func (r *performerResolver) AudioCount(ctx context.Context, obj *models.Performer) (ret int, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		ret, err = r.repository.Audio.CountByPerformerID(ctx, obj.ID)
+		ret, err = r.performerAudioCount(ctx, obj.ID)
 		return err
 	}); err != nil {
 		return 0, err
@@ -216,7 +216,7 @@ func (r *performerResolver) GalleryCount(ctx context.Context, obj *models.Perfor
 
 func (r *performerResolver) GroupCount(ctx context.Context, obj *models.Performer) (ret int, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		ret, err = r.repository.Group.CountByPerformerID(ctx, obj.ID)
+		ret, err = r.performerGroupCount(ctx, obj.ID)
 		return err
 	}); err != nil {
 		return 0, err
@@ -242,6 +242,11 @@ func (r *performerResolver) PerformerCount(ctx context.Context, obj *models.Perf
 }
 
 func (r *performerResolver) OCounter(ctx context.Context, obj *models.Performer) (ret *int, err error) {
+	// this adds up everything the performer is in
+	if models.LibraryLimitFromContext(ctx) != nil {
+		return nil, nil
+	}
+
 	var res_scene int
 	var res_audio int
 	var res_image int

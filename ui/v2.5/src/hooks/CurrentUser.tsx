@@ -36,6 +36,10 @@ export const useCanModify = () =>
 // Returns true if the current user may use what is limited to administrators.
 export const useCanAdminister = () => useHasRole(GQL.RoleEnum.Admin);
 
+// Returns true if the current user can only see part of the library. Questions about
+// the library as a whole, like its folders, are refused for these users.
+export const useLibraryLimited = () => !!useCurrentUser()?.library_limit;
+
 export const CurrentUserProvider: React.FC<
   React.PropsWithChildren<ICurrentUserContext>
 > = ({ user, children }) => {

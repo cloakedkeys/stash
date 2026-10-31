@@ -748,6 +748,8 @@ type Mutation {
 
   userCreate(input: UserCreateInput!): User @hasRole(role: ADMIN)
   userUpdate(input: UserUpdateInput!): User @hasRole(role: ADMIN)
+  "Limits what an account can see. It can't have the admin or modify roles."
+  userSetLibraryLimit(input: UserSetLibraryLimitInput!): User @hasRole(role: ADMIN)
   userDestroy(input: UserDestroyInput!): Boolean! @hasRole(role: ADMIN)
   lockUser(name: String!): Boolean! @hasRole(role: ADMIN)
   unlockUser(name: String!): Boolean! @hasRole(role: ADMIN)

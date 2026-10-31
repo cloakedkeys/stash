@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil"
 	"gopkg.in/guregu/null.v4"
@@ -447,6 +448,11 @@ func (qb *ImageStore) Find(ctx context.Context, id int) (*models.Image, error) {
 }
 
 func (qb *ImageStore) FindMany(ctx context.Context, ids []int) ([]*models.Image, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Images, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	images := make([]*models.Image, len(ids))
 
 	if len(ids) == 0 {
@@ -518,6 +524,8 @@ func (qb *ImageStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.I
 }
 
 func (qb *ImageStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Image, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Images)
+
 	const single = false
 	var ret []*models.Image
 	var lastID int
@@ -969,6 +977,9 @@ func (qb *ImageStore) makeQuery(ctx context.Context, imageFilter *models.ImageFi
 	}
 
 	query := imageRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Images); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, imageTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {

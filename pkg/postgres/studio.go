@@ -13,6 +13,7 @@ import (
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
 
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/studio"
 	"github.com/stashapp/stash/pkg/utils"
@@ -382,6 +383,11 @@ func (qb *StudioStore) Find(ctx context.Context, id int) (*models.Studio, error)
 }
 
 func (qb *StudioStore) FindMany(ctx context.Context, ids []int) ([]*models.Studio, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Studios, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	ret := make([]*models.Studio, len(ids))
 
 	if len(ids) == 0 {
@@ -442,6 +448,8 @@ func (qb *StudioStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.
 }
 
 func (qb *StudioStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Studio, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Studios)
+
 	const single = false
 	var ret []*models.Studio
 	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
@@ -648,6 +656,9 @@ func (qb *StudioStore) makeQuery(ctx context.Context, studioFilter *models.Studi
 	}
 
 	query := studioRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Studios); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, studioTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {

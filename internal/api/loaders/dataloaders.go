@@ -296,6 +296,26 @@ func (m Middleware) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// alignToKeys puts results back in the positions of their keys, because a library
+// limit can leave out objects. Those positions stay nil.
+func alignToKeys[T any](ctx context.Context, keys []int, rows []*T, id func(*T) int) []*T {
+	if models.LibraryLimitFromContext(ctx) == nil || rows == nil {
+		return rows
+	}
+
+	byID := make(map[int]*T, len(rows))
+	for _, row := range rows {
+		byID[id(row)] = row
+	}
+
+	ret := make([]*T, len(keys))
+	for i, key := range keys {
+		ret[i] = byID[key]
+	}
+
+	return ret
+}
+
 func From(ctx context.Context) Loaders {
 	return ctx.Value(loadersCtxKey).(Loaders)
 }
@@ -313,6 +333,7 @@ func (m Middleware) fetchScenes(ctx context.Context) func(keys []int) ([]*models
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Scene.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Scene) int { return o.ID })
 			return err
 		})
 		return ret, toErrorSlice(err)
@@ -347,6 +368,7 @@ func (m Middleware) fetchAudios(ctx context.Context) func(keys []int) ([]*models
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Audio.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Audio) int { return o.ID })
 			return err
 		})
 		return ret, toErrorSlice(err)
@@ -381,6 +403,7 @@ func (m Middleware) fetchImages(ctx context.Context) func(keys []int) ([]*models
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Image.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Image) int { return o.ID })
 			return err
 		})
 
@@ -416,6 +439,7 @@ func (m Middleware) fetchGalleries(ctx context.Context) func(keys []int) ([]*mod
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Gallery.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Gallery) int { return o.ID })
 			return err
 		})
 
@@ -439,6 +463,7 @@ func (m Middleware) fetchPerformers(ctx context.Context) func(keys []int) ([]*mo
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Performer.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Performer) int { return o.ID })
 			return err
 		})
 
@@ -463,6 +488,7 @@ func (m Middleware) fetchStudios(ctx context.Context) func(keys []int) ([]*model
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Studio.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Studio) int { return o.ID })
 			return err
 		})
 		return ret, toErrorSlice(err)
@@ -486,6 +512,7 @@ func (m Middleware) fetchTags(ctx context.Context) func(keys []int) ([]*models.T
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Tag.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Tag) int { return o.ID })
 			return err
 		})
 		return ret, toErrorSlice(err)
@@ -533,6 +560,7 @@ func (m Middleware) fetchGroups(ctx context.Context) func(keys []int) ([]*models
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Group.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Group) int { return o.ID })
 			return err
 		})
 		return ret, toErrorSlice(err)

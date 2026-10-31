@@ -135,6 +135,18 @@ The ffmpeg arguments configuration is split into `Input` and `Output` arguments.
 
 Arguments are accepted as a list of strings. Each string is a separate argument. For example, a single argument of `-foo bar` would be treated as a single argument `"-foo bar"`. The correct way to pass this argument would be to split it into two separate arguments: `"-foo", "bar"`.
 
+## Library limits
+
+An administrator can limit what a read-only account can see, under Settings > Security. API keys and signed links of the account follow the same limit, and a change applies from the account's next request.
+
+* The account sees items that are in any of the chosen folders, tags or studios, including their sub-folders, sub-tags and sub-studios. If nothing is chosen, it sees nothing.
+* Images in a gallery it can see are also visible.
+* Performers, tags, studios, groups and voice actors only appear if they are linked to something it can see. Their counts only include what it can see.
+* Files, folders, duplicates, jobs and other questions about the library as a whole are refused.
+* Accounts with the admin or modify role can't be limited, because they could change the library to get around the limit.
+
+Limits don't apply to the guest account or to DLNA, which don't log in. If you turn either of them on, it can reach the whole library. Sorting or filtering a list by a count, such as a performer's scene count, can still count hidden items, although the counts shown don't.
+
 ## Scraping
 
 ### User Agent string

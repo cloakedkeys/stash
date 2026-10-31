@@ -11,6 +11,7 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/jmoiron/sqlx"
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
@@ -492,6 +493,11 @@ func (qb *GalleryStore) Find(ctx context.Context, id int) (*models.Gallery, erro
 }
 
 func (qb *GalleryStore) FindMany(ctx context.Context, ids []int) ([]*models.Gallery, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Galleries, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	galleries := make([]*models.Gallery, len(ids))
 
 	if err := batchExec(ids, defaultBatchSize, func(batch []int) error {
@@ -559,6 +565,8 @@ func (qb *GalleryStore) get(ctx context.Context, q *goqu.SelectDataset) (*models
 }
 
 func (qb *GalleryStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Gallery, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Galleries)
+
 	const single = false
 	var ret []*models.Gallery
 	var lastID int
@@ -940,6 +948,9 @@ func (qb *GalleryStore) makeQuery(ctx context.Context, galleryFilter *models.Gal
 	}
 
 	query := galleryRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Galleries); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, galleryTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {

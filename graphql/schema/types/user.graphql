@@ -8,6 +8,22 @@ enum RoleEnum {
 directive @hasRole(role: RoleEnum!) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
 directive @isUserOwner on FIELD_DEFINITION
 
+"""
+The part of the library an account may see: everything in these folders, tags and
+studios, including their sub-folders, sub-tags and sub-studios.
+"""
+type LibraryLimit {
+  folder_ids: [ID!]!
+  tag_ids: [ID!]!
+  studio_ids: [ID!]!
+}
+
+input LibraryLimitInput {
+  folder_ids: [ID!]!
+  tag_ids: [ID!]!
+  studio_ids: [ID!]!
+}
+
 type User {
   name: String!
   notes: String!
@@ -16,6 +32,10 @@ type User {
   Should not be visible to other users
   """
   roles: [RoleEnum!] @isUserOwner
+  """
+  Null if the account can see the whole library. Not visible to other users.
+  """
+  library_limit: LibraryLimit @isUserOwner
   """
   Whether the user is locked (cannot log in). Not visible to other users.
   """
@@ -30,6 +50,14 @@ input UserCreateInput {
   """
   password: String!
   roles: [RoleEnum!]!
+  "Only for accounts without the admin or modify roles"
+  library_limit: LibraryLimitInput
+}
+
+input UserSetLibraryLimitInput {
+  name: String!
+  "Null lets the account see the whole library. An empty limit lets it see nothing."
+  library_limit: LibraryLimitInput
 }
 
 input UserUpdateInput {

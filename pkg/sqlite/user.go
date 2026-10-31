@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
 
+	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil"
 )
@@ -32,6 +34,7 @@ type userRow struct {
 	Locked       bool        `db:"locked"`
 	ApiKey       zero.String `db:"api_key"`
 	PasswordHash zero.String `db:"password_hash"`
+	LibraryLimit zero.String `db:"library_limit"`
 	CreatedAt    Timestamp   `db:"created_at"`
 	UpdatedAt    Timestamp   `db:"updated_at"`
 }
@@ -41,19 +44,46 @@ func (r *userRow) fromUser(o models.User) {
 	r.Username = o.Username
 	r.Notes = zero.StringFrom(o.Notes)
 	r.Locked = o.Locked
+	r.LibraryLimit = encodeLibraryLimit(o.LibraryLimit)
 	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
 }
 
+// encodeLibraryLimit stores no limit as NULL. encoding/json can't fail on the struct.
+func encodeLibraryLimit(l *models.LibraryLimit) zero.String {
+	if l == nil {
+		return zero.String{}
+	}
+
+	b, _ := json.Marshal(l)
+	return zero.StringFrom(string(b))
+}
+
+// decodeLibraryLimit fails closed: a limit that can't be read allows nothing.
+func decodeLibraryLimit(s zero.String) *models.LibraryLimit {
+	if !s.Valid || s.String == "" {
+		return nil
+	}
+
+	ret := &models.LibraryLimit{}
+	if err := json.Unmarshal([]byte(s.String), ret); err != nil {
+		logger.Errorf("reading library limit: %v", err)
+		return &models.LibraryLimit{}
+	}
+
+	return ret
+}
+
 func (r *userRow) resolve() *models.User {
 	ret := &models.User{
-		ID:         r.ID,
-		Username:   r.Username,
-		Notes:      r.Notes.String,
-		Locked:     r.Locked,
-		ApiKeyHash: r.ApiKey.String,
-		CreatedAt:  r.CreatedAt.Timestamp,
-		UpdatedAt:  r.UpdatedAt.Timestamp,
+		ID:           r.ID,
+		Username:     r.Username,
+		Notes:        r.Notes.String,
+		Locked:       r.Locked,
+		LibraryLimit: decodeLibraryLimit(r.LibraryLimit),
+		ApiKeyHash:   r.ApiKey.String,
+		CreatedAt:    r.CreatedAt.Timestamp,
+		UpdatedAt:    r.UpdatedAt.Timestamp,
 	}
 
 	return ret
@@ -192,6 +222,11 @@ func (qb *UserStore) Update(ctx context.Context, updatedObject *models.User) err
 	}
 
 	return nil
+}
+
+// SetLibraryLimit sets what the user may see. A nil limit allows the whole library.
+func (qb *UserStore) SetLibraryLimit(ctx context.Context, id int, limit *models.LibraryLimit) error {
+	return userTableMgr.updateByID(ctx, id, goqu.Record{"library_limit": encodeLibraryLimit(limit)})
 }
 
 func (qb *UserStore) GetPasswordHash(ctx context.Context, id int) (string, error) {

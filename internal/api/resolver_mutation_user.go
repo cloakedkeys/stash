@@ -6,6 +6,7 @@ import (
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/session"
+	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 	"github.com/stashapp/stash/pkg/user"
 )
 
@@ -16,10 +17,16 @@ func (r *mutationResolver) UserCreate(ctx context.Context, input UserCreateInput
 			notes = *input.Notes
 		}
 
-		err := r.userService.CreateUser(ctx, models.User{
-			Username: input.Name,
-			Roles:    models.Roles(input.Roles),
-			Notes:    notes,
+		limit, err := libraryLimitFromInput(input.LibraryLimit)
+		if err != nil {
+			return err
+		}
+
+		err = r.userService.CreateUser(ctx, models.User{
+			Username:     input.Name,
+			Roles:        models.Roles(input.Roles),
+			Notes:        notes,
+			LibraryLimit: limit,
 		}, input.Password)
 		if err != nil {
 			return fmt.Errorf("error creating user: %w", err)
@@ -51,6 +58,52 @@ func (r *mutationResolver) UserUpdate(ctx context.Context, input UserUpdateInput
 		})
 		if err != nil {
 			return fmt.Errorf("error updating user: %w", err)
+		}
+
+		user, err = r.userService.GetUser(ctx, input.Name)
+		if err != nil {
+			return fmt.Errorf("error getting user after update: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func libraryLimitFromInput(input *LibraryLimitInput) (*models.LibraryLimit, error) {
+	if input == nil {
+		return nil, nil
+	}
+
+	folders, err := stringslice.StringSliceToIntSlice(input.FolderIds)
+	if err != nil {
+		return nil, fmt.Errorf("converting folder ids: %w", err)
+	}
+
+	tags, err := stringslice.StringSliceToIntSlice(input.TagIds)
+	if err != nil {
+		return nil, fmt.Errorf("converting tag ids: %w", err)
+	}
+
+	studios, err := stringslice.StringSliceToIntSlice(input.StudioIds)
+	if err != nil {
+		return nil, fmt.Errorf("converting studio ids: %w", err)
+	}
+
+	return &models.LibraryLimit{FolderIDs: folders, TagIDs: tags, StudioIDs: studios}, nil
+}
+
+func (r *mutationResolver) UserSetLibraryLimit(ctx context.Context, input UserSetLibraryLimitInput) (user *models.User, err error) {
+	limit, err := libraryLimitFromInput(input.LibraryLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := r.userService.SetLibraryLimit(ctx, input.Name, limit); err != nil {
+			return fmt.Errorf("error setting library limit: %w", err)
 		}
 
 		user, err = r.userService.GetUser(ctx, input.Name)

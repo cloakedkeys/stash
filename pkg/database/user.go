@@ -19,4 +19,5 @@ type UserStore interface {
 	SetUserAPIKey(ctx context.Context, id int, newAPIKey string) error
 	Destroy(ctx context.Context, id int) error
 	SetLock(ctx context.Context, id int, locked bool) error
+	SetLibraryLimit(ctx context.Context, id int, limit *models.LibraryLimit) error
 }

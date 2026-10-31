@@ -325,6 +325,15 @@
           "heading": "Credentials"
         },
         "generate_api_key": "Generate API key",
+        "library_limits": {
+          "cannot_limit": "Can see the whole library. Accounts that can edit can't be limited.",
+          "description": "Choose what read-only accounts can see. This doesn't apply to the guest account or to DLNA, which don't log in and can always reach the whole library when they are turned on.",
+          "enabled": "Limit this account",
+          "heading": "Library limits",
+          "limited_to": "Limited to {folders} folders, {tags} tags and {studios} studios",
+          "rule": "The account sees items in any of these folders, tags or studios, including sub-folders, sub-tags and sub-studios. Performers, tags and other shared items only appear if they are linked to something it can see. If nothing is chosen it sees nothing.",
+          "whole_library": "Can see the whole library"
+        },
         "log_file": "Log file",
         "log_file_desc": "Path to the file to output logging to. Blank to disable file logging. Requires restart.",
         "log_http": "Log HTTP access",

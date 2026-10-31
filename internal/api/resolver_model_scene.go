@@ -199,7 +199,7 @@ func (r *sceneResolver) Galleries(ctx context.Context, obj *models.Scene) (ret [
 
 	var errs []error
 	ret, errs = loaders.From(ctx).GalleryByID.LoadAll(obj.GalleryIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *sceneResolver) Studio(ctx context.Context, obj *models.Scene) (ret *models.Studio, err error) {
@@ -283,7 +283,7 @@ func (r *sceneResolver) Tags(ctx context.Context, obj *models.Scene) (ret []*mod
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.TagIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *sceneResolver) Performers(ctx context.Context, obj *models.Scene) (ret []*models.Performer, err error) {
@@ -297,7 +297,7 @@ func (r *sceneResolver) Performers(ctx context.Context, obj *models.Scene) (ret 
 
 	var errs []error
 	ret, errs = loaders.From(ctx).PerformerByID.LoadAll(obj.PerformerIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *sceneResolver) StashIds(ctx context.Context, obj *models.Scene) (ret []*models.StashID, err error) {

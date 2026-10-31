@@ -374,6 +374,36 @@ func (rs sceneRoutes) VttChapter(w http.ResponseWriter, r *http.Request) {
 	utils.ServeStaticContent(w, r, []byte(vtt))
 }
 
+// hashAllowed reports whether generated files can be served for a hash given in the
+// URL. These are found without loading a scene, so an account with a library limit
+// has to be able to see a scene with that hash.
+func (rs sceneRoutes) hashAllowed(r *http.Request, hash string) bool {
+	if models.LibraryLimitFromContext(r.Context()) == nil {
+		return true
+	}
+
+	allowed := false
+	if err := rs.withReadTxn(r, func(ctx context.Context) error {
+		scenes, err := rs.sceneFinder.FindByOSHash(ctx, hash)
+		if err != nil {
+			return err
+		}
+		if len(scenes) == 0 {
+			scenes, err = rs.sceneFinder.FindByChecksum(ctx, hash)
+			if err != nil {
+				return err
+			}
+		}
+		allowed = len(scenes) > 0
+		return nil
+	}); err != nil {
+		logger.Warnf("read transaction error checking scene hash: %v", err)
+		return false
+	}
+
+	return allowed
+}
+
 func (rs sceneRoutes) VttThumbs(w http.ResponseWriter, r *http.Request) {
 	scene, ok := r.Context().Value(sceneKey).(*models.Scene)
 	var sceneHash string
@@ -381,6 +411,10 @@ func (rs sceneRoutes) VttThumbs(w http.ResponseWriter, r *http.Request) {
 		sceneHash = scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
 	} else {
 		sceneHash = chi.URLParam(r, "sceneHash")
+		if !rs.hashAllowed(r, sceneHash) {
+			http.NotFound(w, r)
+			return
+		}
 	}
 	filepath := manager.GetInstance().Paths.Scene.GetSpriteVttFilePath(sceneHash)
 
@@ -395,6 +429,10 @@ func (rs sceneRoutes) VttSprite(w http.ResponseWriter, r *http.Request) {
 		sceneHash = scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
 	} else {
 		sceneHash = chi.URLParam(r, "sceneHash")
+		if !rs.hashAllowed(r, sceneHash) {
+			http.NotFound(w, r)
+			return
+		}
 	}
 	filepath := manager.GetInstance().Paths.Scene.GetSpriteImageFilePath(sceneHash)
 

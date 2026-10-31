@@ -30,7 +30,7 @@ func (r *tagResolver) Parents(ctx context.Context, obj *models.Tag) (ret []*mode
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.ParentIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *tagResolver) Children(ctx context.Context, obj *models.Tag) (ret []*models.Tag, err error) {
@@ -44,7 +44,7 @@ func (r *tagResolver) Children(ctx context.Context, obj *models.Tag) (ret []*mod
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.ChildIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *tagResolver) Aliases(ctx context.Context, obj *models.Tag) (ret []string, err error) {
@@ -178,7 +178,7 @@ func (r *tagResolver) ImagePath(ctx context.Context, obj *models.Tag) (*string, 
 
 func (r *tagResolver) ParentCount(ctx context.Context, obj *models.Tag) (ret int, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		ret, err = r.repository.Tag.CountByParentTagID(ctx, obj.ID)
+		ret, err = r.tagParentCount(ctx, obj.ID)
 		return err
 	}); err != nil {
 		return ret, err
@@ -189,7 +189,7 @@ func (r *tagResolver) ParentCount(ctx context.Context, obj *models.Tag) (ret int
 
 func (r *tagResolver) ChildCount(ctx context.Context, obj *models.Tag) (ret int, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		ret, err = r.repository.Tag.CountByChildTagID(ctx, obj.ID)
+		ret, err = r.tagChildCount(ctx, obj.ID)
 		return err
 	}); err != nil {
 		return ret, err

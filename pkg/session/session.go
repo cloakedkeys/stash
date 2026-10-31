@@ -213,6 +213,7 @@ func (s *Store) GetSession(w http.ResponseWriter, r *http.Request) (*Session, er
 
 func SetCurrentUser(ctx context.Context, u models.User) context.Context {
 	ctx = models.WithUserID(ctx, u.ID)
+	ctx = models.WithLibraryLimit(ctx, u.LibraryLimit)
 	return context.WithValue(ctx, contextUser, u)
 }
 

@@ -13,6 +13,7 @@ import (
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
 
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 )
 
@@ -357,6 +358,11 @@ func (qb *GroupStore) Find(ctx context.Context, id int) (*models.Group, error) {
 }
 
 func (qb *GroupStore) FindMany(ctx context.Context, ids []int) ([]*models.Group, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Groups, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	ret := make([]*models.Group, len(ids))
 
 	table := qb.table()
@@ -413,6 +419,8 @@ func (qb *GroupStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.G
 }
 
 func (qb *GroupStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Group, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Groups)
+
 	const single = false
 	var ret []*models.Group
 	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
@@ -534,6 +542,9 @@ func (qb *GroupStore) makeQuery(ctx context.Context, groupFilter *models.GroupFi
 	}
 
 	query := groupRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Groups); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, groupTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
@@ -664,6 +675,8 @@ func (qb *GroupStore) setGroupSort(ctx context.Context, query *queryBuilder, fin
 }
 
 func (qb *GroupStore) queryGroups(ctx context.Context, query string, args []interface{}) ([]*models.Group, error) {
+	query = librarylimit.WrapQuery(ctx, query, librarylimit.Groups)
+
 	const single = false
 	var ret []*models.Group
 	if err := groupRepository.queryFunc(ctx, query, args, single, func(r *sqlx.Rows) error {

@@ -12,7 +12,7 @@ import { Link, NavLink, useLocation, useHistory } from "react-router-dom";
 import Mousetrap from "mousetrap";
 
 import SessionUtils from "src/utils/session";
-import { useCanModify } from "src/hooks/CurrentUser";
+import { useCanModify, useLibraryLimited } from "src/hooks/CurrentUser";
 import { Icon } from "src/components/Shared/Icon";
 import { useConfigurationContext } from "src/hooks/Config";
 import * as GQL from "src/core/generated-graphql";
@@ -219,15 +219,23 @@ export const MainNavbar: React.FC = () => {
   const [expanded, setExpanded] = useState(false);
 
   // Show all menu items by default, unless config says otherwise
+  const libraryLimited = useLibraryLimited();
   const menuItems = useMemo(() => {
     return buildMainNavbarMenuItems(
-      allMenuItems,
+      libraryLimited
+        ? allMenuItems.filter((item) => item.name !== "folders")
+        : allMenuItems,
       configuration?.interface.menuItems,
       savedFilterMenuItems,
       savedFilterData?.findSavedFilters ?? [],
       configuration
     );
-  }, [configuration, savedFilterData?.findSavedFilters, savedFilterMenuItems]);
+  }, [
+    configuration,
+    libraryLimited,
+    savedFilterData?.findSavedFilters,
+    savedFilterMenuItems,
+  ]);
 
   // react-bootstrap typing bug
   const navbarRef = useRef<HTMLElement | null>(null);

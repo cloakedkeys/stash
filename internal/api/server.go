@@ -195,6 +195,7 @@ func Initialize() (*Server, error) {
 	}
 
 	gqlSrv := gqlHandler.New(NewExecutableSchema(gqlCfg))
+	gqlSrv.AroundFields(resolver.LibraryLimitMiddleware)
 	gqlSrv.SetRecoverFunc(recoverFunc)
 	gqlSrv.AddTransport(gqlTransport.Websocket{
 		Upgrader: websocket.Upgrader{

@@ -80,6 +80,7 @@ type UserService interface {
 	CreateUser(ctx context.Context, u models.User, password string) error
 
 	UpdateUser(ctx context.Context, username string, updated models.User) error
+	SetLibraryLimit(ctx context.Context, username string, limit *models.LibraryLimit) error
 
 	ChangePassword(ctx context.Context, username, existingPassword, newPassword string) error
 	ChangeUserPassword(ctx context.Context, username string, newPassword string) error

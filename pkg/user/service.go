@@ -26,6 +26,7 @@ var (
 	ErrAccessDenied             = errors.New("access denied")
 	ErrCurrentPasswordIncorrect = errors.New("current password incorrect")
 	ErrUserAlreadyExists        = errors.New("user with that username already exists")
+	ErrLibraryLimitRole         = errors.New("an account with a library limit can't have the admin or modify roles")
 	ErrLockSelf                 = errors.New("cannot lock/unlock yourself")
 	ErrCannotModifyGuestUser    = errors.New("guest user cannot be modified")
 	ErrUsersExist               = errors.New("users already exist in the system")
@@ -65,6 +66,7 @@ type UserSource interface {
 	SetUserAPIKey(ctx context.Context, id int, newAPIKey string) error
 	Destroy(ctx context.Context, id int) error
 	SetLock(ctx context.Context, id int, locked bool) error
+	SetLibraryLimit(ctx context.Context, id int, limit *models.LibraryLimit) error
 }
 
 type UserServiceConfig interface {
@@ -537,6 +539,10 @@ func (s *Service) CreateUser(ctx context.Context, u models.User, password string
 		return errors.New("the first user must be an admin")
 	}
 
+	if err := validateLibraryLimit(u.Roles, u.LibraryLimit); err != nil {
+		return err
+	}
+
 	u.CreatedAt = time.Now()
 	u.UpdatedAt = u.CreatedAt
 
@@ -584,6 +590,10 @@ func (s *Service) UpdateUser(ctx context.Context, username string, updated model
 		}
 	}
 
+	if err := validateLibraryLimit(updated.Roles, existingUser.LibraryLimit); err != nil {
+		return err
+	}
+
 	// validate roles
 	// don't allow removing admin from last admin user
 	if existingRoles.HasRole(models.RoleEnumAdmin) && !updated.Roles.HasRole(models.RoleEnumAdmin) {
@@ -627,6 +637,45 @@ func (s *Service) UpdateUser(ctx context.Context, username string, updated model
 	}
 
 	logger.Infof("[user] updated %q by %q", updated.Username, currentUsername(ctx))
+
+	return nil
+}
+
+// validateLibraryLimit keeps limits to read-only accounts. An account that can change
+// the library could use that to get around a limit, so the two can't be combined.
+func validateLibraryLimit(roles models.Roles, limit *models.LibraryLimit) error {
+	if limit != nil && (roles.HasRole(models.RoleEnumAdmin) || roles.HasRole(models.RoleEnumModify)) {
+		return ErrLibraryLimitRole
+	}
+
+	return nil
+}
+
+// SetLibraryLimit sets what the user may see. A nil limit allows the whole library.
+// It applies from the user's next request.
+func (s *Service) SetLibraryLimit(ctx context.Context, username string, limit *models.LibraryLimit) error {
+	existingUser, err := s.GetUser(ctx, username)
+	if err != nil {
+		return fmt.Errorf("error getting existing user: %w", err)
+	}
+
+	if existingUser == nil {
+		return ErrUserNotExist
+	}
+
+	if err := validateLibraryLimit(existingUser.Roles, limit); err != nil {
+		return err
+	}
+
+	if limit != nil {
+		limit.Normalise()
+	}
+
+	if err := s.Store.SetLibraryLimit(ctx, existingUser.ID, limit); err != nil {
+		return fmt.Errorf("error setting library limit: %w", err)
+	}
+
+	logger.Infof("[user] updated library limit of %q by %q", username, currentUsername(ctx))
 
 	return nil
 }

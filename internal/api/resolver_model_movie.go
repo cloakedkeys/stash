@@ -73,7 +73,7 @@ func (r groupResolver) Tags(ctx context.Context, obj *models.Group) (ret []*mode
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.TagIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r groupResolver) relatedGroups(ctx context.Context, rgd models.RelatedGroupDescriptions) (ret []*GroupDescription, err error) {
@@ -91,13 +91,19 @@ func (r groupResolver) relatedGroups(ctx context.Context, rgd models.RelatedGrou
 		return
 	}
 
-	ret = make([]*GroupDescription, len(groups))
+	ret = make([]*GroupDescription, 0, len(groups))
 	for i, group := range groups {
-		ret[i] = &GroupDescription{Group: group}
+		// a library limit can leave out groups
+		if group == nil {
+			continue
+		}
+
+		desc := &GroupDescription{Group: group}
 		d := gds[i].Description
 		if d != "" {
-			ret[i].Description = &d
+			desc.Description = &d
 		}
+		ret = append(ret, desc)
 	}
 
 	return ret, firstError(errs)
@@ -231,6 +237,11 @@ func (r *groupResolver) Audios(ctx context.Context, obj *models.Group) (ret []*m
 }
 
 func (r *groupResolver) OCounter(ctx context.Context, obj *models.Group) (ret *int, err error) {
+	// this adds up everything in the group
+	if models.LibraryLimitFromContext(ctx) != nil {
+		return nil, nil
+	}
+
 	var res_scene int
 	var res_audio int
 	var res int

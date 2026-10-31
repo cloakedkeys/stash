@@ -9,6 +9,8 @@ type User struct {
 	Roles      Roles
 	ApiKeyHash string
 	Locked     bool
-	CreatedAt  time.Time `db:"created_at"`
-	UpdatedAt  time.Time `db:"updated_at"`
+	// LibraryLimit is nil if the user can see the whole library.
+	LibraryLimit *LibraryLimit
+	CreatedAt    time.Time `db:"created_at"`
+	UpdatedAt    time.Time `db:"updated_at"`
 }

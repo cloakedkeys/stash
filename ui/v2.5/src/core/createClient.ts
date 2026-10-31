@@ -237,6 +237,8 @@ Please disable it on the server and refresh the page.`);
     })
     .subscribe({
       next: () => queueResetStore(),
+      // refused for an account that can only see part of the library
+      error: () => {},
     });
 
   return {

@@ -21,6 +21,7 @@ import {
 import { ExpandCollapseButton } from "src/components/Shared/CollapseButton";
 import cx from "classnames";
 import { queryFindSubFolders } from "src/core/StashService";
+import { useLibraryLimited } from "src/hooks/CurrentUser";
 import { keyboardClickHandler } from "src/utils/keyboard";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import {
@@ -602,13 +603,26 @@ export const FolderFilter: React.FC<IInputFilterProps> = ({
   );
 };
 
-export const SidebarFolderFilter: React.FC<
-  ISidebarSectionProps & {
-    filter: ListFilterModel;
-    setFilter: (f: ListFilterModel) => void;
-    criterionOption?: ModifierCriterionOption;
-  }
-> = (props) => {
+type SidebarFolderFilterProps = ISidebarSectionProps & {
+  filter: ListFilterModel;
+  setFilter: (f: ListFilterModel) => void;
+  criterionOption?: ModifierCriterionOption;
+};
+
+export const SidebarFolderFilter: React.FC<SidebarFolderFilterProps> = (
+  props
+) => {
+  // folders are refused for an account that can only see part of the library
+  const libraryLimited = useLibraryLimited();
+
+  if (libraryLimited) return null;
+
+  return <LibrarySidebarFolderFilter {...props} />;
+};
+
+const LibrarySidebarFolderFilter: React.FC<SidebarFolderFilterProps> = (
+  props
+) => {
   const intl = useIntl();
   const [skip, setSkip] = useState(true);
   const [query, setQuery] = useState("");

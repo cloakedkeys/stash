@@ -17,6 +17,7 @@ import (
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
 
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/utils"
@@ -551,6 +552,11 @@ func (qb *SceneStore) FindByIDs(ctx context.Context, ids []int) ([]*models.Scene
 }
 
 func (qb *SceneStore) FindMany(ctx context.Context, ids []int) ([]*models.Scene, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Scenes, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	scenes := make([]*models.Scene, len(ids))
 
 	if len(ids) == 0 {
@@ -615,6 +621,8 @@ func (qb *SceneStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.S
 }
 
 func (qb *SceneStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Scene, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Scenes)
+
 	const single = false
 	var ret []*models.Scene
 	var lastID int
@@ -1127,6 +1135,9 @@ func (qb *SceneStore) makeQuery(ctx context.Context, sceneFilter *models.SceneFi
 	}
 
 	query := sceneRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Scenes); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, sceneTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
@@ -1574,23 +1585,23 @@ func (qb *SceneStore) MergeUserData(ctx context.Context, destinationID int, sour
 
 	table := sceneUserData.goquTable()
 	for _, sourceID := range sourceIDs {
-	q := dialect.Insert(table).Cols(sceneIDColumn, userIDColumn, "rating", "resume_time", "play_duration").FromQuery(
-		dialect.From(table).Select(
-			goqu.V(destinationID),
-			table.Col(userIDColumn),
-			table.Col("rating"),
-			table.Col("resume_time"),
-			table.Col("play_duration"),
-		).Where(table.Col(sceneIDColumn).Eq(sourceID)),
-	).OnConflict(goqu.DoUpdate(sceneIDColumn+", "+userIDColumn, goqu.Record{
-		"rating":        goqu.L("COALESCE(scenes_user_data.rating, excluded.rating)"),
-		"resume_time":   goqu.L("CASE WHEN scenes_user_data.resume_time = 0 THEN excluded.resume_time ELSE scenes_user_data.resume_time END"),
-		"play_duration": goqu.L("scenes_user_data.play_duration + excluded.play_duration"),
-	}))
+		q := dialect.Insert(table).Cols(sceneIDColumn, userIDColumn, "rating", "resume_time", "play_duration").FromQuery(
+			dialect.From(table).Select(
+				goqu.V(destinationID),
+				table.Col(userIDColumn),
+				table.Col("rating"),
+				table.Col("resume_time"),
+				table.Col("play_duration"),
+			).Where(table.Col(sceneIDColumn).Eq(sourceID)),
+		).OnConflict(goqu.DoUpdate(sceneIDColumn+", "+userIDColumn, goqu.Record{
+			"rating":        goqu.L("COALESCE(scenes_user_data.rating, excluded.rating)"),
+			"resume_time":   goqu.L("CASE WHEN scenes_user_data.resume_time = 0 THEN excluded.resume_time ELSE scenes_user_data.resume_time END"),
+			"play_duration": goqu.L("scenes_user_data.play_duration + excluded.play_duration"),
+		}))
 
-	if _, err := exec(ctx, q); err != nil {
-		return fmt.Errorf("merging %s: %w", scenesUserDataTable, err)
-	}
+		if _, err := exec(ctx, q); err != nil {
+			return fmt.Errorf("merging %s: %w", scenesUserDataTable, err)
+		}
 
 	}
 	return nil

@@ -27,6 +27,11 @@ func (r *queryResolver) Configuration(ctx context.Context) (*ConfigResult, error
 		redactConfig(ret)
 	}
 
+	// where the library is stored would show folders outside the limit
+	if models.LibraryLimitFromContext(ctx) != nil {
+		ret.General.Stashes = []*config.StashConfig{}
+	}
+
 	return ret, nil
 }
 

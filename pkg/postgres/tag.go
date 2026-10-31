@@ -14,6 +14,7 @@ import (
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
 
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 )
 
@@ -429,6 +430,11 @@ func (qb *TagStore) Find(ctx context.Context, id int) (*models.Tag, error) {
 }
 
 func (qb *TagStore) FindMany(ctx context.Context, ids []int) ([]*models.Tag, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Tags, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	ret := make([]*models.Tag, len(ids))
 
 	if len(ids) == 0 {
@@ -501,6 +507,8 @@ func (qb *TagStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.Tag
 }
 
 func (qb *TagStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Tag, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Tags)
+
 	const single = false
 	var ret []*models.Tag
 	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
@@ -838,6 +846,9 @@ func (qb *TagStore) Query(ctx context.Context, tagFilter *models.TagFilterType, 
 	}
 
 	query := tagRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Tags); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, tagTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
@@ -1006,6 +1017,8 @@ func (qb *TagStore) getTagSort(ctx context.Context, query *queryBuilder, findFil
 }
 
 func (qb *TagStore) queryTags(ctx context.Context, query string, args []interface{}) ([]*models.Tag, error) {
+	query = librarylimit.WrapQuery(ctx, query, librarylimit.Tags)
+
 	const single = false
 	var ret []*models.Tag
 	if err := tagRepository.queryFunc(ctx, query, args, single, func(r *sqlx.Rows) error {

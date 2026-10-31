@@ -194,6 +194,10 @@ func (s *LegacyService) CreateUser(ctx context.Context, u models.User, password 
 	return ErrUnsupported
 }
 
+func (s *LegacyService) SetLibraryLimit(ctx context.Context, username string, limit *models.LibraryLimit) error {
+	return errors.New("not supported")
+}
+
 func (s *LegacyService) UpdateUser(ctx context.Context, username string, updated models.User) error {
 	return ErrUnsupported
 }
