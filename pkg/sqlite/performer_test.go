@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stashapp/stash/pkg/models"
+	performerquery "github.com/stashapp/stash/pkg/performer"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -2629,6 +2630,71 @@ func TestPerformerCountByTagID(t *testing.T) {
 
 		return nil
 	})
+}
+
+func TestPerformerCountByGroupIDSubGroups(t *testing.T) {
+	if err := withRollbackTxn(func(ctx context.Context) error {
+		subGroup := models.Group{Name: "TestPerformerCountByGroupIDSubGroups child"}
+		if err := db.Group.Create(ctx, &subGroup); err != nil {
+			return fmt.Errorf("creating sub-group: %w", err)
+		}
+
+		parentGroup := models.Group{
+			Name: "TestPerformerCountByGroupIDSubGroups parent",
+			SubGroups: models.NewRelatedGroupDescriptions([]models.GroupIDDescription{
+				{GroupID: subGroup.ID},
+			}),
+		}
+		if err := db.Group.Create(ctx, &parentGroup); err != nil {
+			return fmt.Errorf("creating parent group: %w", err)
+		}
+
+		parentPerformer := models.Performer{Name: "TestPerformerCountByGroupIDSubGroups parent performer"}
+		if err := db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &parentPerformer}); err != nil {
+			return fmt.Errorf("creating parent performer: %w", err)
+		}
+
+		subGroupPerformer := models.Performer{Name: "TestPerformerCountByGroupIDSubGroups child performer"}
+		if err := db.Performer.Create(ctx, &models.CreatePerformerInput{Performer: &subGroupPerformer}); err != nil {
+			return fmt.Errorf("creating sub-group performer: %w", err)
+		}
+
+		scenes := []models.Scene{
+			{
+				Title:        "TestPerformerCountByGroupIDSubGroups parent scene",
+				PerformerIDs: models.NewRelatedIDs([]int{parentPerformer.ID}),
+				Groups:       models.NewRelatedGroups([]models.GroupsScenes{{GroupID: parentGroup.ID}}),
+			},
+			{
+				Title:        "TestPerformerCountByGroupIDSubGroups child scene",
+				PerformerIDs: models.NewRelatedIDs([]int{subGroupPerformer.ID}),
+				Groups:       models.NewRelatedGroups([]models.GroupsScenes{{GroupID: subGroup.ID}}),
+			},
+		}
+		for i := range scenes {
+			if err := db.Scene.Create(ctx, &scenes[i], nil); err != nil {
+				return fmt.Errorf("creating scene: %w", err)
+			}
+		}
+
+		depth := -1
+		count, err := performerquery.CountByGroupID(ctx, db.Performer, parentGroup.ID, &depth)
+		if err != nil {
+			return fmt.Errorf("counting performers across sub-groups: %w", err)
+		}
+		assert.Equal(t, 2, count)
+
+		depth = 0
+		count, err = performerquery.CountByGroupID(ctx, db.Performer, parentGroup.ID, &depth)
+		if err != nil {
+			return fmt.Errorf("counting performers at depth zero: %w", err)
+		}
+		assert.Equal(t, 1, count)
+
+		return nil
+	}); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestPerformerCount(t *testing.T) {

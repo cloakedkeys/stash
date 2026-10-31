@@ -742,7 +742,7 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 
 				// Build recursive CTE for group hierarchy
 				hierarchyQuery := fmt.Sprintf(`group_hierarchy AS (
-SELECT sub_id AS root_id, sub_id AS item_id, 0 AS depth FROM groups_relations WHERE sub_id IN%s
+SELECT id AS root_id, id AS item_id, 0 AS depth FROM groups WHERE id IN%s
 UNION
 SELECT root_id, sub_id, depth + 1 FROM groups_relations INNER JOIN group_hierarchy ON item_id = containing_id %s
 )`, getInBinding(len(groups.Value)), depthCondition)
