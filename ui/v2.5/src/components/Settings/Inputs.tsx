@@ -330,7 +330,6 @@ const _SettingModal = <T extends {}>(props: ISettingModal<T>) => {
           <Button
             type="submit"
             variant="primary"
-            onClick={() => close(currentValue)}
             disabled={
               currentValue === undefined ||
               (validate && !validate(currentValue))
