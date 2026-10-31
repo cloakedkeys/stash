@@ -501,7 +501,6 @@ func (s *Manager) VerifyPaths(ctx context.Context, options file.VerifyOptions) i
 	j := verifyJob{
 		verifier:     verifier,
 		repository:   s.Repository,
-		audioService: s.AudioService,
 		sceneService: s.SceneService,
 		imageService: s.ImageService,
 		options:      options,

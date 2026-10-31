@@ -159,6 +159,9 @@ type AudioFile implements BaseFile {
   parent_folder: Folder!
   zip_file: BasicFile
 
+  "If not null, indicates when the file was detected as missing. Set by the verify files task, cleared when a scan finds it again"
+  missing_since: Time
+
   mod_time: Time!
   size: Int64!
 

@@ -716,8 +716,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         if (scene.interactive && interactiveReady.current) {
           interactiveClient.play(this.currentTime());
           // trigger a second script play event to adjust for video player issues
-          clearTimeout(playingTimer.current);
-          playingTimer.current = setTimeout(() => {
+          window.clearTimeout(playingTimer.current);
+          playingTimer.current = window.setTimeout(() => {
             if (this.paused()) return;
             interactiveClient.play(this.currentTime());
           }, DELAY_FOR_SECOND_PLAY_MS);
@@ -741,7 +741,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         player.off("playing", playing);
         player.off("pause", pause);
         player.off("timeupdate", timeupdate);
-        clearTimeout(playingTimer.current);
+        window.clearTimeout(playingTimer.current);
       };
     }, [getPlayer, interactiveClient, scene]);
 

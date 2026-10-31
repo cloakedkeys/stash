@@ -10,6 +10,7 @@
     "start": "vite",
     "build": "vite build",
     "build-ci": "pnpm run validate && pnpm run build",
+    "test": "vitest run src/models/audioQueue.test.ts",
     "validate": "pnpm run lint && pnpm run check && pnpm run format-check",
     "lint": "pnpm run lint:js && pnpm run lint:css",
     "lint:css": "stylelint --cache \"src/**/*.scss\"",
@@ -118,6 +119,7 @@
     "typescript": "~5.9.3",
     "vite": "^7.3.7",
     "vite-plugin-compression": "^0.5.1",
-    "vite-tsconfig-paths": "^6.1.1"
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^3.2.4"
   }
 }

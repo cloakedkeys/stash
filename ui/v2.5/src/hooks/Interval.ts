@@ -34,7 +34,7 @@ const useInterval = (
     const intervalId = savedIntervalId.current;
     if (intervalId) {
       savedIntervalId.current = undefined;
-      clearInterval(intervalId);
+      window.clearInterval(intervalId);
     }
   };
 
@@ -46,7 +46,7 @@ const useInterval = (
     };
 
     if (savedDelay !== null) {
-      savedIntervalId.current = setInterval(tick, savedDelay);
+      savedIntervalId.current = window.setInterval(tick, savedDelay);
     }
   };
 
@@ -58,7 +58,7 @@ const useInterval = (
     };
 
     if (savedDelay !== null) {
-      savedIntervalId.current = setInterval(tick, savedDelay);
+      savedIntervalId.current = window.setInterval(tick, savedDelay);
       return cancel;
     }
   }, [callback, savedDelay]);
