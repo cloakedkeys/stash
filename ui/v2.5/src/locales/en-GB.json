@@ -879,6 +879,10 @@
             "description": "Play next scene in queue when video finishes.",
             "heading": "Continue playlist by default"
           },
+          "loop_playlist_default": {
+            "description": "When the last scene in the queue finishes, continue from the first scene.",
+            "heading": "Loop playlist by default"
+          },
           "disable_mobile_media_auto_rotate": "Disable auto-rotate of fullscreen media on mobile",
           "enable_chromecast": "Enable Chromecast",
           "play_next_on_delete": {

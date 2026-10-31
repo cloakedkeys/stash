@@ -828,6 +828,14 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     }
   }, [configuration?.interface.continuePlaylistDefault, queryParams]);
 
+  const queryLoop = useMemo(() => {
+    const loop = queryParams.get("loop");
+    if (loop) {
+      return loop === "true";
+    }
+    return !!configuration?.interface.loopPlaylistDefault;
+  }, [configuration?.interface.loopPlaylistDefault, queryParams]);
+
   const [queueScenes, setQueueScenes] = useState<QueuedScene[]>([]);
 
   const [collapsed, setCollapsed] = useState(false);
@@ -860,7 +868,8 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     [queueScenes, id]
   );
 
-  const [loopQueue, setLoopQueue] = useState(false);
+  // starts from the loop URL parameter, or the loop playlist default setting
+  const [loopQueue, setLoopQueue] = useState(queryLoop);
   const [loopScene, setLoopScene] = useState(false);
 
   const forceLoop =
@@ -993,6 +1002,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       newPage,
       autoPlay,
       continue: continuePlaylist,
+      loop: loopQueue,
     });
     history.replace(sceneLink);
   }

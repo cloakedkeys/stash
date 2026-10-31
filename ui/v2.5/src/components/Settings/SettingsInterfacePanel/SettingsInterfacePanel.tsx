@@ -631,6 +631,11 @@ export const SettingsInterfacePanel: React.FC = PatchComponent(
             subHeadingID="config.ui.scene_player.options.play_next_on_delete.description"
             checked={ui.playNextOnDelete ?? undefined}
             onChange={(v) => saveUI({ playNextOnDelete: v })}
+            id="loop-playlist-default"
+            headingID="config.ui.scene_player.options.loop_playlist_default.heading"
+            subHeadingID="config.ui.scene_player.options.loop_playlist_default.description"
+            checked={iface.loopPlaylistDefault ?? undefined}
+            onChange={(v) => saveInterface({ loopPlaylistDefault: v })}
           />
 
           <ModalSetting<number>
