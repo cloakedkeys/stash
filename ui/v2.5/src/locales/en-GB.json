@@ -316,6 +316,24 @@
     },
     "general": {
       "auth": {
+        "accounts": {
+          "access": "Access",
+          "access_admin": "Administrator",
+          "access_modify": "Can edit",
+          "access_read": "Read-only",
+          "add": "Add account",
+          "can_generate_api_key": "Can make an API key",
+          "delete_confirm": "Delete the account {name}? Its ratings, play history and settings are deleted with it.",
+          "description": "Accounts that can sign in. The last administrator can't be deleted or lose the role, and you can't lock or delete your own account.",
+          "edit": "Edit account",
+          "heading": "Accounts",
+          "lock": "Lock",
+          "locked": "Locked",
+          "notes": "Notes",
+          "password_set": "Password changed. The account has to sign in again.",
+          "reset_password": "Set password",
+          "unlock": "Unlock"
+        },
         "api_key": "API key",
         "api_key_desc": "API key for external systems. Only required when username/password is configured. Username must be saved before generating API key.",
         "authentication": "Authentication",

@@ -8,6 +8,7 @@ import { useSettings } from "./context";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
 import { useToast } from "src/hooks/Toast";
 import { useCurrentUser, useIsAdmin } from "src/hooks/CurrentUser";
+import { Accounts } from "./Accounts";
 import { LibraryLimits } from "./LibraryLimits";
 
 const PasswordInput: React.FC<{
@@ -168,6 +169,7 @@ export const SettingsSecurityPanel: React.FC = () => {
           onChange={(value) => saveGeneral({ maxSessionAge: value })}
         />
       </SettingSection>
+      {isAdmin && <Accounts />}
       {isAdmin && <LibraryLimits />}
     </>
   );
