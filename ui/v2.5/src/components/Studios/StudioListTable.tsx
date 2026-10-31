@@ -3,7 +3,7 @@ import { useIntl } from "react-intl";
 import { Button } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
 import { SortDirectionEnum } from "src/core/generated-graphql";
-import { useStudioUpdate } from "src/core/StashService";
+import { useStudioUserDataUpdate } from "src/core/StashService";
 import { useTableColumns } from "src/hooks/useTableColumns";
 import { useConfigurationContext } from "src/hooks/Config";
 import { ListTable, IColumn } from "../List/ListTable";
@@ -35,13 +35,13 @@ export const StudioListTable: React.FC<IStudioListTableProps> = ({
   sortDirection,
 }) => {
   const intl = useIntl();
-  const [updateStudio] = useStudioUpdate();
+  const [setStudioUserData] = useStudioUserDataUpdate();
   const { configuration } = useConfigurationContext();
   const showChildContent = configuration?.ui?.showChildStudioContent ?? false;
 
   function setRating(v: number | null, studioId: string) {
     if (studioId) {
-      updateStudio({
+      setStudioUserData({
         variables: {
           input: {
             id: studioId,
@@ -54,7 +54,7 @@ export const StudioListTable: React.FC<IStudioListTableProps> = ({
 
   function setFavorite(v: boolean, studioId: string) {
     if (studioId) {
-      updateStudio({
+      setStudioUserData({
         variables: {
           input: {
             id: studioId,

@@ -9,7 +9,7 @@ import { objectTitle } from "src/core/files";
 import { galleryTitle } from "src/core/galleries";
 import SceneQueue from "src/models/sceneQueue";
 import { RatingSystem } from "../Shared/Rating/RatingSystem";
-import { useSceneUpdate } from "src/core/StashService";
+import { useSceneUserDataUpdate } from "src/core/StashService";
 import { IColumn, ListTable } from "../List/ListTable";
 import { useTableColumns } from "src/hooks/useTableColumns";
 import { FileSize } from "../Shared/FileSize";
@@ -31,11 +31,11 @@ export const SceneListTable: React.FC<ISceneListTableProps> = (
 ) => {
   const intl = useIntl();
 
-  const [updateScene] = useSceneUpdate();
+  const [setSceneUserData] = useSceneUserDataUpdate();
 
   function setRating(v: number | null, sceneId: string) {
     if (sceneId) {
-      updateScene({
+      setSceneUserData({
         variables: {
           input: {
             id: sceneId,

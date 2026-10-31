@@ -50,3 +50,9 @@ mutation VoiceActorUpdate($input: VoiceActorUpdateInput!) {
 mutation VoiceActorDestroy($id: ID!) {
   voiceActorDestroy(id: $id)
 }
+
+mutation VoiceActorUserDataUpdate($input: UserFavoriteInput!) {
+  voiceActorUserDataUpdate(input: $input) {
+    ...VoiceActorData
+  }
+}

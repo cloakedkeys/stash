@@ -8,7 +8,7 @@ import { objectTitle } from "src/core/files";
 import { galleryTitle } from "src/core/galleries";
 import AudioQueue from "src/models/audioQueue";
 import { RatingSystem } from "../Shared/Rating/RatingSystem";
-import { useAudioUpdate } from "src/core/StashService";
+import { useAudioUserDataUpdate } from "src/core/StashService";
 import { IColumn, ListTable } from "../List/ListTable";
 import { useTableColumns } from "src/hooks/useTableColumns";
 import { FileSize } from "../Shared/FileSize";
@@ -27,11 +27,11 @@ export const AudioListTable: React.FC<IAudioListTableProps> = (
 ) => {
   const intl = useIntl();
 
-  const [updateAudio] = useAudioUpdate();
+  const [setAudioUserData] = useAudioUserDataUpdate();
 
   function setRating(v: number | null, audioId: string) {
     if (audioId) {
-      updateAudio({
+      setAudioUserData({
         variables: {
           input: {
             id: audioId,

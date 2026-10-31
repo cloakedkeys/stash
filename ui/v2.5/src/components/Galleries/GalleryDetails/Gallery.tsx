@@ -9,6 +9,7 @@ import {
   mutateResetGalleryCover,
   useFindGallery,
   useGalleryUpdate,
+  useGalleryUserDataUpdate,
   useGalleryIncrementO,
   useGalleryDecrementO,
   useGalleryResetO,
@@ -85,6 +86,8 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
   const path = useMemo(() => galleryPath(gallery), [gallery]);
 
   const [updateGallery] = useGalleryUpdate();
+
+  const [setGalleryUserData] = useGalleryUserDataUpdate();
 
   const [organizedLoading, setOrganizedLoading] = useState(false);
 
@@ -415,7 +418,7 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
   }
 
   function setRating(v: number | null) {
-    updateGallery({
+    setGalleryUserData({
       variables: {
         input: {
           id: gallery.id,

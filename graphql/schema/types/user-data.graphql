@@ -1,0 +1,20 @@
+"The current user's own rating for an object"
+input UserRatingInput {
+  id: ID!
+  # rating expressed as 1-100
+  rating100: Int
+}
+
+"The current user's own rating and favourite for an object"
+input UserRatingFavoriteInput {
+  id: ID!
+  # rating expressed as 1-100
+  rating100: Int
+  favorite: Boolean
+}
+
+"The current user's own favourite for an object"
+input UserFavoriteInput {
+  id: ID!
+  favorite: Boolean!
+}

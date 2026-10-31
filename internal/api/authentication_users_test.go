@@ -135,6 +135,17 @@ func TestMultiUserHTTPPermissions(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.NotContains(t, w.Body.String(), "unauthorized")
 	require.NotContains(t, w.Body.String(), `"errors"`)
+	// a read-only account can set its own rating, without that counting as editing the track
+	db.Audio.On("UpdatePartial", mock.Anything, 42, mock.MatchedBy(func(p models.AudioPartial) bool {
+		return p.Rating.Set && p.Rating.Value == 60 && !p.UpdatedAt.Set && !p.Title.Set
+	})).Return(&models.Audio{ID: 42}, nil).Once()
+	db.Audio.On("Find", mock.Anything, 42).Return(&models.Audio{ID: 42}, nil).Once()
+	w = request(`mutation { audioUserDataUpdate(input:{id:"42",rating100:60}) { id } }`, "read-key", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotContains(t, w.Body.String(), "unauthorized")
+	require.NotContains(t, w.Body.String(), `"errors"`)
+	w = request(`mutation { audioUpdate(input:{id:"42",rating100:60}) { id } }`, "read-key", nil)
+	require.Contains(t, w.Body.String(), "unauthorized")
 	db.Audio.AssertExpectations(t)
 	w = request(`{ users { name } }`, "read-key", nil)
 	require.Contains(t, w.Body.String(), "unauthorized")

@@ -23,3 +23,9 @@ mutation StudioDestroy($id: ID!) {
 mutation StudiosDestroy($ids: [ID!]!) {
   studiosDestroy(ids: $ids)
 }
+
+mutation StudioUserDataUpdate($input: UserRatingFavoriteInput!) {
+  studioUserDataUpdate(input: $input) {
+    ...StudioData
+  }
+}

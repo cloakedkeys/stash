@@ -95,3 +95,9 @@ mutation AudioMerge($input: AudioMergeInput!) {
     id
   }
 }
+
+mutation AudioUserDataUpdate($input: UserRatingInput!) {
+  audioUserDataUpdate(input: $input) {
+    ...AudioData
+  }
+}

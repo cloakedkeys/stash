@@ -9,7 +9,7 @@ import { SortDirectionEnum } from "src/core/generated-graphql";
 import { Icon } from "../Shared/Icon";
 import NavUtils from "src/utils/navigation";
 import { faHeart } from "@fortawesome/free-solid-svg-icons";
-import { useTagUpdate } from "src/core/StashService";
+import { useTagUserDataUpdate } from "src/core/StashService";
 import { useTableColumns } from "src/hooks/useTableColumns";
 import cx from "classnames";
 import { IColumn, ListTable } from "../List/ListTable";
@@ -31,11 +31,11 @@ export const TagListTable: React.FC<ITagListTableProps> = (
 ) => {
   const intl = useIntl();
 
-  const [updateTag] = useTagUpdate();
+  const [setTagUserData] = useTagUserDataUpdate();
 
   function setFavorite(v: boolean, tagId: string) {
     if (tagId) {
-      updateTag({
+      setTagUserData({
         variables: {
           input: {
             id: tagId,
@@ -48,7 +48,7 @@ export const TagListTable: React.FC<ITagListTableProps> = (
 
   function setRating(v: number | null, tagId: string) {
     if (tagId) {
-      updateTag({
+      setTagUserData({
         variables: {
           input: {
             id: tagId,

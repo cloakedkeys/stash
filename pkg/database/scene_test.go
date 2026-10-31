@@ -4700,6 +4700,34 @@ func TestFindByPerformerID(t *testing.T) {
 	})
 }
 
+func TestSceneOwnRatingOnlyAffectsThatUser(t *testing.T) {
+	require.NoError(t, withRollbackTxn(func(ctx context.Context) error {
+		qb := db.Scene()
+
+		other := models.User{Username: "another rating user", Roles: models.Roles{models.RoleEnumRead}}
+		require.NoError(t, db.User().Create(ctx, &other, ""))
+		otherCtx := models.WithUserID(ctx, other.ID)
+
+		scene := models.Scene{Title: "rated by one user"}
+		updatedAt := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+		scene.CreatedAt, scene.UpdatedAt = updatedAt, updatedAt
+		require.NoError(t, qb.Create(ctx, &scene, nil))
+
+		_, err := qb.UpdatePartial(otherCtx, scene.ID, models.ScenePartial{Rating: models.NewOptionalInt(60)})
+		require.NoError(t, err)
+
+		rated, err := qb.Find(otherCtx, scene.ID)
+		require.NoError(t, err)
+		assert.Equal(t, 60, *rated.Rating)
+		assert.True(t, updatedAt.Equal(rated.UpdatedAt), "setting a rating isn't editing the scene")
+
+		unrated, err := qb.Find(ctx, scene.ID)
+		require.NoError(t, err)
+		assert.Nil(t, unrated.Rating, "other users don't see the rating")
+		return nil
+	}))
+}
+
 func TestSceneUpdateKeepsCover(t *testing.T) {
 	require.NoError(t, withRollbackTxn(func(ctx context.Context) error {
 		qb := db.Scene()

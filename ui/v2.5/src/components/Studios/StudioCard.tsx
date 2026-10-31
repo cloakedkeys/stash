@@ -12,7 +12,7 @@ import { FormattedMessage } from "react-intl";
 import { PopoverCountButton } from "../Shared/PopoverCountButton";
 import { RatingBanner } from "../Shared/RatingBanner";
 import { FavoriteIcon } from "../Shared/FavoriteIcon";
-import { useStudioUpdate } from "src/core/StashService";
+import { useStudioUserDataUpdate } from "src/core/StashService";
 import { useConfigurationContext } from "src/hooks/Config";
 import { faTag, faBox } from "@fortawesome/free-solid-svg-icons";
 import { OCounterButton } from "../Shared/CountButton";
@@ -83,7 +83,7 @@ export const StudioCard: React.FC<IProps> = PatchComponent(
     zoomIndex,
     onSelectedChanged,
   }) => {
-    const [updateStudio] = useStudioUpdate();
+    const [setStudioUserData] = useStudioUserDataUpdate();
     const { configuration } = useConfigurationContext();
     const showChildContent = configuration?.ui?.showChildStudioContent ?? false;
 
@@ -97,7 +97,7 @@ export const StudioCard: React.FC<IProps> = PatchComponent(
 
     function onToggleFavorite(v: boolean) {
       if (studio.id) {
-        updateStudio({
+        setStudioUserData({
           variables: {
             input: {
               id: studio.id,

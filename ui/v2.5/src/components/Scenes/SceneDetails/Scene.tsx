@@ -17,6 +17,7 @@ import {
   useSceneIncrementO,
   useSceneGenerateScreenshot,
   useSceneUpdate,
+  useSceneUserDataUpdate,
   queryFindScenes,
   queryFindScenesByID,
   queryFindSceneMarkers,
@@ -210,6 +211,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
   const intl = useIntl();
   const history = useHistory();
   const [updateScene] = useSceneUpdate();
+  const [setSceneUserData] = useSceneUserDataUpdate();
   const [generateScreenshot] = useSceneGenerateScreenshot();
   const [screenshotJobID, setScreenshotJobID] = useState<string>();
   const { configuration } = useConfigurationContext();
@@ -268,7 +270,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
   };
 
   function setRating(v: number | null) {
-    updateScene({
+    setSceneUserData({
       variables: {
         input: {
           id: scene.id,

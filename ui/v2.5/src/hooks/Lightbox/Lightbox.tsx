@@ -33,7 +33,7 @@ import {
   mutateImageIncrementO,
   mutateImageDecrementO,
   mutateImageResetO,
-  useImageUpdate,
+  useImageUserDataUpdate,
 } from "src/core/StashService";
 import * as GQL from "src/core/generated-graphql";
 import { useInterfaceLocalForage } from "../LocalForage";
@@ -126,7 +126,7 @@ export const LightboxComponent: React.FC<IProps> = ({
   hide,
   onDeleteImage,
 }) => {
-  const [updateImage] = useImageUpdate();
+  const [setImageUserData] = useImageUserDataUpdate();
 
   // zero-based
   const [index, setIndex] = useState<number | null>(null);
@@ -655,7 +655,7 @@ export const LightboxComponent: React.FC<IProps> = ({
 
   function setRating(v: number | null) {
     if (currentImageId) {
-      updateImage({
+      setImageUserData({
         variables: {
           input: {
             id: currentImageId,

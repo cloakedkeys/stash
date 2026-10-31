@@ -9,6 +9,7 @@ import * as GQL from "src/core/generated-graphql";
 import {
   useFindPerformer,
   usePerformerUpdate,
+  usePerformerUserDataUpdate,
   usePerformerDestroy,
   mutateMetadataAutoTag,
 } from "src/core/StashService";
@@ -296,6 +297,8 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
     );
 
     const [updatePerformer] = usePerformerUpdate();
+
+    const [setPerformerUserData] = usePerformerUserDataUpdate();
     const [deletePerformer, { loading: isDestroying }] = usePerformerDestroy();
 
     async function onAutoTag() {
@@ -395,7 +398,7 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
 
     function setFavorite(v: boolean) {
       if (performer.id) {
-        updatePerformer({
+        setPerformerUserData({
           variables: {
             input: {
               id: performer.id,
@@ -408,7 +411,7 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
 
     function setRating(v: number | null) {
       if (performer.id) {
-        updatePerformer({
+        setPerformerUserData({
           variables: {
             input: {
               id: performer.id,

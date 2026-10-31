@@ -7,7 +7,7 @@ import { SortDirectionEnum } from "src/core/generated-graphql";
 import { Icon } from "../Shared/Icon";
 import NavUtils from "src/utils/navigation";
 import { faHeart } from "@fortawesome/free-solid-svg-icons";
-import { usePerformerUpdate } from "src/core/StashService";
+import { usePerformerUserDataUpdate } from "src/core/StashService";
 import { useTableColumns } from "src/hooks/useTableColumns";
 import { RatingSystem } from "../Shared/Rating/RatingSystem";
 import cx from "classnames";
@@ -38,11 +38,11 @@ export const PerformerListTable: React.FC<IPerformerListTableProps> = (
 ) => {
   const intl = useIntl();
 
-  const [updatePerformer] = usePerformerUpdate();
+  const [setPerformerUserData] = usePerformerUserDataUpdate();
 
   function setRating(v: number | null, performerId: string) {
     if (performerId) {
-      updatePerformer({
+      setPerformerUserData({
         variables: {
           input: {
             id: performerId,
@@ -55,7 +55,7 @@ export const PerformerListTable: React.FC<IPerformerListTableProps> = (
 
   function setFavorite(v: boolean, performerId: string) {
     if (performerId) {
-      updatePerformer({
+      setPerformerUserData({
         variables: {
           input: {
             id: performerId,

@@ -35,3 +35,9 @@ mutation RemoveGroupSubGroups($input: GroupSubGroupRemoveInput!) {
 mutation ReorderSubGroups($input: ReorderSubGroupsInput!) {
   reorderSubGroups(input: $input)
 }
+
+mutation GroupUserDataUpdate($input: UserRatingInput!) {
+  groupUserDataUpdate(input: $input) {
+    ...GroupData
+  }
+}

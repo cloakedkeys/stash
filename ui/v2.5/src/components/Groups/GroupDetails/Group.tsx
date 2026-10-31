@@ -7,6 +7,7 @@ import * as GQL from "src/core/generated-graphql";
 import {
   useFindGroup,
   useGroupUpdate,
+  useGroupUserDataUpdate,
   useGroupDestroy,
 } from "src/core/StashService";
 import { useHistory, RouteComponentProps, Redirect } from "react-router-dom";
@@ -254,6 +255,8 @@ const GroupPage: React.FC<IProps> = PatchComponent(
     }, [isEditing, group.back_image_path, backImage]);
 
     const [updateGroup, { loading: updating }] = useGroupUpdate();
+
+    const [setGroupUserData] = useGroupUserDataUpdate();
     const [deleteGroup, { loading: deleting }] = useGroupDestroy({
       id: group.id,
     });
@@ -346,7 +349,7 @@ const GroupPage: React.FC<IProps> = PatchComponent(
 
     function setRating(v: number | null) {
       if (group.id) {
-        updateGroup({
+        setGroupUserData({
           variables: {
             input: {
               id: group.id,

@@ -10,6 +10,7 @@ import * as GQL from "src/core/generated-graphql";
 import {
   useFindTag,
   useTagUpdate,
+  useTagUserDataUpdate,
   useTagDestroy,
   mutateMetadataAutoTag,
 } from "src/core/StashService";
@@ -335,6 +336,8 @@ const TagPage: React.FC<IProps> = PatchComponent(
     const [encodingImage, setEncodingImage] = useState<boolean>(false);
 
     const [updateTag] = useTagUpdate();
+
+    const [setTagUserData] = useTagUserDataUpdate();
     const [deleteTag] = useTagDestroy({ id: tag.id });
 
     const showAllCounts = uiConfig?.showChildTagContent;
@@ -356,7 +359,7 @@ const TagPage: React.FC<IProps> = PatchComponent(
 
     function setFavorite(v: boolean) {
       if (tag.id) {
-        updateTag({
+        setTagUserData({
           variables: {
             input: {
               id: tag.id,

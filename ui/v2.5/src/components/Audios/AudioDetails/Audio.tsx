@@ -15,6 +15,7 @@ import {
   useFindAudio,
   useAudioIncrementO,
   useAudioUpdate,
+  useAudioUserDataUpdate,
   useAudioIncrementPlayCount,
   queryFindAudios,
   queryFindAudiosByID,
@@ -168,6 +169,7 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
   const intl = useIntl();
   const history = useHistory();
   const [updateAudio] = useAudioUpdate();
+  const [setAudioUserData] = useAudioUserDataUpdate();
   const { configuration } = useConfigurationContext();
   const { showStudioText } = configuration?.ui ?? {};
 
@@ -198,7 +200,7 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
   }, [incrementO, Toast]);
 
   function setRating(v: number | null) {
-    updateAudio({
+    setAudioUserData({
       variables: {
         input: {
           id: audio.id,

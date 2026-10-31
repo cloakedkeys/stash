@@ -4,7 +4,7 @@ import { DetailItem } from "src/components/Shared/DetailItem";
 import { StashIDPill } from "src/components/Shared/StashID";
 import { RatingSystem } from "src/components/Shared/Rating/RatingSystem";
 import * as GQL from "src/core/generated-graphql";
-import { useTagUpdate } from "src/core/StashService";
+import { useTagUserDataUpdate } from "src/core/StashService";
 import { CustomFields } from "src/components/Shared/CustomFields";
 
 interface ITagDetails {
@@ -13,10 +13,10 @@ interface ITagDetails {
 }
 
 export const TagDetailsPanel: React.FC<ITagDetails> = ({ tag, fullWidth }) => {
-  const [updateTag] = useTagUpdate();
+  const [setTagUserData] = useTagUserDataUpdate();
 
   function setRating(v: number | null) {
-    updateTag({
+    setTagUserData({
       variables: {
         input: {
           id: tag.id,
@@ -117,10 +117,10 @@ export const TagDetailsPanel: React.FC<ITagDetails> = ({ tag, fullWidth }) => {
 };
 
 export const CompressedTagDetailsPanel: React.FC<ITagDetails> = ({ tag }) => {
-  const [updateTag] = useTagUpdate();
+  const [setTagUserData] = useTagUserDataUpdate();
 
   function setRating(v: number | null) {
-    updateTag({
+    setTagUserData({
       variables: {
         input: {
           id: tag.id,

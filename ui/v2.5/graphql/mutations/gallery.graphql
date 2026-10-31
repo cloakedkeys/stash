@@ -65,3 +65,9 @@ mutation SetGalleryCover($gallery_id: ID!, $cover_image_id: ID!) {
 mutation ResetGalleryCover($gallery_id: ID!) {
   resetGalleryCover(input: { gallery_id: $gallery_id })
 }
+
+mutation GalleryUserDataUpdate($input: UserRatingInput!) {
+  galleryUserDataUpdate(input: $input) {
+    ...GalleryData
+  }
+}

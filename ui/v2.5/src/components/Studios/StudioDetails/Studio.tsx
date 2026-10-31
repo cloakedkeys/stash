@@ -10,6 +10,7 @@ import * as GQL from "src/core/generated-graphql";
 import {
   useFindStudio,
   useStudioUpdate,
+  useStudioUserDataUpdate,
   useStudioDestroy,
   mutateMetadataAutoTag,
 } from "src/core/StashService";
@@ -313,6 +314,8 @@ const StudioPage: React.FC<IProps> = PatchComponent(
     const [encodingImage, setEncodingImage] = useState<boolean>(false);
 
     const [updateStudio] = useStudioUpdate();
+
+    const [setStudioUserData] = useStudioUserDataUpdate();
     const [deleteStudio] = useStudioDestroy({ id: studio.id });
 
     const showAllCounts = uiConfig?.showChildStudioContent;
@@ -334,7 +337,7 @@ const StudioPage: React.FC<IProps> = PatchComponent(
 
     function setFavorite(v: boolean) {
       if (studio.id) {
-        updateStudio({
+        setStudioUserData({
           variables: {
             input: {
               id: studio.id,
@@ -466,7 +469,7 @@ const StudioPage: React.FC<IProps> = PatchComponent(
 
     function setRating(v: number | null) {
       if (studio.id) {
-        updateStudio({
+        setStudioUserData({
           variables: {
             input: {
               id: studio.id,

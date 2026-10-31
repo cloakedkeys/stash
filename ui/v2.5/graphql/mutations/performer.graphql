@@ -29,3 +29,9 @@ mutation PerformerMerge($input: PerformerMergeInput!) {
     id
   }
 }
+
+mutation PerformerUserDataUpdate($input: UserRatingFavoriteInput!) {
+  performerUserDataUpdate(input: $input) {
+    ...PerformerData
+  }
+}

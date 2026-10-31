@@ -704,6 +704,16 @@ export const useSceneUpdate = () =>
     },
   });
 
+export const useSceneUserDataUpdate = () =>
+  GQL.useSceneUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.sceneUserDataUpdate) return;
+
+      evictTypeFields(cache, sceneMutationImpactedTypeFields);
+      evictQueries(cache, sceneMutationImpactedQueries);
+    },
+  });
+
 export const useBulkSceneUpdate = () =>
   GQL.useBulkSceneUpdateMutation({
     update(cache, result) {
@@ -1229,6 +1239,16 @@ export const useAudioUpdate = () =>
     },
   });
 
+export const useAudioUserDataUpdate = () =>
+  GQL.useAudioUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.audioUserDataUpdate) return;
+
+      evictTypeFields(cache, audioMutationImpactedTypeFields);
+      evictQueries(cache, audioMutationImpactedQueries);
+    },
+  });
+
 export const useBulkAudioUpdate = () =>
   GQL.useBulkAudioUpdateMutation({
     update(cache, result) {
@@ -1666,6 +1686,16 @@ export const useImageUpdate = () =>
     },
   });
 
+export const useImageUserDataUpdate = () =>
+  GQL.useImageUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.imageUserDataUpdate) return;
+
+      evictTypeFields(cache, imageMutationImpactedTypeFields);
+      evictQueries(cache, imageMutationImpactedQueries);
+    },
+  });
+
 export const useBulkImageUpdate = () =>
   GQL.useBulkImageUpdateMutation({
     update(cache, result) {
@@ -1920,6 +1950,16 @@ export const useGroupUpdate = () =>
     },
   });
 
+export const useGroupUserDataUpdate = () =>
+  GQL.useGroupUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.groupUserDataUpdate) return;
+
+      evictTypeFields(cache, groupMutationImpactedTypeFields);
+      evictQueries(cache, groupMutationImpactedQueries);
+    },
+  });
+
 export const useBulkGroupUpdate = () =>
   GQL.useBulkGroupUpdateMutation({
     update(cache, result) {
@@ -2154,6 +2194,16 @@ export const useGalleryUpdate = () =>
   GQL.useGalleryUpdateMutation({
     update(cache, result) {
       if (!result.data?.galleryUpdate) return;
+
+      evictTypeFields(cache, galleryMutationImpactedTypeFields);
+      evictQueries(cache, galleryMutationImpactedQueries);
+    },
+  });
+
+export const useGalleryUserDataUpdate = () =>
+  GQL.useGalleryUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.galleryUserDataUpdate) return;
 
       evictTypeFields(cache, galleryMutationImpactedTypeFields);
       evictQueries(cache, galleryMutationImpactedQueries);
@@ -2417,6 +2467,16 @@ export const usePerformerUpdate = () =>
     },
   });
 
+export const usePerformerUserDataUpdate = () =>
+  GQL.usePerformerUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.performerUserDataUpdate) return;
+
+      evictTypeFields(cache, performerMutationImpactedTypeFields);
+      evictQueries(cache, performerMutationImpactedQueries);
+    },
+  });
+
 export const useBulkPerformerUpdate = (input: GQL.BulkPerformerUpdateInput) =>
   GQL.useBulkPerformerUpdateMutation({
     variables: { input },
@@ -2582,6 +2642,23 @@ export const useStudioUpdate = () =>
     },
   });
 
+export const useStudioUserDataUpdate = () =>
+  GQL.useStudioUserDataUpdateMutation({
+    update(cache, result) {
+      const studio = result.data?.studioUserDataUpdate;
+      if (!studio) return;
+
+      const obj = { __typename: "Studio", id: studio.id };
+      evictTypeFields(
+        cache,
+        studioMutationImpactedTypeFields,
+        cache.identify(obj) // don't evict this studio
+      );
+
+      evictQueries(cache, studioMutationImpactedQueries);
+    },
+  });
+
 export const useBulkStudioUpdate = () =>
   GQL.useBulkStudioUpdateMutation({
     update(cache, result) {
@@ -2671,6 +2748,23 @@ export const useTagUpdate = () =>
   GQL.useTagUpdateMutation({
     update(cache, result) {
       const tag = result.data?.tagUpdate;
+      if (!tag) return;
+
+      const obj = { __typename: "Tag", id: tag.id };
+      evictTypeFields(
+        cache,
+        tagMutationImpactedTypeFields,
+        cache.identify(obj) // don't evict this tag
+      );
+
+      evictQueries(cache, tagMutationImpactedQueries);
+    },
+  });
+
+export const useTagUserDataUpdate = () =>
+  GQL.useTagUserDataUpdateMutation({
+    update(cache, result) {
+      const tag = result.data?.tagUserDataUpdate;
       if (!tag) return;
 
       const obj = { __typename: "Tag", id: tag.id };

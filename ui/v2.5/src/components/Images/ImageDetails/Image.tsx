@@ -7,6 +7,7 @@ import {
   useFindImage,
   useImageIncrementO,
   useImageUpdate,
+  useImageUserDataUpdate,
   mutateMetadataScan,
   useImageDecrementO,
   useImageResetO,
@@ -59,6 +60,8 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
   const [resetO] = useImageResetO(image.id);
 
   const [updateImage] = useImageUpdate();
+
+  const [setImageUserData] = useImageUserDataUpdate();
 
   const [organizedLoading, setOrganizedLoading] = useState(false);
 
@@ -143,7 +146,7 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
   };
 
   function setRating(v: number | null) {
-    updateImage({
+    setImageUserData({
       variables: {
         input: {
           id: image.id,

@@ -7,7 +7,7 @@ import { useIntl } from "react-intl";
 import { objectTitle } from "src/core/files";
 import { galleryTitle } from "src/core/galleries";
 import { RatingSystem } from "../Shared/Rating/RatingSystem";
-import { useGalleryUpdate } from "src/core/StashService";
+import { useGalleryUserDataUpdate } from "src/core/StashService";
 import { IColumn, ListTable } from "../List/ListTable";
 import { useTableColumns } from "src/hooks/useTableColumns";
 
@@ -27,11 +27,11 @@ export const GalleryListTable: React.FC<IGalleryListTableProps> = (
 ) => {
   const intl = useIntl();
 
-  const [updateGallery] = useGalleryUpdate();
+  const [setGalleryUserData] = useGalleryUserDataUpdate();
 
   function setRating(v: number | null, galleryId: string) {
     if (galleryId) {
-      updateGallery({
+      setGalleryUserData({
         variables: {
           input: {
             id: galleryId,
