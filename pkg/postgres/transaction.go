@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 )
@@ -26,6 +27,10 @@ func (db *Database) WithDatabase(ctx context.Context) (context.Context, error) {
 		return ctx, nil
 	}
 
+	if db.readDB == nil {
+		return nil, database.ErrDatabaseNotInitialized
+	}
+
 	return context.WithValue(ctx, dbKey, db.readDB), nil
 }
 
@@ -37,8 +42,15 @@ func (db *Database) Begin(ctx context.Context, writable bool) (context.Context, 
 		return nil, fmt.Errorf("already in transaction")
 	}
 
+	if db.readDB == nil {
+		return nil, fmt.Errorf("database not ready: %w", database.ErrDatabaseNotInitialized)
+	}
+
 	dbtx := db.readDB
 	if writable {
+		if err := db.Ready(); err != nil {
+			return nil, fmt.Errorf("database not ready: %w", err)
+		}
 		dbtx = db.writeDB
 	}
 
