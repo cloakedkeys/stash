@@ -384,7 +384,7 @@ func (r *queryResolver) Version(ctx context.Context) (*Version, error) {
 func (r *queryResolver) Latestversion(ctx context.Context) (*LatestVersion, error) {
 	latestRelease, err := GetLatestRelease(ctx)
 	if err != nil {
-		if !errors.Is(err, context.Canceled) {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, errNoUpdateCheck) {
 			logger.Errorf("Error while retrieving latest version: %v", err)
 		}
 		return nil, err

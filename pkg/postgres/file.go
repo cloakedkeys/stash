@@ -1265,6 +1265,15 @@ func (qb *FileStore) queryGroupedFields(ctx context.Context, options models.File
 	}
 
 	const includeSortPagination = false
+	if options.TotalDuration {
+		query.addGroupBy("video_files.duration")
+	}
+	if options.Megapixels {
+		query.addGroupBy("image_files.width", "image_files.height")
+	}
+	if options.TotalSize {
+		query.addGroupBy("files.size")
+	}
 	aggregateQuery.from = fmt.Sprintf("(%s) as temp", query.toSQL(includeSortPagination))
 
 	out := struct {

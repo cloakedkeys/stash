@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
+	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
@@ -47,42 +50,9 @@ func newZipFS(fs models.FS, path string, size int64) (*zipFS, error) {
 		return nil, err
 	}
 
-	// Concat all Name and Comment for better detection result
-	var buffer bytes.Buffer
-	for _, f := range zipReader.File {
-		buffer.WriteString(f.Name)
-		buffer.WriteString(f.Comment)
-	}
-	buffer.WriteString(zipReader.Comment)
-
-	// Detect encoding
-	d, err := chardet.NewTextDetector().DetectBest(buffer.Bytes())
-	if err != nil {
-		// If we can't detect the encoding, just assume it's UTF8
-		logger.Warnf("Unable to detect decoding for %s: %w", path, err)
-	}
-
-	// If the charset is not UTF8, decode'em
-	if d != nil && d.Charset != "UTF-8" {
-		logger.Debugf("Detected non-utf8 zip charset %s (%s): %s", d.Charset, d.Language, path)
-
-		e, _ := charset.Lookup(d.Charset)
-		if e == nil {
-			// if we can't find the encoding, just assume it's UTF8
-			logger.Warnf("Failed to lookup charset %s, language %s", d.Charset, d.Language)
-		} else {
-			decoder := e.NewDecoder()
-			for _, f := range zipReader.File {
-				newName, _, err := transform.String(decoder, f.Name)
-				if err != nil {
-					reader.Close()
-					logger.Warnf("Failed to decode %v: %v", []byte(f.Name), err)
-				} else {
-					f.Name = newName
-				}
-				// Comments are not decoded cuz stash doesn't use that
-			}
-		}
+	// Detect and apply non-UTF-8 encoding for filenames.
+	for i, name := range decodeZipEntryNames(zipReader.File, zipReader.Comment, path) {
+		zipReader.File[i].Name = name
 	}
 
 	return &zipFS{
@@ -187,4 +157,148 @@ type wrappedReadCloser struct {
 func (f *wrappedReadCloser) Close() error {
 	_ = f.ReadCloser.Close()
 	return f.outer.Close()
+}
+
+// decodeZipEntryNames returns the decoded UTF-8 name for each entry in files.
+// If the zip uses a non-UTF-8 encoding, chardet is used to detect and decode.
+// Names are returned unchanged when detection fails or the charset is already UTF-8.
+func decodeZipEntryNames(files []*zip.File, archiveComment string, zipPath string) []string {
+	names := make([]string, len(files))
+	for i, f := range files {
+		names[i] = f.Name
+	}
+
+	var buf bytes.Buffer
+	for _, f := range files {
+		buf.WriteString(f.Name)
+		buf.WriteString(f.Comment)
+	}
+	buf.WriteString(archiveComment)
+
+	d, err := chardet.NewTextDetector().DetectBest(buf.Bytes())
+	if err != nil {
+		// if we can't detect the encoding, just assume it's UTF-8
+		logger.Warnf("Unable to detect decoding for %s: %v", zipPath, err)
+		return names
+	}
+	if d == nil || d.Charset == "UTF-8" {
+		return names
+	}
+
+	logger.Debugf("Detected non-utf8 zip charset %s (%s): %s", d.Charset, d.Language, zipPath)
+	e, _ := charset.Lookup(d.Charset)
+	if e == nil {
+		// if we can't find the encoding, just assume it's UTF-8
+		logger.Warnf("Failed to lookup charset %s, language %s", d.Charset, d.Language)
+		return names
+	}
+
+	decoder := e.NewDecoder()
+	for i, f := range files {
+		decoded, _, err := transform.String(decoder, f.Name)
+		if err != nil {
+			logger.Warnf("Failed to decode %v: %v", []byte(f.Name), err)
+			continue
+		}
+		names[i] = decoded
+	}
+	return names
+}
+
+// errNothingToRemove means none of the entries are in the zip, so it can stay as it is.
+var errNothingToRemove = errors.New("no entries to remove")
+
+// zipEntryPath gives an entry's path the way zip.Reader.Open, and so the scanner,
+// sees it: forward slashes, cleaned, with no leading slash or "./".
+func zipEntryPath(name string) string {
+	name = strings.ReplaceAll(name, `\`, "/")
+	name = path.Clean(name)
+	name = strings.TrimLeft(name, "/")
+	for strings.HasPrefix(name, "../") {
+		name = name[len("../"):]
+	}
+	return name
+}
+
+// RemoveEntriesFromZip rewrites the zip at zipPath to a new temporary file in the same
+// directory, excluding all entries whose relative paths (using forward slashes) appear in
+// entriesToRemove. Returns the path of the temporary file. The caller is responsible for
+// atomically replacing the original zip with the temp file, or cleaning it up on rollback.
+func RemoveEntriesFromZip(zipPath string, entriesToRemove []string) (string, error) {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return "", fmt.Errorf("opening zip %q: %w", zipPath, err)
+	}
+	defer r.Close()
+
+	exclude := make(map[string]bool, len(entriesToRemove))
+	for _, e := range entriesToRemove {
+		exclude[e] = true
+	}
+
+	// match entries the way the scanner names them
+	decodedNames := decodeZipEntryNames(r.File, r.Comment, zipPath)
+	removed := make(map[string]bool, len(exclude))
+	for _, name := range decodedNames {
+		if n := zipEntryPath(name); exclude[n] {
+			removed[n] = true
+		}
+	}
+	for e := range exclude {
+		if !removed[e] {
+			// already gone, for example after the zip was edited outside stash
+			logger.Warnf("%q is not in zip %q, so there is nothing to remove", e, zipPath)
+		}
+	}
+	if len(removed) == 0 {
+		return "", errNothingToRemove
+	}
+
+	origInfo, err := os.Stat(zipPath)
+	if err != nil {
+		return "", fmt.Errorf("reading zip %q: %w", zipPath, err)
+	}
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(zipPath), "*.tmp")
+	if err != nil {
+		return "", fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+
+	// CreateTemp makes the file readable by its owner only; keep the zip's own permissions
+	if err := os.Chmod(tmpPath, origInfo.Mode().Perm()); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("setting permissions on %q: %w", tmpPath, err)
+	}
+
+	w := zip.NewWriter(tmpFile)
+	for i, f := range r.File {
+		if exclude[zipEntryPath(decodedNames[i])] {
+			continue
+		}
+		if err := w.Copy(f); err != nil {
+			_ = w.Close()
+			_ = tmpFile.Close()
+			_ = os.Remove(tmpPath)
+			return "", fmt.Errorf("copying zip entry %q: %w", f.Name, err)
+		}
+	}
+	if err := w.SetComment(r.Comment); err != nil {
+		_ = w.Close()
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("setting zip comment: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("finalizing zip: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("closing temp file: %w", err)
+	}
+
+	return tmpPath, nil
 }

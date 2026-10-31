@@ -320,7 +320,6 @@ func (qb *imageFilterHandler) performerAgeCriterionHandler(performerAge *models.
 			f.addInnerJoin("performers_images", "", "images.id = performers_images.image_id")
 			f.addInnerJoin("performers", "", "performers_images.performer_id = performers.id")
 
-			f.addWhere("images.date != '' AND performers.birthdate != ''")
 			f.addWhere("images.date IS NOT NULL AND performers.birthdate IS NOT NULL")
 
 			ageCalc := "EXTRACT(YEAR FROM AGE(images.date, performers.birthdate))"

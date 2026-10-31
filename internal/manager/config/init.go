@@ -41,6 +41,7 @@ var (
 		"metadata":      Metadata,
 		"blobs":         BlobsPath,
 		"cache":         Cache,
+		"database":      Database,
 		"stash":         Stash,
 		"ui":            UILocation,
 		"public_access": PublicAccess,

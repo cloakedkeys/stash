@@ -21,3 +21,15 @@ query FindUsersForLibraryLimits {
     }
   }
 }
+
+query FindUsersForAccounts {
+  users {
+    name
+    notes
+    roles
+    locked
+    library_limit {
+      folder_ids
+    }
+  }
+}

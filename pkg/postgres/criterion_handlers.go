@@ -41,11 +41,13 @@ func stringCriterionHandler(c *models.StringCriterionInput, column string) crite
 				case models.CriterionModifierIncludes:
 					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{column}, c.Value, false))
 				case models.CriterionModifierExcludes:
-					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{column}, c.Value, true))
+					// an empty field doesn't contain the value, so it's kept, as with not-matches-regex
+					clause := getStringSearchClause([]string{column}, c.Value, true)
+					f.whereClauses = append(f.whereClauses, makeClause("("+column+" IS NULL OR ("+clause.sql+"))", clause.args...))
 				case models.CriterionModifierEquals:
 					f.addWhere(column+" ILIKE ? ESCAPE ''", c.Value)
 				case models.CriterionModifierNotEquals:
-					f.addWhere(column+" NOT ILIKE ? ESCAPE ''", c.Value)
+					f.addWhere("("+column+" IS NULL OR "+column+" NOT ILIKE ? ESCAPE '')", c.Value)
 				case models.CriterionModifierMatchesRegex:
 					if _, err := regexp.Compile(c.Value); err != nil {
 						f.setError(err)
@@ -62,43 +64,6 @@ func stringCriterionHandler(c *models.StringCriterionInput, column string) crite
 					f.addWhere("(" + column + " IS NULL OR TRIM(" + column + ") = '')")
 				case models.CriterionModifierNotNull:
 					f.addWhere("(" + column + " IS NOT NULL AND TRIM(" + column + ") != '')")
-				default:
-					panic("unsupported string filter modifier")
-				}
-			}
-		}
-	}
-}
-
-func stringNoTrimCriterionHandler(c *models.StringCriterionInput, column string) criterionHandlerFunc {
-	return func(ctx context.Context, f *filterBuilder) {
-		if c != nil {
-			if modifier := c.Modifier; c.Modifier.IsValid() {
-				switch modifier {
-				case models.CriterionModifierIncludes:
-					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{column}, c.Value, false))
-				case models.CriterionModifierExcludes:
-					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{column}, c.Value, true))
-				case models.CriterionModifierEquals:
-					f.addWhere(column+" ILIKE ? ESCAPE ''", c.Value)
-				case models.CriterionModifierNotEquals:
-					f.addWhere(column+" NOT ILIKE ? ESCAPE ''", c.Value)
-				case models.CriterionModifierMatchesRegex:
-					if _, err := regexp.Compile(c.Value); err != nil {
-						f.setError(err)
-						return
-					}
-					f.addWhere(fmt.Sprintf("(%s IS NOT NULL AND regex_match(%[1]s, ?))", column), c.Value)
-				case models.CriterionModifierNotMatchesRegex:
-					if _, err := regexp.Compile(c.Value); err != nil {
-						f.setError(err)
-						return
-					}
-					f.addWhere(fmt.Sprintf("(%s IS NULL OR NOT regex_match(%[1]s, ?))", column), c.Value)
-				case models.CriterionModifierIsNull:
-					f.addWhere("(" + column + " IS NULL)")
-				case models.CriterionModifierNotNull:
-					f.addWhere("(" + column + " IS NOT NULL)")
 				default:
 					panic("unsupported string filter modifier")
 				}
@@ -1216,6 +1181,12 @@ func (h *relatedFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 	f.addWhere(fmt.Sprintf("%s IN ("+subQuery.toSQL(false)+")", h.relatedIDCol), subQuery.allArgs()...)
 }
 
+// phashColumn reads a stored phash as a number. Other kinds of fingerprint share
+// the column and aren't numbers, so they become null rather than fail the cast.
+func phashColumn(table string) string {
+	return fmt.Sprintf("CASE WHEN %[1]s.type = 'phash' THEN CAST(%[1]s.fingerprint AS bigint) END", table)
+}
+
 type phashDistanceCriterionHandler struct {
 	// assumes that applicable fingerprints table is joined as fingerprints_phash
 	joinFn    func(f *filterBuilder)
@@ -1238,18 +1209,14 @@ func (h *phashDistanceCriterionHandler) handle(ctx context.Context, f *filterBui
 
 	switch {
 	case phashDistance.Modifier == models.CriterionModifierEquals && distance > 0:
-		// needed to avoid a type mismatch
-		f.addWhere("typeof(fingerprints_phash.fingerprint) = 'integer'")
-		f.addWhere("phash_distance(fingerprints_phash.fingerprint, ?) < ?", value, distance)
+		f.addWhere("phash_distance("+phashColumn("fingerprints_phash")+", ?) < ?", value, distance)
 	case phashDistance.Modifier == models.CriterionModifierNotEquals && distance > 0:
-		// needed to avoid a type mismatch
-		f.addWhere("typeof(fingerprints_phash.fingerprint) = 'integer'")
-		f.addWhere("phash_distance(fingerprints_phash.fingerprint, ?) > ?", value, distance)
+		f.addWhere("phash_distance("+phashColumn("fingerprints_phash")+", ?) > ?", value, distance)
 	default:
 		intCriterionHandler(&models.IntCriterionInput{
 			Value:    int(value),
 			Modifier: phashDistance.Modifier,
-		}, "fingerprints_phash.fingerprint", nil)(ctx, f)
+		}, phashColumn("fingerprints_phash"), nil)(ctx, f)
 	}
 }
 

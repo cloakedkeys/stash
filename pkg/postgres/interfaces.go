@@ -55,4 +55,4 @@ func (db *Database) UserUIConfig() models.UserUIConfigReaderWriter {
 	return db.storeRepository.UserUIConfig
 }
 func (db *Database) Audio() database.AudioStore { return db.storeRepository.Audio }
-func (db *Database) UserSchemaVersion() uint         { return 15 }
+func (db *Database) UserSchemaVersion() uint    { return 15 }

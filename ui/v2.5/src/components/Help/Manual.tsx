@@ -5,6 +5,7 @@ import Tasks from "src/docs/en/Manual/Tasks.md";
 import AutoTagging from "src/docs/en/Manual/AutoTagging.md";
 import JSONSpec from "src/docs/en/Manual/JSONSpec.md";
 import Configuration from "src/docs/en/Manual/Configuration.md";
+import PostgreSQL from "src/docs/en/Manual/PostgreSQL.md";
 import Interface from "src/docs/en/Manual/Interface.md";
 import Images from "src/docs/en/Manual/Images.md";
 import Audio from "src/docs/en/Manual/Audio.md";
@@ -50,6 +51,12 @@ export const Manual: React.FC<IManualProps> = ({
       key: "Configuration.md",
       title: "Configuration",
       content: Configuration,
+    },
+    {
+      key: "PostgreSQL.md",
+      title: "PostgreSQL",
+      content: PostgreSQL,
+      className: "indent-1",
     },
     {
       key: "Interface.md",

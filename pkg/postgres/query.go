@@ -59,6 +59,30 @@ func (qb *queryBuilder) addGroupBy(columns ...string) {
 	}
 }
 
+// groupBy returns the group by columns for the query. Sort-only joins are left
+// out when not sorting, so columns from those tables must be left out as well.
+func (qb queryBuilder) groupBy(includeSortPagination bool) []string {
+	if includeSortPagination {
+		return qb.groupByClauses
+	}
+
+	sortOnly := make(map[string]bool)
+	for _, j := range qb.joins {
+		if j.sort {
+			sortOnly[j.alias()] = true
+		}
+	}
+
+	var ret []string
+	for _, column := range qb.groupByClauses {
+		table, _, found := strings.Cut(column, ".")
+		if !found || !sortOnly[table] {
+			ret = append(ret, column)
+		}
+	}
+	return ret
+}
+
 func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 	body := qb.body(includeSortPagination)
 
@@ -71,7 +95,7 @@ func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 		withClause = "WITH " + recursive + strings.Join(qb.withClauses, ", ") + " "
 	}
 
-	body = withClause + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupByClauses)
+	body = withClause + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupBy(includeSortPagination))
 	if includeSortPagination {
 		body += qb.sort
 		if qb.pagination != nil {
@@ -82,15 +106,31 @@ func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 	return body
 }
 
+// withSortOrder returns a copy of the query with a sort_order column, the
+// row's position in the query's sort.
+func (qb queryBuilder) withSortOrder() queryBuilder {
+	qb.columns = append(append([]string{}, qb.columns...), "row_number() OVER ("+qb.sort+") AS sort_order")
+	return qb
+}
+
+// findIDs returns the IDs the query finds, sorted and paged. A sort or filter on
+// files gives one row per file, so each item is kept once, at its first position.
 func (qb queryBuilder) findIDs(ctx context.Context) ([]int, error) {
 	const includeSortPagination = true
-	sql := qb.toSQL(includeSortPagination)
+	sorted := qb.withSortOrder()
+	sorted.sort = ""
+	sorted.pagination = nil
+
+	sql := "SELECT sorted.id FROM (" + sorted.toSQL(includeSortPagination) + ") AS sorted GROUP BY sorted.id ORDER BY MIN(sorted.sort_order)"
+	if qb.pagination != nil {
+		sql += getPaginationSQL(qb.pagination)
+	}
 	return qb.repository.runIdsQuery(ctx, sql, qb.allArgs())
 }
 
 func (qb queryBuilder) executeFind(ctx context.Context) ([]int, int, error) {
 	const includeSortPagination = true
-	body := qb.body(includeSortPagination)
+	body := qb.withSortOrder().body(includeSortPagination)
 
 	// Redirect
 	if qb.pagination != nil && qb.pagination.perPage == 0 {
@@ -99,7 +139,7 @@ func (qb queryBuilder) executeFind(ctx context.Context) ([]int, int, error) {
 	}
 
 	pagination := getPaginationSQL(qb.pagination)
-	return qb.repository.executeFindQuery(ctx, body, qb.allArgs(), qb.sort, pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
+	return qb.repository.executeFindQuery(ctx, body, qb.allArgs(), pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
 }
 
 func (qb queryBuilder) executeCount(ctx context.Context) (int, error) {
@@ -115,8 +155,8 @@ func (qb queryBuilder) executeCount(ctx context.Context) (int, error) {
 		withClause = "WITH " + recursive + strings.Join(qb.withClauses, ", ") + " "
 	}
 
-	body = qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupByClauses)
-	countQuery := withClause + qb.repository.buildCountQuery(body)
+	body = qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupBy(includeSortPagination))
+	countQuery := withClause + "SELECT COUNT(DISTINCT temp.id) as count FROM (" + body + ") as temp"
 	return qb.repository.runCountQuery(ctx, countQuery, qb.allArgs())
 }
 

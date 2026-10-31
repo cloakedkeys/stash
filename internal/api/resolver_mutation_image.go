@@ -339,7 +339,11 @@ func (r *mutationResolver) ImageDestroy(ctx context.Context, input models.ImageD
 			return fmt.Errorf("image with id %d not found", imageID)
 		}
 
-		return r.imageService.Destroy(ctx, i, fileDeleter, utils.IsTrue(input.DeleteGenerated), utils.IsTrue(input.DeleteFile), utils.IsTrue(input.DestroyFileEntry))
+		if err := r.imageService.Destroy(ctx, i, fileDeleter, utils.IsTrue(input.DeleteGenerated), utils.IsTrue(input.DeleteFile), utils.IsTrue(input.DestroyFileEntry)); err != nil {
+			return err
+		}
+
+		return fileDeleter.PrepareZipRewrites(ctx, r.repository.File)
 	}); err != nil {
 		fileDeleter.Rollback()
 		return false, err
@@ -391,7 +395,8 @@ func (r *mutationResolver) ImagesDestroy(ctx context.Context, input models.Image
 			}
 		}
 
-		return nil
+		// images in a zip are removed from it once per zip, after all of them are marked
+		return fileDeleter.PrepareZipRewrites(ctx, r.repository.File)
 	}); err != nil {
 		fileDeleter.Rollback()
 		return false, err

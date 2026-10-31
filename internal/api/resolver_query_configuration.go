@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/scraper"
@@ -138,7 +139,7 @@ func makeConfigGeneralResult() *ConfigGeneralResult {
 
 	return &ConfigGeneralResult{
 		Stashes:                        config.GetStashPaths(),
-		DatabasePath:                   config.GetDatabasePath(),
+		DatabasePath:                   database.RedactPath(config.GetDatabasePath()),
 		BackupDirectoryPath:            config.GetBackupDirectoryPath(),
 		DeleteTrashPath:                config.GetDeleteTrashPath(),
 		GeneratedPath:                  config.GetGeneratedPath(),
