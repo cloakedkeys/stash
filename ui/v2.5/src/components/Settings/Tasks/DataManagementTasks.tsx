@@ -868,6 +868,7 @@ export const DataManagementTasks: React.FC<IDataManagementTasks> = ({
                 </ManualLink>
               </>
             }
+            className="purge-missing-setting"
             subHeadingID="config.tasks.purge_missing_desc"
           >
             <Button
