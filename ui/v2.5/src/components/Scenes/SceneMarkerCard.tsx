@@ -16,12 +16,14 @@ import { PatchComponent } from "src/patch";
 import { PerformerPopoverButton } from "../Shared/PerformerPopoverButton";
 import { ScenePreview } from "./SceneCard";
 import { TruncatedText } from "../Shared/TruncatedText";
+import { SceneQueue } from "src/models/sceneQueue";
 
 interface ISceneMarkerCardProps {
   marker: GQL.SceneMarkerDataFragment;
   cardWidth?: number;
   previewHeight?: number;
   index?: number;
+  queue?: SceneQueue;
   compact?: boolean;
   selecting?: boolean;
   selected?: boolean | undefined;
@@ -165,6 +167,8 @@ const SceneMarkerCardImage = PatchComponent(
 export const SceneMarkerCard = PatchComponent(
   "SceneMarkerCard",
   (props: ISceneMarkerCardProps) => {
+    const { configuration } = useConfigurationContext();
+
     function zoomIndex() {
       if (!props.compact && props.zoomIndex !== undefined) {
         return `zoom-${props.zoomIndex}`;
@@ -173,10 +177,21 @@ export const SceneMarkerCard = PatchComponent(
       return "";
     }
 
+    const cont = configuration?.interface.continuePlaylistDefault ?? false;
+
+    const sceneMarkerLink = props.queue
+      ? props.queue.makeLink(props.marker.scene.id, {
+          sceneIndex: props.index,
+          continue: cont,
+          start: props.marker.seconds,
+          end: props.marker.end_seconds,
+        })
+      : NavUtils.makeSceneMarkerUrl(props.marker);
+
     return (
       <GridCard
         className={`scene-marker-card ${zoomIndex()}`}
-        url={NavUtils.makeSceneMarkerUrl(props.marker)}
+        url={sceneMarkerLink}
         title={markerTitle(props.marker)}
         width={props.cardWidth}
         linkClassName="scene-marker-card-link"

@@ -19,6 +19,8 @@ import {
   useSceneUpdate,
   queryFindScenes,
   queryFindScenesByID,
+  queryFindSceneMarkers,
+  queryFindSceneMarkersByID,
   useSceneIncrementPlayCount,
 } from "src/core/StashService";
 
@@ -28,7 +30,12 @@ import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { Icon } from "src/components/Shared/Icon";
 import { Counter } from "src/components/Shared/Counter";
 import { useToast } from "src/hooks/Toast";
-import SceneQueue, { QueuedScene } from "src/models/sceneQueue";
+import SceneQueue, {
+  QueuedItem,
+  isCurrentQueuedItem,
+  isQueuedMarker,
+  queuedItemSceneID,
+} from "src/models/sceneQueue";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import Mousetrap from "mousetrap";
 import { OrganizedButton } from "./OrganizedButton";
@@ -142,11 +149,11 @@ const VideoFrameRateResolution: React.FC<{
 interface IProps {
   scene: GQL.SceneDataFragment;
   setTimestamp: (num: number) => void;
-  queueScenes: QueuedScene[];
+  queueScenes: QueuedItem[];
   onQueueNext: () => void;
   onQueuePrevious: () => void;
   onQueueRandom: () => void;
-  onQueueSceneClicked: (sceneID: string) => void;
+  onQueueSceneClicked: (item: QueuedItem) => void;
   onDelete: () => void;
   continuePlaylist: boolean;
   queueHasMoreScenes: boolean;
@@ -160,6 +167,7 @@ interface IProps {
   setLoopQueue: (value: boolean) => void;
   loopScene: boolean;
   setLoopScene: (value: boolean) => void;
+  initialTimestamp: number;
   onRefreshScene: () => Promise<void>;
 }
 
@@ -194,6 +202,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
     setLoopQueue,
     loopScene,
     setLoopScene,
+    initialTimestamp,
     onRefreshScene,
   } = props;
 
@@ -624,6 +633,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
             <QueueViewer
               scenes={queueScenes}
               currentID={scene.id}
+              currentMarkerSeconds={initialTimestamp}
               continue={continuePlaylist}
               setContinue={setContinuePlaylist}
               onSceneClicked={onQueueSceneClicked}
@@ -785,6 +795,26 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
   );
 });
 
+// fetch a page of a filtered queue, which holds either scenes or markers
+async function queryQueuePage(
+  filter: ListFilterModel
+): Promise<{ items: QueuedItem[]; count: number }> {
+  if (filter.mode === GQL.FilterMode.SceneMarkers) {
+    const query = await queryFindSceneMarkers(filter);
+    const { scene_markers, count } = query.data.findSceneMarkers;
+    return { items: scene_markers, count };
+  }
+
+  const query = await queryFindScenes(filter);
+  const { scenes, count } = query.data.findScenes;
+  return { items: scenes, count };
+}
+
+// the scene a queued item plays must have a file
+function isQueuedItemPlayable(item: QueuedItem) {
+  return isPlayable(isQueuedMarker(item) ? item.scene : item);
+}
+
 const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   location,
   history,
@@ -836,7 +866,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     return !!configuration?.interface.loopPlaylistDefault;
   }, [configuration?.interface.loopPlaylistDefault, queryParams]);
 
-  const [queueScenes, setQueueScenes] = useState<QueuedScene[]>([]);
+  const [queueScenes, setQueueScenes] = useState<QueuedItem[]>([]);
 
   const [collapsed, setCollapsed] = useState(false);
   const [continuePlaylist, setContinuePlaylist] = useState(queryContinue);
@@ -845,13 +875,14 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   );
 
   const _setTimestamp = useRef<(value: number) => void>();
-  const initialTimestamp = useMemo(() => {
-    const t = queryParams.get("t");
-    if (!t) return 0;
+  // t is either a start time, or a start and end time separated by a comma
+  // (used when playing a marker)
+  const [initialTimestamp, initialEndstamp] = useMemo(() => {
+    const [start, end] = (queryParams.get("t") ?? "").split(",");
 
-    const n = Number(t);
-    if (Number.isNaN(n)) return 0;
-    return n;
+    const s = Number(start);
+    const e = end ? Number(end) : Number.NaN;
+    return [Number.isNaN(s) ? 0 : s, Number.isNaN(e) ? null : e] as const;
   }, [queryParams]);
 
   const [queueTotal, setQueueTotal] = useState(0);
@@ -864,8 +895,11 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   const playNextOnDelete = configuration?.ui.playNextOnDelete ?? false;
 
   const currentQueueIndex = useMemo(
-    () => queueScenes.findIndex((s) => s.id === id),
-    [queueScenes, id]
+    () =>
+      queueScenes.findIndex((s) =>
+        isCurrentQueuedItem(s, id, initialTimestamp)
+      ),
+    [queueScenes, id, initialTimestamp]
   );
 
   // starts from the loop URL parameter, or the loop playlist default setting
@@ -897,9 +931,8 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
 
   useEffect(() => {
     async function getQueueFilterScenes(filter: ListFilterModel) {
-      const query = await queryFindScenes(filter);
-      const { scenes, count } = query.data.findScenes;
-      setQueueScenes(scenes);
+      const { items, count } = await queryQueuePage(filter);
+      setQueueScenes(items);
       setQueueTotal(count);
       setQueueStart((filter.currentPage - 1) * filter.itemsPerPage + 1);
     }
@@ -912,10 +945,20 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       setQueueStart(1);
     }
 
+    async function getQueueSceneMarkers(sceneMarkerIDs: number[]) {
+      const query = await queryFindSceneMarkersByID(sceneMarkerIDs);
+      const { scene_markers, count } = query.data.findSceneMarkers;
+      setQueueScenes(scene_markers);
+      setQueueTotal(count);
+      setQueueStart(1);
+    }
+
     if (sceneQueue.query) {
       getQueueFilterScenes(sceneQueue.query);
     } else if (sceneQueue.sceneIDs) {
       getQueueScenes(sceneQueue.sceneIDs);
+    } else if (sceneQueue.sceneMarkerIDs) {
+      getQueueSceneMarkers(sceneQueue.sceneMarkerIDs);
     }
   }, [sceneQueue]);
 
@@ -927,11 +970,10 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     const filterCopy = sceneQueue.query.clone();
     const newStart = queueStart - filterCopy.itemsPerPage;
     filterCopy.currentPage = Math.ceil(newStart / filterCopy.itemsPerPage);
-    const query = await queryFindScenes(filterCopy);
-    const { scenes } = query.data.findScenes;
+    const { items: scenes } = await queryQueuePage(filterCopy);
 
     // prepend scenes to scene list
-    const newScenes = (scenes as QueuedScene[]).concat(queueScenes);
+    const newScenes = scenes.concat(queueScenes);
     setQueueScenes(newScenes);
     setQueueStart(newStart);
 
@@ -950,8 +992,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     const filterCopy = sceneQueue.query.clone();
     const newStart = queueStart + queueScenes.length;
     filterCopy.currentPage = Math.ceil(newStart / filterCopy.itemsPerPage);
-    const query = await queryFindScenes(filterCopy);
-    const { scenes } = query.data.findScenes;
+    const { items: scenes } = await queryQueuePage(filterCopy);
 
     // append scenes to scene list
     const newScenes = queueScenes.concat(scenes);
@@ -968,12 +1009,11 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     // replace the loaded scenes with the first page
     const filterCopy = sceneQueue.query.clone();
     filterCopy.currentPage = 1;
-    const query = await queryFindScenes(filterCopy);
-    const { scenes } = query.data.findScenes;
-    setQueueScenes(scenes);
+    const { items } = await queryQueuePage(filterCopy);
+    setQueueScenes(items);
     setQueueStart(1);
 
-    return scenes;
+    return items;
   }
 
   async function onQueueLastScenes() {
@@ -984,21 +1024,39 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     // replace the loaded scenes with the last page
     const filterCopy = sceneQueue.query.clone();
     filterCopy.currentPage = Math.ceil(queueTotal / filterCopy.itemsPerPage);
-    const query = await queryFindScenes(filterCopy);
-    const { scenes } = query.data.findScenes;
-    setQueueScenes(scenes);
+    const { items } = await queryQueuePage(filterCopy);
+    setQueueScenes(items);
     setQueueStart((filterCopy.currentPage - 1) * filterCopy.itemsPerPage + 1);
 
-    return scenes;
+    return items;
   }
 
-  function loadScene(
-    sceneID: string,
+  function loadQueueItem(
+    item: QueuedItem,
     autoPlay?: boolean,
     newPage?: number,
     queue: SceneQueue = sceneQueue
   ) {
-    const sceneLink = queue.makeLink(sceneID, {
+    if (isQueuedMarker(item)) {
+      const sceneLink = queue.makeLink(item.scene.id, {
+        newPage,
+        autoPlay,
+        continue: continuePlaylist,
+        loop: loopQueue,
+        start: item.seconds,
+        end: item.end_seconds,
+      });
+      history.replace(sceneLink);
+
+      // the scene page does not reload if the scene is the same, so move
+      // the player to the marker
+      if (item.scene.id === id) {
+        setTimestamp(item.seconds);
+      }
+      return;
+    }
+
+    const sceneLink = queue.makeLink(item.id, {
       newPage,
       autoPlay,
       continue: continuePlaylist,
@@ -1013,20 +1071,24 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   // loop wraps around to the start of the queue after the last scene; it is on
   // unless false is passed.
   // Returns true if a next scene was loaded. queue may be provided to navigate
-  // using a queue other than the current one.
+  // using a queue other than the current one, and skipSceneID skips items of
+  // that scene.
   async function queueNext(
     autoPlay: boolean,
     skipUnplayable = false,
     loop?: boolean,
-    queue?: SceneQueue
+    queue?: SceneQueue,
+    skipSceneID?: string
   ) {
     if (currentQueueIndex === -1) return false;
 
-    const canLoad = (s: QueuedScene) => !skipUnplayable || isPlayable(s);
+    const canLoad = (s: QueuedItem) =>
+      (!skipUnplayable || isQueuedItemPlayable(s)) &&
+      (!skipSceneID || queuedItemSceneID(s) !== skipSceneID);
 
     const next = queueScenes.slice(currentQueueIndex + 1).find(canLoad);
     if (next) {
-      loadScene(next.id, autoPlay, undefined, queue);
+      loadQueueItem(next, autoPlay, undefined, queue);
       return true;
     }
 
@@ -1037,7 +1099,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       if (target) {
         // set the page to the next page
         const newPage = (sceneQueue.query?.currentPage ?? 0) + 1;
-        loadScene(target.id, autoPlay, newPage, queue);
+        loadQueueItem(target, autoPlay, newPage, queue);
         return true;
       }
     } else if (loop !== false) {
@@ -1047,14 +1109,14 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
         const loadedScenes = await onQueueFirstScenes();
         const target = loadedScenes?.find(canLoad);
         if (target) {
-          loadScene(target.id, autoPlay, 1);
+          loadQueueItem(target, autoPlay, 1);
           return true;
         }
       } else {
         // jump to first scene in queue
         const target = queueScenes.find(canLoad);
         if (target) {
-          loadScene(target.id, autoPlay);
+          loadQueueItem(target, autoPlay);
           return true;
         }
       }
@@ -1067,15 +1129,15 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     if (currentQueueIndex === -1) return;
 
     if (currentQueueIndex > 0) {
-      loadScene(queueScenes[currentQueueIndex - 1].id, autoPlay);
+      loadQueueItem(queueScenes[currentQueueIndex - 1], autoPlay);
     } else {
       // if we're at the beginning of the queue, load the previous page
       if (queueStart > 1) {
         const loadedScenes = await onQueueLessScenes();
         if (loadedScenes && loadedScenes.length > 0) {
           const newPage = (sceneQueue.query?.currentPage ?? 0) - 1;
-          loadScene(
-            loadedScenes[loadedScenes.length - 1].id,
+          loadQueueItem(
+            loadedScenes[loadedScenes.length - 1],
             autoPlay,
             newPage
           );
@@ -1088,8 +1150,8 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
           const newPage = Math.ceil(
             queueTotal / (sceneQueue.query?.itemsPerPage ?? 1)
           );
-          loadScene(
-            loadedScenes[loadedScenes.length - 1].id,
+          loadQueueItem(
+            loadedScenes[loadedScenes.length - 1],
             autoPlay,
             newPage
           );
@@ -1097,7 +1159,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       } else {
         // we're at the beginning of the queue and there are no more pages,
         // so jump to the last scene in the queue.
-        loadScene(queueScenes[queueScenes.length - 1].id, autoPlay);
+        loadQueueItem(queueScenes[queueScenes.length - 1], autoPlay);
       }
     }
   }
@@ -1112,19 +1174,25 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       );
       const filterCopy = sceneQueue.query.clone();
       filterCopy.currentPage = page;
-      const queryResults = await queryFindScenes(filterCopy);
-      if (queryResults.data.findScenes.scenes.length > index) {
-        const { id: sceneID } = queryResults.data.findScenes.scenes[index];
-        // navigate to the image player page
-        loadScene(sceneID, autoPlay, page);
+      const { items } = await queryQueuePage(filterCopy);
+      if (items.length > index) {
+        // navigate to the scene player page
+        loadQueueItem(items[index], autoPlay, page);
       }
     } else if (queueTotal !== 0) {
       const index = Math.floor(Math.random() * queueTotal);
-      loadScene(queueScenes[index].id, autoPlay);
+      loadQueueItem(queueScenes[index], autoPlay);
     }
   }
 
   function onComplete() {
+    // looping a marker: go back to its start instead of moving on
+    const current = queueScenes[currentQueueIndex];
+    if (continuePlaylist && loopScene && current && isQueuedMarker(current)) {
+      setTimestamp(current.seconds);
+      return;
+    }
+
     // load the next scene if we're continuing
     if (continuePlaylist) {
       queueNext(true, true, loopQueue);
@@ -1132,18 +1200,27 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
   }
 
   async function onDelete() {
-    // the scene no longer exists, so drop it from the queue. Otherwise the
-    // queue viewer and the previous/next buttons will navigate to a scene
-    // that can't be loaded.
+    // the scene no longer exists, so drop it (and, in a marker queue, its
+    // other markers) from the queue. Otherwise the queue viewer and the
+    // previous/next buttons will navigate to a scene that can't be loaded.
     const remainingQueue = sceneQueue.withoutSceneID(id);
-    setQueueScenes((scenes) => scenes.filter((s) => s.id !== id));
-    setQueueTotal((total) => Math.max(total - 1, 0));
+    const removed = Math.max(
+      queueScenes.filter((s) => queuedItemSceneID(s) === id).length,
+      1
+    );
+    setQueueScenes((scenes) =>
+      scenes.filter((s) => queuedItemSceneID(s) !== id)
+    );
+    setQueueTotal((total) => Math.max(total - removed, 0));
 
     // move to the next scene in the queue if configured to do so, or if
     // we're continuing the playlist
     if (continuePlaylist || playNextOnDelete) {
-      // don't wrap around to the start after deleting the last scene
-      if (await queueNext(autoPlayOnSelected, false, false, remainingQueue)) {
+      // don't wrap around to the start after deleting the last scene, and
+      // skip other markers of the deleted scene
+      if (
+        await queueNext(autoPlayOnSelected, false, false, remainingQueue, id)
+      ) {
         return;
       }
     }
@@ -1151,11 +1228,11 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     goBackOrReplace(history, "/scenes");
   }
 
-  function getScenePage(sceneID: string) {
+  function getScenePage(item: QueuedItem) {
     if (!sceneQueue.query) return;
 
-    // find the page that the scene is on
-    const index = queueScenes.findIndex((s) => s.id === sceneID);
+    // find the page that the item is on
+    const index = queueScenes.indexOf(item);
 
     if (index === -1) return;
 
@@ -1163,8 +1240,8 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
     return Math.floor((index + queueStart - 1) / perPage) + 1;
   }
 
-  function onQueueSceneClicked(sceneID: string) {
-    loadScene(sceneID, autoPlayOnSelected, getScenePage(sceneID));
+  function onQueueSceneClicked(item: QueuedItem) {
+    loadQueueItem(item, autoPlayOnSelected, getScenePage(item));
   }
 
   if (!scene) {
@@ -1196,6 +1273,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
         setLoopQueue={setLoopQueue}
         loopScene={loopScene}
         setLoopScene={setLoopScene}
+        initialTimestamp={initialTimestamp}
         onRefreshScene={onRefreshScene}
       />
       <div className={`scene-player-container ${collapsed ? "expanded" : ""}`}>
@@ -1207,6 +1285,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
             autoplay={autoplay}
             permitLoop={!continuePlaylist}
             initialTimestamp={initialTimestamp}
+            endTime={initialEndstamp}
             sendSetTimestamp={getSetTimestamp}
             onComplete={onComplete}
             onNext={() => queueNext(true)}
