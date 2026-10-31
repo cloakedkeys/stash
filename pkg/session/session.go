@@ -25,6 +25,7 @@ const (
 const (
 	userIDKey             = "userID"
 	loginTimeKey          = "loginTime"
+	loginTimeNanosKey     = "loginTimeNanos"
 	visitedPluginHooksKey = "visitedPluginsHooks"
 )
 
@@ -115,7 +116,9 @@ func (s *Store) Login(w http.ResponseWriter, r *http.Request) error {
 	logger.Infof("User %s logged in", username)
 
 	newSession.Values[userIDKey] = username
-	newSession.Values[loginTimeKey] = time.Now().Unix()
+	loginTime := time.Now()
+	newSession.Values[loginTimeKey] = loginTime.Unix()
+	newSession.Values[loginTimeNanosKey] = loginTime.UnixNano()
 
 	err := newSession.Save(r, w)
 	if err != nil {
@@ -141,7 +144,9 @@ func (s *Store) LoginForSetup(w http.ResponseWriter, r *http.Request, expectedUs
 	logger.Info("Setup user logged in")
 
 	newSession.Values[userIDKey] = username
-	newSession.Values[loginTimeKey] = time.Now().Unix()
+	loginTime := time.Now()
+	newSession.Values[loginTimeKey] = loginTime.Unix()
+	newSession.Values[loginTimeNanosKey] = loginTime.UnixNano()
 
 	err := newSession.Save(r, w)
 	if err != nil {
@@ -196,6 +201,9 @@ func (s *Store) GetSession(w http.ResponseWriter, r *http.Request) (*Session, er
 		ret.UserID, _ = session.Values[userIDKey].(string)
 		loginTimeUnix, _ := session.Values[loginTimeKey].(int64)
 		ret.LoginTime = time.Unix(loginTimeUnix, 0)
+		if loginTimeNanos, ok := session.Values[loginTimeNanosKey].(int64); ok {
+			ret.LoginTime = time.Unix(0, loginTimeNanos)
+		}
 
 		return ret, nil
 	}
