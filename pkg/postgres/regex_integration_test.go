@@ -127,6 +127,20 @@ func TestRegexMatchFromRawSQL(t *testing.T) {
 		assert.Contains(t, err.Error(), "SQLSTATE 2201B", "keeps the invalid regex error code")
 	}
 
+	// written directly in the SQL, a ? in the pattern stays part of the pattern
+	rows, err = query("SELECT regex_match('FOO', '(?i)foo'), regex_match('fo', 'fox?$')")
+	require.NoError(t, err)
+	assert.Equal(t, [][]interface{}{{true, true}}, rows)
+
+	_, err = query("SELECT regex_match('a', '(?P<y>a)')")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "PostgreSQL's regular expression syntax")
+
+	// and alongside a real placeholder
+	rows, err = query("SELECT regex_match(?, '(?i)foo')", "FOO")
+	require.NoError(t, err)
+	assert.Equal(t, [][]interface{}{{true}}, rows)
+
 	// a percent sign in the pattern can't disturb the message
 	_, err = query("SELECT regex_match('foo', ?)", `%s(`)
 	require.Error(t, err)

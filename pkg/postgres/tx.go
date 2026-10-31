@@ -48,7 +48,7 @@ func sqlError(err error, sql string, args ...interface{}) error {
 }
 
 func (db *dbWrapperType) Rebind(query string) string {
-	return sqlx.Rebind(sqlx.DOLLAR, query)
+	return rebindPlaceholders(query)
 }
 
 func (db *dbWrapperType) Get(ctx context.Context, dest interface{}, query string, args ...interface{}) error {
