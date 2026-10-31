@@ -1445,7 +1445,6 @@ type UnreadNotificationCount struct {
 	Total  int `json:"total"`
 	Urgent int `json:"urgent"`
 }
-
 type UpdateEditCommentInput struct {
 	// ID of the comment to edit
 	ID      string `json:"id"`
