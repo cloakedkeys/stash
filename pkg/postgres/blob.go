@@ -294,6 +294,17 @@ func (qb *BlobStore) readFromDatabase(ctx context.Context, checksum string) (sql
 // Delete marks a checksum as no longer in use by a single reference.
 // If no references remain, the blob is deleted from the database and filesystem.
 func (qb *BlobStore) Delete(ctx context.Context, checksum string) error {
+	// an audio doesn't stop the delete below: its foreign key clears the cover
+	// instead, and tracks from the same album usually share one
+	inUse, err := qb.usedByAudio(ctx, checksum)
+	if err != nil {
+		return fmt.Errorf("checking audio covers: %w", err)
+	}
+	if inUse {
+		logger.Debugf("Blob %s is still referenced - not deleting", checksum)
+		return nil
+	}
+
 	// try to delete the blob from the database
 	if err := qb.delete(ctx, checksum); err != nil {
 		if qb.isConstraintError(err) {
@@ -315,6 +326,17 @@ func (qb *BlobStore) Delete(ctx context.Context, checksum string) error {
 	}
 
 	return nil
+}
+
+func (qb *BlobStore) usedByAudio(ctx context.Context, checksum string) (bool, error) {
+	q := dialect.From(audioTable).Select(goqu.COUNT("*")).Where(goqu.C(audioCoverBlobColumn).Eq(checksum))
+
+	var found int
+	if err := querySimple(ctx, q, &found); err != nil {
+		return false, fmt.Errorf("querying %s: %w", audioTable, err)
+	}
+
+	return found != 0, nil
 }
 
 func (qb *BlobStore) delete(ctx context.Context, checksum string) error {

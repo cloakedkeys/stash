@@ -4581,3 +4581,32 @@ func audioIDsFromQuery(audios []*models.Audio) []int {
 func suffixFromName(name string) string {
 	return name[len(name)-1:]
 }
+
+func TestAudioDestroyKeepsSharedCover(t *testing.T) {
+	require.NoError(t, withRollbackTxn(func(ctx context.Context) error {
+		qb := db.Audio()
+		cover := []byte("cover shared by every track of an album")
+
+		first := models.Audio{Title: "shared cover first"}
+		second := models.Audio{Title: "shared cover second"}
+		for _, a := range []*models.Audio{&first, &second} {
+			a.CreatedAt, a.UpdatedAt = time.Now().UTC(), time.Now().UTC()
+			require.NoError(t, qb.Create(ctx, a, nil))
+			require.NoError(t, qb.UpdateCover(ctx, a.ID, cover))
+		}
+
+		require.NoError(t, qb.Destroy(ctx, first.ID))
+
+		got, err := qb.GetCover(ctx, second.ID)
+		require.NoError(t, err)
+		assert.Equal(t, cover, got)
+
+		// the cover is removed along with the last track using it
+		require.NoError(t, qb.Destroy(ctx, second.ID))
+		got, err = qb.GetCover(ctx, second.ID)
+		require.NoError(t, err)
+		assert.Empty(t, got)
+
+		return nil
+	}))
+}
