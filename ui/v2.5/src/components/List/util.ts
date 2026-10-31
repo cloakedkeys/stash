@@ -199,10 +199,27 @@ export function useFilterState(
     view
   );
 
-  const { setFilter } = useFilterURL(filter, setFilterState, {
+  const { setFilter: setURLFilter } = useFilterURL(filter, setFilterState, {
     defaultFilter: propDefaultFilter ?? defaultFilterFromConfig,
     active: useURL,
   });
+
+  // the mode chosen since the list opened. Grid is left out of the URL and the
+  // saved mode updates later, so both can still say list after switching to grid.
+  const chosenDisplayMode = useRef<DisplayMode>();
+
+  const setFilter = useCallback(
+    (
+      value: ListFilterModel | ((prevState: ListFilterModel) => ListFilterModel)
+    ) => {
+      const newFilter = isFunction(value) ? value(filter) : value;
+      if (newFilter.displayMode !== filter.displayMode) {
+        chosenDisplayMode.current = newFilter.displayMode;
+      }
+      setURLFilter(newFilter);
+    },
+    [filter, setURLFilter]
+  );
 
   const location = useLocation();
   const [
@@ -213,15 +230,17 @@ export function useFilterState(
   // on mount, restore persisted displayMode if URL doesn't specify one
   useEffect(() => {
     if (interfaceLoading || !interfaceData || !view) return;
-    const persisted = interfaceData.viewConfig?.[view]?.displayMode;
+    const persisted =
+      chosenDisplayMode.current ??
+      interfaceData.viewConfig?.[view]?.displayMode;
     if (persisted === undefined) return;
     if (location.search.includes("disp=")) return;
 
-    setFilter((cv) => {
+    setURLFilter((cv) => {
       if (cv.displayMode === persisted) return cv;
       return cv.setDisplayMode(persisted);
     });
-  }, [view, interfaceData, interfaceLoading, location.search, setFilter]);
+  }, [view, interfaceData, interfaceLoading, location.search, setURLFilter]);
 
   // persist displayMode on change
   const prevDisplayMode = usePrevious(filter.displayMode);
