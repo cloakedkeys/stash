@@ -41,12 +41,6 @@ jobs:
     - name: Generate Backend
       run: make generate-backend
 
-    # migrations create functions in plperl
-    - name: Install plperl in postgres container
-      run: |
-        docker exec postgres-db apt-get update
-        docker exec postgres-db apt-get install -y postgresql-plperl-18
-
     # backup tests run pg_dump and pg_restore, which must be as new as the server
     - name: Install PostgreSQL client tools
       run: |

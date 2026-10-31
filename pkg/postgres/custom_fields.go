@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"regexp"
 	"strings"
 
 	"github.com/doug-martin/goqu/v9"
@@ -340,11 +339,12 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 			if !ok {
 				f.setError(fmt.Errorf("unsupported custom field criterion value type: %T", v))
 			}
-			if _, err := regexp.Compile(vs); err != nil {
+			translated, err := translateRegex(vs)
+			if err != nil {
 				f.setError(err)
 				return
 			}
-			f.addWhere(fmt.Sprintf("regex_match(%s, ?)", valueAsString), v)
+			f.addWhere(fmt.Sprintf("(%s) ~ ?", valueAsString), translated)
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierNotMatchesRegex:
@@ -353,11 +353,12 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 			if !ok {
 				f.setError(fmt.Errorf("unsupported custom field criterion value type: %T", v))
 			}
-			if _, err := regexp.Compile(vs); err != nil {
+			translated, err := translateRegex(vs)
+			if err != nil {
 				f.setError(err)
 				return
 			}
-			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR NOT regex_match(%s, ?))", joinAs, valueAsString), v)
+			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR (%s) !~ ?)", joinAs, valueAsString), translated)
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierIsNull:

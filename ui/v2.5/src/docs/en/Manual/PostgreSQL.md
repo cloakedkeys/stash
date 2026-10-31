@@ -7,7 +7,6 @@ Stash keeps its library in an SQLite file by default. It can use a PostgreSQL se
 ## What the server needs
 
 - PostgreSQL 18 is the version Stash is tested with.
-- The `plperl` extension. On Debian and Ubuntu it is the `postgresql-plperl-18` package, from the [PostgreSQL project's apt repository](https://www.postgresql.org/download/linux/debian/) if your system doesn't include version 18. Stash creates the extension itself, so its account must be allowed to: the owner of the database can, since `plperl` is a trusted extension.
 - ICU support, which PostgreSQL packages and the official Docker images include.
 - An empty database, owned by the account Stash connects with.
 - Permission for that account to change the `session_replication_role` setting, which Stash does every time it starts. Superuser accounts already have it, including the one the Docker example below creates.
@@ -40,13 +39,7 @@ With Docker Compose, the database and Stash can run side by side:
 ```yaml
 services:
   db:
-    # the official postgres image doesn't include plperl, so add it
-    build:
-      dockerfile_inline: |
-        FROM postgres:18
-        RUN apt-get update \
-          && apt-get install -y --no-install-recommends postgresql-plperl-18 \
-          && rm -rf /var/lib/apt/lists/*
+    image: postgres:18
     restart: unless-stopped
     environment:
       POSTGRES_USER: stash
@@ -92,3 +85,9 @@ With `STASH_DATABASE` set, Stash skips the setup wizard. After the first start:
 2. Add your library folder, `/data` in this example, under Settings > Library, then scan.
 
 Keep `STASH_DATABASE` set. The `database` line Stash writes to `config.yml` is the SQLite default, so without the variable Stash would start on an empty SQLite library.
+
+## Regular expressions
+
+Regex filters accept the same [syntax](https://github.com/google/re2/wiki/Syntax) and give the same results on PostgreSQL as on SQLite, including for plugins that use them.
+
+Raw SQL, which some plugins run, goes straight to the database, so it uses PostgreSQL's own [regular expression syntax](https://www.postgresql.org/docs/current/functions-matching.html#FUNCTIONS-POSIX-REGEXP) instead. That includes the `regex_match(text, pattern)` function. A pattern PostgreSQL can't read gives an error saying so. One it can read may still match differently: for example, `.` also matches a new line, and `\w` also matches accented letters.

@@ -49,17 +49,19 @@ func stringCriterionHandler(c *models.StringCriterionInput, column string) crite
 				case models.CriterionModifierNotEquals:
 					f.addWhere("("+column+" IS NULL OR "+column+" NOT ILIKE ? ESCAPE '')", c.Value)
 				case models.CriterionModifierMatchesRegex:
-					if _, err := regexp.Compile(c.Value); err != nil {
+					translated, err := translateRegex(c.Value)
+					if err != nil {
 						f.setError(err)
 						return
 					}
-					f.addWhere(fmt.Sprintf("(%s IS NOT NULL AND regex_match(%[1]s, ?))", column), c.Value)
+					f.addWhere(fmt.Sprintf("(%s IS NOT NULL AND %[1]s ~ ?)", column), translated)
 				case models.CriterionModifierNotMatchesRegex:
-					if _, err := regexp.Compile(c.Value); err != nil {
+					translated, err := translateRegex(c.Value)
+					if err != nil {
 						f.setError(err)
 						return
 					}
-					f.addWhere(fmt.Sprintf("(%s IS NULL OR NOT regex_match(%[1]s, ?))", column), c.Value)
+					f.addWhere(fmt.Sprintf("(%s IS NULL OR %[1]s !~ ?)", column), translated)
 				case models.CriterionModifierIsNull:
 					f.addWhere("(" + column + " IS NULL OR TRIM(" + column + ") = '')")
 				case models.CriterionModifierNotNull:
@@ -138,19 +140,21 @@ func pathCriterionHandler(c *models.StringCriterionInput, pathColumn string, bas
 					not = true
 					f.whereClauses = append(f.whereClauses, getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not))
 				case models.CriterionModifierMatchesRegex:
-					if _, err := regexp.Compile(c.Value); err != nil {
+					translated, err := translateRegex(c.Value)
+					if err != nil {
 						f.setError(err)
 						return
 					}
 					filepathColumn := fmt.Sprintf("%s || '%s' || %s", pathColumn, string(filepath.Separator), basenameColumn)
-					f.addWhere(fmt.Sprintf("%s IS NOT NULL AND %s IS NOT NULL AND regex_match(%s, ?)", pathColumn, basenameColumn, filepathColumn), c.Value)
+					f.addWhere(fmt.Sprintf("%s IS NOT NULL AND %s IS NOT NULL AND (%s) ~ ?", pathColumn, basenameColumn, filepathColumn), translated)
 				case models.CriterionModifierNotMatchesRegex:
-					if _, err := regexp.Compile(c.Value); err != nil {
+					translated, err := translateRegex(c.Value)
+					if err != nil {
 						f.setError(err)
 						return
 					}
 					filepathColumn := fmt.Sprintf("%s || '%s' || %s", pathColumn, string(filepath.Separator), basenameColumn)
-					f.addWhere(fmt.Sprintf("%s IS NULL OR %s IS NULL OR NOT regex_match(%s, ?)", pathColumn, basenameColumn, filepathColumn), c.Value)
+					f.addWhere(fmt.Sprintf("%s IS NULL OR %s IS NULL OR (%s) !~ ?", pathColumn, basenameColumn, filepathColumn), translated)
 				case models.CriterionModifierIsNull:
 					f.addWhere(fmt.Sprintf("%s IS NULL OR TRIM(%[1]s) = '' OR %s IS NULL OR TRIM(%[2]s) = ''", pathColumn, basenameColumn))
 				case models.CriterionModifierNotNull:
@@ -1236,17 +1240,19 @@ func uuidCriterionHandler(c *models.StringCriterionInput, column string) criteri
 				case models.CriterionModifierNotEquals:
 					f.addWhere(columnCast+" NOT ILIKE ? ESCAPE ''", c.Value)
 				case models.CriterionModifierMatchesRegex:
-					if _, err := regexp.Compile(c.Value); err != nil {
+					translated, err := translateRegex(c.Value)
+					if err != nil {
 						f.setError(err)
 						return
 					}
-					f.addWhere(fmt.Sprintf("(%s IS NOT NULL AND regex_match(%s, ?))", column, columnCast), c.Value)
+					f.addWhere(fmt.Sprintf("(%s IS NOT NULL AND %s ~ ?)", column, columnCast), translated)
 				case models.CriterionModifierNotMatchesRegex:
-					if _, err := regexp.Compile(c.Value); err != nil {
+					translated, err := translateRegex(c.Value)
+					if err != nil {
 						f.setError(err)
 						return
 					}
-					f.addWhere(fmt.Sprintf("(%s IS NULL OR NOT regex_match(%s, ?))", column, columnCast), c.Value)
+					f.addWhere(fmt.Sprintf("(%s IS NULL OR %s !~ ?)", column, columnCast), translated)
 				case models.CriterionModifierIsNull:
 					f.addWhere("(" + column + " IS NULL)")
 				case models.CriterionModifierNotNull:
