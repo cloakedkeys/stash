@@ -1,3 +1,4 @@
+import { useCanModify } from "src/hooks/CurrentUser";
 import cloneDeep from "lodash-es/cloneDeep";
 import React, { useCallback, useEffect } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -13,6 +14,7 @@ import { useFilteredItemList } from "../List/ItemList";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { DisplayMode } from "src/models/list-filter/types";
 import { PerformerTagger } from "../Tagger/performers/PerformerTagger";
+import { reverseMap, sortFieldToColumn } from "src/utils/data";
 import { ExportDialog } from "../Shared/ExportDialog";
 import { DeleteEntityDialog } from "../Shared/DeleteEntityDialog";
 import { IPerformerCardExtraCriteria } from "./PerformerCard";
@@ -191,6 +193,20 @@ export const FormatPenisLength = (penis_length?: number | null) => {
   );
 };
 
+// list table columns whose sort field has a different name.
+// The age column sorts by birthdate, so its direction is shown reversed.
+const performerColumnSortMap: Record<string, string> = {
+  height_cm: "height",
+  weight_kg: "weight",
+  penis_length_cm: "penis_length",
+  scene_count: "scenes_count",
+  gallery_count: "galleries_count",
+  image_count: "images_count",
+  age: "birthdate",
+  favourite: "favorite",
+};
+const performerSortColumnMap = reverseMap(performerColumnSortMap);
+
 interface IPerformerList {
   filterHook?: (filter: ListFilterModel) => ListFilterModel;
   view?: View;
@@ -205,9 +221,30 @@ const PerformerList: React.FC<{
   selectedIds: Set<string>;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
   extraCriteria?: IPerformerCardExtraCriteria;
+  onSort?: (value: string) => void;
 }> = PatchComponent(
   "PerformerList",
-  ({ performers, filter, selectedIds, onSelectChange, extraCriteria }) => {
+  ({
+    performers,
+    filter,
+    selectedIds,
+    onSelectChange,
+    extraCriteria,
+    onSort,
+  }) => {
+    const canModify = useCanModify();
+    const activeSortColumn = sortFieldToColumn(
+      performerSortColumnMap,
+      filter.sortBy
+    );
+
+    const displaySortDirection =
+      activeSortColumn === "age"
+        ? filter.sortDirection === GQL.SortDirectionEnum.Asc
+          ? GQL.SortDirectionEnum.Desc
+          : GQL.SortDirectionEnum.Asc
+        : filter.sortDirection;
+
     if (performers.length === 0 && filter.displayMode !== DisplayMode.Tagger) {
       return null;
     }
@@ -229,10 +266,13 @@ const PerformerList: React.FC<{
           performers={performers}
           selectedIds={selectedIds}
           onSelectChange={onSelectChange}
+          onSort={onSort}
+          sortBy={activeSortColumn}
+          sortDirection={displaySortDirection}
         />
       );
     }
-    if (filter.displayMode === DisplayMode.Tagger) {
+    if (canModify && filter.displayMode === DisplayMode.Tagger) {
       return <PerformerTagger performers={performers} />;
     }
 
@@ -403,6 +443,25 @@ export const FilteredPerformerList = PatchComponent(
 
     const { filter, setFilter } = filterState;
 
+    const onSort = useCallback(
+      (value: string) => {
+        const backendField = performerColumnSortMap[value] ?? value;
+        if (filter.sortBy === backendField) {
+          setFilter(filter.toggleSortDirection());
+        } else {
+          const newFilter = filter.setSortBy(backendField);
+          // birthdate is inversely related to age; default Desc so
+          // youngest-first (Asc in the age column display)
+          newFilter.sortDirection =
+            value === "age"
+              ? GQL.SortDirectionEnum.Desc
+              : GQL.SortDirectionEnum.Asc;
+          setFilter(newFilter);
+        }
+      },
+      [filter, setFilter]
+    );
+
     const { effectiveFilter, result, cachedResult, items, totalCount } =
       queryResult;
 
@@ -541,16 +600,19 @@ export const FilteredPerformerList = PatchComponent(
       },
       {
         text: `${intl.formatMessage({ id: "actions.merge" })}…`,
+        requiredRole: GQL.RoleEnum.Modify,
         onClick: onMerge,
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(false),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export_all" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(true),
       },
     ];
@@ -608,6 +670,7 @@ export const FilteredPerformerList = PatchComponent(
               />
 
               <FilterTags
+                view={view}
                 criteria={filter.criteria}
                 onEditCriterion={(c) => showEditFilter(c.criterionOption.type)}
                 onRemoveCriterion={removeCriterion}
@@ -636,6 +699,7 @@ export const FilteredPerformerList = PatchComponent(
                   selectedIds={selectedIds}
                   onSelectChange={onSelectChange}
                   extraCriteria={extraCriteria}
+                  onSort={onSort}
                 />
               </LoadedContent>
 

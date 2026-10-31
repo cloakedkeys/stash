@@ -7,6 +7,7 @@ import {
   useFindImage,
   useImageIncrementO,
   useImageUpdate,
+  useImageUserDataUpdate,
   mutateMetadataScan,
   useImageDecrementO,
   useImageResetO,
@@ -20,6 +21,7 @@ import * as Mousetrap from "mousetrap";
 import * as GQL from "src/core/generated-graphql";
 import { OCounterButton } from "src/components/Scenes/SceneDetails/OCounterButton";
 import { OrganizedButton } from "src/components/Scenes/SceneDetails/OrganizedButton";
+import { useCanAdminister, useCanModify } from "src/hooks/CurrentUser";
 import { ImageFileInfoPanel } from "./ImageFileInfoPanel";
 import { ImageEditPanel } from "./ImageEditPanel";
 import { ImageDetailPanel } from "./ImageDetailPanel";
@@ -60,8 +62,12 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
 
   const [updateImage] = useImageUpdate();
 
+  const [setImageUserData] = useImageUserDataUpdate();
+
   const [organizedLoading, setOrganizedLoading] = useState(false);
 
+  const canModify = useCanModify();
+  const canAdminister = useCanAdminister();
   const [activeTabKey, setActiveTabKey] = useState("image-details-panel");
 
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState<boolean>(false);
@@ -80,7 +86,7 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
   }
 
   async function onRescan() {
-    if (!image || !image.visual_files.length) {
+    if (!image?.visual_files.length) {
       return;
     }
 
@@ -143,7 +149,7 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
   };
 
   function setRating(v: number | null) {
-    updateImage({
+    setImageUserData({
       variables: {
         input: {
           id: image.id,
@@ -200,20 +206,24 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
           <Icon icon={faEllipsisV} />
         </Dropdown.Toggle>
         <Dropdown.Menu className="bg-secondary text-white">
-          <Dropdown.Item
-            key="rescan"
-            className="bg-secondary text-white"
-            onClick={() => onRescan()}
-          >
-            <FormattedMessage id="actions.rescan" />
-          </Dropdown.Item>
-          <Dropdown.Item
-            key="generate"
-            className="bg-secondary text-white"
-            onClick={() => setIsGenerateDialogOpen(true)}
-          >
-            <FormattedMessage id="actions.generate" />…
-          </Dropdown.Item>
+          {canAdminister && (
+            <Dropdown.Item
+              key="rescan"
+              className="bg-secondary text-white"
+              onClick={() => onRescan()}
+            >
+              <FormattedMessage id="actions.rescan" />
+            </Dropdown.Item>
+          )}
+          {canAdminister && (
+            <Dropdown.Item
+              key="generate"
+              className="bg-secondary text-white"
+              onClick={() => setIsGenerateDialogOpen(true)}
+            >
+              <FormattedMessage id="actions.generate" />…
+            </Dropdown.Item>
+          )}
           <Dropdown.Item
             key="delete-image"
             className="bg-secondary text-white"
@@ -252,11 +262,13 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
                 <Counter count={image.visual_files.length} hideZero hideOne />
               </Nav.Link>
             </Nav.Item>
-            <Nav.Item>
-              <Nav.Link eventKey="image-edit-panel">
-                <FormattedMessage id="actions.edit" />
-              </Nav.Link>
-            </Nav.Item>
+            {canModify && (
+              <Nav.Item>
+                <Nav.Link eventKey="image-edit-panel">
+                  <FormattedMessage id="actions.edit" />
+                </Nav.Link>
+              </Nav.Item>
+            )}
           </Nav>
         </div>
 
@@ -270,14 +282,16 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
           >
             <ImageFileInfoPanel image={image} />
           </Tab.Pane>
-          <Tab.Pane eventKey="image-edit-panel" mountOnEnter>
-            <ImageEditPanel
-              isVisible={activeTabKey === "image-edit-panel"}
-              image={image}
-              onSubmit={onSave}
-              onDelete={() => setIsDeleteAlertOpen(true)}
-            />
-          </Tab.Pane>
+          {canModify && (
+            <Tab.Pane eventKey="image-edit-panel" mountOnEnter>
+              <ImageEditPanel
+                isVisible={activeTabKey === "image-edit-panel"}
+                image={image}
+                onSubmit={onSave}
+                onDelete={() => setIsDeleteAlertOpen(true)}
+              />
+            </Tab.Pane>
+          )}
         </Tab.Content>
       </Tab.Container>
     );
@@ -286,7 +300,9 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
   // set up hotkeys
   useEffect(() => {
     Mousetrap.bind("a", () => setActiveTabKey("image-details-panel"));
-    Mousetrap.bind("e", () => setActiveTabKey("image-edit-panel"));
+    if (canModify) {
+      Mousetrap.bind("e", () => setActiveTabKey("image-edit-panel"));
+    }
     Mousetrap.bind("f", () => setActiveTabKey("image-file-info-panel"));
     Mousetrap.bind("o", () => {
       onIncrementClick();
@@ -371,7 +387,7 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
                 onClick={onOrganizedClick}
               />
             </span>
-            <span>{renderOperations()}</span>
+            {canModify && <span>{renderOperations()}</span>}
           </span>
         </div>
         {renderTabs()}
@@ -379,13 +395,13 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
       <div className="image-container">
         {image.visual_files.length > 0 && (
           <ImageView
-            loop={image.visual_files[0].__typename == "VideoFile"}
-            autoPlay={image.visual_files[0].__typename == "VideoFile"}
-            playsInline={image.visual_files[0].__typename == "VideoFile"}
-            controls={image.visual_files[0].__typename == "VideoFile"}
+            loop={image.visual_files[0].__typename === "VideoFile"}
+            autoPlay={image.visual_files[0].__typename === "VideoFile"}
+            playsInline={image.visual_files[0].__typename === "VideoFile"}
+            controls={image.visual_files[0].__typename === "VideoFile"}
             className="m-sm-auto no-gutter image-image"
             style={
-              image.visual_files[0].__typename == "VideoFile"
+              image.visual_files[0].__typename === "VideoFile"
                 ? { width: "100%", height: "100%" }
                 : {}
             }

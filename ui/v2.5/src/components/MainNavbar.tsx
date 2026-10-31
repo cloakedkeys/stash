@@ -5,31 +5,35 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import {
-  defineMessages,
-  FormattedMessage,
-  MessageDescriptor,
-  useIntl,
-} from "react-intl";
+import { defineMessages, FormattedMessage, useIntl } from "react-intl";
 import { Nav, Navbar, Button } from "react-bootstrap";
-import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { LinkContainer } from "react-router-bootstrap";
 import { Link, NavLink, useLocation, useHistory } from "react-router-dom";
 import Mousetrap from "mousetrap";
 
 import SessionUtils from "src/utils/session";
+import { useCanModify, useLibraryLimited } from "src/hooks/CurrentUser";
 import { Icon } from "src/components/Shared/Icon";
 import { useConfigurationContext } from "src/hooks/Config";
+import * as GQL from "src/core/generated-graphql";
 import { ManualStateContext } from "./Help/context";
 import { SettingsButton } from "./SettingsButton";
+import {
+  buildMainNavbarMenuItems,
+  isMenuItemActive,
+  splitHref,
+  type INavbarMenuItem,
+} from "./MainNavbar/menuItems";
 import {
   faBars,
   faChartColumn,
   faFilm,
+  faFolderTree,
   faHeart,
   faImage,
   faImages,
   faMapMarkerAlt,
+  faMicrophone,
   faPlayCircle,
   faQuestionCircle,
   faSignOutAlt,
@@ -41,18 +45,15 @@ import {
 import { baseURL } from "src/core/createClient";
 import { PatchComponent } from "src/patch";
 
-interface IMenuItem {
-  name: string;
-  message: MessageDescriptor;
-  href: string;
-  icon: IconDefinition;
-  hotkey: string;
-  userCreatable?: boolean;
-}
 const messages = defineMessages({
+  voiceActors: { id: "voice_actors", defaultMessage: "Voice actors" },
   scenes: {
     id: "scenes",
     defaultMessage: "Scenes",
+  },
+  audios: {
+    id: "audios",
+    defaultMessage: "Audio",
   },
   images: {
     id: "images",
@@ -82,6 +83,10 @@ const messages = defineMessages({
     id: "galleries",
     defaultMessage: "Galleries",
   },
+  folders: {
+    id: "folders",
+    defaultMessage: "Folders",
+  },
   sceneTagger: {
     id: "sceneTagger",
     defaultMessage: "Scene Tagger",
@@ -96,7 +101,7 @@ const messages = defineMessages({
   },
 });
 
-const allMenuItems: IMenuItem[] = [
+const allMenuItems: INavbarMenuItem[] = [
   {
     name: "scenes",
     message: messages.scenes,
@@ -104,6 +109,13 @@ const allMenuItems: IMenuItem[] = [
     icon: faPlayCircle,
     hotkey: "g s",
     userCreatable: true,
+  },
+  {
+    name: "audios",
+    message: messages.audios,
+    href: "/audios",
+    icon: faMicrophone,
+    hotkey: "g a",
   },
   {
     name: "images",
@@ -136,11 +148,25 @@ const allMenuItems: IMenuItem[] = [
     userCreatable: true,
   },
   {
+    name: "folders",
+    message: messages.folders,
+    href: "/folders",
+    icon: faFolderTree,
+    hotkey: "g f",
+  },
+  {
     name: "performers",
     message: messages.performers,
     href: "/performers",
     icon: faUser,
     hotkey: "g p",
+    userCreatable: true,
+  },
+  {
+    name: "voice-actors",
+    message: messages.voiceActors,
+    href: "/voice-actors",
+    icon: faUser,
     userCreatable: true,
   },
   {
@@ -167,14 +193,14 @@ const newPathsList = allMenuItems
 
 const MainNavbarMenuItems = PatchComponent(
   "MainNavBar.MenuItems",
-  (props: React.PropsWithChildren<{}>) => {
+  (props: React.PropsWithChildren<unknown>) => {
     return <Nav>{props.children}</Nav>;
   }
 );
 
 const MainNavbarUtilityItems = PatchComponent(
   "MainNavBar.UtilityItems",
-  (props: React.PropsWithChildren<{}>) => {
+  (props: React.PropsWithChildren<unknown>) => {
     return <>{props.children}</>;
   }
 );
@@ -184,45 +210,46 @@ export const MainNavbar: React.FC = () => {
   const location = useLocation();
   const { configuration } = useConfigurationContext();
   const { openManual } = React.useContext(ManualStateContext);
+  const { savedFilterMenuItems } = configuration.ui;
+  const { data: savedFilterData } = GQL.useFindSavedFiltersQuery({
+    variables: { mode: GQL.FilterMode.Galleries },
+    skip: !savedFilterMenuItems?.length,
+  });
 
   const [expanded, setExpanded] = useState(false);
 
   // Show all menu items by default, unless config says otherwise
+  const libraryLimited = useLibraryLimited();
   const menuItems = useMemo(() => {
-    let cfgMenuItems = configuration?.interface.menuItems;
-    if (!cfgMenuItems) {
-      return allMenuItems;
-    }
-
-    // translate old movies menu item to groups
-    cfgMenuItems = cfgMenuItems.map((item) => {
-      if (item === "movies") {
-        return "groups";
-      }
-      return item;
-    });
-
-    return allMenuItems.filter((menuItem) =>
-      cfgMenuItems!.includes(menuItem.name)
+    return buildMainNavbarMenuItems(
+      libraryLimited
+        ? allMenuItems.filter((item) => item.name !== "folders")
+        : allMenuItems,
+      configuration?.interface.menuItems,
+      savedFilterMenuItems,
+      savedFilterData?.findSavedFilters ?? [],
+      configuration
     );
-  }, [configuration]);
+  }, [
+    configuration,
+    libraryLimited,
+    savedFilterData?.findSavedFilters,
+    savedFilterMenuItems,
+  ]);
 
   // react-bootstrap typing bug
   const navbarRef = useRef<HTMLElement | null>(null);
   const intl = useIntl();
 
-  const maybeCollapse = useCallback(
-    (event: Event) => {
-      if (
-        navbarRef.current &&
-        event.target instanceof Node &&
-        !navbarRef.current.contains(event.target)
-      ) {
-        setExpanded(false);
-      }
-    },
-    [setExpanded]
-  );
+  const maybeCollapse = useCallback((event: Event) => {
+    if (
+      navbarRef.current &&
+      event.target instanceof Node &&
+      !navbarRef.current.contains(event.target)
+    ) {
+      setExpanded(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (expanded) {
@@ -245,10 +272,12 @@ export const MainNavbar: React.FC = () => {
     [history]
   );
 
+  const canModify = useCanModify();
   const pathname = location.pathname.replace(/\/$/, "");
-  let newPath = newPathsList.includes(pathname) ? `${pathname}/new` : null;
+  let newPath =
+    canModify && newPathsList.includes(pathname) ? `${pathname}/new` : null;
   if (newPath !== null) {
-    let queryParam = new URLSearchParams(location.search).get("q");
+    const queryParam = new URLSearchParams(location.search).get("q");
     if (queryParam) {
       newPath += "?q=" + encodeURIComponent(queryParam);
     }
@@ -259,9 +288,11 @@ export const MainNavbar: React.FC = () => {
     Mousetrap.bind("?", () => openManual());
     Mousetrap.bind("g z", () => goto("/settings"));
 
-    menuItems.forEach((item) =>
-      Mousetrap.bind(item.hotkey, () => goto(item.href))
-    );
+    menuItems.forEach((item) => {
+      if (item.hotkey) {
+        Mousetrap.bind(item.hotkey, () => goto(item.href));
+      }
+    });
 
     if (newPath) {
       Mousetrap.bind("n", () => history.push(String(newPath)));
@@ -270,7 +301,11 @@ export const MainNavbar: React.FC = () => {
     return () => {
       Mousetrap.unbind("?");
       Mousetrap.unbind("g z");
-      menuItems.forEach((item) => Mousetrap.unbind(item.hotkey));
+      menuItems.forEach((item) => {
+        if (item.hotkey) {
+          Mousetrap.unbind(item.hotkey);
+        }
+      });
 
       if (newPath) {
         Mousetrap.unbind("n");
@@ -292,7 +327,7 @@ export const MainNavbar: React.FC = () => {
     }
   }
 
-  const handleDismiss = useCallback(() => setExpanded(false), [setExpanded]);
+  const handleDismiss = useCallback(() => setExpanded(false), []);
 
   function renderUtilityButtons() {
     return (
@@ -347,70 +382,78 @@ export const MainNavbar: React.FC = () => {
   }
 
   return (
-    <>
-      <Navbar
-        collapseOnSelect
-        fixed="top"
-        variant="dark"
-        bg="dark"
-        className="top-nav"
-        expand="xl"
-        expanded={expanded}
-        onToggle={setExpanded}
-        ref={navbarRef}
-      >
-        <Navbar.Collapse className="bg-dark order-sm-1">
-          <MainNavbarMenuItems>
-            {menuItems.map(({ href, icon, message }) => (
-              <Nav.Link
-                eventKey={href}
-                as="div"
-                key={href}
-                className="col-4 col-sm-3 col-md-2 col-lg-auto"
+    <Navbar
+      collapseOnSelect
+      fixed="top"
+      variant="dark"
+      bg="dark"
+      className="top-nav"
+      expand="xl"
+      expanded={expanded}
+      onToggle={setExpanded}
+      ref={navbarRef}
+    >
+      <Navbar.Collapse className="bg-dark order-sm-1">
+        <MainNavbarMenuItems>
+          {menuItems.map((item) => (
+            <Nav.Link
+              eventKey={item.href}
+              as="div"
+              key={item.name}
+              className="col-4 col-sm-3 col-md-2 col-lg-auto"
+            >
+              <LinkContainer
+                activeClassName="active"
+                to={splitHref(item.href)}
+                isActive={(_match, loc) =>
+                  isMenuItemActive(item, menuItems, loc.pathname, loc.search)
+                }
               >
-                <LinkContainer activeClassName="active" exact to={href}>
-                  <Button className="minimal p-4 p-xl-2 d-flex d-xl-inline-block flex-column justify-content-between align-items-center">
-                    <Icon
-                      {...{ icon }}
-                      className="nav-menu-icon d-block d-xl-inline mb-2 mb-xl-0"
-                    />
-                    <span>{intl.formatMessage(message)}</span>
-                  </Button>
-                </LinkContainer>
-              </Nav.Link>
-            ))}
-          </MainNavbarMenuItems>
-          <Nav>
-            <MainNavbarUtilityItems>
-              {renderUtilityButtons()}
-            </MainNavbarUtilityItems>
-          </Nav>
-        </Navbar.Collapse>
-
-        <Navbar.Brand as="div" onClick={handleDismiss}>
-          <Link to="/">
-            <Button className="minimal brand-link d-inline-block">Stash</Button>
-          </Link>
-        </Navbar.Brand>
-
-        <Nav className="navbar-buttons flex-row ml-auto order-xl-2">
-          {!!newPath && (
-            <div className="mr-2">
-              <Link to={newPath}>
-                <Button variant="primary">
-                  <FormattedMessage id="new" defaultMessage="New" />
+                <Button className="minimal p-4 p-xl-2 d-flex d-xl-inline-block flex-column justify-content-between align-items-center">
+                  <Icon
+                    icon={item.icon}
+                    className="nav-menu-icon d-block d-xl-inline mb-2 mb-xl-0"
+                  />
+                  <span>
+                    {item.message
+                      ? intl.formatMessage(item.message)
+                      : item.label}
+                  </span>
                 </Button>
-              </Link>
-            </div>
-          )}
+              </LinkContainer>
+            </Nav.Link>
+          ))}
+        </MainNavbarMenuItems>
+        <Nav>
           <MainNavbarUtilityItems>
             {renderUtilityButtons()}
           </MainNavbarUtilityItems>
-          <Navbar.Toggle className="nav-menu-toggle ml-sm-2">
-            <Icon icon={expanded ? faTimes : faBars} />
-          </Navbar.Toggle>
         </Nav>
-      </Navbar>
-    </>
+      </Navbar.Collapse>
+
+      <Navbar.Brand as="div" onClick={handleDismiss}>
+        <Link to="/">
+          <Button className="minimal brand-link d-inline-block">Stash</Button>
+        </Link>
+      </Navbar.Brand>
+
+      <Nav className="navbar-buttons flex-row ml-auto order-xl-2">
+        {!!newPath && (
+          <div className="mr-2">
+            <Link to={newPath}>
+              <Button variant="primary" data-action="new">
+                <FormattedMessage id="new" defaultMessage="New" />
+              </Button>
+            </Link>
+          </div>
+        )}
+        <MainNavbarUtilityItems>
+          {renderUtilityButtons()}
+        </MainNavbarUtilityItems>
+        <Navbar.Toggle className="nav-menu-toggle ml-sm-2">
+          <Icon icon={expanded ? faTimes : faBars} />
+        </Navbar.Toggle>
+      </Nav>
+    </Navbar>
   );
 };

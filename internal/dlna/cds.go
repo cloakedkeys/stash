@@ -251,6 +251,18 @@ func (me *contentDirectoryService) handleBrowseDirectChildren(obj object, host s
 		}
 	}
 
+	// Audio
+	if obj.Path == audioFolderID {
+		objs = me.getAudios(host)
+	}
+
+	if strings.HasPrefix(obj.Path, audioFolderID+"/page/") {
+		page := getPageFromID(paths)
+		if page != nil {
+			objs = me.getAudioPage(*page, host)
+		}
+	}
+
 	// Saved searches
 	// if obj.Path == "saved-searches" {
 	// 	var savedPlaylists []models.Playlist
@@ -341,6 +353,26 @@ func (me *contentDirectoryService) handleBrowseMetadata(obj object, host string)
 	var objs []interface{}
 	var updateID string
 
+	if audioID, isAudio := audioIDFromObjectPath(obj.Path); isAudio {
+		var a *models.Audio
+
+		r := me.repository
+		if err := r.WithReadTxn(context.TODO(), func(ctx context.Context) error {
+			var err error
+			a, err = me.findAudio(ctx, audioID)
+			return err
+		}); err != nil {
+			logger.Error(err.Error())
+		}
+
+		if a == nil {
+			return nil, upnp.Errorf(upnpav.NoSuchObjectErrorCode, "audio not found")
+		}
+
+		const maxUpdateID int64 = 1 << 32
+		return makeBrowseResult([]interface{}{audioToContainer(a, audioFolderID, host)}, fmt.Sprint(a.UpdatedAt.Unix()%maxUpdateID))
+	}
+
 	// if numeric, then must be scene, otherwise handle as if path
 	sceneID, err := strconv.Atoi(obj.Path)
 	if err != nil {
@@ -430,6 +462,7 @@ func getRootObjects() []interface{} {
 	var objs []interface{}
 
 	objs = append(objs, makeStorageFolder("all", "all", rootID))
+	objs = append(objs, makeStorageFolder(audioFolderID, audioFolderID, rootID))
 	objs = append(objs, makeStorageFolder("performers", "performers", rootID))
 	objs = append(objs, makeStorageFolder("tags", "tags", rootID))
 	objs = append(objs, makeStorageFolder("studios", "studios", rootID))

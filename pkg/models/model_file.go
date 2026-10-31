@@ -95,7 +95,8 @@ type DirEntry struct {
 	// only guaranteed to have id, path and basename set
 	ZipFile File
 
-	ModTime time.Time `json:"mod_time"`
+	ModTime      time.Time  `json:"mod_time"`
+	MissingSince *time.Time `json:"missing_since"`
 }
 
 func (e *DirEntry) info(fs FS, path string) (fs.FileInfo, error) {
@@ -289,6 +290,11 @@ type VideoFile struct {
 
 	Interactive      bool `json:"interactive"`
 	InteractiveSpeed *int `json:"interactive_speed"`
+
+	Projection    *ProjectionEnum `json:"projection"`
+	StereoMode    *StereoModeEnum `json:"stereo_mode"`
+	VRCorrections *VRCorrections  `json:"vr_corrections"`
+	VRPassthrough *VRPassthrough  `json:"vr_passthrough"`
 }
 
 func (f VideoFile) GetWidth() int {
@@ -323,6 +329,38 @@ func (f VideoFile) DurationFinite() float64 {
 
 func (f VideoFile) FrameRateFinite() float64 {
 	ret := f.FrameRate
+	if math.IsInf(ret, 0) || math.IsNaN(ret) {
+		return 0
+	}
+	return ret
+}
+
+// AudioFile is an extension of BaseFile to represent audio files.
+type AudioFile struct {
+	*BaseFile
+	Format     string  `json:"format"`
+	Duration   float64 `json:"duration"`
+	AudioCodec string  `json:"audio_codec"`
+	SampleRate int64   `json:"sample_rate"`
+	BitRate    int64   `json:"bitrate"`
+}
+
+func (f AudioFile) GetFormat() string {
+	return f.Format
+}
+
+func (f AudioFile) Clone() (ret File) {
+	clone := f
+	clone.BaseFile = f.BaseFile.Clone().(*BaseFile)
+	ret = &clone
+	return
+}
+
+// #1572 - Inf and NaN values cause the JSON marshaller to fail
+// Replace these values with 0 rather than erroring
+
+func (f AudioFile) DurationFinite() float64 {
+	ret := f.Duration
 	if math.IsInf(ret, 0) || math.IsNaN(ret) {
 		return 0
 	}

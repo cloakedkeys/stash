@@ -5,6 +5,7 @@ import {
 import React, { useState, useContext, createContext, useMemo } from "react";
 import { Button, Toast } from "react-bootstrap";
 import { FormattedMessage } from "react-intl";
+import { Link } from "react-router-dom";
 import { Icon } from "src/components/Shared/Icon";
 import { ModalComponent } from "src/components/Shared/Modal";
 import { errorToString } from "src/utils";
@@ -26,22 +27,55 @@ const errorPriority = 100;
 // errors should stay on screen longer
 const errorDelay = 5000;
 
+// Server errors that ask the user to check the logs get this phrase turned
+// into a link to the logs page. Server messages are not translated, so the
+// English phrase is matched as-is.
+const checkLogsPhrase = "check the logs";
+
+function renderContent(
+  content: JSX.Element | string | undefined,
+  onLinkClick: () => void
+) {
+  if (typeof content !== "string") return content;
+
+  const index = content.indexOf(checkLogsPhrase);
+  if (index === -1) return content;
+
+  return (
+    <>
+      {content.slice(0, index)}
+      <Link
+        to="/settings?tab=logs"
+        onClick={(e) => {
+          e.stopPropagation();
+          onLinkClick();
+        }}
+      >
+        {checkLogsPhrase}
+      </Link>
+      {content.slice(index + checkLogsPhrase.length)}
+    </>
+  );
+}
+
 let toastID = 0;
 
 type ToastFn = (item: IToast) => void;
 
 const ToastContext = createContext<ToastFn | null>(null);
 
-export const ToastProvider: React.FC = ({ children }) => {
+export const ToastProvider: React.FC<React.PropsWithChildren<unknown>> = ({
+  children,
+}) => {
   const [toast, setToast] = useState<IActiveToast>();
   const [hiding, setHiding] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  function expand() {
-    setExpanded(true);
-  }
-
   const toastItem = useMemo(() => {
+    function expand() {
+      setExpanded(true);
+    }
+
     if (!toast || expanded) return null;
 
     return (
@@ -54,7 +88,7 @@ export const ToastProvider: React.FC = ({ children }) => {
       >
         <Toast.Header>
           <span className="mr-auto" onClick={() => expand()}>
-            {toast.content}
+            {renderContent(toast.content, () => setHiding(true))}
           </span>
           {toast.variant === "danger" && (
             <Button
@@ -80,7 +114,7 @@ export const ToastProvider: React.FC = ({ children }) => {
   function copyToClipboard() {
     const { content } = toast ?? {};
 
-    if (!!content && typeof content === "string" && navigator.clipboard) {
+    if (content && typeof content === "string" && navigator.clipboard) {
       navigator.clipboard.writeText(content);
     }
   }
@@ -101,16 +135,17 @@ export const ToastProvider: React.FC = ({ children }) => {
           header={<FormattedMessage id="errors.header" />}
           icon={faTriangleExclamation}
           footerButtons={
-            <>
-              {!!navigator.clipboard && (
-                <Button variant="secondary" onClick={() => copyToClipboard()}>
-                  <FormattedMessage id="actions.copy_to_clipboard" />
-                </Button>
-              )}
-            </>
+            !!navigator.clipboard && (
+              <Button variant="secondary" onClick={() => copyToClipboard()}>
+                <FormattedMessage id="actions.copy_to_clipboard" />
+              </Button>
+            )
           }
         >
-          {toast?.content}
+          {renderContent(toast?.content, () => {
+            setToast(undefined);
+            setExpanded(false);
+          })}
         </ModalComponent>
       )}
       <div className={cx("toast-container row", { hidden: !toast || hiding })}>

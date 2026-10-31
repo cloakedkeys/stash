@@ -28,6 +28,8 @@ const sortByOptions = [
   "duration",
   "rating",
   "tag_count",
+  "performer_count",
+  "sub_group_description",
   "sub_group_order",
 ]
   .map(ListFilterOptions.createSortBy)
@@ -49,11 +51,13 @@ const criterionOptions = [
   GroupIsMissingCriterionOption,
   createStringCriterionOption("url"),
   createStringCriterionOption("name"),
+  createStringCriterionOption("aliases"),
   createStringCriterionOption("director"),
   createStringCriterionOption("synopsis"),
   createDurationCriterionOption("duration"),
   RatingCriterionOption,
   PerformersCriterionOption,
+  createMandatoryNumberCriterionOption("performer_count"),
   createDateCriterionOption("date"),
   createMandatoryNumberCriterionOption("o_counter", "o_count", {
     sfwMessageID: "o_count_sfw",

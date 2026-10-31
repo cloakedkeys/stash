@@ -31,6 +31,7 @@ import {
   stringToCircumcised,
 } from "src/utils/circumcised";
 import { useConfigurationContext } from "src/hooks/Config";
+import { useIsAdmin } from "src/hooks/CurrentUser";
 import { PerformerScrapeDialog } from "./PerformerScrapeDialog";
 import PerformerScrapeModal from "./PerformerScrapeModal";
 import PerformerStashBoxModal, { IStashBox } from "./PerformerStashBoxModal";
@@ -52,7 +53,7 @@ import {
   CustomFieldsInput,
   formatCustomFieldInput,
 } from "src/components/Shared/CustomFields";
-import { cloneDeep } from "@apollo/client/utilities";
+import cloneDeep from "lodash-es/cloneDeep";
 
 const isScraper = (
   scraper: GQL.Scraper | GQL.StashBox
@@ -99,6 +100,7 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
   const { configuration: stashConfig } = useConfigurationContext();
 
   const intl = useIntl();
+  const isAdmin = useIsAdmin();
 
   const schema = yup.object({
     name: yup.string().required(),
@@ -178,10 +180,8 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     onSubmit: submit,
   });
 
-  const { tags, updateTagsStateFromScraper, tagsControl } = useTagsEdit(
-    performer.tags,
-    (ids) => formik.setFieldValue("tag_ids", ids)
-  );
+  const { tags, updateTagsStateFromScraper, resetTagsState, tagsControl } =
+    useTagsEdit(performer.tags, (ids) => formik.setFieldValue("tag_ids", ids));
 
   function translateScrapedGender(scrapedGender?: string) {
     if (!scrapedGender) {
@@ -349,8 +349,15 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
   async function onSave(input: InputValues, andNew?: boolean) {
     setIsLoading(true);
     try {
-      await onSubmit(input, andNew);
+      // ignore_auto_tag may only be changed by administrators
+      await onSubmit(
+        isAdmin ? input : { ...input, ignore_auto_tag: undefined },
+        andNew
+      );
       formik.resetForm();
+      if (andNew) {
+        resetTagsState();
+      }
     } catch (e) {
       Toast.error(e);
     }
@@ -447,7 +454,7 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     setIsLoading(true);
     try {
       const result = await queryScrapePerformerURL(url);
-      if (!result.data || !result.data.scrapePerformerURL) {
+      if (!result.data?.scrapePerformerURL) {
         return;
       }
 
@@ -771,7 +778,7 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
 
         <hr />
 
-        {renderInputField("ignore_auto_tag", "checkbox")}
+        {isAdmin && renderInputField("ignore_auto_tag", "checkbox")}
 
         <hr />
 

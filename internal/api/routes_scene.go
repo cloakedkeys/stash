@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -60,6 +61,7 @@ func (rs sceneRoutes) Routes() chi.Router {
 
 		// streaming endpoints
 		r.Get("/stream", rs.StreamDirect)
+		r.Head("/stream", rs.StreamDirect)
 		r.Get("/stream.mp4", rs.StreamMp4)
 		r.Get("/stream.webm", rs.StreamWebM)
 		r.Get("/stream.mkv", rs.StreamMKV)
@@ -68,6 +70,8 @@ func (rs sceneRoutes) Routes() chi.Router {
 		r.Get("/stream.mpd", rs.StreamDASH)
 		r.Get("/stream.mpd/{segment}_v.webm", rs.StreamDASHVideoSegment)
 		r.Get("/stream.mpd/{segment}_a.webm", rs.StreamDASHAudioSegment)
+		// same as /stream, with the file name at the end for players that need it
+		r.Get("/stream/{filename}", rs.StreamDirectNamed)
 
 		r.Get("/screenshot", rs.Screenshot)
 		r.Get("/preview", rs.Preview)
@@ -97,6 +101,27 @@ func (rs sceneRoutes) StreamDirect(w http.ResponseWriter, r *http.Request) {
 		SceneCoverGetter: rs.sceneFinder,
 	}
 	ss.StreamSceneDirect(scene, w, r)
+}
+
+// StreamDirectNamed only serves the scene's primary file, and only if the name matches it.
+func (rs sceneRoutes) StreamDirectNamed(w http.ResponseWriter, r *http.Request) {
+	scene := r.Context().Value(sceneKey).(*models.Scene)
+
+	// chi matches on the raw path when the request isn't in Go's default encoding
+	name := chi.URLParam(r, "filename")
+	if r.URL.RawPath != "" {
+		if unescaped, err := url.PathUnescape(name); err == nil {
+			name = unescaped
+		}
+	}
+
+	pf := scene.Files.Primary()
+	if pf == nil || name != pf.Basename {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	rs.StreamDirect(w, r)
 }
 
 func (rs sceneRoutes) StreamMp4(w http.ResponseWriter, r *http.Request) {
@@ -349,6 +374,36 @@ func (rs sceneRoutes) VttChapter(w http.ResponseWriter, r *http.Request) {
 	utils.ServeStaticContent(w, r, []byte(vtt))
 }
 
+// hashAllowed reports whether generated files can be served for a hash given in the
+// URL. These are found without loading a scene, so an account with a library limit
+// has to be able to see a scene with that hash.
+func (rs sceneRoutes) hashAllowed(r *http.Request, hash string) bool {
+	if models.LibraryLimitFromContext(r.Context()) == nil {
+		return true
+	}
+
+	allowed := false
+	if err := rs.withReadTxn(r, func(ctx context.Context) error {
+		scenes, err := rs.sceneFinder.FindByOSHash(ctx, hash)
+		if err != nil {
+			return err
+		}
+		if len(scenes) == 0 {
+			scenes, err = rs.sceneFinder.FindByChecksum(ctx, hash)
+			if err != nil {
+				return err
+			}
+		}
+		allowed = len(scenes) > 0
+		return nil
+	}); err != nil {
+		logger.Warnf("read transaction error checking scene hash: %v", err)
+		return false
+	}
+
+	return allowed
+}
+
 func (rs sceneRoutes) VttThumbs(w http.ResponseWriter, r *http.Request) {
 	scene, ok := r.Context().Value(sceneKey).(*models.Scene)
 	var sceneHash string
@@ -356,6 +411,10 @@ func (rs sceneRoutes) VttThumbs(w http.ResponseWriter, r *http.Request) {
 		sceneHash = scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
 	} else {
 		sceneHash = chi.URLParam(r, "sceneHash")
+		if !rs.hashAllowed(r, sceneHash) {
+			http.NotFound(w, r)
+			return
+		}
 	}
 	filepath := manager.GetInstance().Paths.Scene.GetSpriteVttFilePath(sceneHash)
 
@@ -370,6 +429,10 @@ func (rs sceneRoutes) VttSprite(w http.ResponseWriter, r *http.Request) {
 		sceneHash = scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
 	} else {
 		sceneHash = chi.URLParam(r, "sceneHash")
+		if !rs.hashAllowed(r, sceneHash) {
+			http.NotFound(w, r)
+			return
+		}
 	}
 	filepath := manager.GetInstance().Paths.Scene.GetSpriteImageFilePath(sceneHash)
 

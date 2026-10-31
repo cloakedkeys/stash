@@ -197,6 +197,74 @@ export const querySceneByPathRegex = (filter: GQL.FindFilterType) =>
     variables: { filter },
   });
 
+export const useFindAudio = (id: string) => {
+  const skip = id === "new" || id === "";
+  return GQL.useFindAudioQuery({ variables: { id }, skip });
+};
+
+export const useAudioStreams = (id: string) =>
+  GQL.useAudioStreamsQuery({ variables: { id } });
+
+export const useFindAudios = (filter?: ListFilterModel) =>
+  GQL.useFindAudiosQuery({
+    skip: filter === undefined,
+    variables: {
+      filter: filter?.makeFindFilter(),
+      audio_filter: filter?.makeFilter(),
+    },
+  });
+
+export const useFindAudiosMetadata = (filter?: ListFilterModel) =>
+  GQL.useFindAudiosMetadataQuery({
+    skip: filter === undefined,
+    variables: {
+      filter: filter?.makeFindFilter(),
+      audio_filter: filter?.makeFilter(),
+    },
+  });
+
+export const queryFindAudios = (filter: ListFilterModel) =>
+  client.query<GQL.FindAudiosQuery>({
+    query: GQL.FindAudiosDocument,
+    variables: {
+      filter: filter.makeFindFilter(),
+      audio_filter: filter.makeFilter(),
+    },
+  });
+
+export const queryFindAudiosByID = (audioIDs: number[]) =>
+  client.query<GQL.FindAudiosQuery>({
+    query: GQL.FindAudiosDocument,
+    variables: {
+      ids: audioIDs,
+    },
+  });
+
+export const queryFindFullAudiosByID = (audioIDs: string[]) =>
+  client.query<GQL.FindFullAudiosQuery>({
+    query: GQL.FindFullAudiosDocument,
+    variables: {
+      ids: audioIDs,
+    },
+  });
+
+export const queryFindAudiosForSelect = (filter: ListFilterModel) =>
+  client.query<GQL.FindAudiosForSelectQuery>({
+    query: GQL.FindAudiosForSelectDocument,
+    variables: {
+      filter: filter.makeFindFilter(),
+      audio_filter: filter.makeFilter(),
+    },
+  });
+
+export const queryFindAudiosByIDForSelect = (audioIDs: string[]) =>
+  client.query<GQL.FindAudiosForSelectQuery>({
+    query: GQL.FindAudiosForSelectDocument,
+    variables: {
+      ids: audioIDs,
+    },
+  });
+
 export const useFindImage = (id: string) =>
   GQL.useFindImageQuery({ variables: { id } });
 
@@ -282,6 +350,14 @@ export const queryFindSceneMarkers = (filter: ListFilterModel) =>
     variables: {
       filter: filter.makeFindFilter(),
       scene_marker_filter: filter.makeFilter(),
+    },
+  });
+
+export const queryFindSceneMarkersByID = (sceneMarkerIDs: number[]) =>
+  client.query<GQL.FindSceneMarkersQuery>({
+    query: GQL.FindSceneMarkersDocument,
+    variables: {
+      ids: sceneMarkerIDs,
     },
   });
 
@@ -622,6 +698,16 @@ export const useSceneUpdate = () =>
   GQL.useSceneUpdateMutation({
     update(cache, result) {
       if (!result.data?.sceneUpdate) return;
+
+      evictTypeFields(cache, sceneMutationImpactedTypeFields);
+      evictQueries(cache, sceneMutationImpactedQueries);
+    },
+  });
+
+export const useSceneUserDataUpdate = () =>
+  GQL.useSceneUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.sceneUserDataUpdate) return;
 
       evictTypeFields(cache, sceneMutationImpactedTypeFields);
       evictQueries(cache, sceneMutationImpactedQueries);
@@ -1092,7 +1178,7 @@ export const useSceneDecrementPlayCount = () =>
 
 export const useSceneResetPlayCount = () =>
   GQL.useSceneResetPlayCountMutation({
-    update(cache, result, { variables }) {
+    update(cache, _result, { variables }) {
       if (!variables) return;
 
       let lastPlayCount = 0;
@@ -1126,6 +1212,455 @@ export const useSceneResetPlayCount = () =>
     },
   });
 
+const audioMutationImpactedTypeFields = {
+  Group: ["audios", "audio_count"],
+  Gallery: ["audios"],
+  Performer: ["audios", "audio_count", "groups", "group_count"],
+  Studio: ["audio_count"],
+  Tag: ["audio_count"],
+};
+
+const audioMutationImpactedQueries = [
+  GQL.FindAudiosDocument, // various filters
+  GQL.FindGroupsDocument, // is missing audios
+  GQL.FindGalleriesDocument, // is missing audios
+  GQL.FindPerformersDocument, // filter by audio count
+  GQL.FindStudiosDocument, // filter by audio count
+  GQL.FindTagsDocument, // filter by audio count
+];
+
+export const useAudioUpdate = () =>
+  GQL.useAudioUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.audioUpdate) return;
+
+      evictTypeFields(cache, audioMutationImpactedTypeFields);
+      evictQueries(cache, audioMutationImpactedQueries);
+    },
+  });
+
+export const useAudioUserDataUpdate = () =>
+  GQL.useAudioUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.audioUserDataUpdate) return;
+
+      evictTypeFields(cache, audioMutationImpactedTypeFields);
+      evictQueries(cache, audioMutationImpactedQueries);
+    },
+  });
+
+export const useBulkAudioUpdate = () =>
+  GQL.useBulkAudioUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.bulkAudioUpdate) return;
+
+      evictTypeFields(cache, audioMutationImpactedTypeFields);
+      evictQueries(cache, audioMutationImpactedQueries);
+    },
+  });
+
+export const useAudiosUpdate = (input: GQL.AudioUpdateInput[]) =>
+  GQL.useAudiosUpdateMutation({
+    variables: { input },
+    update(cache, result) {
+      if (!result.data?.audiosUpdate) return;
+
+      evictTypeFields(cache, audioMutationImpactedTypeFields);
+      evictQueries(cache, audioMutationImpactedQueries);
+    },
+  });
+
+export const useAudiosDestroy = (input: GQL.AudiosDestroyInput) =>
+  GQL.useAudiosDestroyMutation({
+    variables: input,
+    update(cache, result) {
+      if (!result.data?.audiosDestroy) return;
+
+      for (const id of input.ids) {
+        const obj = { __typename: "Audio", id };
+        deleteObject(cache, obj, GQL.FindAudioDocument);
+      }
+
+      evictTypeFields(cache, audioMutationImpactedTypeFields);
+      evictQueries(cache, [
+        ...audioMutationImpactedQueries,
+        GQL.StatsDocument, // audios size, audio count, etc
+      ]);
+    },
+  });
+
+export const useAudioIncrementO = (id: string) =>
+  GQL.useAudioAddOMutation({
+    variables: { id },
+    update(cache, result, { variables }) {
+      // this is not perfectly accurate, the time is set server-side
+      const at = new Date().toISOString();
+
+      const mutationResult = result.data?.audioAddO;
+      if (!mutationResult || !variables) return;
+
+      const { history } = mutationResult;
+      const { times } = variables;
+      const timeArray = !times ? [at] : Array.isArray(times) ? times : [times];
+
+      // performer o_counter aggregates scenes, images and audios, so it always
+      // needs refreshing
+      evictTypeFields(cache, {
+        Performer: ["o_counter"],
+      });
+
+      updateStats(cache, "total_o_count", timeArray.length);
+
+      cache.modify({
+        id: cache.identify({ __typename: "Audio", id }),
+        fields: {
+          o_history() {
+            return history;
+          },
+        },
+      });
+
+      updateO(cache, "Audio", id, history.length);
+      evictQueries(cache, [
+        GQL.FindAudiosDocument, // filter by o_counter
+        GQL.FindPerformersDocument, // filter by o_counter
+      ]);
+    },
+  });
+
+export const useAudioDecrementO = (id: string) =>
+  GQL.useAudioDeleteOMutation({
+    variables: { id },
+    update(cache, result, { variables }) {
+      const mutationResult = result.data?.audioDeleteO;
+      if (!mutationResult || !variables) return;
+
+      const { history } = mutationResult;
+      const { times } = variables;
+      const timeArray = !times ? null : Array.isArray(times) ? times : [times];
+
+      evictTypeFields(cache, {
+        Performer: ["o_counter"],
+      });
+
+      updateStats(cache, "total_o_count", -(timeArray?.length ?? 1));
+
+      cache.modify({
+        id: cache.identify({ __typename: "Audio", id }),
+        fields: {
+          o_history() {
+            return history;
+          },
+        },
+      });
+
+      updateO(cache, "Audio", id, history.length);
+      evictQueries(cache, [
+        GQL.FindAudiosDocument, // filter by o_counter
+        GQL.FindPerformersDocument, // filter by o_counter
+      ]);
+    },
+  });
+
+export const useAudioResetO = (id: string) =>
+  GQL.useAudioResetOMutation({
+    variables: { id },
+    update(cache, result) {
+      const updatedOCount = result.data?.audioResetO;
+      if (updatedOCount === undefined) return;
+
+      evictTypeFields(cache, {
+        Performer: ["o_counter"],
+      });
+
+      // the removed count is not returned by the mutation, so the stats
+      // total has to be refetched
+      cache.modify({
+        fields: {
+          stats: (value) => ({
+            ...value,
+            total_o_count: undefined,
+          }),
+        },
+      });
+
+      cache.modify({
+        id: cache.identify({ __typename: "Audio", id }),
+        fields: {
+          o_history() {
+            const ret: string[] = [];
+            return ret;
+          },
+        },
+      });
+
+      updateO(cache, "Audio", id, updatedOCount);
+      evictQueries(cache, [
+        GQL.FindAudiosDocument, // filter by o_counter
+        GQL.FindPerformersDocument, // filter by o_counter
+      ]);
+    },
+  });
+
+export const useAudioResetActivity = (
+  id: string,
+  reset_resume: boolean,
+  reset_duration: boolean
+) =>
+  GQL.useAudioResetActivityMutation({
+    variables: { id, reset_resume, reset_duration },
+    update(cache, result) {
+      if (!result.data?.audioResetActivity) return;
+
+      evictTypeFields(cache, audioMutationImpactedTypeFields);
+      evictQueries(cache, audioMutationImpactedQueries);
+    },
+  });
+
+export const useAudioSaveActivity = () =>
+  GQL.useAudioSaveActivityMutation({
+    update(cache, result, { variables }) {
+      if (!result.data?.audioSaveActivity || !variables) return;
+
+      const { id, playDuration, resume_time: resumeTime } = variables;
+
+      cache.modify({
+        id: cache.identify({ __typename: "Audio", id }),
+        fields: {
+          resume_time() {
+            return resumeTime ?? null;
+          },
+          play_duration(value) {
+            return value + playDuration;
+          },
+        },
+      });
+
+      if (playDuration) {
+        updateStats(cache, "total_play_duration", playDuration);
+      }
+
+      evictQueries(cache, [
+        GQL.FindAudiosDocument, // filter by play duration
+      ]);
+    },
+  });
+
+export const useAudioIncrementPlayCount = () =>
+  GQL.useAudioAddPlayMutation({
+    update(cache, result, { variables }) {
+      const mutationResult = result.data?.audioAddPlay;
+
+      if (!mutationResult || !variables) return;
+
+      const { history } = mutationResult;
+      const { id } = variables;
+
+      let lastPlayCount = 0;
+      const playCount = history.length;
+
+      cache.modify({
+        id: cache.identify({ __typename: "Audio", id }),
+        fields: {
+          play_count(value) {
+            lastPlayCount = value;
+            return history.length;
+          },
+          last_played_at() {
+            // assume only one entry - or the first is the most recent
+            return history[0];
+          },
+          play_history() {
+            return history;
+          },
+        },
+      });
+
+      updateStats(cache, "total_play_count", playCount - lastPlayCount);
+      if (lastPlayCount === 0) {
+        updateStats(cache, "audios_played", 1);
+      }
+
+      evictQueries(cache, [
+        GQL.FindAudiosDocument, // filter by play count
+      ]);
+    },
+  });
+
+export const useAudioDecrementPlayCount = () =>
+  GQL.useAudioDeletePlayMutation({
+    update(cache, result, { variables }) {
+      const mutationResult = result.data?.audioDeletePlay;
+
+      if (!mutationResult || !variables) return;
+
+      const { history } = mutationResult;
+      const { id, times } = variables;
+      const timeArray = !times ? null : Array.isArray(times) ? times : [times];
+      const nRemoved = timeArray?.length ?? 1;
+
+      let lastPlayCount = 0;
+      let lastPlayedAt: string | null = null;
+      const playCount = history.length;
+
+      cache.modify({
+        id: cache.identify({ __typename: "Audio", id }),
+        fields: {
+          play_count(value) {
+            lastPlayCount = value;
+            return playCount;
+          },
+          play_history() {
+            if (history.length > 0) {
+              lastPlayedAt = history[0];
+            }
+            return history;
+          },
+        },
+      });
+
+      cache.modify({
+        id: cache.identify({ __typename: "Audio", id }),
+        fields: {
+          last_played_at() {
+            return lastPlayedAt;
+          },
+        },
+      });
+
+      if (lastPlayCount > 0) {
+        updateStats(
+          cache,
+          "total_play_count",
+          nRemoved > lastPlayCount ? -lastPlayCount : -nRemoved
+        );
+      }
+      if (lastPlayCount - nRemoved <= 0) {
+        updateStats(cache, "audios_played", -1);
+      }
+
+      evictQueries(cache, [
+        GQL.FindAudiosDocument, // filter by play count
+      ]);
+    },
+  });
+
+export const useAudioResetPlayCount = () =>
+  GQL.useAudioResetPlayCountMutation({
+    update(cache, _result, { variables }) {
+      if (!variables) return;
+
+      let lastPlayCount = 0;
+      cache.modify({
+        id: cache.identify({ __typename: "Audio", id: variables.id }),
+        fields: {
+          play_count(value) {
+            lastPlayCount = value;
+            return 0;
+          },
+          play_history() {
+            const ret: string[] = [];
+            return ret;
+          },
+          last_played_at() {
+            return null;
+          },
+        },
+      });
+
+      if (lastPlayCount > 0) {
+        updateStats(cache, "total_play_count", -lastPlayCount);
+        updateStats(cache, "audios_played", -1);
+      }
+
+      evictQueries(cache, [
+        GQL.FindAudiosDocument, // filter by play count
+      ]);
+    },
+  });
+
+export const mutateAudioSetPrimaryFile = (id: string, fileID: string) =>
+  client.mutate<GQL.AudioUpdateMutation>({
+    mutation: GQL.AudioUpdateDocument,
+    variables: {
+      input: {
+        id,
+        primary_file_id: fileID,
+      },
+    },
+    update(cache, result) {
+      if (!result.data?.audioUpdate) return;
+
+      evictQueries(cache, [
+        GQL.FindAudiosDocument, // sort by primary basename when missing title
+      ]);
+    },
+  });
+
+export const mutateAudioAssignFile = (audioID: string, fileID: string) =>
+  client.mutate<GQL.AudioAssignFileMutation>({
+    mutation: GQL.AudioAssignFileDocument,
+    variables: {
+      input: {
+        audio_id: audioID,
+        file_id: fileID,
+      },
+    },
+    update(cache, result) {
+      if (!result.data?.audioAssignFile) return;
+
+      // refetch target audio
+      cache.evict({
+        id: cache.identify({ __typename: "Audio", id: audioID }),
+      });
+
+      // refetch files of the audio the file was previously assigned to
+      evictTypeFields(cache, { Audio: ["files"] });
+
+      evictQueries(cache, [
+        GQL.FindAudiosDocument, // filter by file count
+      ]);
+    },
+  });
+
+export const mutateAudioMerge = (
+  destination: string,
+  source: string[],
+  values: GQL.AudioUpdateInput,
+  includeViewHistory: boolean,
+  includeOHistory: boolean
+) =>
+  client.mutate<GQL.AudioMergeMutation>({
+    mutation: GQL.AudioMergeDocument,
+    variables: {
+      input: {
+        source,
+        destination,
+        values,
+        play_history: includeViewHistory,
+        o_history: includeOHistory,
+      },
+    },
+    update(cache, result) {
+      if (!result.data?.audioMerge) return;
+
+      for (const id of source) {
+        const obj = { __typename: "Audio", id };
+        deleteObject(cache, obj, GQL.FindAudioDocument);
+      }
+
+      cache.evict({
+        id: cache.identify({ __typename: "Audio", id: destination }),
+      });
+
+      evictTypeFields(cache, audioMutationImpactedTypeFields);
+      evictQueries(cache, [
+        ...audioMutationImpactedQueries,
+        GQL.StatsDocument, // audios size, audio count, etc
+      ]);
+    },
+  });
+
 const imageMutationImpactedTypeFields = {
   Gallery: ["images", "image_count"],
   Performer: ["image_count", "performer_count"],
@@ -1145,6 +1680,16 @@ export const useImageUpdate = () =>
   GQL.useImageUpdateMutation({
     update(cache, result) {
       if (!result.data?.imageUpdate) return;
+
+      evictTypeFields(cache, imageMutationImpactedTypeFields);
+      evictQueries(cache, imageMutationImpactedQueries);
+    },
+  });
+
+export const useImageUserDataUpdate = () =>
+  GQL.useImageUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.imageUserDataUpdate) return;
 
       evictTypeFields(cache, imageMutationImpactedTypeFields);
       evictQueries(cache, imageMutationImpactedQueries);
@@ -1405,6 +1950,16 @@ export const useGroupUpdate = () =>
     },
   });
 
+export const useGroupUserDataUpdate = () =>
+  GQL.useGroupUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.groupUserDataUpdate) return;
+
+      evictTypeFields(cache, groupMutationImpactedTypeFields);
+      evictQueries(cache, groupMutationImpactedQueries);
+    },
+  });
+
 export const useBulkGroupUpdate = () =>
   GQL.useBulkGroupUpdateMutation({
     update(cache, result) {
@@ -1530,6 +2085,7 @@ const sceneMarkerMutationImpactedQueries = [
   GQL.FindSceneMarkersDocument, // various filters
   GQL.MarkerStringsDocument, // marker list
   GQL.FindSceneMarkerTagsDocument, // marker tag list
+  GQL.FindStudiosDocument, // filter/sort by marker count
   GQL.FindTagsDocument, // filter by marker count
 ];
 
@@ -1642,6 +2198,52 @@ export const useGalleryUpdate = () =>
       evictTypeFields(cache, galleryMutationImpactedTypeFields);
       evictQueries(cache, galleryMutationImpactedQueries);
     },
+  });
+
+export const useGalleryUserDataUpdate = () =>
+  GQL.useGalleryUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.galleryUserDataUpdate) return;
+
+      evictTypeFields(cache, galleryMutationImpactedTypeFields);
+      evictQueries(cache, galleryMutationImpactedQueries);
+    },
+  });
+
+// gallery o-counts are not added to performer, studio or stats totals,
+// so only the gallery itself and gallery queries need refreshing
+function updateGalleryO(
+  cache: ApolloCache<unknown>,
+  id: string,
+  updatedOCount: number | undefined
+) {
+  if (updatedOCount === undefined) return;
+
+  updateO(cache, "Gallery", id, updatedOCount);
+  evictQueries(cache, [
+    GQL.FindGalleriesDocument, // filter and sort by o_counter
+  ]);
+}
+
+export const useGalleryIncrementO = (id: string) =>
+  GQL.useGalleryIncrementOMutation({
+    variables: { id },
+    update: (cache, result) =>
+      updateGalleryO(cache, id, result.data?.galleryIncrementO),
+  });
+
+export const useGalleryDecrementO = (id: string) =>
+  GQL.useGalleryDecrementOMutation({
+    variables: { id },
+    update: (cache, result) =>
+      updateGalleryO(cache, id, result.data?.galleryDecrementO),
+  });
+
+export const useGalleryResetO = (id: string) =>
+  GQL.useGalleryResetOMutation({
+    variables: { id },
+    update: (cache, result) =>
+      updateGalleryO(cache, id, result.data?.galleryResetO),
   });
 
 export const useBulkGalleryUpdate = () =>
@@ -1865,6 +2467,16 @@ export const usePerformerUpdate = () =>
     },
   });
 
+export const usePerformerUserDataUpdate = () =>
+  GQL.usePerformerUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.performerUserDataUpdate) return;
+
+      evictTypeFields(cache, performerMutationImpactedTypeFields);
+      evictQueries(cache, performerMutationImpactedQueries);
+    },
+  });
+
 export const useBulkPerformerUpdate = (input: GQL.BulkPerformerUpdateInput) =>
   GQL.useBulkPerformerUpdateMutation({
     variables: { input },
@@ -2030,6 +2642,23 @@ export const useStudioUpdate = () =>
     },
   });
 
+export const useStudioUserDataUpdate = () =>
+  GQL.useStudioUserDataUpdateMutation({
+    update(cache, result) {
+      const studio = result.data?.studioUserDataUpdate;
+      if (!studio) return;
+
+      const obj = { __typename: "Studio", id: studio.id };
+      evictTypeFields(
+        cache,
+        studioMutationImpactedTypeFields,
+        cache.identify(obj) // don't evict this studio
+      );
+
+      evictQueries(cache, studioMutationImpactedQueries);
+    },
+  });
+
 export const useBulkStudioUpdate = () =>
   GQL.useBulkStudioUpdateMutation({
     update(cache, result) {
@@ -2083,6 +2712,7 @@ const tagMutationImpactedTypeFields = {
 };
 
 const tagMutationImpactedQueries = [
+  GQL.FindTagDocument, // tag details
   GQL.FindGroupsDocument, // filter by tags
   GQL.FindSceneMarkersDocument, // filter by tags
   GQL.FindScenesDocument, // filter by tags
@@ -2118,6 +2748,23 @@ export const useTagUpdate = () =>
   GQL.useTagUpdateMutation({
     update(cache, result) {
       const tag = result.data?.tagUpdate;
+      if (!tag) return;
+
+      const obj = { __typename: "Tag", id: tag.id };
+      evictTypeFields(
+        cache,
+        tagMutationImpactedTypeFields,
+        cache.identify(obj) // don't evict this tag
+      );
+
+      evictQueries(cache, tagMutationImpactedQueries);
+    },
+  });
+
+export const useTagUserDataUpdate = () =>
+  GQL.useTagUserDataUpdateMutation({
+    update(cache, result) {
+      const tag = result.data?.tagUserDataUpdate;
       if (!tag) return;
 
       const obj = { __typename: "Tag", id: tag.id };
@@ -2232,6 +2879,58 @@ export const useSaveFilter = () => {
   return saveFilter;
 };
 
+// Extracts a saved filter's stored fields for sending straight back in a
+// mutation input. Round-tripping them through ListFilterModel would drop any
+// criterion the current UI doesn't recognise, and saving replaces
+// object_filter wholesale, so it would be deleted.
+export function savedFilterFields(filter: GQL.SavedFilterDataFragment) {
+  const findFilter = filter.find_filter;
+
+  return {
+    mode: filter.mode,
+    // rebuilt field by field to drop the __typename that apollo adds
+    find_filter: findFilter
+      ? {
+          q: findFilter.q,
+          page: findFilter.page,
+          per_page: findFilter.per_page,
+          sort: findFilter.sort,
+          direction: findFilter.direction,
+        }
+      : null,
+    object_filter: filter.object_filter,
+    ui_options: filter.ui_options,
+  };
+}
+
+// Renames a saved filter, leaving its contents untouched.
+export const useRenameSavedFilter = () => {
+  const [saveFilterMutation] = GQL.useSaveFilterMutation({
+    update(cache, result) {
+      if (!result.data?.saveFilter) return;
+
+      evictQueries(cache, [GQL.FindSavedFiltersDocument]);
+    },
+  });
+
+  function renameSavedFilter(
+    filter: GQL.SavedFilterDataFragment,
+    name: string
+  ) {
+    return saveFilterMutation({
+      variables: {
+        input: {
+          id: filter.id,
+          name,
+          ...savedFilterFields(filter),
+        },
+      },
+    });
+  }
+
+  return renameSavedFilter;
+};
+
 export const useSavedFilterDestroy = () =>
   GQL.useDestroySavedFilterMutation({
     update(cache, result, { variables }) {
@@ -2264,6 +2963,9 @@ export const mutateDeleteFiles = (ids: string[]) =>
       }
 
       evictQueries(cache, [
+        GQL.FindSceneDocument, // files list on scene detail
+        GQL.FindImageDocument, // files list on image detail
+        GQL.FindGalleryDocument, // files list on gallery detail
         GQL.FindScenesDocument, // filter by file count
         GQL.FindImagesDocument, // filter by file count
         GQL.FindGalleriesDocument, // filter by file count
@@ -2506,6 +3208,8 @@ export const useListGalleryScrapers = () => GQL.useListGalleryScrapersQuery();
 
 export const useListImageScrapers = () => GQL.useListImageScrapersQuery();
 
+export const useScraperURLConflicts = () => GQL.useScraperUrlConflictsQuery();
+
 export const queryScrapeGallery = (scraperId: string, galleryId: string) =>
   client.query<GQL.ScrapeSingleGalleryQuery>({
     query: GQL.ScrapeSingleGalleryDocument,
@@ -2568,6 +3272,8 @@ export const mutateSubmitStashBoxPerformerDraft = (
 
 export const useConfiguration = () => GQL.useConfigurationQuery();
 
+export const useMe = () => GQL.useMeQuery();
+
 export const usePlugins = () => GQL.usePluginsQuery();
 
 export const usePluginTasks = () => GQL.usePluginTasksQuery();
@@ -2622,6 +3328,7 @@ export const scraperMutationImpactedQueries = [
   GQL.ListImageScrapersDocument,
   GQL.InstalledScraperPackagesDocument,
   GQL.InstalledScraperPackagesStatusDocument,
+  GQL.ScraperUrlConflictsDocument,
 ];
 
 export const mutateReloadScrapers = () =>
@@ -2935,9 +3642,15 @@ export const mutateMetadataGenerate = (input: GQL.GenerateMetadataInput) =>
     variables: { input },
   });
 
-export const mutateMetadataClean = (input: GQL.CleanMetadataInput) =>
-  client.mutate<GQL.MetadataCleanMutation>({
-    mutation: GQL.MetadataCleanDocument,
+export const mutateVerifyPaths = (input: GQL.VerifyPathsInput) =>
+  client.mutate<GQL.VerifyPathsMutation>({
+    mutation: GQL.VerifyPathsDocument,
+    variables: { input },
+  });
+
+export const mutatePurgeMissing = (input: GQL.PurgeMissingInput) =>
+  client.mutate<GQL.PurgeMissingMutation>({
+    mutation: GQL.PurgeMissingDocument,
     variables: { input },
   });
 
@@ -3019,6 +3732,16 @@ export const mutateMigrateBlobs = (input: GQL.MigrateBlobsInput) =>
 
 export const useDirectory = (path?: string) =>
   GQL.useDirectoryQuery({ variables: { path } });
+
+export const queryParseAudioFilenames = (
+  filter: GQL.FindFilterType,
+  config: GQL.AudioParserInput
+) =>
+  client.query<GQL.ParseAudioFilenamesQuery>({
+    query: GQL.ParseAudioFilenamesDocument,
+    variables: { filter, config },
+    fetchPolicy: "network-only",
+  });
 
 export const queryParseSceneFilenames = (
   filter: GQL.FindFilterType,

@@ -7,9 +7,12 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/stashapp/stash/internal/manager"
+	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/database"
+	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/job"
 	"github.com/stashapp/stash/pkg/logger"
-	"github.com/stashapp/stash/pkg/sqlite"
 )
 
 type migrateJobConfig interface {
@@ -20,13 +23,28 @@ type migrateJobConfig interface {
 type MigrateJob struct {
 	BackupPath string
 	Config     migrateJobConfig
-	Database   *sqlite.Database
+	Database   database.Database
 }
 
 type databaseSchemaInfo struct {
 	CurrentSchemaVersion  uint
 	RequiredSchemaVersion uint
 	StepsRequired         uint
+}
+
+// PreExecute validates the environment before executing the migration.
+// It returns an error if the migration cannot be performed.
+func (s *MigrateJob) PreExecute() error {
+	// ensure backup directory exists and is writable
+	backupDir := s.Config.GetBackupDirectoryPathOrDefault()
+	if backupDir != "" {
+		if err := fsutil.EnsureDir(backupDir); err != nil {
+			logger.Errorf("error ensuring backup directory exists: %s", err)
+			logger.Warnf("Backup directory (%s) must be modified to a valid directory or removed from the config file", config.BackupDirectoryPath)
+			return fmt.Errorf("error creating backup directory: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error {
@@ -45,13 +63,13 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 	// set the number of tasks = backup + required steps + optimise
 	progress.SetTotal(int(schemaInfo.StepsRequired + 2))
 
-	database := s.Database
+	db := s.Database
 
 	// always backup so that we can roll back to the previous version if
 	// migration fails
 	backupPath := s.BackupPath
 	if backupPath == "" {
-		backupPath = database.DatabaseBackupPath(s.Config.GetBackupDirectoryPath())
+		backupPath = db.DatabaseBackupPath(s.Config.GetBackupDirectoryPath())
 	} else {
 		// check if backup path is a filename or path
 		// filename goes into backup directory, path is kept as is
@@ -65,8 +83,17 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 		defer progress.Increment()
 
 		// perform database backup
-		err = database.Backup(backupPath)
+		err = db.Backup(backupPath)
 	})
+
+	// Without the backup tools, a server that doesn't have them could never start
+	// again after an upgrade, so go ahead but say plainly that there's no backup.
+	backedUp := true
+	if errors.Is(err, database.ErrBackupToolNotFound) {
+		logger.Warnf("Upgrading the database WITHOUT a backup, because the tools needed to make one aren't installed: %v", err)
+		backedUp = false
+		err = nil
+	}
 
 	if err != nil {
 		return fmt.Errorf("error backing up database: %s", err)
@@ -77,27 +104,35 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 	if err != nil {
 		errStr := fmt.Sprintf("error performing migration: %s", err)
 
+		if !backedUp {
+			return fmt.Errorf("ERROR: unable to restore database after migration failure because no backup could be made\n%s", errStr)
+		}
+
 		// roll back to the backed up version
-		restoreErr := database.RestoreFromBackup(backupPath)
+		restoreErr := db.RestoreFromBackup(backupPath)
 		if restoreErr != nil {
 			errStr = fmt.Sprintf("ERROR: unable to restore database from backup after migration failure: %s\n%s", restoreErr.Error(), errStr)
 		} else {
-			errStr = "An error occurred migrating the database to the latest schema version. The backup database file was automatically renamed to restore the database.\n" + errStr
+			errStr = "An error occurred migrating the database to the latest schema version. The database was automatically restored from the backup.\n" + errStr
 		}
 
 		return errors.New(errStr)
 	}
 
 	// if no backup path was provided, then delete the created backup
-	if s.BackupPath == "" {
+	if s.BackupPath == "" && backedUp {
 		if err := os.Remove(backupPath); err != nil {
 			logger.Warnf("error removing unwanted database backup (%s): %s", backupPath, err.Error())
 		}
 	}
 
 	// reinitialise the database
-	if err := database.ReInitialise(); err != nil {
+	if err := db.ReInitialise(); err != nil {
 		return fmt.Errorf("error reinitialising database: %s", err)
+	}
+
+	if err := manager.GetInstance().PostMigrate(ctx); err != nil {
+		return fmt.Errorf("error performing post-migrate tasks: %s", err)
 	}
 
 	logger.Infof("Database migration complete")
@@ -106,9 +141,7 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 }
 
 func (s *MigrateJob) required() (ret databaseSchemaInfo, err error) {
-	database := s.Database
-
-	m, err := sqlite.NewMigrator(database)
+	m, err := s.Database.NewMigrator()
 	if err != nil {
 		return
 	}
@@ -128,9 +161,7 @@ func (s *MigrateJob) required() (ret databaseSchemaInfo, err error) {
 }
 
 func (s *MigrateJob) runMigrations(ctx context.Context, progress *job.Progress) error {
-	database := s.Database
-
-	m, err := sqlite.NewMigrator(database)
+	m, err := s.Database.NewMigrator()
 	if err != nil {
 		return err
 	}

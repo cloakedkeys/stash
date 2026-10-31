@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"io/fs"
+	"time"
 )
 
 // FileGetter provides methods to get files by ID.
@@ -15,8 +16,10 @@ type FileFinder interface {
 	FileGetter
 	FindAllByPath(ctx context.Context, path string, caseSensitive bool) ([]File, error)
 	FindAllInPaths(ctx context.Context, p []string, includeZipContents bool, limit, offset int) ([]File, error)
+	FindMissingInPaths(ctx context.Context, p []string, missingSinceBefore *time.Time, limit, offset int) ([]File, error)
 	FindByPath(ctx context.Context, path string, caseSensitive bool) (File, error)
 	FindByFingerprint(ctx context.Context, fp Fingerprint) ([]File, error)
+	FindByFolderID(ctx context.Context, folderID FolderID) ([]File, error)
 	FindByZipFileID(ctx context.Context, zipFileID FileID) ([]File, error)
 	FindByFileInfo(ctx context.Context, info fs.FileInfo, size int64) ([]File, error)
 }
@@ -29,6 +32,7 @@ type FileQueryer interface {
 // FileCounter provides methods to count files.
 type FileCounter interface {
 	CountAllInPaths(ctx context.Context, p []string) (int, error)
+	CountMissingInPaths(ctx context.Context, p []string, missingSinceBefore *time.Time) (int, error)
 	CountByFolderID(ctx context.Context, folderID FolderID) (int, error)
 }
 
@@ -40,6 +44,7 @@ type FileCreator interface {
 // FileUpdater provides methods to update files.
 type FileUpdater interface {
 	Update(ctx context.Context, f File) error
+	SetMissing(ctx context.Context, id FileID, missingSince *time.Time) error
 }
 
 // FileDestroyer provides methods to destroy files.
@@ -77,12 +82,27 @@ type FileFingerprintWriter interface {
 	DestroyFingerprints(ctx context.Context, fileID FileID, types []string) error
 }
 
+// FileVRMetadataWriter provides methods to set the VR-related
+// metadata fields (projection, stereo_mode, vr_corrections, vr_passthrough)
+// of a video file. A nil argument clears that field.
+type FileVRMetadataWriter interface {
+	ModifyVideoFileMetadata(
+		ctx context.Context,
+		fileID FileID,
+		projection *ProjectionEnum,
+		stereoMode *StereoModeEnum,
+		vrCorrections *VRCorrections,
+		vrPassthrough *VRPassthrough,
+	) error
+}
+
 // FileWriter provides all methods to modify files.
 type FileWriter interface {
 	FileCreator
 	FileUpdater
 	FileDestroyer
 	FileFingerprintWriter
+	FileVRMetadataWriter
 
 	UpdateCaptions(ctx context.Context, fileID FileID, captions []*VideoCaption) error
 }
@@ -91,4 +111,8 @@ type FileWriter interface {
 type FileReaderWriter interface {
 	FileReader
 	FileWriter
+}
+
+type IDsFromFileIDsLoader interface {
+	GetManyIDsByFileIDs(ctx context.Context, fileIDs []FileID) ([][]int, error)
 }

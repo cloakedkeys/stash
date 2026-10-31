@@ -11,7 +11,8 @@ import { PopoverCountButton } from "../Shared/PopoverCountButton";
 import { Icon } from "../Shared/Icon";
 import { faHeart } from "@fortawesome/free-solid-svg-icons";
 import cx from "classnames";
-import { useTagUpdate } from "src/core/StashService";
+import { useTagUserDataUpdate } from "src/core/StashService";
+import { RatingBanner } from "../Shared/RatingBanner";
 
 interface IProps {
   tag: GQL.TagDataFragment | GQL.TagListDataFragment;
@@ -87,7 +88,7 @@ const TagCardPopovers: React.FC<IProps> = PatchComponent(
 const TagCardOverlays: React.FC<IProps> = PatchComponent(
   "TagCard.Overlays",
   ({ tag }) => {
-    const [updateTag] = useTagUpdate();
+    const [setTagUserData] = useTagUserDataUpdate();
 
     function renderFavoriteIcon() {
       return (
@@ -109,7 +110,7 @@ const TagCardOverlays: React.FC<IProps> = PatchComponent(
 
     function onToggleFavorite(v: boolean) {
       if (tag.id) {
-        updateTag({
+        setTagUserData({
           variables: {
             input: {
               id: tag.id,
@@ -120,7 +121,19 @@ const TagCardOverlays: React.FC<IProps> = PatchComponent(
       }
     }
 
-    return <>{renderFavoriteIcon()}</>;
+    function maybeRenderRatingBanner() {
+      if (tag.rating100 == null) {
+        return;
+      }
+      return <RatingBanner rating={tag.rating100} />;
+    }
+
+    return (
+      <>
+        {renderFavoriteIcon()}
+        {maybeRenderRatingBanner()}
+      </>
+    );
   }
 );
 
@@ -213,14 +226,12 @@ const TagCardImage: React.FC<IProps> = PatchComponent(
   "TagCard.Image",
   ({ tag }) => {
     return (
-      <>
-        <img
-          loading="lazy"
-          className="tag-card-image"
-          alt={tag.name}
-          src={tag.image_path ?? ""}
-        />
-      </>
+      <img
+        loading="lazy"
+        className="tag-card-image"
+        alt={tag.name}
+        src={tag.image_path ?? ""}
+      />
     );
   }
 );

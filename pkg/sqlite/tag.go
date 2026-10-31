@@ -14,6 +14,7 @@ import (
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
 
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 )
 
@@ -28,15 +29,23 @@ const (
 	tagRelationsTable = "tags_relations"
 	tagParentIDColumn = "parent_id"
 	tagChildIDColumn  = "child_id"
+
+	tagsUserDataTable = "tags_user_data"
 )
+
+var tagUserData = userDataTable{
+	table:       tagsUserDataTable,
+	idColumn:    tagIDColumn,
+	objectTable: tagTable,
+}
 
 type tagRow struct {
 	ID            int         `db:"id" goqu:"skipinsert"`
 	Name          null.String `db:"name"` // TODO: make schema non-nullable
 	SortName      zero.String `db:"sort_name"`
-	Favorite      bool        `db:"favorite"`
 	Description   zero.String `db:"description"`
 	IgnoreAutoTag bool        `db:"ignore_auto_tag"`
+	Rating        null.Int    `db:"rating"`
 	CreatedAt     Timestamp   `db:"created_at"`
 	UpdatedAt     Timestamp   `db:"updated_at"`
 
@@ -48,9 +57,9 @@ func (r *tagRow) fromTag(o models.Tag) {
 	r.ID = o.ID
 	r.Name = null.StringFrom(o.Name)
 	r.SortName = zero.StringFrom((o.SortName))
-	r.Favorite = o.Favorite
 	r.Description = zero.StringFrom(o.Description)
 	r.IgnoreAutoTag = o.IgnoreAutoTag
+	r.Rating = intFromPtr(o.Rating)
 	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
 }
@@ -60,9 +69,9 @@ func (r *tagRow) resolve() *models.Tag {
 		ID:            r.ID,
 		Name:          r.Name.String,
 		SortName:      r.SortName.String,
-		Favorite:      r.Favorite,
 		Description:   r.Description.String,
 		IgnoreAutoTag: r.IgnoreAutoTag,
+		Rating:        nullIntPtr(r.Rating),
 		CreatedAt:     r.CreatedAt.Timestamp,
 		UpdatedAt:     r.UpdatedAt.Timestamp,
 	}
@@ -84,6 +93,31 @@ func (r *tagPathRow) resolve() *models.TagPath {
 	return ret
 }
 
+// tagUserDataRow is a row of a user's data for a tag.
+type tagUserDataRow struct {
+	TagID    int  `db:"tag_id"`
+	UserID   int  `db:"user_id"`
+	Favorite bool `db:"favorite"`
+}
+
+func (r tagUserDataRow) apply(t *models.Tag) {
+	t.Favorite = r.Favorite
+}
+
+func tagUserDataRecord(o models.Tag) goqu.Record {
+	return goqu.Record{
+		"favorite": o.Favorite,
+	}
+}
+
+func tagUserDataPartialRecord(o models.TagPartial) goqu.Record {
+	r := updateRecord{
+		Record: make(exp.Record),
+	}
+	r.setBool("favorite", o.Favorite)
+	return goqu.Record(r.Record)
+}
+
 type tagRowRecord struct {
 	updateRecord
 }
@@ -92,8 +126,8 @@ func (r *tagRowRecord) fromPartial(o models.TagPartial) {
 	r.setString("name", o.Name)
 	r.setNullString("sort_name", o.SortName)
 	r.setNullString("description", o.Description)
-	r.setBool("favorite", o.Favorite)
 	r.setBool("ignore_auto_tag", o.IgnoreAutoTag)
+	r.setNullInt("rating", o.Rating)
 	r.setTimestamp("created_at", o.CreatedAt)
 	r.setTimestamp("updated_at", o.UpdatedAt)
 }
@@ -105,6 +139,7 @@ type tagRepositoryType struct {
 	stashIDs stashIDRepository
 
 	scenes     joinRepository
+	audios     joinRepository
 	images     joinRepository
 	galleries  joinRepository
 	groups     joinRepository
@@ -138,6 +173,14 @@ var (
 			},
 			fkColumn:     sceneIDColumn,
 			foreignTable: sceneTable,
+		},
+		audios: joinRepository{
+			repository: repository{
+				tableName: audiosTagsTable,
+				idColumn:  tagIDColumn,
+			},
+			fkColumn:     audioIDColumn,
+			foreignTable: audioTable,
 		},
 		images: joinRepository{
 			repository: repository{
@@ -220,6 +263,10 @@ func (qb *TagStore) Create(ctx context.Context, newObject *models.CreateTagInput
 		return err
 	}
 
+	if err := tagUserData.upsert(ctx, id, tagUserDataRecord(*newObject.Tag)); err != nil {
+		return err
+	}
+
 	if newObject.Aliases.Loaded() {
 		if err := tagsAliasesTableMgr.insertJoins(ctx, id, newObject.Aliases.List()); err != nil {
 			return err
@@ -274,6 +321,10 @@ func (qb *TagStore) UpdatePartial(ctx context.Context, id int, partial models.Ta
 		}
 	}
 
+	if err := tagUserData.upsert(ctx, id, tagUserDataPartialRecord(partial)); err != nil {
+		return nil, err
+	}
+
 	if partial.Aliases != nil {
 		if err := tagsAliasesTableMgr.modifyJoins(ctx, id, partial.Aliases.Values, partial.Aliases.Mode); err != nil {
 			return nil, err
@@ -310,6 +361,10 @@ func (qb *TagStore) Update(ctx context.Context, updatedObject *models.UpdateTagI
 	r.fromTag(*updatedObject.Tag)
 
 	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
+		return err
+	}
+
+	if err := tagUserData.upsert(ctx, updatedObject.ID, tagUserDataRecord(*updatedObject.Tag)); err != nil {
 		return err
 	}
 
@@ -375,6 +430,11 @@ func (qb *TagStore) Find(ctx context.Context, id int) (*models.Tag, error) {
 }
 
 func (qb *TagStore) FindMany(ctx context.Context, ids []int) ([]*models.Tag, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Tags, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	ret := make([]*models.Tag, len(ids))
 
 	table := qb.table()
@@ -416,6 +476,18 @@ func (qb *TagStore) find(ctx context.Context, id int) (*models.Tag, error) {
 	return ret, nil
 }
 
+func (qb *TagStore) findBySubquery(ctx context.Context, sq *goqu.SelectDataset) ([]*models.Tag, error) {
+	table := qb.table()
+
+	q := qb.selectDataset().Prepared(true).Where(
+		table.Col(idColumn).Eq(
+			sq,
+		),
+	)
+
+	return qb.getMany(ctx, q)
+}
+
 // returns nil, sql.ErrNoRows if not found
 func (qb *TagStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.Tag, error) {
 	ret, err := qb.getMany(ctx, q)
@@ -431,6 +503,8 @@ func (qb *TagStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.Tag
 }
 
 func (qb *TagStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Tag, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Tags)
+
 	const single = false
 	var ret []*models.Tag
 	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
@@ -447,6 +521,10 @@ func (qb *TagStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*mode
 		return nil, err
 	}
 
+	if err := qb.loadUserData(ctx, ret); err != nil {
+		return nil, err
+	}
+
 	return ret, nil
 }
 
@@ -459,6 +537,18 @@ func (qb *TagStore) FindBySceneID(ctx context.Context, sceneID int) ([]*models.T
 	`
 	query += qb.getDefaultTagSort()
 	args := []interface{}{sceneID}
+	return qb.queryTags(ctx, query, args)
+}
+
+func (qb *TagStore) FindByAudioID(ctx context.Context, audioID int) ([]*models.Tag, error) {
+	query := `
+		SELECT tags.* FROM tags
+		LEFT JOIN audios_tags as audios_join on audios_join.tag_id = tags.id
+		WHERE audios_join.audio_id = ?
+		GROUP BY tags.id
+	`
+	query += qb.getDefaultTagSort()
+	args := []interface{}{audioID}
 	return qb.queryTags(ctx, query, args)
 }
 
@@ -577,6 +667,27 @@ func (qb *TagStore) FindByNames(ctx context.Context, names []string, nocase bool
 	}
 
 	return ret, nil
+}
+
+func (qb *TagStore) FindByAlias(ctx context.Context, alias string, nocase bool) (*models.Tag, error) {
+	where := fmt.Sprintf("%s = ?", tagAliasColumn)
+	if nocase {
+		where += " COLLATE NOCASE"
+	}
+	sq := dialect.From(tagsAliasesJoinTable).Select(
+		tagsAliasesJoinTable.Col(tagIDColumn),
+	).Prepared(true).Where(goqu.L(where, alias)).Limit(1)
+	ret, err := qb.findBySubquery(ctx, sq)
+
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	if len(ret) == 0 {
+		return nil, nil
+	}
+
+	return ret[0], nil
 }
 
 func (qb *TagStore) FindByStashID(ctx context.Context, stashID models.StashID) ([]*models.Tag, error) {
@@ -721,6 +832,9 @@ func (qb *TagStore) Query(ctx context.Context, tagFilter *models.TagFilterType, 
 	}
 
 	query := tagRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Tags); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, tagTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
@@ -738,7 +852,7 @@ func (qb *TagStore) Query(ctx context.Context, tagFilter *models.TagFilterType, 
 	}
 
 	var err error
-	query.sortAndPagination, err = qb.getTagSort(&query, findFilter)
+	query.sortAndPagination, err = qb.getTagSort(ctx, &query, findFilter)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -758,11 +872,13 @@ func (qb *TagStore) Query(ctx context.Context, tagFilter *models.TagFilterType, 
 
 var tagSortOptions = sortOptions{
 	"created_at",
+	"favorite",
 	"galleries_count",
 	"groups_count",
 	"id",
 	"images_count",
 	"movies_count",
+	"rating",
 	"studios_count",
 	"name",
 	"performers_count",
@@ -771,6 +887,9 @@ var tagSortOptions = sortOptions{
 	"scenes_count",
 	"scenes_duration",
 	"scenes_size",
+	"audios_count",
+	"audios_duration",
+	"audios_size",
 	"updated_at",
 }
 
@@ -796,11 +915,33 @@ func (qb *TagStore) sortByScenesSize(direction string) string {
 	) %s`, fileTable, scenesTagsTable, sceneTable, sceneTable, scenesTagsTable, sceneIDColumn, scenesFilesTable, scenesFilesTable, sceneIDColumn, sceneTable, fileTable, fileTable, scenesFilesTable, scenesTagsTable, tagIDColumn, tagTable, getSortDirection(direction))
 }
 
+func (qb *TagStore) sortByAudiosDuration(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		SELECT COALESCE(SUM(audio_files.duration), 0)
+		FROM %s
+		LEFT JOIN %s ON %s.id = %s.%s
+		LEFT JOIN %s ON %s.%s = %s.id
+		LEFT JOIN audio_files ON audio_files.file_id = %s.file_id
+		WHERE %s.%s = %s.id
+	) %s`, audiosTagsTable, audioTable, audioTable, audiosTagsTable, audioIDColumn, audiosFilesTable, audiosFilesTable, audioIDColumn, audioTable, audiosFilesTable, audiosTagsTable, tagIDColumn, tagTable, getSortDirection(direction))
+}
+
+func (qb *TagStore) sortByAudiosSize(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		SELECT COALESCE(SUM(%s.size), 0)
+		FROM %s
+		LEFT JOIN %s ON %s.id = %s.%s
+		LEFT JOIN %s ON %s.%s = %s.id
+		LEFT JOIN %s ON %s.id = %s.file_id
+		WHERE %s.%s = %s.id
+	) %s`, fileTable, audiosTagsTable, audioTable, audioTable, audiosTagsTable, audioIDColumn, audiosFilesTable, audiosFilesTable, audioIDColumn, audioTable, fileTable, fileTable, audiosFilesTable, audiosTagsTable, tagIDColumn, tagTable, getSortDirection(direction))
+}
+
 func (qb *TagStore) getDefaultTagSort() string {
 	return getSort("name", "ASC", "tags")
 }
 
-func (qb *TagStore) getTagSort(query *queryBuilder, findFilter *models.FindFilterType) (string, error) {
+func (qb *TagStore) getTagSort(ctx context.Context, query *queryBuilder, findFilter *models.FindFilterType) (string, error) {
 	var sort string
 	var direction string
 	if findFilter == nil {
@@ -830,6 +971,12 @@ func (qb *TagStore) getTagSort(query *queryBuilder, findFilter *models.FindFilte
 		sortQuery += fmt.Sprintf(" ORDER BY (SELECT COUNT(*) FROM scene_markers_tags WHERE tags.id = scene_markers_tags.tag_id)+(SELECT COUNT(*) FROM scene_markers WHERE tags.id = scene_markers.primary_tag_id) %s", getSortDirection(direction))
 	case "images_count":
 		sortQuery += getCountSort(tagTable, imagesTagsTable, tagIDColumn, direction)
+	case "audios_count":
+		sortQuery += getCountSort(tagTable, audiosTagsTable, tagIDColumn, direction)
+	case "audios_duration":
+		sortQuery += qb.sortByAudiosDuration(direction)
+	case "audios_size":
+		sortQuery += qb.sortByAudiosSize(direction)
 	case "galleries_count":
 		sortQuery += getCountSort(tagTable, galleriesTagsTable, tagIDColumn, direction)
 	case "performers_count":
@@ -838,6 +985,8 @@ func (qb *TagStore) getTagSort(query *queryBuilder, findFilter *models.FindFilte
 		sortQuery += getCountSort(tagTable, studiosTagsTable, tagIDColumn, direction)
 	case "movies_count", "groups_count":
 		sortQuery += getCountSort(tagTable, groupsTagsTable, tagIDColumn, direction)
+	case "favorite":
+		sortQuery += tagUserData.orderBy(ctx, sort, direction)
 	default:
 		sortQuery += getSort(sort, direction, "tags")
 	}
@@ -848,6 +997,8 @@ func (qb *TagStore) getTagSort(query *queryBuilder, findFilter *models.FindFilte
 }
 
 func (qb *TagStore) queryTags(ctx context.Context, query string, args []interface{}) ([]*models.Tag, error) {
+	query = librarylimit.WrapQuery(ctx, query, librarylimit.Tags)
+
 	const single = false
 	var ret []*models.Tag
 	if err := tagRepository.queryFunc(ctx, query, args, single, func(r *sqlx.Rows) error {
@@ -861,6 +1012,10 @@ func (qb *TagStore) queryTags(ctx context.Context, query string, args []interfac
 		ret = append(ret, s)
 		return nil
 	}); err != nil {
+		return nil, err
+	}
+
+	if err := qb.loadUserData(ctx, ret); err != nil {
 		return nil, err
 	}
 
@@ -884,7 +1039,48 @@ func (qb *TagStore) queryTagPaths(ctx context.Context, query string, args []inte
 		return nil, err
 	}
 
+	tags := make([]*models.Tag, len(ret))
+	for i, t := range ret {
+		tags[i] = &t.Tag
+	}
+	if err := qb.loadUserData(ctx, tags); err != nil {
+		return nil, err
+	}
+
 	return ret, nil
+}
+
+// loadUserData sets the current user's data on the provided tags.
+func (qb *TagStore) loadUserData(ctx context.Context, tags []*models.Tag) error {
+	if _, ok := models.UserIDFromContext(ctx); !ok || len(tags) == 0 {
+		return nil
+	}
+
+	// the same tag may be present more than once, such as in tag paths
+	byID := make(map[int][]*models.Tag, len(tags))
+	var ids []int
+	for _, t := range tags {
+		if _, found := byID[t.ID]; !found {
+			ids = append(ids, t.ID)
+		}
+		byID[t.ID] = append(byID[t.ID], t)
+	}
+
+	return batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := tagUserData.selectForUser(ctx, batch)
+		const single = false
+		return queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+			var r tagUserDataRow
+			if err := rows.StructScan(&r); err != nil {
+				return err
+			}
+
+			for _, t := range byID[r.TagID] {
+				r.apply(t)
+			}
+			return nil
+		})
+	})
 }
 
 func (qb *TagStore) GetImage(ctx context.Context, tagID int) ([]byte, error) {
@@ -905,6 +1101,12 @@ func (qb *TagStore) destroyImage(ctx context.Context, tagID int) error {
 
 func (qb *TagStore) GetAliases(ctx context.Context, tagID int) ([]string, error) {
 	return tagRepository.aliases.get(ctx, tagID)
+}
+
+// GetAllAliases returns a map of tag id to its aliases. Lets callers that
+// need aliases for many tags avoid N+1 per-id lookups.
+func (qb *TagStore) GetAllAliases(ctx context.Context) (map[int][]string, error) {
+	return tagRepository.aliases.getAll(ctx)
 }
 
 func (qb *TagStore) UpdateAliases(ctx context.Context, tagID int, aliases []string) error {
@@ -941,6 +1143,7 @@ func (qb *TagStore) Merge(ctx context.Context, source []int, destination int) er
 		scenesTagsTable:      sceneIDColumn,
 		"scene_markers_tags": "scene_marker_id",
 		galleriesTagsTable:   galleryIDColumn,
+		audiosTagsTable:      audioIDColumn,
 		imagesTagsTable:      imageIDColumn,
 		"performers_tags":    "performer_id",
 		"studios_tags":       "studio_id",

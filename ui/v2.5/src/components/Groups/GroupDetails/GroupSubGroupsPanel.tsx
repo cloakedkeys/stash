@@ -54,9 +54,6 @@ const useContainingGroupFilterHook = (
       filter.criteria.push(groupCriterion);
     }
 
-    filter.sortBy = "sub_group_order";
-    filter.sortDirection = GQL.SortDirectionEnum.Asc;
-
     return filter;
   };
 };
@@ -66,18 +63,6 @@ interface IGroupSubGroupsPanel {
   group: GQL.GroupDataFragment;
   extraOperations?: IItemListOperation<GQL.FindGroupsQueryResult>[];
 }
-
-const defaultFilter = (() => {
-  const sortBy = "sub_group_order";
-  const ret = new ListFilterModel(GQL.FilterMode.Groups, undefined, {
-    defaultSortBy: sortBy,
-  });
-
-  // unset the sort by so that its not included in the URL
-  ret.sortBy = undefined;
-
-  return ret;
-})();
 
 export const GroupSubGroupsPanel: React.FC<IGroupSubGroupsPanel> =
   PatchComponent(
@@ -93,8 +78,8 @@ export const GroupSubGroupsPanel: React.FC<IGroupSubGroupsPanel> =
       const filterHook = useContainingGroupFilterHook(group);
 
       async function removeSubGroups(
-        result: GQL.FindGroupsQueryResult,
-        filter: ListFilterModel,
+        _result: GQL.FindGroupsQueryResult,
+        _filter: ListFilterModel,
         selectedIds: Set<string>
       ) {
         try {
@@ -127,6 +112,7 @@ export const GroupSubGroupsPanel: React.FC<IGroupSubGroupsPanel> =
       const otherOperations = [
         ...extraOperations,
         {
+          requiredRole: GQL.RoleEnum.Modify,
           text: intl.formatMessage({ id: "actions.add_sub_groups" }),
           onClick: onAddSubGroups,
           isDisplayed: showWhenNoneSelected,
@@ -135,6 +121,7 @@ export const GroupSubGroupsPanel: React.FC<IGroupSubGroupsPanel> =
           buttonVariant: "secondary",
         },
         {
+          requiredRole: GQL.RoleEnum.Modify,
           text: intl.formatMessage({
             id: "actions.remove_from_containing_group",
           }),
@@ -163,7 +150,8 @@ export const GroupSubGroupsPanel: React.FC<IGroupSubGroupsPanel> =
         <>
           {modal}
           <FilteredGroupList
-            defaultFilter={defaultFilter}
+            defaultSort="sub_group_order"
+            manualSortBy="sub_group_order"
             filterHook={filterHook}
             alterQuery={active}
             fromGroupId={group.id}

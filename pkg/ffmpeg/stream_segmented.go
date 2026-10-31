@@ -20,6 +20,7 @@ import (
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/signedurl"
 	"github.com/stashapp/stash/pkg/utils"
 
 	"github.com/zencoder/go-dash/v3/mpd"
@@ -65,7 +66,8 @@ var (
 		SegmentType:   SegmentTypeTS,
 		ServeManifest: serveHLSManifest,
 		Args: func(codec VideoCodec, segment int, videoFilter VideoFilter, videoOnly bool, outputDir string) (args Args) {
-			args = CodecInit(codec)
+			args = args.VideoCodec(codec)
+			args = append(args, codec.ExtraArgs()...)
 			args = append(args,
 				"-flags", "+cgop",
 				"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", segmentLength),
@@ -100,7 +102,8 @@ var (
 		SegmentType:   SegmentTypeTS,
 		ServeManifest: serveHLSManifest,
 		Args: func(codec VideoCodec, segment int, videoFilter VideoFilter, videoOnly bool, outputDir string) (args Args) {
-			args = CodecInit(codec)
+			args = args.VideoCodec(codec)
+			args = append(args, codec.ExtraArgs()...)
 			if videoOnly {
 				args = append(args, "-an")
 			} else {
@@ -137,7 +140,8 @@ var (
 				init = "init"
 			}
 
-			args = CodecInit(codec)
+			args = args.VideoCodec(codec)
+			args = append(args, codec.ExtraArgs()...)
 			args = append(args,
 				"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", segmentLength),
 			)
@@ -311,13 +315,13 @@ func HLSGetCodec(sm *StreamManager, name string) (codec VideoCodec) {
 	switch name {
 	case "hls":
 		codec = VideoCodecLibX264
-		if hwcodec := sm.encoder.hwCodecHLSCompatible(); hwcodec != nil && sm.config.GetTranscodeHardwareAcceleration() {
-			codec = *hwcodec
+		if sm.config.GetTranscodeHardwareAcceleration() {
+			codec = sm.encoder.HWCodecHLSCompatible(VideoCodecLibX264)
 		}
 	case "dash-v":
 		codec = VideoCodecVP9
-		if hwcodec := sm.encoder.hwCodecWEBMCompatible(); hwcodec != nil && sm.config.GetTranscodeHardwareAcceleration() {
-			codec = *hwcodec
+		if sm.config.GetTranscodeHardwareAcceleration() {
+			codec = sm.encoder.HWCodecWEBMCompatible(VideoCodecVP9)
 		}
 	case "hls-copy":
 		codec = VideoCodecCopy
@@ -335,8 +339,8 @@ func (s *runningStream) makeStreamArgs(sm *StreamManager, segment int) Args {
 
 	codec := HLSGetCodec(sm, s.streamType.Name)
 
-	fullhw := sm.config.GetTranscodeHardwareAcceleration() && sm.encoder.hwCanFullHWTranscode(sm.context, codec, s.vf, s.maxTranscodeSize)
-	args = sm.encoder.hwDeviceInit(args, codec, fullhw)
+	fullhw := sm.config.GetTranscodeHardwareAcceleration() && sm.encoder.HWCanFullHWTranscode(sm.context, codec, s.vf.Path, s.vf.Width, s.vf.Height, s.maxTranscodeSize)
+	args = sm.encoder.HWDeviceInit(args, codec, fullhw)
 	args = append(args, extraInputArgs...)
 
 	if segment > 0 {
@@ -347,7 +351,7 @@ func (s *runningStream) makeStreamArgs(sm *StreamManager, segment int) Args {
 
 	videoOnly := ProbeAudioCodec(s.vf.AudioCodec) == MissingUnsupported
 
-	videoFilter := sm.encoder.hwMaxResFilter(codec, s.vf, s.maxTranscodeSize, fullhw)
+	videoFilter := sm.encoder.HWMaxResFilter(codec, s.vf.Width, s.vf.Height, s.maxTranscodeSize, fullhw)
 
 	args = append(args, s.streamType.Args(codec, segment, videoFilter, videoOnly, s.outputDir)...)
 
@@ -433,26 +437,21 @@ func serveHLSManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request,
 	baseURL := prefix + baseUrl.String()
 
 	urlQuery := url.Values{}
-	apikey := r.URL.Query().Get(apiKeyParamKey)
+
+	copyAuthParams(urlQuery, r.URL.Query())
 
 	if resolution != "" {
 		urlQuery.Set(resolutionParamKey, resolution)
 	}
 
-	// TODO - this needs to be handled outside of this package
-	if apikey != "" {
-		urlQuery.Set(apiKeyParamKey, apikey)
-	}
-
-	urlQueryString := ""
+	segQuery := ""
 	if len(urlQuery) > 0 {
-		urlQueryString = "?" + urlQuery.Encode()
+		segQuery = "?" + urlQuery.Encode()
 	}
 
 	var buf bytes.Buffer
 
 	fmt.Fprint(&buf, "#EXTM3U\n")
-
 	fmt.Fprint(&buf, "#EXT-X-VERSION:3\n")
 	fmt.Fprint(&buf, "#EXT-X-MEDIA-SEQUENCE:0\n")
 	fmt.Fprintf(&buf, "#EXT-X-TARGETDURATION:%d\n", segmentLength)
@@ -468,7 +467,7 @@ func serveHLSManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request,
 		}
 
 		fmt.Fprintf(&buf, "#EXTINF:%f,\n", thisLength)
-		fmt.Fprintf(&buf, "%s/%d.ts%s\n", baseURL, segment, urlQueryString)
+		fmt.Fprintf(&buf, "%s/%d.ts%s\n", baseURL, segment, segQuery)
 
 		leftover -= thisLength
 		segment++
@@ -478,6 +477,25 @@ func serveHLSManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request,
 
 	w.Header().Set("Content-Type", MimeHLS)
 	utils.ServeStaticContent(w, r, buf.Bytes())
+}
+
+// Forward auth params to segment URLs. API key takes precedence
+// over signed params since it is explicitly configured by the user.
+// TODO - this needs to be handled outside of this package
+func copyAuthParams(dest url.Values, src url.Values) {
+	apikey := src.Get(apiKeyParamKey)
+	if apikey != "" {
+		dest.Set(apiKeyParamKey, apikey)
+	} else {
+		cid := src.Get(signedurl.CIDParam)
+		expires := src.Get(signedurl.ExpiresParam)
+		sig := src.Get(signedurl.SigParam)
+		if cid != "" && expires != "" && sig != "" {
+			dest.Set(signedurl.CIDParam, cid)
+			dest.Set(signedurl.ExpiresParam, expires)
+			dest.Set(signedurl.SigParam, sig)
+		}
+	}
 }
 
 // serveDASHManifest serves a generated DASH manifest.
@@ -529,11 +547,10 @@ func serveDASHManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request
 
 	urlQuery := url.Values{}
 
+	// Forward auth params to segment URLs. API key takes precedence
+	// over signed params since it is explicitly configured by the user.
 	// TODO - this needs to be handled outside of this package
-	apikey := r.URL.Query().Get(apiKeyParamKey)
-	if apikey != "" {
-		urlQuery.Set(apiKeyParamKey, apikey)
-	}
+	copyAuthParams(urlQuery, r.URL.Query())
 
 	maxTranscodeSize := sm.config.GetMaxStreamingTranscodeSize().GetMaxResolution()
 	if resolution != "" {
@@ -748,7 +765,7 @@ func (sm *StreamManager) startTranscode(stream *runningStream, segment int, done
 				err = fmt.Errorf("ffmpeg error when running command <%s>: %w", strings.Join(cmd.Args, " "), err)
 
 				var exitError *exec.ExitError
-				if !errors.As(err, &exitError) {
+				if !errors.As(err, &exitError) && !isAlreadyExitedKillError(err) {
 					logger.Errorf("[transcode] %v", err)
 				}
 			}

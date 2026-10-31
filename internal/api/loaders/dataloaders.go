@@ -3,6 +3,7 @@
 // The dataloaders are used to batch requests to the database.
 
 //go:generate go run github.com/vektah/dataloaden SceneLoader int *github.com/stashapp/stash/pkg/models.Scene
+//go:generate go run github.com/vektah/dataloaden AudioLoader int *github.com/stashapp/stash/pkg/models.Audio
 //go:generate go run github.com/vektah/dataloaden GalleryLoader int *github.com/stashapp/stash/pkg/models.Gallery
 //go:generate go run github.com/vektah/dataloaden ImageLoader int *github.com/stashapp/stash/pkg/models.Image
 //go:generate go run github.com/vektah/dataloaden PerformerLoader int *github.com/stashapp/stash/pkg/models.Performer
@@ -12,15 +13,12 @@
 //go:generate go run github.com/vektah/dataloaden FileLoader github.com/stashapp/stash/pkg/models.FileID github.com/stashapp/stash/pkg/models.File
 //go:generate go run github.com/vektah/dataloaden FolderLoader github.com/stashapp/stash/pkg/models.FolderID *github.com/stashapp/stash/pkg/models.Folder
 //go:generate go run github.com/vektah/dataloaden FolderRelatedFolderIDsLoader github.com/stashapp/stash/pkg/models.FolderID []github.com/stashapp/stash/pkg/models.FolderID
-//go:generate go run github.com/vektah/dataloaden SceneFileIDsLoader int []github.com/stashapp/stash/pkg/models.FileID
-//go:generate go run github.com/vektah/dataloaden ImageFileIDsLoader int []github.com/stashapp/stash/pkg/models.FileID
-//go:generate go run github.com/vektah/dataloaden GalleryFileIDsLoader int []github.com/stashapp/stash/pkg/models.FileID
+//go:generate go run github.com/vektah/dataloaden RelatedFileIDsLoader int []github.com/stashapp/stash/pkg/models.FileID
+//go:generate go run github.com/vektah/dataloaden FileIDsRelatedIDsLoader github.com/stashapp/stash/pkg/models.FileID []int
 //go:generate go run github.com/vektah/dataloaden CustomFieldsLoader int github.com/stashapp/stash/pkg/models.CustomFieldMap
-//go:generate go run github.com/vektah/dataloaden SceneOCountLoader int int
-//go:generate go run github.com/vektah/dataloaden ScenePlayCountLoader int int
-//go:generate go run github.com/vektah/dataloaden SceneOHistoryLoader int []time.Time
-//go:generate go run github.com/vektah/dataloaden ScenePlayHistoryLoader int []time.Time
-//go:generate go run github.com/vektah/dataloaden SceneLastPlayedLoader int *time.Time
+//go:generate go run github.com/vektah/dataloaden RelatedCountLoader int int
+//go:generate go run github.com/vektah/dataloaden RelatedTimeSliceLoader int []time.Time
+//go:generate go run github.com/vektah/dataloaden RelatedTimeLoader int *time.Time
 package loaders
 
 import (
@@ -44,20 +42,33 @@ const (
 
 type Loaders struct {
 	SceneByID         *SceneLoader
-	SceneFiles        *SceneFileIDsLoader
-	ScenePlayCount    *ScenePlayCountLoader
-	SceneOCount       *SceneOCountLoader
-	ScenePlayHistory  *ScenePlayHistoryLoader
-	SceneOHistory     *SceneOHistoryLoader
-	SceneLastPlayed   *SceneLastPlayedLoader
+	SceneIDsByFileID  *FileIDsRelatedIDsLoader
+	SceneFiles        *RelatedFileIDsLoader
+	ScenePlayCount    *RelatedCountLoader
+	SceneOCount       *RelatedCountLoader
+	ScenePlayHistory  *RelatedTimeSliceLoader
+	SceneOHistory     *RelatedTimeSliceLoader
+	SceneLastPlayed   *RelatedTimeLoader
 	SceneCustomFields *CustomFieldsLoader
 
-	ImageFiles   *ImageFileIDsLoader
-	GalleryFiles *GalleryFileIDsLoader
+	AudioByID         *AudioLoader
+	AudioIDsByFileID  *FileIDsRelatedIDsLoader
+	AudioFiles        *RelatedFileIDsLoader
+	AudioPlayCount    *RelatedCountLoader
+	AudioOCount       *RelatedCountLoader
+	AudioPlayHistory  *RelatedTimeSliceLoader
+	AudioOHistory     *RelatedTimeSliceLoader
+	AudioLastPlayed   *RelatedTimeLoader
+	AudioCustomFields *CustomFieldsLoader
+
+	ImageFiles   *RelatedFileIDsLoader
+	GalleryFiles *RelatedFileIDsLoader
 
 	GalleryByID         *GalleryLoader
+	GalleryIDsByFileID  *FileIDsRelatedIDsLoader
 	GalleryCustomFields *CustomFieldsLoader
 	ImageByID           *ImageLoader
+	ImageIDsByFileID    *FileIDsRelatedIDsLoader
 	ImageCustomFields   *CustomFieldsLoader
 
 	PerformerByID         *PerformerLoader
@@ -92,10 +103,30 @@ func (m Middleware) Middleware(next http.Handler) http.Handler {
 				maxBatch: maxBatch,
 				fetch:    m.fetchScenes(ctx),
 			},
+			SceneIDsByFileID: &FileIDsRelatedIDsLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchSceneIDsByFileID(ctx),
+			},
+			AudioByID: &AudioLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchAudios(ctx),
+			},
+			AudioIDsByFileID: &FileIDsRelatedIDsLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchAudioIDsByFileID(ctx),
+			},
 			GalleryByID: &GalleryLoader{
 				wait:     wait,
 				maxBatch: maxBatch,
 				fetch:    m.fetchGalleries(ctx),
+			},
+			GalleryIDsByFileID: &FileIDsRelatedIDsLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchGalleryIDsByFileID(ctx),
 			},
 			GalleryCustomFields: &CustomFieldsLoader{
 				wait:     wait,
@@ -106,6 +137,11 @@ func (m Middleware) Middleware(next http.Handler) http.Handler {
 				wait:     wait,
 				maxBatch: maxBatch,
 				fetch:    m.fetchImages(ctx),
+			},
+			ImageIDsByFileID: &FileIDsRelatedIDsLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchImageIDsByFileID(ctx),
 			},
 			ImageCustomFields: &CustomFieldsLoader{
 				wait:     wait,
@@ -131,6 +167,11 @@ func (m Middleware) Middleware(next http.Handler) http.Handler {
 				wait:     wait,
 				maxBatch: maxBatch,
 				fetch:    m.fetchSceneCustomFields(ctx),
+			},
+			AudioCustomFields: &CustomFieldsLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchAudioCustomFields(ctx),
 			},
 			StudioByID: &StudioLoader{
 				wait:     wait,
@@ -177,51 +218,102 @@ func (m Middleware) Middleware(next http.Handler) http.Handler {
 				maxBatch: maxBatch,
 				fetch:    m.fetchFoldersSubFolderIDs(ctx),
 			},
-			SceneFiles: &SceneFileIDsLoader{
+			SceneFiles: &RelatedFileIDsLoader{
 				wait:     wait,
 				maxBatch: maxBatch,
 				fetch:    m.fetchScenesFileIDs(ctx),
 			},
-			ImageFiles: &ImageFileIDsLoader{
+			AudioFiles: &RelatedFileIDsLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchAudiosFileIDs(ctx),
+			},
+			ImageFiles: &RelatedFileIDsLoader{
 				wait:     wait,
 				maxBatch: maxBatch,
 				fetch:    m.fetchImagesFileIDs(ctx),
 			},
-			GalleryFiles: &GalleryFileIDsLoader{
+			GalleryFiles: &RelatedFileIDsLoader{
 				wait:     wait,
 				maxBatch: maxBatch,
 				fetch:    m.fetchGalleriesFileIDs(ctx),
 			},
-			ScenePlayCount: &ScenePlayCountLoader{
+			ScenePlayCount: &RelatedCountLoader{
 				wait:     wait,
 				maxBatch: maxBatch,
 				fetch:    m.fetchScenesPlayCount(ctx),
 			},
-			SceneOCount: &SceneOCountLoader{
+			SceneOCount: &RelatedCountLoader{
 				wait:     wait,
 				maxBatch: maxBatch,
 				fetch:    m.fetchScenesOCount(ctx),
 			},
-			ScenePlayHistory: &ScenePlayHistoryLoader{
+			ScenePlayHistory: &RelatedTimeSliceLoader{
 				wait:     wait,
 				maxBatch: maxBatch,
 				fetch:    m.fetchScenesPlayHistory(ctx),
 			},
-			SceneLastPlayed: &SceneLastPlayedLoader{
+			SceneLastPlayed: &RelatedTimeLoader{
 				wait:     wait,
 				maxBatch: maxBatch,
 				fetch:    m.fetchScenesLastPlayed(ctx),
 			},
-			SceneOHistory: &SceneOHistoryLoader{
+			SceneOHistory: &RelatedTimeSliceLoader{
 				wait:     wait,
 				maxBatch: maxBatch,
 				fetch:    m.fetchScenesOHistory(ctx),
+			},
+			// Audio
+			AudioPlayCount: &RelatedCountLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchAudiosPlayCount(ctx),
+			},
+			AudioOCount: &RelatedCountLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchAudiosOCount(ctx),
+			},
+			AudioPlayHistory: &RelatedTimeSliceLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchAudiosPlayHistory(ctx),
+			},
+			AudioLastPlayed: &RelatedTimeLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchAudiosLastPlayed(ctx),
+			},
+			AudioOHistory: &RelatedTimeSliceLoader{
+				wait:     wait,
+				maxBatch: maxBatch,
+				fetch:    m.fetchAudiosOHistory(ctx),
 			},
 		}
 
 		newCtx := context.WithValue(r.Context(), loadersCtxKey, ldrs)
 		next.ServeHTTP(w, r.WithContext(newCtx))
 	})
+}
+
+// alignToKeys puts results back in the positions of their keys, because a library
+// limit can leave out objects. Those positions stay nil.
+func alignToKeys[T any](ctx context.Context, keys []int, rows []*T, id func(*T) int) []*T {
+	if models.LibraryLimitFromContext(ctx) == nil || rows == nil {
+		return rows
+	}
+
+	byID := make(map[int]*T, len(rows))
+	for _, row := range rows {
+		byID[id(row)] = row
+	}
+
+	ret := make([]*T, len(keys))
+	for i, key := range keys {
+		ret[i] = byID[key]
+	}
+
+	return ret
 }
 
 func From(ctx context.Context) Loaders {
@@ -241,6 +333,18 @@ func (m Middleware) fetchScenes(ctx context.Context) func(keys []int) ([]*models
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Scene.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Scene) int { return o.ID })
+			return err
+		})
+		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchSceneIDsByFileID(ctx context.Context) func(keys []models.FileID) ([][]int, []error) {
+	return func(keys []models.FileID) (ret [][]int, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Scene.GetManyIDsByFileIDs(ctx, keys)
 			return err
 		})
 		return ret, toErrorSlice(err)
@@ -259,14 +363,61 @@ func (m Middleware) fetchSceneCustomFields(ctx context.Context) func(keys []int)
 	}
 }
 
+func (m Middleware) fetchAudios(ctx context.Context) func(keys []int) ([]*models.Audio, []error) {
+	return func(keys []int) (ret []*models.Audio, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Audio.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Audio) int { return o.ID })
+			return err
+		})
+		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchAudioIDsByFileID(ctx context.Context) func(keys []models.FileID) ([][]int, []error) {
+	return func(keys []models.FileID) (ret [][]int, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Audio.GetManyIDsByFileIDs(ctx, keys)
+			return err
+		})
+		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchAudioCustomFields(ctx context.Context) func(keys []int) ([]models.CustomFieldMap, []error) {
+	return func(keys []int) (ret []models.CustomFieldMap, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Audio.GetCustomFieldsBulk(ctx, keys)
+			return err
+		})
+
+		return ret, toErrorSlice(err)
+	}
+}
+
 func (m Middleware) fetchImages(ctx context.Context) func(keys []int) ([]*models.Image, []error) {
 	return func(keys []int) (ret []*models.Image, errs []error) {
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Image.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Image) int { return o.ID })
 			return err
 		})
 
+		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchImageIDsByFileID(ctx context.Context) func(keys []models.FileID) ([][]int, []error) {
+	return func(keys []models.FileID) (ret [][]int, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Image.GetManyIDsByFileIDs(ctx, keys)
+			return err
+		})
 		return ret, toErrorSlice(err)
 	}
 }
@@ -288,9 +439,21 @@ func (m Middleware) fetchGalleries(ctx context.Context) func(keys []int) ([]*mod
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Gallery.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Gallery) int { return o.ID })
 			return err
 		})
 
+		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchGalleryIDsByFileID(ctx context.Context) func(keys []models.FileID) ([][]int, []error) {
+	return func(keys []models.FileID) (ret [][]int, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Gallery.GetManyIDsByFileIDs(ctx, keys)
+			return err
+		})
 		return ret, toErrorSlice(err)
 	}
 }
@@ -300,6 +463,7 @@ func (m Middleware) fetchPerformers(ctx context.Context) func(keys []int) ([]*mo
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Performer.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Performer) int { return o.ID })
 			return err
 		})
 
@@ -324,6 +488,7 @@ func (m Middleware) fetchStudios(ctx context.Context) func(keys []int) ([]*model
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Studio.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Studio) int { return o.ID })
 			return err
 		})
 		return ret, toErrorSlice(err)
@@ -347,6 +512,7 @@ func (m Middleware) fetchTags(ctx context.Context) func(keys []int) ([]*models.T
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Tag.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Tag) int { return o.ID })
 			return err
 		})
 		return ret, toErrorSlice(err)
@@ -394,6 +560,7 @@ func (m Middleware) fetchGroups(ctx context.Context) func(keys []int) ([]*models
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Group.FindMany(ctx, keys)
+			ret = alignToKeys(ctx, keys, ret, func(o *models.Group) int { return o.ID })
 			return err
 		})
 		return ret, toErrorSlice(err)
@@ -449,6 +616,17 @@ func (m Middleware) fetchScenesFileIDs(ctx context.Context) func(keys []int) ([]
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Scene.GetManyFileIDs(ctx, keys)
+			return err
+		})
+		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchAudiosFileIDs(ctx context.Context) func(keys []int) ([][]models.FileID, []error) {
+	return func(keys []int) (ret [][]models.FileID, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Audio.GetManyFileIDs(ctx, keys)
 			return err
 		})
 		return ret, toErrorSlice(err)
@@ -526,6 +704,62 @@ func (m Middleware) fetchScenesLastPlayed(ctx context.Context) func(keys []int) 
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Scene.GetManyLastViewed(ctx, keys)
+			return err
+		})
+		return ret, toErrorSlice(err)
+	}
+}
+
+// Audio
+func (m Middleware) fetchAudiosOCount(ctx context.Context) func(keys []int) ([]int, []error) {
+	return func(keys []int) (ret []int, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Audio.GetManyOCount(ctx, keys)
+			return err
+		})
+		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchAudiosPlayCount(ctx context.Context) func(keys []int) ([]int, []error) {
+	return func(keys []int) (ret []int, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Audio.GetManyViewCount(ctx, keys)
+			return err
+		})
+		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchAudiosOHistory(ctx context.Context) func(keys []int) ([][]time.Time, []error) {
+	return func(keys []int) (ret [][]time.Time, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Audio.GetManyODates(ctx, keys)
+			return err
+		})
+		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchAudiosPlayHistory(ctx context.Context) func(keys []int) ([][]time.Time, []error) {
+	return func(keys []int) (ret [][]time.Time, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Audio.GetManyViewDates(ctx, keys)
+			return err
+		})
+		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchAudiosLastPlayed(ctx context.Context) func(keys []int) ([]*time.Time, []error) {
+	return func(keys []int) (ret []*time.Time, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Audio.GetManyLastViewed(ctx, keys)
 			return err
 		})
 		return ret, toErrorSlice(err)

@@ -7,7 +7,8 @@ type GroupDescription {
 type Group {
   id: ID!
   name: String!
-  aliases: String
+  aliases: String @deprecated(reason: "Use alias_list")
+  alias_list: [String!]!
   "Duration in seconds"
   duration: Int
   date: String
@@ -27,9 +28,11 @@ type Group {
   front_image_path: String # Resolver
   back_image_path: String # Resolver
   scene_count(depth: Int): Int! # Resolver
+  audio_count(depth: Int): Int! # Resolver
   performer_count(depth: Int): Int! # Resolver
   sub_group_count(depth: Int): Int! # Resolver
   scenes: [Scene!]!
+  audios: [Audio!]!
   o_counter: Int # Resolver
   custom_fields: Map!
 }
@@ -41,7 +44,9 @@ input GroupDescriptionInput {
 
 input GroupCreateInput {
   name: String!
-  aliases: String
+  aliases: String @deprecated(reason: "Use alias_list")
+  "Duplicate aliases and those equal to name will be ignored (case-insensitive)"
+  alias_list: [String!]
   "Duration in seconds"
   duration: Int
   date: String
@@ -67,7 +72,9 @@ input GroupCreateInput {
 input GroupUpdateInput {
   id: ID!
   name: String
-  aliases: String
+  aliases: String @deprecated(reason: "Use alias_list")
+  "Duplicate aliases and those equal to name will be ignored (case-insensitive)"
+  alias_list: [String!]
   duration: Int
   date: String
   # rating expressed as 1-100

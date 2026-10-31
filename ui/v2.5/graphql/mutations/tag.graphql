@@ -35,3 +35,9 @@ mutation TagsMerge(
     ...TagData
   }
 }
+
+mutation TagUserDataUpdate($input: UserRatingFavoriteInput!) {
+  tagUserDataUpdate(input: $input) {
+    ...TagData
+  }
+}

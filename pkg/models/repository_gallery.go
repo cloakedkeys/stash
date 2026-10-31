@@ -12,6 +12,7 @@ type GalleryGetter interface {
 // GalleryFinder provides methods to find galleries.
 type GalleryFinder interface {
 	GalleryGetter
+	IDsFromFileIDsLoader
 	FindByFingerprints(ctx context.Context, fp []Fingerprint) ([]*Gallery, error)
 	FindByChecksum(ctx context.Context, checksum string) ([]*Gallery, error)
 	FindByChecksums(ctx context.Context, checksums []string) ([]*Gallery, error)
@@ -19,6 +20,7 @@ type GalleryFinder interface {
 	FindByFileID(ctx context.Context, fileID FileID) ([]*Gallery, error)
 	FindByFolderID(ctx context.Context, folderID FolderID) ([]*Gallery, error)
 	FindBySceneID(ctx context.Context, sceneID int) ([]*Gallery, error)
+	FindByAudioID(ctx context.Context, audioID int) ([]*Gallery, error)
 	FindByImageID(ctx context.Context, imageID int) ([]*Gallery, error)
 	FindUserGalleryByTitle(ctx context.Context, title string) ([]*Gallery, error)
 }
@@ -33,6 +35,9 @@ type GalleryQueryer interface {
 type GalleryCounter interface {
 	Count(ctx context.Context) (int, error)
 	CountByFileID(ctx context.Context, fileID FileID) (int, error)
+	OCount(ctx context.Context) (int, error)
+	OCountByPerformerID(ctx context.Context, performerID int) (int, error)
+	OCountByStudioID(ctx context.Context, studioID int, depth int) (int, error)
 }
 
 // GalleryCreator provides methods to create galleries.
@@ -67,6 +72,7 @@ type GalleryReader interface {
 	FileIDLoader
 	ImageIDLoader
 	SceneIDLoader
+	AudioIDLoader
 	PerformerIDLoader
 	TagIDLoader
 	FileLoader
@@ -84,11 +90,15 @@ type GalleryWriter interface {
 	CustomFieldsWriter
 
 	AddSceneIDs(ctx context.Context, galleryID int, sceneIDs []int) error
+	AddAudioIDs(ctx context.Context, galleryID int, audioIDs []int) error
 	AddFileID(ctx context.Context, id int, fileID FileID) error
 	AddImages(ctx context.Context, galleryID int, imageIDs ...int) error
 	RemoveImages(ctx context.Context, galleryID int, imageIDs ...int) error
 	SetCover(ctx context.Context, galleryID int, coverImageID int) error
 	ResetCover(ctx context.Context, galleryID int) error
+	IncrementOCounter(ctx context.Context, id int) (int, error)
+	DecrementOCounter(ctx context.Context, id int) (int, error)
+	ResetOCounter(ctx context.Context, id int) (int, error)
 }
 
 // GalleryReaderWriter provides all gallery methods.

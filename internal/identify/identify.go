@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
@@ -36,6 +37,10 @@ type SceneScraper interface {
 
 type SceneUpdatePostHookExecutor interface {
 	ExecuteSceneUpdatePostHooks(ctx context.Context, input models.SceneUpdateInput, inputFields []string)
+}
+
+type GalleryUpdatePostHookExecutor interface {
+	ExecuteGalleryUpdatePostHooks(ctx context.Context, input models.GalleryUpdateInput, inputFields []string)
 }
 
 type ScraperSource struct {
@@ -128,6 +133,94 @@ func (t *SceneIdentifier) scrapeScene(ctx context.Context, scene *models.Scene) 
 	return nil, nil
 }
 
+// mergeSharedMetadataOptions returns base with source overrides applied.
+// It covers the options common to scenes and galleries. Scene-specific
+// options (e.g. SetCoverImage) are applied by the caller afterwards.
+func mergeSharedMetadataOptions(base MetadataOptions, override *MetadataOptions) MetadataOptions {
+	options := base
+	if override == nil {
+		return options
+	}
+
+	if override.SetOrganized != nil {
+		options.SetOrganized = override.SetOrganized
+	}
+	if override.IncludeMalePerformers != nil {
+		options.IncludeMalePerformers = override.IncludeMalePerformers
+	}
+	if len(override.PerformerGenders) > 0 {
+		options.PerformerGenders = override.PerformerGenders
+	}
+	if override.SkipMultipleMatches != nil {
+		options.SkipMultipleMatches = override.SkipMultipleMatches
+	}
+	if override.SkipMultipleMatchTag != nil && len(*override.SkipMultipleMatchTag) > 0 {
+		options.SkipMultipleMatchTag = override.SkipMultipleMatchTag
+	}
+	if override.SkipSingleNamePerformers != nil {
+		options.SkipSingleNamePerformers = override.SkipSingleNamePerformers
+	}
+	if override.SkipSingleNamePerformerTag != nil && len(*override.SkipSingleNamePerformerTag) > 0 {
+		options.SkipSingleNamePerformerTag = override.SkipSingleNamePerformerTag
+	}
+
+	return options
+}
+
+// resolveAllowedGenders returns the performer gender filter for the given options.
+// nil means include all performers.
+func resolveAllowedGenders(options MetadataOptions) []models.GenderEnum {
+	if len(options.PerformerGenders) > 0 {
+		// New field takes precedence
+		return options.PerformerGenders
+	}
+	if options.IncludeMalePerformers != nil && !*options.IncludeMalePerformers {
+		// Legacy: if includeMalePerformers is false, include all genders except male
+		var allowed []models.GenderEnum
+		for _, g := range models.AllGenderEnum {
+			if g != models.GenderEnumMale {
+				allowed = append(allowed, g)
+			}
+		}
+		return allowed
+	}
+	return nil
+}
+
+// performerGenderExcluded reports whether a scraped performer should be
+// skipped based on the allowed gender filter. nil allowedGenders or nil
+// gender means no filtering.
+func performerGenderExcluded(allowedGenders []models.GenderEnum, gender *string) bool {
+	if allowedGenders == nil || gender == nil {
+		return false
+	}
+	return !slices.Contains(allowedGenders, models.GenderEnum(strings.ToUpper(*gender)))
+}
+
+func parseStudioID(idStr string) (int, error) {
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return 0, fmt.Errorf("error converting studio ID %s: %w", idStr, err)
+	}
+	return id, nil
+}
+
+func parsePerformerID(idStr string) (int, error) {
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return 0, fmt.Errorf("error converting performer ID %s: %w", idStr, err)
+	}
+	return id, nil
+}
+
+func parseTagID(idStr string) (int, error) {
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("error converting tag ID %s: %w", idStr, err)
+	}
+	return int(id), nil
+}
+
 // Returns a MetadataOptions object with any default options overwritten by source specific options
 func (t *SceneIdentifier) getOptions(source ScraperSource) MetadataOptions {
 	var options MetadataOptions
@@ -138,29 +231,10 @@ func (t *SceneIdentifier) getOptions(source ScraperSource) MetadataOptions {
 		return options
 	}
 
+	options = mergeSharedMetadataOptions(options, source.Options)
+
 	if source.Options.SetCoverImage != nil {
 		options.SetCoverImage = source.Options.SetCoverImage
-	}
-	if source.Options.SetOrganized != nil {
-		options.SetOrganized = source.Options.SetOrganized
-	}
-	if source.Options.IncludeMalePerformers != nil {
-		options.IncludeMalePerformers = source.Options.IncludeMalePerformers
-	}
-	if source.Options.PerformerGenders != nil {
-		options.PerformerGenders = source.Options.PerformerGenders
-	}
-	if source.Options.SkipMultipleMatches != nil {
-		options.SkipMultipleMatches = source.Options.SkipMultipleMatches
-	}
-	if source.Options.SkipMultipleMatchTag != nil && len(*source.Options.SkipMultipleMatchTag) > 0 {
-		options.SkipMultipleMatchTag = source.Options.SkipMultipleMatchTag
-	}
-	if source.Options.SkipSingleNamePerformers != nil {
-		options.SkipSingleNamePerformers = source.Options.SkipSingleNamePerformers
-	}
-	if source.Options.SkipSingleNamePerformerTag != nil && len(*source.Options.SkipSingleNamePerformerTag) > 0 {
-		options.SkipSingleNamePerformerTag = source.Options.SkipSingleNamePerformerTag
 	}
 
 	return options
@@ -208,19 +282,8 @@ func (t *SceneIdentifier) getSceneUpdater(ctx context.Context, s *models.Scene, 
 	}
 
 	// Determine allowed genders for performer filtering
-	var allowedGenders []models.GenderEnum
-	if options.PerformerGenders != nil {
-		// New field takes precedence
-		allowedGenders = options.PerformerGenders
-	} else if options.IncludeMalePerformers != nil && !*options.IncludeMalePerformers {
-		// Legacy: if includeMalePerformers is false, include all genders except male
-		for _, g := range models.AllGenderEnum {
-			if g != models.GenderEnumMale {
-				allowedGenders = append(allowedGenders, g)
-			}
-		}
-	}
 	// nil allowedGenders means include all performers
+	allowedGenders := resolveAllowedGenders(options)
 
 	addSkipSingleNamePerformerTag := false
 	performerIDs, err := rel.performers(ctx, allowedGenders)
@@ -243,12 +306,12 @@ func (t *SceneIdentifier) getSceneUpdater(ctx context.Context, s *models.Scene, 
 		return nil, err
 	}
 	if addSkipSingleNamePerformerTag && options.SkipSingleNamePerformerTag != nil {
-		tagID, err := strconv.ParseInt(*options.SkipSingleNamePerformerTag, 10, 64)
+		tagID, err := parseTagID(*options.SkipSingleNamePerformerTag)
 		if err != nil {
-			return nil, fmt.Errorf("error converting tag ID %s: %w", *options.SkipSingleNamePerformerTag, err)
+			return nil, err
 		}
 
-		tagIDs = sliceutil.AppendUnique(tagIDs, int(tagID))
+		tagIDs = sliceutil.AppendUnique(tagIDs, tagID)
 	}
 	if tagIDs != nil {
 		ret.Partial.TagIDs = &models.UpdateIDs{
@@ -389,57 +452,13 @@ func getFieldOptions(options []MetadataOptions) map[string]*FieldOptions {
 func getScenePartial(scene *models.Scene, scraped *models.ScrapedScene, fieldOptions map[string]*FieldOptions, setOrganized bool) models.ScenePartial {
 	partial := models.ScenePartial{}
 
-	if scraped.Title != nil && (scene.Title != *scraped.Title) {
-		if shouldSetSingleValueField(fieldOptions["title"], scene.Title != "") {
-			partial.Title = models.NewOptionalString(*scraped.Title)
-		}
-	}
-	if scraped.Date != nil && (scene.Date == nil || scene.Date.String() != *scraped.Date) {
-		if shouldSetSingleValueField(fieldOptions["date"], scene.Date != nil) {
-			d, err := models.ParseDate(*scraped.Date)
-			if err == nil {
-				partial.Date = models.NewOptionalDate(d)
-			}
-		}
-	}
-	if scraped.Details != nil && (scene.Details != *scraped.Details) {
-		if shouldSetSingleValueField(fieldOptions["details"], scene.Details != "") {
-			partial.Details = models.NewOptionalString(*scraped.Details)
-		}
-	}
-	if len(scraped.URLs) > 0 && shouldSetSingleValueField(fieldOptions["url"], false) {
-		// if overwrite, then set over the top
-		switch getFieldStrategy(fieldOptions["url"]) {
-		case FieldStrategyOverwrite:
-			// only overwrite if not equal
-			if len(sliceutil.Exclude(scraped.URLs, scene.URLs.List())) != 0 {
-				partial.URLs = &models.UpdateStrings{
-					Values: scraped.URLs,
-					Mode:   models.RelationshipUpdateModeSet,
-				}
-			}
-		case FieldStrategyMerge:
-			// if merge, add if not already present
-			urls := sliceutil.AppendUniques(scene.URLs.List(), scraped.URLs)
-
-			if len(urls) != len(scene.URLs.List()) {
-				partial.URLs = &models.UpdateStrings{
-					Values: urls,
-					Mode:   models.RelationshipUpdateModeSet,
-				}
-			}
-		}
-	}
-	if scraped.Director != nil && (scene.Director != *scraped.Director) {
-		if shouldSetSingleValueField(fieldOptions["director"], scene.Director != "") {
-			partial.Director = models.NewOptionalString(*scraped.Director)
-		}
-	}
-	if scraped.Code != nil && (scene.Code != *scraped.Code) {
-		if shouldSetSingleValueField(fieldOptions["code"], scene.Code != "") {
-			partial.Code = models.NewOptionalString(*scraped.Code)
-		}
-	}
+	setOptionalString(&partial.Title, scene.Title, scraped.Title, fieldOptions["title"])
+	setPartialDate(&partial.Date, scraped.Date, scene.Date, fieldOptions["date"], "date")
+	setPartialDate(&partial.ProductionDate, scraped.ProductionDate, scene.ProductionDate, fieldOptions["production_date"], "production date")
+	setOptionalString(&partial.Details, scene.Details, scraped.Details, fieldOptions["details"])
+	setOptionalURLs(&partial.URLs, scene.URLs.List(), scraped.URLs, fieldOptions["url"])
+	setOptionalString(&partial.Director, scene.Director, scraped.Director, fieldOptions["director"])
+	setOptionalString(&partial.Code, scene.Code, scraped.Code, fieldOptions["code"])
 
 	if setOrganized && !scene.Organized {
 		partial.Organized = models.NewOptionalBool(true)

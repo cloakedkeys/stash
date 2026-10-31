@@ -5,6 +5,7 @@ import (
 
 	"github.com/stashapp/stash/internal/api/loaders"
 	"github.com/stashapp/stash/internal/api/urlbuilders"
+	"github.com/stashapp/stash/pkg/audio"
 	"github.com/stashapp/stash/pkg/gallery"
 	"github.com/stashapp/stash/pkg/group"
 	"github.com/stashapp/stash/pkg/image"
@@ -80,12 +81,23 @@ func (r *studioResolver) Tags(ctx context.Context, obj *models.Studio) (ret []*m
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.TagIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *studioResolver) SceneCount(ctx context.Context, obj *models.Studio, depth *int) (ret int, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		ret, err = scene.CountByStudioID(ctx, r.repository.Scene, obj.ID, depth)
+		return err
+	}); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (r *studioResolver) AudioCount(ctx context.Context, obj *models.Studio, depth *int) (ret int, err error) {
+	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+		ret, err = audio.CountByStudioID(ctx, r.repository.Audio, obj.ID, depth)
 		return err
 	}); err != nil {
 		return 0, err
@@ -138,27 +150,55 @@ func (r *studioResolver) GroupCount(ctx context.Context, obj *models.Studio, dep
 	return ret, nil
 }
 
+func (r *studioResolver) SceneMarkerCount(ctx context.Context, obj *models.Studio, depth *int) (ret int, err error) {
+	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+		ret, err = scene.MarkerCountByStudioID(ctx, r.repository.SceneMarker, obj.ID, depth)
+		return err
+	}); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
 // deprecated
 func (r *studioResolver) MovieCount(ctx context.Context, obj *models.Studio, depth *int) (ret int, err error) {
 	return r.GroupCount(ctx, obj, depth)
 }
 
-func (r *studioResolver) OCounter(ctx context.Context, obj *models.Studio) (ret *int, err error) {
+func (r *studioResolver) OCounter(ctx context.Context, obj *models.Studio, depth *int) (ret int, err error) {
+	// this adds up everything from the studio
+	if models.LibraryLimitFromContext(ctx) != nil {
+		return 0, nil
+	}
+
 	var res_scene int
+	var res_audio int
 	var res_image int
-	var res int
+	var res_gallery int
+	depthVal := 0
+	if depth != nil {
+		depthVal = *depth
+	}
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		res_scene, err = r.repository.Scene.OCountByStudioID(ctx, obj.ID)
+		res_scene, err = r.repository.Scene.OCountByStudioID(ctx, obj.ID, depthVal)
 		if err != nil {
 			return err
 		}
-		res_image, err = r.repository.Image.OCountByStudioID(ctx, obj.ID)
+		res_audio, err = r.repository.Audio.OCountByStudioID(ctx, obj.ID, depthVal)
+		if err != nil {
+			return err
+		}
+		res_image, err = r.repository.Image.OCountByStudioID(ctx, obj.ID, depthVal)
+		if err != nil {
+			return err
+		}
+		res_gallery, err = r.repository.Gallery.OCountByStudioID(ctx, obj.ID, depthVal)
 		return err
 	}); err != nil {
-		return nil, err
+		return 0, err
 	}
-	res = res_scene + res_image
-	return &res, nil
+	return res_scene + res_audio + res_image + res_gallery, nil
 }
 
 func (r *studioResolver) ParentStudio(ctx context.Context, obj *models.Studio) (ret *models.Studio, err error) {

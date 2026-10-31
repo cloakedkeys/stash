@@ -44,13 +44,13 @@ func (qb *galleryFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		return
 	}
 
+	f.handleCriterion(ctx, qb.criterionHandler())
+
 	sf := galleryFilter.SubFilter()
 	if sf != nil {
 		sub := &galleryFilterHandler{sf}
 		handleSubFilter(ctx, sub, f, galleryFilter.OperatorFilter)
 	}
-
-	f.handleCriterion(ctx, qb.criterionHandler())
 }
 
 func (qb *galleryFilterHandler) criterionHandler() criterionHandler {
@@ -86,7 +86,8 @@ func (qb *galleryFilterHandler) criterionHandler() criterionHandler {
 		qb.pathCriterionHandler(filter.Path),
 		qb.parentFolderCriterionHandler(filter.ParentFolder),
 		qb.fileCountCriterionHandler(filter.FileCount),
-		intCriterionHandler(filter.Rating100, "galleries.rating", nil),
+		galleryUserData.intCriterionHandler(filter.Rating100, galleryUserData.column("rating")),
+		galleryUserData.intCriterionHandler(filter.OCounter, galleryUserData.columnOrDefault("o_counter", "0")),
 		qb.urlsCriterionHandler(filter.URL),
 		boolCriterionHandler(filter.Organized, "galleries.organized", nil),
 		qb.missingCriterionHandler(filter.IsMissing),
@@ -95,6 +96,7 @@ func (qb *galleryFilterHandler) criterionHandler() criterionHandler {
 		qb.performersCriterionHandler(filter.Performers),
 		qb.performerCountCriterionHandler(filter.PerformerCount),
 		qb.scenesCriterionHandler(filter.Scenes),
+		qb.audiosCriterionHandler(filter.Audios),
 		qb.hasChaptersCriterionHandler(filter.HasChapters),
 		studioCriterionHandler(galleryTable, filter.Studios),
 		qb.performerTagsCriterionHandler(filter.PerformerTags),
@@ -119,6 +121,15 @@ func (qb *galleryFilterHandler) criterionHandler() criterionHandler {
 			relatedHandler: &sceneFilterHandler{filter.ScenesFilter},
 			joinFn: func(f *filterBuilder) {
 				galleryRepository.scenes.innerJoin(f, "", "galleries.id")
+			},
+		},
+
+		&relatedFilterHandler{
+			relatedIDCol:   "audios_galleries.audio_id",
+			relatedRepo:    audioRepository.repository,
+			relatedHandler: &audioFilterHandler{filter.AudiosFilter},
+			joinFn: func(f *filterBuilder) {
+				galleryRepository.audios.innerJoin(f, "", "galleries.id")
 			},
 		},
 
@@ -193,15 +204,15 @@ func (qb *galleryFilterHandler) urlsCriterionHandler(url *models.StringCriterion
 		primaryFK:    galleryIDColumn,
 		joinTable:    galleriesURLsTable,
 		stringColumn: galleriesURLColumn,
-		addJoinTable: func(f *filterBuilder) {
-			galleriesURLsTableMgr.join(f, "", "galleries.id")
+		addJoinTable: func(f *filterBuilder, joinType joinType) {
+			galleriesURLsTableMgr.join(f, joinType, "", "galleries.id")
 		},
 	}
 
 	return h.handler(url)
 }
 
-func (qb *galleryFilterHandler) getMultiCriterionHandlerBuilder(foreignTable, joinTable, foreignFK string, addJoinsFunc func(f *filterBuilder)) multiCriterionHandlerBuilder {
+func (qb *galleryFilterHandler) getMultiCriterionHandlerBuilder(foreignTable, joinTable, foreignFK string, addJoinsFunc func(f *filterBuilder, joinType joinType)) multiCriterionHandlerBuilder {
 	return multiCriterionHandlerBuilder{
 		primaryTable: galleryTable,
 		foreignTable: foreignTable,
@@ -332,7 +343,7 @@ func (qb *galleryFilterHandler) parentFolderCriterionHandler(folder *models.Hier
 				return
 			}
 
-			f.addWhere(fmt.Sprintf("files.parent_folder_id NOT IN (SELECT column2 FROM (%s)) OR folders.parent_folder_id IS NULL", valuesClause))
+			f.addWhere(fmt.Sprintf("files.parent_folder_id NOT IN (SELECT column2 FROM (%s)) OR files.parent_folder_id IS NULL", valuesClause))
 			f.addWhere(fmt.Sprintf("gallery_folder.parent_folder_id NOT IN (SELECT column2 FROM (%s)) OR gallery_folder.parent_folder_id IS NULL", valuesClause))
 		}
 	}
@@ -353,27 +364,33 @@ func (qb *galleryFilterHandler) missingCriterionHandler(isMissing *string) crite
 		if isMissing != nil && *isMissing != "" {
 			switch *isMissing {
 			case "url":
-				galleriesURLsTableMgr.join(f, "", "galleries.id")
+				galleriesURLsTableMgr.leftJoin(f, "", "galleries.id")
 				f.addWhere("gallery_urls.url IS NULL")
 			case "scenes":
 				f.addLeftJoin("scenes_galleries", "scenes_join", "scenes_join.gallery_id = galleries.id")
 				f.addWhere("scenes_join.gallery_id IS NULL")
+			case "audios":
+				f.addLeftJoin(audiosGalleriesTable, "audios_join", "audios_join.gallery_id = galleries.id")
+				f.addWhere("audios_join.gallery_id IS NULL")
 			case "studio":
 				f.addWhere("galleries.studio_id IS NULL")
 			case "performers":
-				galleryRepository.performers.join(f, "performers_join", "galleries.id")
+				galleryRepository.performers.leftJoin(f, "performers_join", "galleries.id")
 				f.addWhere("performers_join.gallery_id IS NULL")
 			case "date":
 				f.addWhere("galleries.date IS NULL OR galleries.date IS \"\"")
 			case "tags":
-				galleryRepository.tags.join(f, "tags_join", "galleries.id")
+				galleryRepository.tags.leftJoin(f, "tags_join", "galleries.id")
 				f.addWhere("tags_join.gallery_id IS NULL")
 			case "cover":
 				f.addLeftJoin("galleries_images", "cover_join", "cover_join.gallery_id = galleries.id AND cover_join.cover = 1")
 				f.addWhere("cover_join.image_id IS NULL")
+			case "rating":
+				galleryUserData.join(ctx, f)
+				f.addWhere(galleryUserData.column("rating") + " IS NULL")
 			default:
 				if err := validateIsMissing(*isMissing, []string{
-					"title", "code", "rating", "details", "photographer",
+					"title", "code", "details", "photographer",
 				}); err != nil {
 					f.setError(err)
 					return
@@ -410,12 +427,21 @@ func (qb *galleryFilterHandler) tagCountCriterionHandler(tagCount *models.IntCri
 }
 
 func (qb *galleryFilterHandler) scenesCriterionHandler(scenes *models.MultiCriterionInput) criterionHandlerFunc {
-	addJoinsFunc := func(f *filterBuilder) {
-		galleryRepository.scenes.join(f, "", "galleries.id")
-		f.addLeftJoin("scenes", "", "scenes_galleries.scene_id = scenes.id")
+	addJoinsFunc := func(f *filterBuilder, joinType joinType) {
+		galleryRepository.scenes.join(f, joinType, "", "galleries.id")
+		f.addJoin(joinType, "scenes", "", "scenes_galleries.scene_id = scenes.id")
 	}
 	h := qb.getMultiCriterionHandlerBuilder(sceneTable, galleriesScenesTable, "scene_id", addJoinsFunc)
 	return h.handler(scenes)
+}
+
+func (qb *galleryFilterHandler) audiosCriterionHandler(audios *models.MultiCriterionInput) criterionHandlerFunc {
+	addJoinsFunc := func(f *filterBuilder, joinType joinType) {
+		galleryRepository.audios.join(f, joinType, "", "galleries.id")
+		f.addJoin(joinType, audioTable, "", "audios_galleries.audio_id = audios.id")
+	}
+	h := qb.getMultiCriterionHandlerBuilder(audioTable, audiosGalleriesTable, audioIDColumn, addJoinsFunc)
+	return h.handler(audios)
 }
 
 func (qb *galleryFilterHandler) performersCriterionHandler(performers *models.MultiCriterionInput) criterionHandlerFunc {
@@ -426,8 +452,8 @@ func (qb *galleryFilterHandler) performersCriterionHandler(performers *models.Mu
 		primaryFK:    galleryIDColumn,
 		foreignFK:    performerIDColumn,
 
-		addJoinTable: func(f *filterBuilder) {
-			galleryRepository.performers.join(f, "performers_join", "galleries.id")
+		addJoinTable: func(f *filterBuilder, joinType joinType) {
+			galleryRepository.performers.join(f, joinType, "performers_join", "galleries.id")
 		},
 	}
 
@@ -483,13 +509,13 @@ func (qb *galleryFilterHandler) performerFavoriteCriterionHandler(performerfavor
 
 			if *performerfavorite {
 				// contains at least one favorite
-				f.addLeftJoin("performers", "", "performers.id = performers_galleries.performer_id")
-				f.addWhere("performers.favorite = 1")
+				f.addLeftJoin(performersUserDataTable, "", fmt.Sprintf("performers_user_data.performer_id = performers_galleries.performer_id AND performers_user_data.user_id = %d", currentUserID(ctx)))
+				f.addWhere("performers_user_data.favorite = 1")
 			} else {
 				// contains zero favorites
-				f.addLeftJoin(`(SELECT performers_galleries.gallery_id as id FROM performers_galleries 
-JOIN performers ON performers.id = performers_galleries.performer_id
-GROUP BY performers_galleries.gallery_id HAVING SUM(performers.favorite) = 0)`, "nofaves", "galleries.id = nofaves.id")
+				f.addLeftJoin(fmt.Sprintf(`(SELECT performers_galleries.gallery_id as id FROM performers_galleries
+LEFT JOIN performers_user_data ON performers_user_data.performer_id = performers_galleries.performer_id AND performers_user_data.user_id = %d
+GROUP BY performers_galleries.gallery_id HAVING SUM(COALESCE(performers_user_data.favorite, 0)) = 0)`, currentUserID(ctx)), "nofaves", "galleries.id = nofaves.id")
 				f.addWhere("performers_galleries.gallery_id IS NULL OR nofaves.id IS NOT NULL")
 			}
 		}
@@ -515,7 +541,7 @@ func (qb *galleryFilterHandler) performerAgeCriterionHandler(performerAge *model
 func (qb *galleryFilterHandler) averageResolutionCriterionHandler(resolution *models.ResolutionCriterionInput) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if resolution != nil && resolution.Value.IsValid() {
-			galleryRepository.images.join(f, "images_join", "galleries.id")
+			galleryRepository.images.leftJoin(f, "images_join", "galleries.id")
 			f.addLeftJoin("images", "", "images_join.image_id = images.id")
 			f.addLeftJoin("images_files", "", "images.id = images_files.image_id")
 			f.addLeftJoin("image_files", "", "images_files.file_id = image_files.file_id")

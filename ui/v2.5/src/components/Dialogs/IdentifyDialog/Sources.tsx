@@ -4,7 +4,7 @@ import { ModalComponent } from "src/components/Shared/Modal";
 import { Icon } from "src/components/Shared/Icon";
 import { FormattedMessage, useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
-import { IScraperSource } from "./constants";
+import { IdentifyType, IScraperSource } from "./constants";
 import { OptionsEditor } from "./Options";
 import {
   faCog,
@@ -20,6 +20,7 @@ interface ISourceEditor {
   source: IScraperSource;
   saveSource: (s?: IScraperSource) => void;
   defaultOptions: GQL.IdentifyMetadataOptionsInput;
+  type?: IdentifyType;
 }
 
 export const SourcesEditor: React.FC<ISourceEditor> = ({
@@ -28,6 +29,7 @@ export const SourcesEditor: React.FC<ISourceEditor> = ({
   source: initialSource,
   saveSource,
   defaultOptions,
+  type,
 }) => {
   const [source, setSource] = useState<IScraperSource>(initialSource);
   const [editingField, setEditingField] = useState(false);
@@ -106,6 +108,7 @@ export const SourcesEditor: React.FC<ISourceEditor> = ({
           source={source}
           setEditingField={(v) => setEditingField(v)}
           defaultOptions={defaultOptions}
+          type={type}
         />
       </Form>
     </ModalComponent>

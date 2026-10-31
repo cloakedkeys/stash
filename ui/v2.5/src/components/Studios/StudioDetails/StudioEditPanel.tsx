@@ -1,19 +1,22 @@
 import React, { useEffect, useState } from "react";
-import { useIntl } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import * as yup from "yup";
 import Mousetrap from "mousetrap";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { DetailsEditNavbar } from "src/components/Shared/DetailsEditNavbar";
-import { Button, Form } from "react-bootstrap";
+import cx from "classnames";
+import { Button, Dropdown, Form } from "react-bootstrap";
 import { faPlus } from "@fortawesome/free-solid-svg-icons";
 import ImageUtils from "src/utils/image";
 import { addUpdateStashID, getStashIDs } from "src/utils/stashIds";
+import { stashboxDisplayName } from "src/utils/stashbox";
 import { useFormik } from "formik";
 import { Prompt } from "react-router-dom";
 import isEqual from "lodash-es/isEqual";
 import { useToast } from "src/hooks/Toast";
 import { useConfigurationContext } from "src/hooks/Config";
+import { useIsAdmin } from "src/hooks/CurrentUser";
 import { handleUnsavedChanges } from "src/utils/navigation";
 import { formikUtils } from "src/utils/form";
 import { yupFormikValidate, yupRequiredStringArray } from "src/utils/yup";
@@ -25,13 +28,15 @@ import {
   CustomFieldsInput,
   formatCustomFieldInput,
 } from "src/components/Shared/CustomFields";
-import { cloneDeep } from "@apollo/client/utilities";
+import cloneDeep from "lodash-es/cloneDeep";
+import StudioStashBoxModal, { IStashBox } from "./StudioStashBoxModal";
+import { StudioScrapeDialog } from "./StudioScrapeDialog";
 
 interface IStudioEditPanel {
   studio: Partial<GQL.StudioDataFragment>;
   onSubmit: (studio: GQL.StudioCreateInput, andNew?: boolean) => Promise<void>;
   onCancel: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   setImage: (image?: string | null) => void;
   setEncodingImage: (loading: boolean) => void;
 }
@@ -40,29 +45,35 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
   studio,
   onSubmit,
   onCancel,
-  onDelete,
+  onDelete = () => {},
   setImage,
   setEncodingImage,
 }) => {
   const intl = useIntl();
+  const isAdmin = useIsAdmin();
   const Toast = useToast();
   const { configuration: stashConfig } = useConfigurationContext();
 
   const isNew = studio.id === undefined;
 
-  // Editing state
+  // Editing/scraper state
+  const [scraper, setScraper] = useState<IStashBox>();
+  const [isScraperModalOpen, setIsScraperModalOpen] = useState(false);
+  const [scrapedStudio, setScrapedStudio] = useState<GQL.ScrapedStudio>();
   const [isStashIDSearchOpen, setIsStashIDSearchOpen] = useState(false);
 
   // Network state
   const [isLoading, setIsLoading] = useState(false);
 
   const [parentStudio, setParentStudio] = useState<Studio | null>(null);
+  const [childStudios, setChildStudios] = useState<Studio[]>([]);
 
   const schema = yup.object({
     name: yup.string().required(),
     urls: yup.array(yup.string().required()).defined(),
     details: yup.string().ensure(),
     parent_id: yup.string().required().nullable(),
+    child_ids: yup.array(yup.string().required()).defined(),
     aliases: yupRequiredStringArray(intl).defined(),
     tag_ids: yup.array(yup.string().required()).defined(),
     ignore_auto_tag: yup.boolean().defined(),
@@ -77,6 +88,7 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
     urls: studio.urls ?? [],
     details: studio.details ?? "",
     parent_id: studio.parent_studio?.id ?? null,
+    child_ids: (studio.child_studios ?? []).map((child) => child.id),
     aliases: studio.aliases ?? [],
     tag_ids: (studio.tags ?? []).map((t) => t.id),
     ignore_auto_tag: studio.ignore_auto_tag ?? false,
@@ -103,13 +115,20 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
     onSubmit: submit,
   });
 
-  const { tagsControl } = useTagsEdit(studio.tags, (ids) =>
-    formik.setFieldValue("tag_ids", ids)
-  );
+  const { tags, resetTagsState, updateTagsStateFromScraper, tagsControl } =
+    useTagsEdit(studio.tags, (ids) => formik.setFieldValue("tag_ids", ids));
 
   function onSetParentStudio(item: Studio | null) {
     setParentStudio(item);
     formik.setFieldValue("parent_id", item ? item.id : null);
+  }
+
+  function onSetChildStudios(items: Studio[]) {
+    setChildStudios(items);
+    formik.setFieldValue(
+      "child_ids",
+      items.map((item) => item.id)
+    );
   }
 
   const encodingImage = ImageUtils.usePasteImage((imageData) =>
@@ -127,6 +146,17 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
         : null
     );
   }, [studio.parent_studio]);
+
+  useEffect(() => {
+    setChildStudios(
+      (studio.child_studios ?? []).map((childStudio) => ({
+        id: childStudio.id,
+        name: childStudio.name,
+        aliases: [],
+        image_path: childStudio.image_path,
+      }))
+    );
+  }, [studio.child_studios]);
 
   useEffect(() => {
     setImage(formik.values.image);
@@ -152,8 +182,32 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
   async function onSave(input: InputValues, andNew?: boolean) {
     setIsLoading(true);
     try {
-      await onSubmit(input, andNew);
+      // ignore_auto_tag may only be changed by administrators
+      await onSubmit(
+        isAdmin ? input : { ...input, ignore_auto_tag: undefined },
+        andNew
+      );
       formik.resetForm();
+      if (andNew) {
+        setParentStudio(
+          studio.parent_studio
+            ? {
+                id: studio.parent_studio.id,
+                name: studio.parent_studio.name,
+                aliases: [],
+              }
+            : null
+        );
+        setChildStudios(
+          (studio.child_studios ?? []).map((childStudio) => ({
+            id: childStudio.id,
+            name: childStudio.name,
+            aliases: [],
+            image_path: childStudio.image_path,
+          }))
+        );
+        resetTagsState();
+      }
     } catch (e) {
       Toast.error(e);
     }
@@ -184,6 +238,179 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
     );
   }
 
+  function updateStashIDs(remoteSiteID: string | null | undefined) {
+    if (remoteSiteID && scraper?.endpoint) {
+      const newIDs =
+        formik.values.stash_ids?.filter(
+          (s) => s.endpoint !== scraper.endpoint
+        ) ?? [];
+      newIDs.push({
+        endpoint: scraper.endpoint,
+        stash_id: remoteSiteID,
+        updated_at: new Date().toISOString(),
+      });
+      formik.setFieldValue("stash_ids", newIDs);
+    }
+  }
+
+  function updateStudioEditStateFromScraper(
+    state: Partial<GQL.ScrapedStudioDataFragment>
+  ) {
+    if (state.name) {
+      formik.setFieldValue("name", state.name);
+    }
+    if (state.urls) {
+      formik.setFieldValue("urls", state.urls);
+    }
+    if (state.details) {
+      formik.setFieldValue("details", state.details);
+    }
+    if (state.aliases) {
+      formik.setFieldValue(
+        "aliases",
+        state.aliases.split(",").map((a) => a.trim())
+      );
+    }
+    updateTagsStateFromScraper(state.tags ?? undefined);
+
+    // image is a base64 string
+    // overwrite if not new since it came from a dialog
+    // overwrite if image is unset
+    if ((!isNew || !formik.values.image) && state.image) {
+      formik.setFieldValue("image", state.image);
+    }
+
+    updateStashIDs(state.remote_site_id);
+  }
+
+  function onScrapeStashBox(studioResult: GQL.ScrapedStudio) {
+    setIsScraperModalOpen(false);
+
+    const result: GQL.ScrapedStudioDataFragment = {
+      ...studioResult,
+      __typename: "ScrapedStudio",
+    };
+
+    // if this is a new studio, just dump the data
+    if (isNew) {
+      updateStudioEditStateFromScraper(result);
+      setScraper(undefined);
+    } else {
+      setScrapedStudio(result);
+    }
+  }
+
+  function onScraperSelected(s: IStashBox) {
+    setScraper(s);
+    setIsScraperModalOpen(true);
+  }
+
+  function renderScraperMenu() {
+    if (!studio) {
+      return;
+    }
+    const stashBoxes = stashConfig?.general.stashBoxes ?? [];
+
+    if (stashBoxes.length === 0) {
+      return;
+    }
+
+    const popover = (
+      <Dropdown.Menu id="studio-scraper-popover">
+        {stashBoxes.map((s, index) => (
+          <Dropdown.Item
+            as={Button}
+            key={s.endpoint}
+            className="minimal"
+            onClick={() => onScraperSelected({ ...s, index })}
+          >
+            {stashboxDisplayName(s.name, index)}
+          </Dropdown.Item>
+        ))}
+      </Dropdown.Menu>
+    );
+
+    return (
+      <Dropdown className="d-inline-block">
+        <Dropdown.Toggle variant="secondary" className="mr-2">
+          <FormattedMessage id="actions.scrape_with" />
+        </Dropdown.Toggle>
+        {popover}
+      </Dropdown>
+    );
+  }
+
+  function renderButtons(classNames: string) {
+    return (
+      <DetailsEditNavbar
+        objectName={studio?.name ?? intl.formatMessage({ id: "studio" })}
+        classNames={cx("col-xl-9", classNames)}
+        isNew={isNew}
+        isEditing
+        onToggleEdit={onCancel}
+        onSave={formik.handleSubmit}
+        onSaveAndNew={isNew ? onSaveAndNewClick : undefined}
+        saveDisabled={
+          (!isNew && !formik.dirty) ||
+          !isEqual(formik.errors, {}) ||
+          customFieldsError !== undefined
+        }
+        onImageChange={onImageChange}
+        onImageChangeURL={onImageLoad}
+        onClearImage={() => onImageLoad(null)}
+        onDelete={onDelete}
+        customButtons={renderScraperMenu()}
+        acceptSVG
+      />
+    );
+  }
+
+  function maybeRenderScrapeDialog() {
+    if (!scrapedStudio || !scraper) {
+      return;
+    }
+
+    const currentStudio = {
+      ...formik.values,
+      image: formik.values.image ?? studio.image_path,
+    };
+
+    return (
+      <StudioScrapeDialog
+        studio={currentStudio}
+        studioTags={tags}
+        scraped={scrapedStudio}
+        scraper={scraper}
+        onClose={(s) => {
+          onScrapeDialogClosed(s);
+        }}
+      />
+    );
+  }
+
+  function onScrapeDialogClosed(s?: GQL.ScrapedStudioDataFragment) {
+    if (s) {
+      updateStudioEditStateFromScraper(s);
+    }
+    setScrapedStudio(undefined);
+    setScraper(undefined);
+  }
+
+  function renderScrapeModal() {
+    if (!isScraperModalOpen || !scraper) {
+      return;
+    }
+
+    return (
+      <StudioStashBoxModal
+        instance={scraper}
+        onHide={() => setScraper(undefined)}
+        onSelectStudio={onScrapeStashBox}
+        name={formik.values.name || ""}
+      />
+    );
+  }
+
   const {
     renderField,
     renderInputField,
@@ -199,10 +426,33 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
           onSetParentStudio(items.length > 0 ? items[0] : null)
         }
         values={parentStudio ? [parentStudio] : []}
+        excludeIds={[
+          ...(studio?.id ? [studio.id] : []),
+          ...formik.values.child_ids,
+        ]}
       />
     );
 
     return renderField("parent_id", title, control);
+  }
+
+  function renderSubStudiosField() {
+    const title = intl.formatMessage({ id: "subsidiary_studios" });
+    const control = (
+      <StudioSelect
+        isMulti
+        onSelect={onSetChildStudios}
+        values={childStudios.filter((childStudio) =>
+          formik.values.child_ids.includes(childStudio.id)
+        )}
+        excludeIds={[
+          ...(studio?.id ? [studio.id] : []),
+          ...(formik.values.parent_id ? [formik.values.parent_id] : []),
+        ]}
+      />
+    );
+
+    return renderField("child_ids", title, control);
   }
 
   function renderTagsField() {
@@ -214,6 +464,8 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
 
   return (
     <>
+      {renderScrapeModal()}
+      {maybeRenderScrapeDialog()}
       {isStashIDSearchOpen && (
         <StashBoxIDSearchModal
           entityType="studio"
@@ -240,12 +492,15 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
         }}
       />
 
+      {renderButtons("mb-3")}
+
       <Form noValidate onSubmit={formik.handleSubmit} id="studio-edit">
         {renderInputField("name")}
         {renderStringListField("aliases")}
         {renderStringListField("urls")}
         {renderInputField("details", "textarea")}
         {renderParentStudioField()}
+        {renderSubStudiosField()}
         {renderTagsField()}
         {renderStashIDsField(
           "stash_ids",
@@ -271,28 +526,10 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
         />
 
         <hr />
-        {renderInputField("ignore_auto_tag", "checkbox")}
+        {isAdmin && renderInputField("ignore_auto_tag", "checkbox")}
       </Form>
 
-      <DetailsEditNavbar
-        objectName={studio?.name ?? intl.formatMessage({ id: "studio" })}
-        classNames="col-xl-9 mt-3"
-        isNew={isNew}
-        isEditing
-        onToggleEdit={onCancel}
-        onSave={formik.handleSubmit}
-        onSaveAndNew={isNew ? onSaveAndNewClick : undefined}
-        saveDisabled={
-          (!isNew && !formik.dirty) ||
-          !isEqual(formik.errors, {}) ||
-          customFieldsError !== undefined
-        }
-        onImageChange={onImageChange}
-        onImageChangeURL={onImageLoad}
-        onClearImage={() => onImageLoad(null)}
-        onDelete={onDelete}
-        acceptSVG
-      />
+      {renderButtons("mt-3")}
     </>
   );
 };

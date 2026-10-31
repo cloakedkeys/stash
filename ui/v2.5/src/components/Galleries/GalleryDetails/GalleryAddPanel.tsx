@@ -63,8 +63,8 @@ export const GalleryAddPanel: React.FC<IGalleryAddProps> = PatchComponent(
     );
 
     async function addImages(
-      result: GQL.FindImagesQueryResult,
-      filter: ListFilterModel,
+      _result: GQL.FindImagesQueryResult,
+      _filter: ListFilterModel,
       selectedIds: Set<string>
     ) {
       try {
@@ -96,6 +96,7 @@ export const GalleryAddPanel: React.FC<IGalleryAddProps> = PatchComponent(
           { entityType: intl.formatMessage({ id: "gallery" }) }
         ),
         onClick: addImages,
+        requiredRole: GQL.RoleEnum.Modify,
         isDisplayed: showWhenSelected,
         postRefetch: true,
         icon: faPlus,

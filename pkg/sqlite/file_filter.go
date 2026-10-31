@@ -49,13 +49,13 @@ func (qb *fileFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		return
 	}
 
+	f.handleCriterion(ctx, qb.criterionHandler())
+
 	sf := fileFilter.SubFilter()
 	if sf != nil {
 		sub := &fileFilterHandler{sf, qb.isRelated}
 		handleSubFilter(ctx, sub, f, fileFilter.OperatorFilter)
 	}
-
-	f.handleCriterion(ctx, qb.criterionHandler())
 }
 
 func (qb *fileFilterHandler) criterionHandler() criterionHandler {
@@ -63,6 +63,9 @@ func (qb *fileFilterHandler) criterionHandler() criterionHandler {
 	return compoundHandler{
 		&videoFileFilterHandler{
 			filter: fileFilter.VideoFileFilter,
+		},
+		&audioFileFilterHandler{
+			filter: fileFilter.AudioFileFilter,
 		},
 		&imageFileFilterHandler{
 			filter: fileFilter.ImageFileFilter,
@@ -83,6 +86,7 @@ func (qb *fileFilterHandler) criterionHandler() criterionHandler {
 		qb.hashesCriterionHandler(fileFilter.Hashes),
 
 		qb.duplicatedCriterionHandler(fileFilter.Duplicated),
+		&timestampCriterionHandler{fileFilter.MissingSince, "files.missing_since", nil},
 		&timestampCriterionHandler{fileFilter.CreatedAt, "files.created_at", nil},
 		&timestampCriterionHandler{fileFilter.UpdatedAt, "files.updated_at", nil},
 
@@ -92,6 +96,14 @@ func (qb *fileFilterHandler) criterionHandler() criterionHandler {
 			relatedHandler: &sceneFilterHandler{fileFilter.ScenesFilter},
 			joinFn: func(f *filterBuilder) {
 				fileRepository.scenes.innerJoin(f, "", "files.id")
+			},
+		},
+		&relatedFilterHandler{
+			relatedIDCol:   "audios_files.audio_id",
+			relatedRepo:    audioRepository.repository,
+			relatedHandler: &audioFilterHandler{fileFilter.AudiosFilter},
+			joinFn: func(f *filterBuilder) {
+				fileRepository.audios.innerJoin(f, "", "files.id")
 			},
 		},
 		&relatedFilterHandler{
@@ -300,15 +312,19 @@ func (qb *videoFileFilterHandler) criterionHandler() criterionHandler {
 	}
 }
 
-func (qb *videoFileFilterHandler) addVideoFilesTable(f *filterBuilder) {
-	f.addLeftJoin(videoFileTable, "", "video_files.file_id = files.id")
+func (qb *videoFileFilterHandler) addVideoFilesTable(f *filterBuilder, joinType joinType) {
+	f.addJoin(joinType, videoFileTable, "", "video_files.file_id = files.id")
 }
 
-func (qb *videoFileFilterHandler) codecCriterionHandler(codec *models.StringCriterionInput, codecColumn string, addJoinFn func(f *filterBuilder)) criterionHandlerFunc {
+func (qb *videoFileFilterHandler) codecCriterionHandler(codec *models.StringCriterionInput, codecColumn string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if codec != nil {
 			if addJoinFn != nil {
-				addJoinFn(f)
+				joinType := joinTypeInner
+				if codec.Modifier == models.CriterionModifierIsNull || codec.Modifier == models.CriterionModifierNotMatchesRegex {
+					joinType = joinTypeLeft
+				}
+				addJoinFn(f, joinType)
 			}
 
 			stringCriterionHandler(codec, codecColumn)(ctx, f)
@@ -322,8 +338,8 @@ func (qb *videoFileFilterHandler) captionCriterionHandler(captions *models.Strin
 		primaryFK:    sceneIDColumn,
 		joinTable:    videoCaptionsTable,
 		stringColumn: captionCodeColumn,
-		addJoinTable: func(f *filterBuilder) {
-			f.addLeftJoin(videoCaptionsTable, "", "video_captions.file_id = files.id")
+		addJoinTable: func(f *filterBuilder, joinType joinType) {
+			f.addJoin(joinType, videoCaptionsTable, "", "video_captions.file_id = files.id")
 		},
 		excludeHandler: func(f *filterBuilder, criterion *models.StringCriterionInput) {
 			excludeClause := `files.id NOT IN (
@@ -338,6 +354,52 @@ func (qb *videoFileFilterHandler) captionCriterionHandler(captions *models.Strin
 	}
 
 	return h.handler(captions)
+}
+
+// audio
+
+type audioFileFilterHandler struct {
+	filter *models.AudioFileFilterInput
+}
+
+func (qb *audioFileFilterHandler) handle(ctx context.Context, f *filterBuilder) {
+	audioFileFilter := qb.filter
+	if audioFileFilter == nil {
+		return
+	}
+	f.handleCriterion(ctx, qb.criterionHandler())
+}
+
+func (qb *audioFileFilterHandler) criterionHandler() criterionHandler {
+	audioFileFilter := qb.filter
+	return compoundHandler{
+		joinedStringCriterionHandler(audioFileFilter.Format, "audio_files.format", qb.addAudioFilesTable),
+		floatIntCriterionHandler(audioFileFilter.Duration, "audio_files.duration", qb.addAudioFilesTable),
+		intCriterionHandler(audioFileFilter.SampleRate, "audio_files.sample_rate", qb.addAudioFilesTable),
+		intCriterionHandler(audioFileFilter.Bitrate, "audio_files.bit_rate", qb.addAudioFilesTable),
+		qb.codecCriterionHandler(audioFileFilter.AudioCodec, "audio_files.audio_codec", qb.addAudioFilesTable),
+		qb.codecCriterionHandler(audioFileFilter.AudioCodec, "audio_files.audio_codec", qb.addAudioFilesTable),
+	}
+}
+
+func (qb *audioFileFilterHandler) addAudioFilesTable(f *filterBuilder, joinType joinType) {
+	f.addJoin(joinType, audioFileTable, "", "audio_files.file_id = files.id")
+}
+
+func (qb *audioFileFilterHandler) codecCriterionHandler(codec *models.StringCriterionInput, codecColumn string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		if codec != nil {
+			if addJoinFn != nil {
+				joinType := joinTypeInner
+				if codec.Modifier == models.CriterionModifierIsNull || codec.Modifier == models.CriterionModifierNotMatchesRegex {
+					joinType = joinTypeLeft
+				}
+				addJoinFn(f, joinType)
+			}
+
+			stringCriterionHandler(codec, codecColumn)(ctx, f)
+		}
+	}
 }
 
 type imageFileFilterHandler struct {
@@ -361,6 +423,6 @@ func (qb *imageFileFilterHandler) criterionHandler() criterionHandler {
 	}
 }
 
-func (qb *imageFileFilterHandler) addImageFilesTable(f *filterBuilder) {
-	f.addLeftJoin(imageFileTable, "", "image_files.file_id = files.id")
+func (qb *imageFileFilterHandler) addImageFilesTable(f *filterBuilder, joinType joinType) {
+	f.addJoin(joinType, imageFileTable, "", "image_files.file_id = files.id")
 }

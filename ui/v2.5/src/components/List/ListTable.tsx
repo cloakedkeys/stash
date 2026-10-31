@@ -2,11 +2,14 @@ import React, { useMemo } from "react";
 import { Table, Form } from "react-bootstrap";
 import { CheckBoxSelect } from "../Shared/Select";
 import cx from "classnames";
+import { SortDirectionEnum } from "src/core/generated-graphql";
+import { SortByIcon } from "./SortBySelect";
 
 export interface IColumn {
   label: string;
   value: string;
   mandatory?: boolean;
+  sortable?: boolean;
 }
 
 export const ColumnSelector: React.FC<{
@@ -47,6 +50,9 @@ interface IListTableProps<T> {
   selectedIds: Set<string>;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
   renderCell: (column: IColumn, item: T, index: number) => React.ReactNode;
+  onSort?: (value: string) => void;
+  sortBy?: string;
+  sortDirection?: SortDirectionEnum;
 }
 
 export const ListTable = <T extends { id: string }>(
@@ -61,6 +67,9 @@ export const ListTable = <T extends { id: string }>(
     selectedIds,
     onSelectChange,
     renderCell,
+    onSort,
+    sortBy,
+    sortDirection,
   } = props;
 
   const visibleColumns = useMemo(() => {
@@ -102,12 +111,29 @@ export const ListTable = <T extends { id: string }>(
   };
 
   const columnHeaders = useMemo(() => {
-    return visibleColumns.map((column) => (
-      <th key={column.value} className={`${column.value}-head`}>
-        {column.label}
-      </th>
-    ));
-  }, [visibleColumns]);
+    return visibleColumns.map((column) => {
+      const onClick =
+        onSort && column.sortable !== false
+          ? () => onSort(column.value)
+          : undefined;
+      const isActive = sortBy === column.value;
+
+      return (
+        <th
+          key={column.value}
+          className={cx(`${column.value}-head`, { sortable: !!onClick })}
+          onClick={onClick}
+        >
+          <div className="column-header">
+            {column.label}
+            {isActive && sortDirection && (
+              <SortByIcon sortDirection={sortDirection} />
+            )}
+          </div>
+        </th>
+      );
+    });
+  }, [visibleColumns, onSort, sortBy, sortDirection]);
 
   return (
     <div className={cx("table-list", className)}>

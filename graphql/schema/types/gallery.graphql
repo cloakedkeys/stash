@@ -16,6 +16,7 @@ type Gallery {
   # rating expressed as 1-100
   rating100: Int
   organized: Boolean!
+  o_counter: Int
   created_at: Time!
   updated_at: Time!
 
@@ -24,6 +25,7 @@ type Gallery {
 
   chapters: [GalleryChapter!]!
   scenes: [Scene!]!
+  audios: [Audio!]!
   studio: Studio
   image_count: Int!
   tags: [Tag!]!
@@ -46,8 +48,9 @@ input GalleryCreateInput {
   photographer: String
   # rating expressed as 1-100
   rating100: Int
-  organized: Boolean
+  organized: Boolean @hasRole(role: ADMIN)
   scene_ids: [ID!]
+  audio_ids: [ID!]
   studio_id: ID
   tag_ids: [ID!]
   performer_ids: [ID!]
@@ -67,8 +70,9 @@ input GalleryUpdateInput {
   photographer: String
   # rating expressed as 1-100
   rating100: Int
-  organized: Boolean
+  organized: Boolean @hasRole(role: ADMIN)
   scene_ids: [ID!]
+  audio_ids: [ID!]
   studio_id: ID
   tag_ids: [ID!]
   performer_ids: [ID!]
@@ -89,8 +93,9 @@ input BulkGalleryUpdateInput {
   photographer: String
   # rating expressed as 1-100
   rating100: Int
-  organized: Boolean
+  organized: Boolean @hasRole(role: ADMIN)
   scene_ids: BulkUpdateIds
+  audio_ids: BulkUpdateIds
   studio_id: ID
   tag_ids: BulkUpdateIds
   performer_ids: BulkUpdateIds

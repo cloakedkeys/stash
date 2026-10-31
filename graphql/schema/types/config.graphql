@@ -13,6 +13,10 @@ input SetupInput {
   storeBlobsInDatabase: Boolean!
   "Empty to indicate default - only applicable if storeBlobsInDatabase is false"
   blobsLocation: String!
+
+  "Initial username - must not be empty or have leading or trailing whitespace"
+  initialUsername: String!
+  initialPassword: String
 }
 
 enum StreamingResolutionEnum {
@@ -101,6 +105,10 @@ input ConfigGeneralInput {
   previewSegments: Int
   "Preview segment duration, in seconds"
   previewSegmentDuration: Float
+  "Maximum duration (in seconds) for generated marker preview videos. 0 disables the ceiling."
+  maxMarkerPreviewDuration: Int
+  "Duration (in seconds) for marker preview videos without an explicit end time. Must be positive."
+  defaultMarkerPreviewDuration: Int
   "Duration of start of video to exclude when generating previews"
   previewExcludeStart: String
   "Duration of end of video to exclude when generating previews"
@@ -109,6 +117,8 @@ input ConfigGeneralInput {
   previewPreset: PreviewPreset
   "Transcode Hardware Acceleration"
   transcodeHardwareAcceleration: Boolean
+  "Generation Hardware Acceleration"
+  generationHardwareAcceleration: Boolean
   "Max generated transcode size"
   maxTranscodeSize: StreamingResolutionEnum
   "Max streaming transcode size"
@@ -144,11 +154,13 @@ input ConfigGeneralInput {
   "Create Image Clips from Video extensions when Videos are disabled in Library"
   createImageClipsFromVideos: Boolean
   "Username"
-  username: String
+  username: String @deprecated(reason: "not supported - use user API instead")
   "Password"
-  password: String
+  password: String @deprecated(reason: "not supported - use user API instead")
   "Maximum session cookie age"
   maxSessionAge: Int
+  "Whether guest user account is enabled"
+  guestAccountEnabled: Boolean
   "Name of the log file"
   logFile: String
   "Whether to also output to stderr"
@@ -165,6 +177,8 @@ input ConfigGeneralInput {
   galleryCoverRegex: String
   "Array of video file extensions"
   videoExtensions: [String!]
+  "Array of audio file extensions"
+  audioExtensions: [String!]
   "Array of image file extensions"
   imageExtensions: [String!]
   "Array of gallery zip file extensions"
@@ -239,6 +253,10 @@ type ConfigGeneralResult {
   previewSegments: Int!
   "Preview segment duration, in seconds"
   previewSegmentDuration: Float!
+  "Maximum duration (in seconds) for generated marker preview videos. 0 disables the ceiling."
+  maxMarkerPreviewDuration: Int!
+  "Duration (in seconds) for marker preview videos without an explicit end time. Must be positive."
+  defaultMarkerPreviewDuration: Int!
   "Duration of start of video to exclude when generating previews"
   previewExcludeStart: String!
   "Duration of end of video to exclude when generating previews"
@@ -247,6 +265,8 @@ type ConfigGeneralResult {
   previewPreset: PreviewPreset!
   "Transcode Hardware Acceleration"
   transcodeHardwareAcceleration: Boolean!
+  "Generation Hardware Acceleration"
+  generationHardwareAcceleration: Boolean!
   "Max generated transcode size"
   maxTranscodeSize: StreamingResolutionEnum
   "Max streaming transcode size"
@@ -282,13 +302,15 @@ type ConfigGeneralResult {
   "Create Image Clips from Video extensions when Videos are disabled in Library"
   createImageClipsFromVideos: Boolean!
   "API Key"
-  apiKey: String!
+  apiKey: String! @deprecated(reason: "use user API instead")
   "Username"
-  username: String!
+  username: String @deprecated(reason: "use user API instead")
   "Password"
-  password: String!
+  password: String @deprecated(reason: "use user API instead")
   "Maximum session cookie age"
   maxSessionAge: Int!
+  "Whether guest user account is enabled"
+  guestAccountEnabled: Boolean!
   "Name of the log file"
   logFile: String
   "Whether to also output to stderr"
@@ -311,6 +333,8 @@ type ConfigGeneralResult {
   spriteScreenshotSize: Int!
   "Array of video file extensions"
   videoExtensions: [String!]!
+  "Array of audio file extensions"
+  audioExtensions: [String!]!
   "Array of image file extensions"
   imageExtensions: [String!]!
   "Array of gallery zip file extensions"
@@ -401,6 +425,8 @@ input ConfigInterfaceInput {
   autostartVideoOnPlaySelected: Boolean
   "If true, next scene in playlist will be played at video end by default"
   continuePlaylistDefault: Boolean
+  "If true, queue wraps to the first scene after the last scene finishes by default"
+  loopPlaylistDefault: Boolean
 
   "If true, studio overlays will be shown as text instead of logo images"
   showStudioAsText: Boolean
@@ -478,6 +504,8 @@ type ConfigInterfaceResult {
   autostartVideoOnPlaySelected: Boolean
   "If true, next scene in playlist will be played at video end by default"
   continuePlaylistDefault: Boolean
+  "If true, queue wraps to the first scene after the last scene finishes by default"
+  loopPlaylistDefault: Boolean
 
   "If true, studio overlays will be shown as text instead of logo images"
   showStudioAsText: Boolean
@@ -609,12 +637,14 @@ type Directory {
 input StashConfigInput {
   path: String!
   excludeVideo: Boolean!
+  excludeAudio: Boolean!
   excludeImage: Boolean!
 }
 
 type StashConfig {
   path: String!
   excludeVideo: Boolean!
+  excludeAudio: Boolean!
   excludeImage: Boolean!
 }
 
@@ -623,6 +653,11 @@ input GenerateAPIKeyInput {
 }
 
 type StashBoxValidationResult {
+  valid: Boolean!
+  status: String!
+}
+
+type CDPValidationResult {
   valid: Boolean!
   status: String!
 }

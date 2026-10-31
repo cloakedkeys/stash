@@ -90,7 +90,7 @@ func (r *imageResolver) Galleries(ctx context.Context, obj *models.Image) (ret [
 
 	var errs []error
 	ret, errs = loaders.From(ctx).GalleryByID.LoadAll(obj.GalleryIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *imageResolver) Rating100(ctx context.Context, obj *models.Image) (*int, error) {
@@ -116,7 +116,7 @@ func (r *imageResolver) Tags(ctx context.Context, obj *models.Image) (ret []*mod
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.TagIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *imageResolver) Performers(ctx context.Context, obj *models.Image) (ret []*models.Performer, err error) {
@@ -130,7 +130,7 @@ func (r *imageResolver) Performers(ctx context.Context, obj *models.Image) (ret 
 
 	var errs []error
 	ret, errs = loaders.From(ctx).PerformerByID.LoadAll(obj.PerformerIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *imageResolver) URL(ctx context.Context, obj *models.Image) (*string, error) {

@@ -91,6 +91,7 @@ func (i *Importer) galleryJSONToGallery(galleryJSON jsonschema.Gallery) models.G
 	}
 
 	newGallery.Organized = galleryJSON.Organized
+	newGallery.OCounter = galleryJSON.OCounter
 	newGallery.CreatedAt = galleryJSON.CreatedAt.GetTime()
 	newGallery.UpdatedAt = galleryJSON.UpdatedAt.GetTime()
 

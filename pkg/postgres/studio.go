@@ -1,0 +1,1022 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"slices"
+
+	"github.com/doug-martin/goqu/v9"
+	"github.com/doug-martin/goqu/v9/exp"
+	"github.com/jmoiron/sqlx"
+	"gopkg.in/guregu/null.v4"
+	"gopkg.in/guregu/null.v4/zero"
+
+	"github.com/stashapp/stash/pkg/librarylimit"
+	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/studio"
+	"github.com/stashapp/stash/pkg/utils"
+)
+
+const (
+	studioTable    = "studios"
+	studioIDColumn = "studio_id"
+
+	studioURLsTable = "studio_urls"
+	studioURLColumn = "url"
+
+	studioAliasesTable    = "studio_aliases"
+	studioAliasColumn     = "alias"
+	studioParentIDColumn  = "parent_id"
+	studioNameColumn      = "name"
+	studioImageBlobColumn = "image_blob"
+	studiosTagsTable      = "studios_tags"
+	studiosUserDataTable  = "studios_user_data"
+)
+
+var studioUserData = userDataTable{
+	table:       studiosUserDataTable,
+	idColumn:    studioIDColumn,
+	objectTable: studioTable,
+}
+
+type studioRow struct {
+	ID            int         `db:"id" goqu:"skipinsert"`
+	Name          zero.String `db:"name"`
+	ParentID      null.Int    `db:"parent_id,omitempty"`
+	CreatedAt     Timestamp   `db:"created_at"`
+	UpdatedAt     Timestamp   `db:"updated_at"`
+	Details       zero.String `db:"details"`
+	IgnoreAutoTag bool        `db:"ignore_auto_tag"`
+	Organized     bool        `db:"organized"`
+
+	// not used in resolutions or updates
+	ImageBlob zero.String `db:"image_blob"`
+}
+
+func (r *studioRow) fromStudio(o models.Studio) {
+	r.ID = o.ID
+	r.Name = zero.StringFrom(o.Name)
+	r.ParentID = intFromPtr(o.ParentID)
+	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
+	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
+	r.Details = zero.StringFrom(o.Details)
+	r.IgnoreAutoTag = o.IgnoreAutoTag
+	r.Organized = o.Organized
+}
+
+func (r *studioRow) resolve() *models.Studio {
+	ret := &models.Studio{
+		ID:            r.ID,
+		Name:          r.Name.String,
+		ParentID:      nullIntPtr(r.ParentID),
+		CreatedAt:     r.CreatedAt.Timestamp.UTC(),
+		UpdatedAt:     r.UpdatedAt.Timestamp.UTC(),
+		Details:       r.Details.String,
+		IgnoreAutoTag: r.IgnoreAutoTag,
+		Organized:     r.Organized,
+	}
+
+	return ret
+}
+
+// studioUserDataRow is a row of a user's data for a studio.
+type studioUserDataRow struct {
+	StudioID int `db:"studio_id"`
+	UserID   int `db:"user_id"`
+	// expressed as 1-100
+	Rating   null.Int `db:"rating"`
+	Favorite bool     `db:"favorite"`
+}
+
+func (r studioUserDataRow) apply(s *models.Studio) {
+	s.Rating = nullIntPtr(r.Rating)
+	s.Favorite = r.Favorite
+}
+
+func studioUserDataRecord(o models.Studio) goqu.Record {
+	return goqu.Record{
+		"rating":   intFromPtr(o.Rating),
+		"favorite": o.Favorite,
+	}
+}
+
+func studioUserDataPartialRecord(o models.StudioPartial) goqu.Record {
+	r := updateRecord{
+		Record: make(exp.Record),
+	}
+	r.setNullInt("rating", o.Rating)
+	r.setBool("favorite", o.Favorite)
+	return goqu.Record(r.Record)
+}
+
+type studioRowRecord struct {
+	updateRecord
+}
+
+func (r *studioRowRecord) fromPartial(o models.StudioPartial) {
+	r.setNullString("name", o.Name)
+	r.setNullInt("parent_id", o.ParentID)
+	r.setTimestamp("created_at", o.CreatedAt)
+	r.setTimestamp("updated_at", o.UpdatedAt)
+	r.setNullString("details", o.Details)
+	r.setBool("ignore_auto_tag", o.IgnoreAutoTag)
+	r.setBool("organized", o.Organized)
+}
+
+type studioRepositoryType struct {
+	repository
+
+	stashIDs stashIDRepository
+	tags     joinRepository
+
+	scenes    repository
+	audios    repository
+	images    repository
+	galleries repository
+	groups    repository
+}
+
+var (
+	studioRepository = studioRepositoryType{
+		repository: repository{
+			tableName: studioTable,
+			idColumn:  idColumn,
+		},
+		stashIDs: stashIDRepository{
+			repository{
+				tableName: "studio_stash_ids",
+				idColumn:  studioIDColumn,
+			},
+		},
+		scenes: repository{
+			tableName: sceneTable,
+			idColumn:  studioIDColumn,
+		},
+		audios: repository{
+			tableName: audioTable,
+			idColumn:  studioIDColumn,
+		},
+		images: repository{
+			tableName: imageTable,
+			idColumn:  studioIDColumn,
+		},
+		galleries: repository{
+			tableName: galleryTable,
+			idColumn:  studioIDColumn,
+		},
+		groups: repository{
+			tableName: groupTable,
+			idColumn:  studioIDColumn,
+		},
+		tags: joinRepository{
+			repository: repository{
+				tableName: studiosTagsTable,
+				idColumn:  studioIDColumn,
+			},
+			fkColumn:     tagIDColumn,
+			foreignTable: tagTable,
+			orderBy:      tagTableSortSQL,
+		},
+	}
+)
+
+type StudioStore struct {
+	blobJoinQueryBuilder
+	customFieldsStore
+	tagRelationshipStore
+
+	tableMgr *table
+}
+
+func NewStudioStore(blobStore *BlobStore) *StudioStore {
+	return &StudioStore{
+		blobJoinQueryBuilder: blobJoinQueryBuilder{
+			blobStore: blobStore,
+			joinTable: studioTable,
+		},
+		customFieldsStore: customFieldsStore{
+			table: studiosCustomFieldsTable,
+			fk:    studiosCustomFieldsTable.Col(studioIDColumn),
+		},
+		tagRelationshipStore: tagRelationshipStore{
+			idRelationshipStore: idRelationshipStore{
+				joinTable: studiosTagsTableMgr,
+			},
+		},
+
+		tableMgr: studioTableMgr,
+	}
+}
+
+func (qb *StudioStore) table() exp.IdentifierExpression {
+	return qb.tableMgr.table
+}
+
+func (qb *StudioStore) selectDataset() *goqu.SelectDataset {
+	return dialect.From(qb.table()).Select(qb.table().All())
+}
+
+func (qb *StudioStore) Create(ctx context.Context, newObject *models.CreateStudioInput) error {
+	var err error
+
+	var r studioRow
+	r.fromStudio(*newObject.Studio)
+
+	id, err := qb.tableMgr.insertID(ctx, r)
+	if err != nil {
+		return err
+	}
+
+	if err := studioUserData.upsert(ctx, id, studioUserDataRecord(*newObject.Studio)); err != nil {
+		return err
+	}
+
+	if newObject.Aliases.Loaded() {
+		if err := studio.ValidateAliases(ctx, id, newObject.Aliases.List(), qb); err != nil {
+			return err
+		}
+
+		if err := studiosAliasesTableMgr.insertJoins(ctx, id, newObject.Aliases.List()); err != nil {
+			return err
+		}
+	}
+
+	if newObject.URLs.Loaded() {
+		const startPos = 0
+		if err := studiosURLsTableMgr.insertJoins(ctx, id, startPos, newObject.URLs.List()); err != nil {
+			return err
+		}
+	}
+
+	if err := qb.tagRelationshipStore.createRelationships(ctx, id, newObject.TagIDs); err != nil {
+		return err
+	}
+
+	if newObject.StashIDs.Loaded() {
+		if err := studiosStashIDsTableMgr.insertJoins(ctx, id, newObject.StashIDs.List()); err != nil {
+			return err
+		}
+	}
+
+	const partial = false
+	if err := qb.setCustomFields(ctx, id, newObject.CustomFields, partial); err != nil {
+		return err
+	}
+
+	updated, err := qb.find(ctx, id)
+	if err != nil {
+		return fmt.Errorf("finding after create: %w", err)
+	}
+
+	*newObject.Studio = *updated
+	return nil
+}
+
+func (qb *StudioStore) UpdatePartial(ctx context.Context, input models.StudioPartial) (*models.Studio, error) {
+	r := studioRowRecord{
+		updateRecord{
+			Record: make(exp.Record),
+		},
+	}
+
+	r.fromPartial(input)
+
+	if len(r.Record) > 0 {
+		if err := qb.tableMgr.updateByID(ctx, input.ID, r.Record); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := studioUserData.upsert(ctx, input.ID, studioUserDataPartialRecord(input)); err != nil {
+		return nil, err
+	}
+
+	if input.Aliases != nil {
+		if err := studiosAliasesTableMgr.modifyJoins(ctx, input.ID, input.Aliases.Values, input.Aliases.Mode); err != nil {
+			return nil, err
+		}
+	}
+
+	if input.URLs != nil {
+		if err := studiosURLsTableMgr.modifyJoins(ctx, input.ID, input.URLs.Values, input.URLs.Mode); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := qb.tagRelationshipStore.modifyRelationships(ctx, input.ID, input.TagIDs); err != nil {
+		return nil, err
+	}
+
+	if input.StashIDs != nil {
+		if err := studiosStashIDsTableMgr.modifyJoins(ctx, input.ID, input.StashIDs.StashIDs, input.StashIDs.Mode); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := qb.SetCustomFields(ctx, input.ID, input.CustomFields); err != nil {
+		return nil, err
+	}
+
+	return qb.find(ctx, input.ID)
+}
+
+// This is only used by the Import/Export functionality
+func (qb *StudioStore) Update(ctx context.Context, updatedObject *models.UpdateStudioInput) error {
+	var r studioRow
+	r.fromStudio(*updatedObject.Studio)
+
+	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
+		return err
+	}
+
+	if err := studioUserData.upsert(ctx, updatedObject.ID, studioUserDataRecord(*updatedObject.Studio)); err != nil {
+		return err
+	}
+
+	if updatedObject.Aliases.Loaded() {
+		if err := studiosAliasesTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.Aliases.List()); err != nil {
+			return err
+		}
+	}
+
+	if updatedObject.URLs.Loaded() {
+		if err := studiosURLsTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.URLs.List()); err != nil {
+			return err
+		}
+	}
+
+	if err := qb.tagRelationshipStore.replaceRelationships(ctx, updatedObject.ID, updatedObject.TagIDs); err != nil {
+		return err
+	}
+
+	if updatedObject.StashIDs.Loaded() {
+		if err := studiosStashIDsTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.StashIDs.List()); err != nil {
+			return err
+		}
+	}
+
+	if err := qb.SetCustomFields(ctx, updatedObject.ID, updatedObject.CustomFields); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (qb *StudioStore) Destroy(ctx context.Context, id int) error {
+	// must handle image checksums manually
+	if err := qb.destroyImage(ctx, id); err != nil {
+		return err
+	}
+
+	return studioRepository.destroyExisting(ctx, []int{id})
+}
+
+// returns nil, nil if not found
+func (qb *StudioStore) Find(ctx context.Context, id int) (*models.Studio, error) {
+	ret, err := qb.find(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return ret, err
+}
+
+func (qb *StudioStore) FindMany(ctx context.Context, ids []int) ([]*models.Studio, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Studios, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
+	ret := make([]*models.Studio, len(ids))
+
+	if len(ids) == 0 {
+		return ret, nil
+	}
+
+	table := qb.table()
+	if err := batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := qb.selectDataset().Prepared(true).Where(table.Col(idColumn).In(batch))
+		unsorted, err := qb.getMany(ctx, q)
+		if err != nil {
+			return err
+		}
+
+		for _, s := range unsorted {
+			i := slices.Index(ids, s.ID)
+			ret[i] = s
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	for i := range ret {
+		if ret[i] == nil {
+			return nil, fmt.Errorf("studio with id %d not found", ids[i])
+		}
+	}
+
+	return ret, nil
+}
+
+// returns nil, sql.ErrNoRows if not found
+func (qb *StudioStore) find(ctx context.Context, id int) (*models.Studio, error) {
+	q := qb.selectDataset().Where(qb.tableMgr.byID(id))
+
+	ret, err := qb.get(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+// returns nil, sql.ErrNoRows if not found
+func (qb *StudioStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.Studio, error) {
+	ret, err := qb.getMany(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(ret) == 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	return ret[0], nil
+}
+
+func (qb *StudioStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Studio, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Studios)
+
+	const single = false
+	var ret []*models.Studio
+	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
+		var f studioRow
+		if err := r.StructScan(&f); err != nil {
+			return err
+		}
+
+		s := f.resolve()
+
+		ret = append(ret, s)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := qb.loadUserData(ctx, ret); err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+// loadUserData sets the current user's data on the provided studios.
+func (qb *StudioStore) loadUserData(ctx context.Context, studios []*models.Studio) error {
+	if _, ok := models.UserIDFromContext(ctx); !ok || len(studios) == 0 {
+		return nil
+	}
+
+	byID := make(map[int]*models.Studio, len(studios))
+	ids := make([]int, len(studios))
+	for i, s := range studios {
+		byID[s.ID] = s
+		ids[i] = s.ID
+	}
+
+	return batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := studioUserData.selectForUser(ctx, batch)
+		const single = false
+		return queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+			var r studioUserDataRow
+			if err := rows.StructScan(&r); err != nil {
+				return err
+			}
+
+			if s := byID[r.StudioID]; s != nil {
+				r.apply(s)
+			}
+			return nil
+		})
+	})
+}
+
+func (qb *StudioStore) findBySubquery(ctx context.Context, sq *goqu.SelectDataset) ([]*models.Studio, error) {
+	table := qb.table()
+
+	q := qb.selectDataset().Where(
+		table.Col(idColumn).Eq(
+			sq,
+		),
+	)
+
+	return qb.getMany(ctx, q)
+}
+
+func (qb *StudioStore) FindChildren(ctx context.Context, id int) ([]*models.Studio, error) {
+	// SELECT studios.* FROM studios WHERE studios.parent_id = ?
+	table := qb.table()
+	sq := qb.selectDataset().Where(table.Col(studioParentIDColumn).Eq(id))
+	ret, err := qb.getMany(ctx, sq)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (qb *StudioStore) FindBySceneID(ctx context.Context, sceneID int) (*models.Studio, error) {
+	// SELECT studios.* FROM studios JOIN scenes ON studios.id = scenes.studio_id WHERE scenes.id = ? LIMIT 1
+	table := qb.table()
+	scenes := sceneTableMgr.table
+	sq := qb.selectDataset().Join(
+		scenes, goqu.On(table.Col(idColumn), scenes.Col(studioIDColumn)),
+	).Where(
+		scenes.Col(idColumn),
+	).Limit(1)
+	ret, err := qb.get(ctx, sq)
+
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (qb *StudioStore) FindByName(ctx context.Context, name string, nocase bool) (*models.Studio, error) {
+	// query := "SELECT * FROM studios WHERE name = ?"
+	// if nocase {
+	// 	query += " COLLATE \"nocase\""
+	// }
+	// query += " LIMIT 1"
+	where := "name = ?"
+	if nocase {
+		where += " COLLATE \"nocase\""
+	}
+	sq := qb.selectDataset().Prepared(true).Where(goqu.L(where, name)).Limit(1)
+	ret, err := qb.get(ctx, sq)
+
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (qb *StudioStore) FindByStashID(ctx context.Context, stashID models.StashID) ([]*models.Studio, error) {
+	sq := dialect.From(studiosStashIDsJoinTable).Select(studiosStashIDsJoinTable.Col(studioIDColumn)).Where(
+		studiosStashIDsJoinTable.Col("stash_id").Eq(stashID.StashID),
+		studiosStashIDsJoinTable.Col("endpoint").Eq(stashID.Endpoint),
+	)
+	ret, err := qb.findBySubquery(ctx, sq)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting studios for stash ID %s: %w", stashID.StashID, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *StudioStore) FindByStashIDStatus(ctx context.Context, hasStashID bool, stashboxEndpoint string) ([]*models.Studio, error) {
+	table := qb.table()
+	sq := dialect.From(table).LeftJoin(
+		studiosStashIDsJoinTable,
+		goqu.On(table.Col(idColumn).Eq(studiosStashIDsJoinTable.Col(studioIDColumn))),
+	).Select(table.Col(idColumn))
+
+	if hasStashID {
+		sq = sq.Where(
+			studiosStashIDsJoinTable.Col("stash_id").IsNotNull(),
+			studiosStashIDsJoinTable.Col("endpoint").Eq(stashboxEndpoint),
+		)
+	} else {
+		sq = sq.Where(
+			studiosStashIDsJoinTable.Col("stash_id").IsNull(),
+		)
+	}
+
+	ret, err := qb.findBySubquery(ctx, sq)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting studios for stash-box endpoint %s: %w", stashboxEndpoint, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *StudioStore) Count(ctx context.Context) (int, error) {
+	q := dialect.Select(goqu.COUNT("*")).From(qb.table())
+	return count(ctx, q)
+}
+
+func (qb *StudioStore) All(ctx context.Context) ([]*models.Studio, error) {
+	table := qb.table()
+	return qb.getMany(ctx, qb.selectDataset().Order(table.Col(studioNameColumn).Asc()))
+}
+
+func (qb *StudioStore) QueryForAutoTag(ctx context.Context, words []string) ([]*models.Studio, error) {
+	// TODO - Query needs to be changed to support queries of this type, and
+	// this method should be removed
+	table := qb.table()
+	sq := dialect.From(table).Select(table.Col(idColumn)).LeftJoin(
+		studiosAliasesJoinTable,
+		goqu.On(studiosAliasesJoinTable.Col(studioIDColumn).Eq(table.Col(idColumn))),
+	)
+
+	var whereClauses []exp.Expression
+
+	for _, w := range words {
+		whereClauses = append(whereClauses, table.Col(studioNameColumn).ILike(w+"%"))
+		whereClauses = append(whereClauses, studiosAliasesJoinTable.Col("alias").ILike(w+"%"))
+	}
+
+	sq = sq.Where(
+		goqu.Or(whereClauses...),
+		table.Col("ignore_auto_tag").IsFalse(),
+	)
+
+	ret, err := qb.findBySubquery(ctx, sq)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting studios for autotag: %w", err)
+	}
+
+	return ret, nil
+}
+
+func (qb *StudioStore) makeQuery(ctx context.Context, studioFilter *models.StudioFilterType, findFilter *models.FindFilterType) (*queryBuilder, error) {
+	if studioFilter == nil {
+		studioFilter = &models.StudioFilterType{}
+	}
+	if findFilter == nil {
+		findFilter = &models.FindFilterType{}
+	}
+
+	query := studioRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Studios); ok {
+		query.addWhere(where)
+	}
+	distinctIDs(&query, studioTable)
+
+	if q := findFilter.Q; q != nil && *q != "" {
+		query.join(studioAliasesTable, "", "studio_aliases.studio_id = studios.id")
+		searchColumns := []string{"studios.name", "studio_aliases.alias"}
+		query.parseQueryString(searchColumns, *q)
+	}
+
+	filter := filterBuilderFromHandler(ctx, &studioFilterHandler{
+		studioFilter: studioFilter,
+	})
+
+	if err := query.addFilter(filter); err != nil {
+		return nil, err
+	}
+
+	var err error
+	var group []string
+	query.sort, group, err = qb.getStudioSort(ctx, findFilter)
+	if err != nil {
+		return nil, err
+	}
+	query.pagination = getPagination(findFilter)
+	query.addGroupBy(group...)
+
+	return &query, nil
+}
+
+func (qb *StudioStore) Query(ctx context.Context, studioFilter *models.StudioFilterType, findFilter *models.FindFilterType) ([]*models.Studio, int, error) {
+	query, err := qb.makeQuery(ctx, studioFilter, findFilter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	idsResult, countResult, err := query.executeFind(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	studios, err := qb.FindMany(ctx, idsResult)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return studios, countResult, nil
+}
+
+func (qb *StudioStore) QueryCount(ctx context.Context, studioFilter *models.StudioFilterType, findFilter *models.FindFilterType) (int, error) {
+	query, err := qb.makeQuery(ctx, studioFilter, findFilter)
+	if err != nil {
+		return 0, err
+	}
+
+	return query.executeCount(ctx)
+}
+
+func (qb *StudioStore) sortByScenesDuration(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		SELECT COALESCE(SUM(video_files.duration), 0)
+		FROM %s
+		LEFT JOIN %s ON %s.%s = %s.id
+		LEFT JOIN video_files ON video_files.file_id = %s.file_id
+		WHERE %s.%s = %s.id
+	) %s`, sceneTable, scenesFilesTable, scenesFilesTable, sceneIDColumn, sceneTable, scenesFilesTable, sceneTable, studioIDColumn, studioTable, getSortDirection(direction))
+}
+
+func (qb *StudioStore) sortByScenesSize(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		SELECT COALESCE(SUM(%s.size), 0)
+		FROM %s
+		LEFT JOIN %s ON %s.%s = %s.id
+		LEFT JOIN %s ON %s.id = %s.file_id
+		WHERE %s.%s = %s.id
+	) %s`, fileTable, sceneTable, scenesFilesTable, scenesFilesTable, sceneIDColumn, sceneTable, fileTable, fileTable, scenesFilesTable, sceneTable, studioIDColumn, studioTable, getSortDirection(direction))
+}
+
+func (qb *StudioStore) sortByAudiosDuration(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		SELECT COALESCE(SUM(audio_files.duration), 0)
+		FROM %s
+		LEFT JOIN %s ON %s.%s = %s.id
+		LEFT JOIN audio_files ON audio_files.file_id = %s.file_id
+		WHERE %s.%s = %s.id
+	) %s`, audioTable, audiosFilesTable, audiosFilesTable, audioIDColumn, audioTable, audiosFilesTable, audioTable, studioIDColumn, studioTable, getSortDirection(direction))
+}
+
+func (qb *StudioStore) sortByAudiosSize(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		SELECT COALESCE(SUM(%s.size), 0)
+		FROM %s
+		LEFT JOIN %s ON %s.%s = %s.id
+		LEFT JOIN %s ON %s.id = %s.file_id
+		WHERE %s.%s = %s.id
+	) %s`, fileTable, audioTable, audiosFilesTable, audiosFilesTable, audioIDColumn, audioTable, fileTable, fileTable, audiosFilesTable, audioTable, studioIDColumn, studioTable, getSortDirection(direction))
+}
+
+// used for sorting on performer latest scene
+var selectStudioLatestSceneSQL = utils.StrFormat(
+	"SELECT MAX(date) FROM ("+
+		"SELECT {date} FROM {scenes} s "+
+		"WHERE s.{studio_id} = {studios}.id"+
+		")",
+	map[string]interface{}{
+		"scenes":    sceneTable,
+		"studios":   studioTable,
+		"studio_id": studioIDColumn,
+		"date":      sceneDateColumn,
+	},
+)
+
+func (qb *StudioStore) sortByLatestScene(direction string) string {
+	// need to get the latest date from scenes
+	return " ORDER BY (" + selectStudioLatestSceneSQL + ") " + direction
+}
+
+func (qb *StudioStore) sortByScenesCountAll(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		WITH RECURSIVE sub_studios AS (
+			SELECT s.id FROM %[1]s s WHERE s.id = %[1]s.id
+			UNION ALL
+			SELECT s.id FROM %[1]s s
+			INNER JOIN sub_studios ss ON s.parent_id = ss.id
+		)
+		SELECT COUNT(*) FROM %[2]s
+		WHERE %[2]s.%[3]s IN (SELECT id FROM sub_studios)
+	) %[4]s`, studioTable, sceneTable, studioIDColumn, getSortDirection(direction))
+}
+
+// performer counts include the studio's scenes, images and galleries, matching
+// the studio's performer_count field and filter
+func (qb *StudioStore) sortByPerformerCount(direction string) string {
+	return " ORDER BY (" + selectStudioPerformerCountSQL + ") " + getSortDirection(direction)
+}
+
+func (qb *StudioStore) sortByPerformerCountAll(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		WITH RECURSIVE sub_studios AS (
+			SELECT s.id FROM %[1]s s WHERE s.id = %[1]s.id
+			UNION ALL
+			SELECT s.id FROM %[1]s s
+			INNER JOIN sub_studios ss ON s.parent_id = ss.id
+		)
+		SELECT COUNT(*) FROM (
+			SELECT %[2]s.performer_id FROM %[2]s
+			INNER JOIN %[3]s ON %[3]s.id = %[2]s.scene_id
+			WHERE %[3]s.studio_id IN (SELECT id FROM sub_studios)
+			UNION
+			SELECT %[4]s.performer_id FROM %[4]s
+			INNER JOIN %[5]s ON %[5]s.id = %[4]s.image_id
+			WHERE %[5]s.studio_id IN (SELECT id FROM sub_studios)
+			UNION
+			SELECT %[6]s.performer_id FROM %[6]s
+			INNER JOIN %[7]s ON %[7]s.id = %[6]s.gallery_id
+			WHERE %[7]s.studio_id IN (SELECT id FROM sub_studios)
+		)
+	) %[8]s`, studioTable,
+		performersScenesTable, sceneTable,
+		performersImagesTable, imageTable,
+		performersGalleriesTable, galleryTable,
+		getSortDirection(direction))
+}
+
+func (qb *StudioStore) sortByOCounter(ctx context.Context, direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		SELECT COALESCE((
+			SELECT COUNT(*) FROM %[3]s
+			INNER JOIN %[4]s ON %[3]s.id = %[4]s.scene_id AND %[4]s.user_id = %[7]d
+			WHERE %[3]s.%[2]s = %[1]s.id
+		), 0) + COALESCE((
+			SELECT SUM(%[8]s.o_counter) FROM %[5]s
+			INNER JOIN %[8]s ON %[5]s.id = %[8]s.image_id AND %[8]s.user_id = %[7]d
+			WHERE %[5]s.%[2]s = %[1]s.id
+		), 0) + COALESCE((
+			SELECT SUM(%[10]s.o_counter) FROM %[9]s
+			INNER JOIN %[10]s ON %[9]s.id = %[10]s.gallery_id AND %[10]s.user_id = %[7]d
+			WHERE %[9]s.%[2]s = %[1]s.id
+		) ,0) + COALESCE((
+            SELECT COUNT(*) FROM %[11]s
+            INNER JOIN %[12]s ON %[11]s.id = %[12]s.audio_id AND %[12]s.user_id = %[7]d
+            WHERE %[11]s.%[2]s = %[1]s.id
+        ), 0)
+	) %[6]s`, studioTable, studioIDColumn, sceneTable, scenesODatesTable, imageTable, getSortDirection(direction), currentUserID(ctx), imagesUserDataTable, galleryTable, galleriesUserDataTable, audioTable, audiosODatesTable)
+}
+
+func (qb *StudioStore) sortByOCounterAll(ctx context.Context, direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		WITH RECURSIVE sub_studios AS (
+			SELECT s.id FROM %[1]s s WHERE s.id = %[1]s.id
+			UNION ALL
+			SELECT ch.id FROM %[1]s ch
+			INNER JOIN sub_studios ss ON ch.parent_id = ss.id
+		)
+		SELECT COALESCE((
+			SELECT COUNT(*) FROM %[3]s
+			INNER JOIN %[4]s ON %[3]s.id = %[4]s.scene_id AND %[4]s.user_id = %[7]d
+			WHERE %[3]s.%[2]s IN (SELECT id FROM sub_studios)
+		), 0) + COALESCE((
+			SELECT SUM(%[8]s.o_counter) FROM %[5]s
+			INNER JOIN %[8]s ON %[5]s.id = %[8]s.image_id AND %[8]s.user_id = %[7]d
+			WHERE %[5]s.%[2]s IN (SELECT id FROM sub_studios)
+		), 0) + COALESCE((
+			SELECT SUM(%[10]s.o_counter) FROM %[9]s
+			INNER JOIN %[10]s ON %[9]s.id = %[10]s.gallery_id AND %[10]s.user_id = %[7]d
+			WHERE %[9]s.%[2]s IN (SELECT id FROM sub_studios)
+		) ,0) + COALESCE((
+            SELECT COUNT(*) FROM %[11]s
+            INNER JOIN %[12]s ON %[11]s.id = %[12]s.audio_id AND %[12]s.user_id = %[7]d
+            WHERE %[11]s.%[2]s IN (SELECT id FROM sub_studios)
+        ), 0)
+	) %[6]s`, studioTable, studioIDColumn, sceneTable, scenesODatesTable, imageTable, getSortDirection(direction), currentUserID(ctx), imagesUserDataTable, galleryTable, galleriesUserDataTable, audioTable, audiosODatesTable)
+
+}
+
+// used for sorting on performer latest audio
+var selectStudioLatestAudioSQL = utils.StrFormat(
+	"SELECT MAX(date) FROM ("+
+		"SELECT {date} FROM {audios} s "+
+		"WHERE s.{studio_id} = {studios}.id"+
+		")",
+	map[string]interface{}{
+		"audios":    audioTable,
+		"studios":   studioTable,
+		"studio_id": studioIDColumn,
+		"date":      audioDateColumn,
+	},
+)
+
+func (qb *StudioStore) sortByLatestAudio(direction string) string {
+	// need to get the latest date from audios
+	return " ORDER BY (" + selectStudioLatestAudioSQL + ") " + direction
+}
+
+var studioSortOptions = sortOptions{
+	"child_count",
+	"created_at",
+	"galleries_count",
+	"id",
+	"images_count",
+	"latest_scene",
+	"name",
+	"favorite",
+	"o_counter",
+	"o_counter_all",
+	"performer_count",
+	"performer_count_all",
+	"scenes_count",
+	"scenes_count_all",
+	"scenes_duration",
+	"scenes_size",
+	"scene_markers_count",
+	"audios_count",
+	"audios_duration",
+	"audios_size",
+	"random",
+	"rating",
+	"tag_count",
+	"updated_at",
+}
+
+func (qb *StudioStore) getStudioSort(ctx context.Context, findFilter *models.FindFilterType) (string, []string, error) {
+	var sort string
+	var direction string
+	if findFilter == nil {
+		sort = "name"
+		direction = "ASC"
+	} else {
+		sort = findFilter.GetSort("name")
+		direction = findFilter.GetDirection()
+	}
+
+	// CVE-2024-32231 - ensure sort is in the list of allowed sorts
+	if err := studioSortOptions.validateSort(sort); err != nil {
+		return "", nil, err
+	}
+
+	group := []string{}
+	sortQuery := ""
+	switch sort {
+	case "tag_count":
+		sortQuery += getCountSort(studioTable, studiosTagsTable, studioIDColumn, direction)
+	case "scenes_count":
+		sortQuery += getCountSort(studioTable, sceneTable, studioIDColumn, direction)
+	case "scenes_count_all":
+		sortQuery += qb.sortByScenesCountAll(direction)
+	case "scenes_duration":
+		sortQuery += qb.sortByScenesDuration(direction)
+	case "scenes_size":
+		sortQuery += qb.sortByScenesSize(direction)
+	case "audios_count":
+		sortQuery += getCountSort(studioTable, audioTable, studioIDColumn, direction)
+	case "audios_duration":
+		sortQuery += qb.sortByAudiosDuration(direction)
+	case "audios_size":
+		sortQuery += qb.sortByAudiosSize(direction)
+	case "images_count":
+		sortQuery += getCountSort(studioTable, imageTable, studioIDColumn, direction)
+	case "galleries_count":
+		sortQuery += getCountSort(studioTable, galleryTable, studioIDColumn, direction)
+	case "child_count":
+		sortQuery += getCountSort(studioTable, studioTable, studioParentIDColumn, direction)
+	case "scene_markers_count":
+		sortQuery += fmt.Sprintf(" ORDER BY (SELECT COUNT(*) FROM %s INNER JOIN %s ON %[1]s.scene_id = %[2]s.id WHERE %[2]s.%s = %s.id) %s", sceneMarkerTable, sceneTable, studioIDColumn, studioTable, getSortDirection(direction))
+	case "latest_scene":
+		sortQuery += qb.sortByLatestScene(direction)
+	case "latest_audio":
+		sortQuery += qb.sortByLatestAudio(direction)
+	case "o_counter":
+		sortQuery += qb.sortByOCounter(ctx, direction)
+	case "o_counter_all":
+		sortQuery += qb.sortByOCounterAll(ctx, direction)
+	case "performer_count":
+		sortQuery += qb.sortByPerformerCount(direction)
+	case "performer_count_all":
+		sortQuery += qb.sortByPerformerCountAll(direction)
+	case "rating", "favorite":
+		sortQuery += studioUserData.orderBy(ctx, sort, direction)
+	default:
+		var add string
+		add, group = getSort(sort, direction, "studios")
+		sortQuery += add
+	}
+
+	// Whatever the sorting, always use name/id as a final sort
+	sortQuery += ", COALESCE(studios.name, CAST(studios.id as text)) COLLATE \"natural_ci\" ASC"
+	group = append(group, "studios.name", "studios.id")
+	return sortQuery, group, nil
+}
+
+func (qb *StudioStore) GetImage(ctx context.Context, studioID int) ([]byte, error) {
+	return qb.blobJoinQueryBuilder.GetImage(ctx, studioID, studioImageBlobColumn)
+}
+
+func (qb *StudioStore) HasImage(ctx context.Context, studioID int) (bool, error) {
+	return qb.blobJoinQueryBuilder.HasImage(ctx, studioID, studioImageBlobColumn)
+}
+
+func (qb *StudioStore) UpdateImage(ctx context.Context, studioID int, image []byte) error {
+	return qb.blobJoinQueryBuilder.UpdateImage(ctx, studioID, studioImageBlobColumn, image)
+}
+
+func (qb *StudioStore) destroyImage(ctx context.Context, studioID int) error {
+	return qb.blobJoinQueryBuilder.DestroyImage(ctx, studioID, studioImageBlobColumn)
+}
+
+func (qb *StudioStore) GetStashIDs(ctx context.Context, studioID int) ([]models.StashID, error) {
+	return studiosStashIDsTableMgr.get(ctx, studioID)
+}
+
+func (qb *StudioStore) GetAliases(ctx context.Context, studioID int) ([]string, error) {
+	return studiosAliasesTableMgr.get(ctx, studioID)
+}
+
+// GetAllAliases returns a map of studio id to its aliases. Lets callers that
+// need aliases for many studios avoid N+1 per-id lookups.
+func (qb *StudioStore) GetAllAliases(ctx context.Context) (map[int][]string, error) {
+	return studiosAliasesTableMgr.getAll(ctx)
+}
+
+func (qb *StudioStore) GetURLs(ctx context.Context, studioID int) ([]string, error) {
+	return studiosURLsTableMgr.get(ctx, studioID)
+}

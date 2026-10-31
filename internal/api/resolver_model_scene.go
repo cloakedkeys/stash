@@ -9,6 +9,7 @@ import (
 	"github.com/stashapp/stash/internal/api/urlbuilders"
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/signedurl"
 )
 
 func convertVideoFile(f models.File) (*models.VideoFile, error) {
@@ -74,6 +75,14 @@ func (r *sceneResolver) Date(ctx context.Context, obj *models.Scene) (*string, e
 	return nil, nil
 }
 
+func (r *sceneResolver) ProductionDate(ctx context.Context, obj *models.Scene) (*string, error) {
+	if obj.ProductionDate != nil {
+		result := obj.ProductionDate.String()
+		return &result, nil
+	}
+	return nil, nil
+}
+
 func (r *sceneResolver) Files(ctx context.Context, obj *models.Scene) ([]*VideoFile, error) {
 	files, err := r.getFiles(ctx, obj)
 	if err != nil {
@@ -107,15 +116,32 @@ func (r *sceneResolver) Paths(ctx context.Context, obj *models.Scene) (*ScenePat
 	baseURL, _ := ctx.Value(BaseURLCtxKey).(string)
 	config := manager.GetInstance().Config
 	builder := urlbuilders.NewSceneURLBuilder(baseURL, obj)
+
+	// Sign the stream and caption prefixes so that they can be accessed
+	// by devices that cannot pass cookies (AirPlay/Chromecast)
+	streamURL := builder.GetStreamURL()
+	signURL(ctx, config, streamURL, signedurl.DerivePrefix(streamURL.Path))
+	streamPath := streamURL.String()
+
+	captionBasePath := builder.GetCaptionURL()
+	if username, ok := signingUser(ctx); ok {
+		captionBasePath += "?" + signedParams(config, username, builder.GetCaptionPath()).Encode()
+	}
+
+	// Web-only formats: use unsigned URLs (rely on cookie authentication)
 	screenshotPath := builder.GetScreenshotURL()
 	previewPath := builder.GetStreamPreviewURL()
-	streamPath := builder.GetStreamURL(config.GetAPIKey()).String()
 	webpPath := builder.GetStreamPreviewImageURL()
 	objHash := obj.GetHash(config.GetVideoFileNamingAlgorithm())
 	vttPath := builder.GetSpriteVTTURL(objHash)
 	spritePath := builder.GetSpriteURL(objHash)
-	funscriptPath := builder.GetFunscriptURL()
-	captionBasePath := builder.GetCaptionURL()
+	funscriptPath := builder.GetFunscriptURL().String()
+	interactiveCsvPath := builder.GetInteractiveCSVURL("")
+	signURL(ctx, config, interactiveCsvPath, builder.GetInteractiveCSVPath())
+	funscriptURL := builder.GetFunscriptURL()
+	signURL(ctx, config, funscriptURL, builder.GetFunscriptPath())
+	funscriptPath = funscriptURL.String()
+	interactiveCSV := interactiveCsvPath.String()
 	interactiveHeatmap := builder.GetInteractiveHeatmapURL()
 
 	return &ScenePathsType{
@@ -126,6 +152,7 @@ func (r *sceneResolver) Paths(ctx context.Context, obj *models.Scene) (*ScenePat
 		Vtt:                &vttPath,
 		Sprite:             &spritePath,
 		Funscript:          &funscriptPath,
+		InteractiveCSV:     &interactiveCSV,
 		InteractiveHeatmap: &interactiveHeatmap,
 		Caption:            &captionBasePath,
 	}, nil
@@ -172,7 +199,7 @@ func (r *sceneResolver) Galleries(ctx context.Context, obj *models.Scene) (ret [
 
 	var errs []error
 	ret, errs = loaders.From(ctx).GalleryByID.LoadAll(obj.GalleryIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *sceneResolver) Studio(ctx context.Context, obj *models.Scene) (ret *models.Studio, err error) {
@@ -256,7 +283,7 @@ func (r *sceneResolver) Tags(ctx context.Context, obj *models.Scene) (ret []*mod
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.TagIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *sceneResolver) Performers(ctx context.Context, obj *models.Scene) (ret []*models.Performer, err error) {
@@ -270,7 +297,7 @@ func (r *sceneResolver) Performers(ctx context.Context, obj *models.Scene) (ret 
 
 	var errs []error
 	ret, errs = loaders.From(ctx).PerformerByID.LoadAll(obj.PerformerIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *sceneResolver) StashIds(ctx context.Context, obj *models.Scene) (ret []*models.StashID, err error) {
@@ -294,9 +321,11 @@ func (r *sceneResolver) SceneStreams(ctx context.Context, obj *models.Scene) ([]
 
 	baseURL, _ := ctx.Value(BaseURLCtxKey).(string)
 	builder := urlbuilders.NewSceneURLBuilder(baseURL, obj)
-	apiKey := config.GetAPIKey()
 
-	return manager.GetSceneStreamPaths(obj, builder.GetStreamURL(apiKey), config.GetMaxStreamingTranscodeSize())
+	streamURL := builder.GetStreamURL()
+	signURL(ctx, config, streamURL, signedurl.DerivePrefix(streamURL.Path))
+
+	return manager.GetSceneStreamPaths(obj, streamURL, config.GetMaxStreamingTranscodeSize())
 }
 
 func (r *sceneResolver) Interactive(ctx context.Context, obj *models.Scene) (bool, error) {

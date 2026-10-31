@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil"
 	"gopkg.in/guregu/null.v4"
@@ -27,20 +28,24 @@ const (
 	imagesFilesTable      = "images_files"
 	imagesURLsTable       = "image_urls"
 	imageURLColumn        = "url"
+	imagesUserDataTable   = "images_user_data"
 )
 
+var imageUserData = userDataTable{
+	table:       imagesUserDataTable,
+	idColumn:    imageIDColumn,
+	objectTable: imageTable,
+}
+
 type imageRow struct {
-	ID    int         `db:"id" goqu:"skipinsert"`
-	Title zero.String `db:"title"`
-	Code  zero.String `db:"code"`
-	// expressed as 1-100
-	Rating        null.Int    `db:"rating"`
+	ID            int         `db:"id" goqu:"skipinsert"`
+	Title         zero.String `db:"title"`
+	Code          zero.String `db:"code"`
 	Date          NullDate    `db:"date"`
 	DatePrecision null.Int    `db:"date_precision"`
 	Details       zero.String `db:"details"`
 	Photographer  zero.String `db:"photographer"`
 	Organized     bool        `db:"organized"`
-	OCounter      int         `db:"o_counter"`
 	StudioID      null.Int    `db:"studio_id,omitempty"`
 	CreatedAt     Timestamp   `db:"created_at"`
 	UpdatedAt     Timestamp   `db:"updated_at"`
@@ -50,16 +55,44 @@ func (r *imageRow) fromImage(i models.Image) {
 	r.ID = i.ID
 	r.Title = zero.StringFrom(i.Title)
 	r.Code = zero.StringFrom(i.Code)
-	r.Rating = intFromPtr(i.Rating)
 	r.Date = NullDateFromDatePtr(i.Date)
 	r.DatePrecision = datePrecisionFromDatePtr(i.Date)
 	r.Details = zero.StringFrom(i.Details)
 	r.Photographer = zero.StringFrom(i.Photographer)
 	r.Organized = i.Organized
-	r.OCounter = i.OCounter
 	r.StudioID = intFromPtr(i.StudioID)
 	r.CreatedAt = Timestamp{Timestamp: i.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: i.UpdatedAt}
+}
+
+// imageUserDataRow is a row of a user's data for an image.
+type imageUserDataRow struct {
+	ImageID int `db:"image_id"`
+	UserID  int `db:"user_id"`
+	// expressed as 1-100
+	Rating   null.Int `db:"rating"`
+	OCounter int      `db:"o_counter"`
+}
+
+func (r imageUserDataRow) apply(i *models.Image) {
+	i.Rating = nullIntPtr(r.Rating)
+	i.OCounter = r.OCounter
+}
+
+func imageUserDataRecord(i models.Image) goqu.Record {
+	return goqu.Record{
+		"rating":    intFromPtr(i.Rating),
+		"o_counter": i.OCounter,
+	}
+}
+
+func imageUserDataPartialRecord(i models.ImagePartial) goqu.Record {
+	r := updateRecord{
+		Record: make(exp.Record),
+	}
+	r.setNullInt("rating", i.Rating)
+	r.setInt("o_counter", i.OCounter)
+	return goqu.Record(r.Record)
 }
 
 type imageQueryRow struct {
@@ -75,12 +108,10 @@ func (r *imageQueryRow) resolve() *models.Image {
 		ID:           r.ID,
 		Title:        r.Title.String,
 		Code:         r.Code.String,
-		Rating:       nullIntPtr(r.Rating),
 		Date:         r.Date.DatePtr(r.DatePrecision),
 		Details:      r.Details.String,
 		Photographer: r.Photographer.String,
 		Organized:    r.Organized,
-		OCounter:     r.OCounter,
 		StudioID:     nullIntPtr(r.StudioID),
 
 		PrimaryFileID: nullIntFileIDPtr(r.PrimaryFileID),
@@ -104,12 +135,10 @@ type imageRowRecord struct {
 func (r *imageRowRecord) fromPartial(i models.ImagePartial) {
 	r.setNullString("title", i.Title)
 	r.setNullString("code", i.Code)
-	r.setNullInt("rating", i.Rating)
 	r.setNullDate("date", "date_precision", i.Date)
 	r.setNullString("details", i.Details)
 	r.setNullString("photographer", i.Photographer)
 	r.setBool("organized", i.Organized)
-	r.setInt("o_counter", i.OCounter)
 	r.setNullInt("studio_id", i.StudioID)
 	r.setTimestamp("created_at", i.CreatedAt)
 	r.setTimestamp("updated_at", i.UpdatedAt)
@@ -123,23 +152,23 @@ type imageRepositoryType struct {
 	files      filesRepository
 }
 
-func (r *imageRepositoryType) addImagesFilesTable(f *filterBuilder) {
-	f.addLeftJoin(imagesFilesTable, "", "images_files.image_id = images.id")
+func (r *imageRepositoryType) addImagesFilesTable(f *filterBuilder, joinType joinType) {
+	f.addJoin(joinType, imagesFilesTable, "", "images_files.image_id = images.id")
 }
 
-func (r *imageRepositoryType) addFilesTable(f *filterBuilder) {
-	r.addImagesFilesTable(f)
-	f.addLeftJoin(fileTable, "", "images_files.file_id = files.id")
+func (r *imageRepositoryType) addFilesTable(f *filterBuilder, joinType joinType) {
+	r.addImagesFilesTable(f, joinType)
+	f.addJoin(joinType, fileTable, "", "images_files.file_id = files.id")
 }
 
-func (r *imageRepositoryType) addFoldersTable(f *filterBuilder) {
-	r.addFilesTable(f)
-	f.addLeftJoin(folderTable, "", "files.parent_folder_id = folders.id")
+func (r *imageRepositoryType) addFoldersTable(f *filterBuilder, joinType joinType) {
+	r.addFilesTable(f, joinType)
+	f.addJoin(joinType, folderTable, "", "files.parent_folder_id = folders.id")
 }
 
-func (r *imageRepositoryType) addImageFilesTable(f *filterBuilder) {
-	r.addImagesFilesTable(f)
-	f.addLeftJoin(imageFileTable, "", "image_files.file_id = images_files.file_id")
+func (r *imageRepositoryType) addImageFilesTable(f *filterBuilder, joinType joinType) {
+	r.addImagesFilesTable(f, joinType)
+	f.addJoin(joinType, imageFileTable, "", "image_files.file_id = images_files.file_id")
 }
 
 var (
@@ -200,7 +229,7 @@ func NewImageStore(r *storeRepository) *ImageStore {
 			fk:    imagesCustomFieldsTable.Col(imageIDColumn),
 		},
 		tableMgr:        imageTableMgr,
-		oCounterManager: oCounterManager{imageTableMgr},
+		oCounterManager: oCounterManager{tableMgr: imageTableMgr, userData: imageUserData},
 		repo:            r,
 	}
 }
@@ -248,6 +277,10 @@ func (qb *ImageStore) Create(ctx context.Context, newObject *models.CreateImageI
 
 	id, err := qb.tableMgr.insertID(ctx, r)
 	if err != nil {
+		return err
+	}
+
+	if err := imageUserData.upsert(ctx, id, imageUserDataRecord(*newObject.Image)); err != nil {
 		return err
 	}
 
@@ -313,6 +346,10 @@ func (qb *ImageStore) UpdatePartial(ctx context.Context, id int, partial models.
 		}
 	}
 
+	if err := imageUserData.upsert(ctx, id, imageUserDataPartialRecord(partial)); err != nil {
+		return nil, err
+	}
+
 	if partial.GalleryIDs != nil {
 		if err := imageGalleriesTableMgr.modifyJoins(ctx, id, partial.GalleryIDs.IDs, partial.GalleryIDs.Mode); err != nil {
 			return nil, err
@@ -353,6 +390,10 @@ func (qb *ImageStore) Update(ctx context.Context, updatedObject *models.Image) e
 	r.fromImage(*updatedObject)
 
 	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
+		return err
+	}
+
+	if err := imageUserData.upsert(ctx, updatedObject.ID, imageUserDataRecord(*updatedObject)); err != nil {
 		return err
 	}
 
@@ -407,6 +448,11 @@ func (qb *ImageStore) Find(ctx context.Context, id int) (*models.Image, error) {
 }
 
 func (qb *ImageStore) FindMany(ctx context.Context, ids []int) ([]*models.Image, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Images, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	images := make([]*models.Image, len(ids))
 
 	if err := batchExec(ids, defaultBatchSize, func(batch []int) error {
@@ -474,6 +520,8 @@ func (qb *ImageStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.I
 }
 
 func (qb *ImageStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Image, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Images)
+
 	const single = false
 	var ret []*models.Image
 	var lastID int
@@ -496,7 +544,41 @@ func (qb *ImageStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*mo
 		return nil, err
 	}
 
+	if err := qb.loadUserData(ctx, ret); err != nil {
+		return nil, err
+	}
+
 	return ret, nil
+}
+
+// loadUserData sets the current user's data on the provided images.
+func (qb *ImageStore) loadUserData(ctx context.Context, images []*models.Image) error {
+	if _, ok := models.UserIDFromContext(ctx); !ok || len(images) == 0 {
+		return nil
+	}
+
+	byID := make(map[int]*models.Image, len(images))
+	ids := make([]int, len(images))
+	for i, img := range images {
+		byID[img.ID] = img
+		ids[i] = img.ID
+	}
+
+	return batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := imageUserData.selectForUser(ctx, batch)
+		const single = false
+		return queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+			var r imageUserDataRow
+			if err := rows.StructScan(&r); err != nil {
+				return err
+			}
+
+			if img := byID[r.ImageID]; img != nil {
+				r.apply(img)
+			}
+			return nil
+		})
+	})
 }
 
 // Returns the custom cover for the gallery, if one has been set.
@@ -571,6 +653,38 @@ func (qb *ImageStore) FindByFileID(ctx context.Context, fileID models.FileID) ([
 	ret, err := qb.findBySubquery(ctx, sq)
 	if err != nil {
 		return nil, fmt.Errorf("getting image by file id %d: %w", fileID, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *ImageStore) GetManyIDsByFileIDs(ctx context.Context, fileIDs []models.FileID) ([][]int, error) {
+	sq := dialect.From(imagesFilesJoinTable).Select(imagesFilesJoinTable.Col(imageIDColumn), imagesFilesJoinTable.Col(fileIDColumn)).Where(
+		imagesFilesJoinTable.Col(fileIDColumn).In(fileIDs),
+	)
+
+	sql, args, err := sq.ToSQL()
+	if err != nil {
+		return nil, fmt.Errorf("building query: %w", err)
+	}
+
+	var results []struct {
+		ImageID int           `db:"image_id"`
+		FileID  models.FileID `db:"file_id"`
+	}
+
+	if err := querySelect(ctx, sql, args, &results); err != nil {
+		return nil, fmt.Errorf("getting images by file ids %v: %w", fileIDs, err)
+	}
+
+	retMap := make(map[models.FileID][]int)
+	for _, r := range results {
+		retMap[r.FileID] = append(retMap[r.FileID], r.ImageID)
+	}
+
+	ret := make([][]int, len(fileIDs))
+	for i, id := range fileIDs {
+		ret[i] = retMap[id]
 	}
 
 	return ret, nil
@@ -688,22 +802,11 @@ func (qb *ImageStore) CountByGalleryID(ctx context.Context, galleryID int) (int,
 }
 
 func (qb *ImageStore) OCountByPerformerID(ctx context.Context, performerID int) (int, error) {
-	table := qb.table()
+	userData := imageUserData.goquTable()
 	joinTable := performersImagesJoinTable
-	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table).InnerJoin(joinTable, goqu.On(table.Col(idColumn).Eq(joinTable.Col(imageIDColumn)))).Where(joinTable.Col(performerIDColumn).Eq(performerID))
-
-	var ret int
-	if err := querySimple(ctx, q, &ret); err != nil {
-		return 0, err
-	}
-
-	return ret, nil
-}
-
-func (qb *ImageStore) OCountByStudioID(ctx context.Context, studioID int) (int, error) {
-	table := qb.table()
-	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table).Where(
-		table.Col(studioIDColumn).Eq(studioID),
+	q := dialect.Select(goqu.COALESCE(goqu.SUM(userData.Col("o_counter")), 0)).From(userData).InnerJoin(joinTable, goqu.On(userData.Col(imageIDColumn).Eq(joinTable.Col(imageIDColumn)))).Where(
+		joinTable.Col(performerIDColumn).Eq(performerID),
+		userData.Col(userIDColumn).Eq(currentUserID(ctx)),
 	)
 
 	var ret int
@@ -714,15 +817,71 @@ func (qb *ImageStore) OCountByStudioID(ctx context.Context, studioID int) (int, 
 	return ret, nil
 }
 
-func (qb *ImageStore) OCount(ctx context.Context) (int, error) {
-	table := qb.table()
+func (qb *ImageStore) OCountByStudioID(ctx context.Context, studioID int, depth int) (int, error) {
+	var ret int
 
-	q := dialect.Select(goqu.COALESCE(goqu.SUM("o_counter"), 0)).From(table)
+	if depth != 0 {
+		return qb.oCountByStudioIDRecursive(ctx, studioID, depth)
+	}
+
+	table := qb.table()
+	userData := imageUserData.goquTable()
+	q := dialect.Select(goqu.COALESCE(goqu.SUM(userData.Col("o_counter")), 0)).From(table).InnerJoin(userData, goqu.On(
+		userData.Col(imageIDColumn).Eq(table.Col(idColumn)),
+		userData.Col(userIDColumn).Eq(currentUserID(ctx)),
+	)).Where(
+		table.Col(studioIDColumn).Eq(studioID),
+	)
+
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (qb *ImageStore) OCount(ctx context.Context) (int, error) {
+	userData := imageUserData.goquTable()
+
+	q := dialect.Select(goqu.COALESCE(goqu.SUM(userData.Col("o_counter")), 0)).From(userData).Where(
+		userData.Col(userIDColumn).Eq(currentUserID(ctx)),
+	)
 	var ret int
 	if err := querySimple(ctx, q, &ret); err != nil {
 		return 0, err
 	}
 
+	return ret, nil
+}
+
+func (qb *ImageStore) oCountByStudioIDRecursive(ctx context.Context, studioID int, depth int) (int, error) {
+	q := `
+	WITH RECURSIVE sub_studios AS (
+		SELECT id, 0 AS level FROM studios WHERE id = ?
+		UNION ALL
+		SELECT s.id, ss.level + 1 FROM studios s
+		INNER JOIN sub_studios ss ON s.parent_id = ss.id
+		WHERE ss.level < ? OR ? < 0
+	)
+	SELECT COALESCE(SUM(images_user_data.o_counter), 0) FROM images
+	INNER JOIN images_user_data ON images_user_data.image_id = images.id AND images_user_data.user_id = ?
+	WHERE images.studio_id IN (SELECT id FROM sub_studios)`
+
+	rows, err := dbWrapper.QueryxContext(ctx, q, studioID, depth, depth, currentUserID(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("querying image o_count by studio: %w", err)
+	}
+	defer rows.Close()
+
+	var ret int
+	for rows.Next() {
+		if err := rows.Scan(&ret); err != nil {
+			return 0, fmt.Errorf("scanning image o_count: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterating image o_count rows: %w", err)
+	}
 	return ret, nil
 }
 
@@ -814,6 +973,9 @@ func (qb *ImageStore) makeQuery(ctx context.Context, imageFilter *models.ImageFi
 	}
 
 	query := imageRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Images); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, imageTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
@@ -849,7 +1011,7 @@ func (qb *ImageStore) makeQuery(ctx context.Context, imageFilter *models.ImageFi
 		return nil, err
 	}
 
-	if err := qb.setImageSortAndPagination(&query, findFilter); err != nil {
+	if err := qb.setImageSortAndPagination(ctx, &query, findFilter); err != nil {
 		return nil, err
 	}
 
@@ -918,6 +1080,11 @@ func (qb *ImageStore) queryGroupedFields(ctx context.Context, options models.Ima
 		aggregateQuery.addColumn("SUM(temp.size) as size")
 	}
 
+	// #5503 - select the file id so equal-sized/megapixel files aren't collapsed by DISTINCT
+	if options.Megapixels || options.TotalSize {
+		query.addColumn(imagesFilesTable + ".file_id")
+	}
+
 	const includeSortPagination = false
 	aggregateQuery.from = fmt.Sprintf("(%s) as temp", query.toSQL(includeSortPagination))
 
@@ -955,6 +1122,7 @@ var imageSortOptions = sortOptions{
 	"id",
 	"o_counter",
 	"path",
+	"performer_age",
 	"performer_count",
 	"random",
 	"rating",
@@ -964,7 +1132,7 @@ var imageSortOptions = sortOptions{
 	"updated_at",
 }
 
-func (qb *ImageStore) setImageSortAndPagination(q *queryBuilder, findFilter *models.FindFilterType) error {
+func (qb *ImageStore) setImageSortAndPagination(ctx context.Context, q *queryBuilder, findFilter *models.FindFilterType) error {
 	sortClause := ""
 
 	if findFilter != nil && findFilter.Sort != nil && *findFilter.Sort != "" {
@@ -1015,7 +1183,9 @@ func (qb *ImageStore) setImageSortAndPagination(q *queryBuilder, findFilter *mod
 			sortClause = getCountSort(imageTable, imagesTagsTable, imageIDColumn, direction)
 		case "performer_count":
 			sortClause = getCountSort(imageTable, performersImagesTable, imageIDColumn, direction)
-		case "mod_time", "filesize":
+		case "filesize":
+			sortClause = getFileSizeSort(imageTable, imagesFilesTable, imageIDColumn, direction)
+		case "mod_time":
 			addFilesJoin()
 			sortClause = getSort(sort, direction, "files")
 		case "resolution":
@@ -1026,10 +1196,39 @@ func (qb *ImageStore) setImageSortAndPagination(q *queryBuilder, findFilter *mod
 				onClause: "images_files.file_id = image_files.file_id",
 			})
 			sortClause = " ORDER BY MIN(image_files.width, image_files.height) " + direction
+		case "rating":
+			imageUserData.joinSort(ctx, q)
+			sortClause = getSort(sort, direction, imagesUserDataTable)
+		case "o_counter":
+			imageUserData.joinSort(ctx, q)
+			sortClause = " ORDER BY " + imageUserData.columnOrDefault(sort, "0") + " " + getSortDirection(direction)
 		case "title":
 			addFilesJoin()
 			addFolderJoin()
 			sortClause = " ORDER BY COALESCE(images.title, files.basename) COLLATE NATURAL_CI " + direction + ", folders.path COLLATE NATURAL_CI " + direction
+		case "performer_age":
+			// Looking at the youngest performer by default
+			aggregation := "MIN"
+			if direction == "DESC" {
+				// When sorting by performer's age DESC, I should consider the oldest performer instead
+				aggregation = "MAX"
+			}
+			fallback := "NULL"
+			if direction == "ASC" {
+				// When sorting ascending, NULLs are first by default. Coalescing to the MAX int value supported by sqlite
+				fallback = "9223372036854775807"
+			}
+			sortClause = fmt.Sprintf(
+				" ORDER BY (SELECT COALESCE(%s(JulianDay(images.date) - JulianDay(performers.birthdate)), %s) FROM %s as performers INNER JOIN %s AS aggregation WHERE performers.id = aggregation.%s AND aggregation.%s = %s.id) %s",
+				aggregation,
+				fallback,
+				performerTable,
+				performersImagesTable,
+				performerIDColumn,
+				imageIDColumn,
+				imageTable,
+				getSortDirection(direction),
+			)
 		default:
 			sortClause = getSort(sort, direction, "images")
 		}

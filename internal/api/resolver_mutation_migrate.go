@@ -30,7 +30,7 @@ func (r *mutationResolver) MigrateBlobs(ctx context.Context, input MigrateBlobsI
 	mgr := manager.GetInstance()
 	t := &task.MigrateBlobsJob{
 		TxnManager: mgr.Database,
-		BlobStore:  mgr.Database.Blobs,
+		BlobStore:  mgr.Database.Blobs(),
 		Vacuumer:   mgr.Database,
 		DeleteOld:  utils.IsTrue(input.DeleteOld),
 	}
@@ -45,6 +45,10 @@ func (r *mutationResolver) Migrate(ctx context.Context, input manager.MigrateInp
 		BackupPath: input.BackupPath,
 		Config:     mgr.Config,
 		Database:   mgr.Database,
+	}
+
+	if err := t.PreExecute(); err != nil {
+		return "", err
 	}
 
 	jobID := mgr.JobManager.Add(ctx, "Migrating database...", t)

@@ -71,8 +71,8 @@ export const GalleryImagesPanel: React.FC<IGalleryDetailsProps> =
       );
 
       async function setCover(
-        result: GQL.FindImagesQueryResult,
-        filter: ListFilterModel,
+        _result: GQL.FindImagesQueryResult,
+        _filter: ListFilterModel,
         selectedIds: Set<string>
       ) {
         const coverImageID = selectedIds.values().next();
@@ -102,8 +102,8 @@ export const GalleryImagesPanel: React.FC<IGalleryDetailsProps> =
       }
 
       async function removeImages(
-        result: GQL.FindImagesQueryResult,
-        filter: ListFilterModel,
+        _result: GQL.FindImagesQueryResult,
+        _filter: ListFilterModel,
         selectedIds: Set<string>
       ) {
         try {
@@ -131,11 +131,13 @@ export const GalleryImagesPanel: React.FC<IGalleryDetailsProps> =
         ...extraOperations,
         {
           text: intl.formatMessage({ id: "actions.set_cover" }),
+          requiredRole: GQL.RoleEnum.Modify,
           onClick: setCover,
           isDisplayed: showWhenSingleSelection,
         },
         {
           text: intl.formatMessage({ id: "actions.remove_from_gallery" }),
+          requiredRole: GQL.RoleEnum.Modify,
           onClick: removeImages,
           isDisplayed: showWhenSelected,
           postRefetch: true,

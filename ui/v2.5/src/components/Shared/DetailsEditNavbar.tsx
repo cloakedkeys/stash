@@ -1,9 +1,11 @@
 import { Button, Dropdown, Modal, SplitButton } from "react-bootstrap";
 import React, { useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
+import { useAutoTagTrigger } from "src/hooks/useAutoTagTrigger";
 import { ImageInput } from "./ImageInput";
 import { AutoTagConfirmDialog } from "./AutoTagConfirmDialog";
 import cx from "classnames";
+import { useCanAdminister, useCanModify } from "src/hooks/CurrentUser";
 
 interface IProps {
   objectName?: string;
@@ -30,8 +32,18 @@ interface IProps {
 
 export const DetailsEditNavbar: React.FC<IProps> = (props: IProps) => {
   const intl = useIntl();
+  const canModify = useCanModify();
+  const canAdminister = useCanAdminister();
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState<boolean>(false);
   const [isAutoTagAlertOpen, setIsAutoTagAlertOpen] = useState<boolean>(false);
+
+  const onAutoTagClick = useAutoTagTrigger(
+    () => props.onAutoTag?.(),
+    () => setIsAutoTagAlertOpen(true)
+  );
+
+  // everything here changes the object
+  if (!canModify) return null;
 
   function renderEditButton() {
     if (props.isNew) return;
@@ -110,13 +122,13 @@ export const DetailsEditNavbar: React.FC<IProps> = (props: IProps) => {
   function renderAutoTagButton() {
     if (props.isNew || props.isEditing) return;
 
-    if (props.onAutoTag) {
+    if (props.onAutoTag && canAdminister) {
       return (
         <div>
           <Button
             variant="secondary"
             disabled={props.autoTagDisabled}
-            onClick={() => setIsAutoTagAlertOpen(true)}
+            onClick={onAutoTagClick}
           >
             <FormattedMessage id="actions.auto_tag" />…
           </Button>

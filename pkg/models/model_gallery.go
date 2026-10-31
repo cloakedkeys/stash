@@ -18,6 +18,7 @@ type Gallery struct {
 	// Rating expressed in 1-100 scale
 	Rating    *int `json:"rating"`
 	Organized bool `json:"organized"`
+	OCounter  int  `json:"o_counter"`
 	StudioID  *int `json:"studio_id"`
 
 	// transient - not persisted
@@ -34,6 +35,7 @@ type Gallery struct {
 
 	URLs         RelatedStrings `json:"urls"`
 	SceneIDs     RelatedIDs     `json:"scene_ids"`
+	AudioIDs     RelatedIDs     `json:"audio_ids"`
 	TagIDs       RelatedIDs     `json:"tag_ids"`
 	PerformerIDs RelatedIDs     `json:"performer_ids"`
 }
@@ -75,12 +77,14 @@ type GalleryPartial struct {
 	// Rating expressed in 1-100 scale
 	Rating    OptionalInt
 	Organized OptionalBool
+	OCounter  OptionalInt
 	StudioID  OptionalInt
 	// FileModTime OptionalTime
 	CreatedAt OptionalTime
 	UpdatedAt OptionalTime
 
 	SceneIDs      *UpdateIDs
+	AudioIDs      *UpdateIDs
 	TagIDs        *UpdateIDs
 	PerformerIDs  *UpdateIDs
 	PrimaryFileID *FileID
@@ -137,6 +141,12 @@ func (g *Gallery) LoadSceneIDs(ctx context.Context, l SceneIDLoader) error {
 	})
 }
 
+func (g *Gallery) LoadAudioIDs(ctx context.Context, l AudioIDLoader) error {
+	return g.AudioIDs.load(func() ([]int, error) {
+		return l.GetAudioIDs(ctx, g.ID)
+	})
+}
+
 func (g *Gallery) LoadPerformerIDs(ctx context.Context, l PerformerIDLoader) error {
 	return g.PerformerIDs.load(func() ([]int, error) {
 		return l.GetPerformerIDs(ctx, g.ID)
@@ -147,6 +157,33 @@ func (g *Gallery) LoadTagIDs(ctx context.Context, l TagIDLoader) error {
 	return g.TagIDs.load(func() ([]int, error) {
 		return l.GetTagIDs(ctx, g.ID)
 	})
+}
+
+// UpdateInput constructs a GalleryUpdateInput using the populated fields in the GalleryPartial object.
+func (s GalleryPartial) UpdateInput(id int) GalleryUpdateInput {
+	var dateStr *string
+	if s.Date.Set {
+		d := s.Date.Value
+		v := d.String()
+		dateStr = &v
+	}
+
+	ret := GalleryUpdateInput{
+		ID:           strconv.Itoa(id),
+		Title:        s.Title.Ptr(),
+		Code:         s.Code.Ptr(),
+		Details:      s.Details.Ptr(),
+		Photographer: s.Photographer.Ptr(),
+		Urls:         s.URLs.Strings(),
+		Date:         dateStr,
+		Rating100:    s.Rating.Ptr(),
+		Organized:    s.Organized.Ptr(),
+		StudioID:     s.StudioID.StringPtr(),
+		TagIds:       s.TagIDs.IDStrings(),
+		PerformerIds: s.PerformerIDs.IDStrings(),
+	}
+
+	return ret
 }
 
 func (g Gallery) PrimaryChecksum() string {

@@ -31,6 +31,7 @@ export const SceneIsMissingCriterionOption = new IsMissingCriterionOption(
     "director",
     "url",
     "date",
+    "production_date",
     "rating",
     "cover",
     "galleries",
@@ -39,6 +40,25 @@ export const SceneIsMissingCriterionOption = new IsMissingCriterionOption(
     "performers",
     "tags",
     "stash_id",
+  ]
+);
+
+export const AudioIsMissingCriterionOption = new IsMissingCriterionOption(
+  "isMissing",
+  "is_missing",
+  [
+    "title",
+    "code",
+    "details",
+    "url",
+    "date",
+    "rating",
+    "cover",
+    "galleries",
+    "studio",
+    "group",
+    "performers",
+    "tags",
   ]
 );
 

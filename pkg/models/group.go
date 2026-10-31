@@ -3,6 +3,7 @@ package models
 type GroupFilterType struct {
 	OperatorFilter[GroupFilterType]
 	Name     *StringCriterionInput `json:"name"`
+	Aliases  *StringCriterionInput `json:"aliases"`
 	Director *StringCriterionInput `json:"director"`
 	Synopsis *StringCriterionInput `json:"synopsis"`
 	// Filter by duration (in seconds)
@@ -17,6 +18,8 @@ type GroupFilterType struct {
 	URL *StringCriterionInput `json:"url"`
 	// Filter to only include movies where performer appears in a scene
 	Performers *MultiCriterionInput `json:"performers"`
+	// Filter by number of distinct performers in the group's scenes
+	PerformerCount *IntCriterionInput `json:"performer_count"`
 	// Filter to only include performers with these tags
 	Tags *HierarchicalMultiCriterionInput `json:"tags"`
 	// Filter by tag count

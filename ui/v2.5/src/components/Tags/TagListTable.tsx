@@ -1,22 +1,27 @@
-/* eslint-disable jsx-a11y/control-has-associated-label */
+/* XXbiome-ignore-start jsx-a11y/control-has-associated-label */
 
 import React from "react";
 import { useIntl } from "react-intl";
 import { Button } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import * as GQL from "src/core/generated-graphql";
+import { SortDirectionEnum } from "src/core/generated-graphql";
 import { Icon } from "../Shared/Icon";
 import NavUtils from "src/utils/navigation";
 import { faHeart } from "@fortawesome/free-solid-svg-icons";
-import { useTagUpdate } from "src/core/StashService";
+import { useTagUserDataUpdate } from "src/core/StashService";
 import { useTableColumns } from "src/hooks/useTableColumns";
 import cx from "classnames";
 import { IColumn, ListTable } from "../List/ListTable";
+import { RatingSystem } from "../Shared/Rating/RatingSystem";
 
 interface ITagListTableProps {
   tags: GQL.TagListDataFragment[];
   selectedIds: Set<string>;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
+  onSort?: (value: string) => void;
+  sortBy?: string;
+  sortDirection?: SortDirectionEnum;
 }
 
 const TABLE_NAME = "tags";
@@ -26,15 +31,28 @@ export const TagListTable: React.FC<ITagListTableProps> = (
 ) => {
   const intl = useIntl();
 
-  const [updateTag] = useTagUpdate();
+  const [setTagUserData] = useTagUserDataUpdate();
 
   function setFavorite(v: boolean, tagId: string) {
     if (tagId) {
-      updateTag({
+      setTagUserData({
         variables: {
           input: {
             id: tagId,
             favorite: v,
+          },
+        },
+      });
+    }
+  }
+
+  function setRating(v: number | null, tagId: string) {
+    if (tagId) {
+      setTagUserData({
+        variables: {
+          input: {
+            id: tagId,
+            rating100: v,
           },
         },
       });
@@ -61,7 +79,7 @@ export const TagListTable: React.FC<ITagListTableProps> = (
   );
 
   const AliasesCell = (tag: GQL.TagListDataFragment) => {
-    let aliases = tag.aliases ? tag.aliases.join(", ") : "";
+    const aliases = tag.aliases ? tag.aliases.join(", ") : "";
     return (
       <span className="ellips-data" title={aliases}>
         {aliases}
@@ -76,6 +94,14 @@ export const TagListTable: React.FC<ITagListTableProps> = (
     >
       <Icon icon={faHeart} />
     </Button>
+  );
+
+  const RatingCell = (tag: GQL.TagListDataFragment) => (
+    <RatingSystem
+      value={tag.rating100}
+      onSetRating={(value) => setRating(value, tag.id)}
+      clickToRate
+    />
   );
 
   const SceneCountCell = (tag: GQL.TagListDataFragment) => (
@@ -119,6 +145,7 @@ export const TagListTable: React.FC<ITagListTableProps> = (
     label: string;
     defaultShow?: boolean;
     mandatory?: boolean;
+    sortable?: boolean;
     render?: (tag: GQL.TagListDataFragment, index: number) => React.ReactNode;
   }
 
@@ -127,6 +154,7 @@ export const TagListTable: React.FC<ITagListTableProps> = (
       value: "image",
       label: intl.formatMessage({ id: "image" }),
       defaultShow: true,
+      sortable: false,
       render: ImageCell,
     },
     {
@@ -140,6 +168,7 @@ export const TagListTable: React.FC<ITagListTableProps> = (
       value: "aliases",
       label: intl.formatMessage({ id: "aliases" }),
       defaultShow: true,
+      sortable: false,
       render: AliasesCell,
     },
     {
@@ -147,6 +176,12 @@ export const TagListTable: React.FC<ITagListTableProps> = (
       label: intl.formatMessage({ id: "favourite" }),
       defaultShow: true,
       render: FavoriteCell,
+    },
+    {
+      value: "rating",
+      label: intl.formatMessage({ id: "rating" }),
+      defaultShow: true,
+      render: RatingCell,
     },
     {
       value: "scene_count",
@@ -225,6 +260,9 @@ export const TagListTable: React.FC<ITagListTableProps> = (
       selectedIds={props.selectedIds}
       onSelectChange={props.onSelectChange}
       renderCell={renderCell}
+      onSort={props.onSort}
+      sortBy={props.sortBy}
+      sortDirection={props.sortDirection}
     />
   );
 };

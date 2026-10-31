@@ -23,12 +23,16 @@ type GalleryFilterType struct {
 	Rating100 *IntCriterionInput `json:"rating100"`
 	// Filter by organized
 	Organized *bool `json:"organized"`
+	// Filter by o-counter
+	OCounter *IntCriterionInput `json:"o_counter"`
 	// Filter by average image resolution
 	AverageResolution *ResolutionCriterionInput `json:"average_resolution"`
 	// Filter to only include scenes which have chapters. `true` or `false`
 	HasChapters *string `json:"has_chapters"`
 	// Filter to only include galleries with these scenes
 	Scenes *MultiCriterionInput `json:"scenes"`
+	// Filter to only include galleries with these audios
+	Audios *MultiCriterionInput `json:"audios"`
 	// Filter to only include galleries with this studio
 	Studios *HierarchicalMultiCriterionInput `json:"studios"`
 	// Filter to only include galleries with these tags
@@ -53,6 +57,8 @@ type GalleryFilterType struct {
 	Date *DateCriterionInput `json:"date"`
 	// Filter by related scenes that meet this criteria
 	ScenesFilter *SceneFilterType `json:"scenes_filter"`
+	// Filter by related audios that meet this criteria
+	AudiosFilter *AudioFilterType `json:"audios_filter"`
 	// Filter by related images that meet this criteria
 	ImagesFilter *ImageFilterType `json:"images_filter"`
 	// Filter by related performers that meet this criteria
@@ -86,6 +92,7 @@ type GalleryUpdateInput struct {
 	Rating100        *int     `json:"rating100"`
 	Organized        *bool    `json:"organized"`
 	SceneIds         []string `json:"scene_ids"`
+	AudioIds         []string `json:"audio_ids"`
 	StudioID         *string  `json:"studio_id"`
 	TagIds           []string `json:"tag_ids"`
 	PerformerIds     []string `json:"performer_ids"`

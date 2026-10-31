@@ -2,6 +2,7 @@ fragment ConfigGeneralData on ConfigGeneralResult {
   stashes {
     path
     excludeVideo
+    excludeAudio
     excludeImage
   }
   databasePath
@@ -25,7 +26,10 @@ fragment ConfigGeneralData on ConfigGeneralResult {
   previewExcludeStart
   previewExcludeEnd
   previewPreset
+  maxMarkerPreviewDuration
+  defaultMarkerPreviewDuration
   transcodeHardwareAcceleration
+  generationHardwareAcceleration
   maxTranscodeSize
   maxStreamingTranscodeSize
   writeImageThumbnails
@@ -47,6 +51,7 @@ fragment ConfigGeneralData on ConfigGeneralResult {
   createGalleriesFromFolders
   galleryCoverRegex
   videoExtensions
+  audioExtensions
   imageExtensions
   galleryExtensions
   excludes
@@ -90,6 +95,7 @@ fragment ConfigInterfaceData on ConfigInterfaceResult {
   autostartVideo
   autostartVideoOnPlaySelected
   continuePlaylistDefault
+  loopPlaylistDefault
   showStudioAsText
   css
   cssEnabled
@@ -171,6 +177,7 @@ fragment ConfigDefaultSettingsData on ConfigDefaultSettingsResult {
     scanGeneratePhashes
     scanGenerateThumbnails
     scanGenerateClipPreviews
+    inferVRMetadata
   }
 
   identify {

@@ -44,8 +44,8 @@ export const CollapseButton: React.FC<React.PropsWithChildren<IProps>> = (
           <Icon icon={open ? faChevronDown : faChevronRight} fixedWidth />
           <span>{props.text}</span>
         </Button>
+        {props.outsideCollapse}
       </div>
-      {props.outsideCollapse}
       <Collapse in={open} {...props.collapseProps}>
         <div>{props.children}</div>
       </Collapse>
@@ -60,8 +60,8 @@ export const ExpandCollapseButton: React.FC<{
   notCollapsedIcon?: IconDefinition;
 }> = ({ collapsedIcon, notCollapsedIcon, collapsed, setCollapsed }) => {
   const buttonIcon = collapsed
-    ? collapsedIcon ?? faChevronDown
-    : notCollapsedIcon ?? faChevronUp;
+    ? (collapsedIcon ?? faChevronDown)
+    : (notCollapsedIcon ?? faChevronUp);
 
   return (
     <span className="detail-expand-collapse">

@@ -28,6 +28,10 @@ func (r *videoFileResolver) Fingerprint(ctx context.Context, obj *VideoFile, typ
 	return fingerprintResolver(obj.VideoFile.Fingerprints, type_)
 }
 
+func (r *audioFileResolver) Fingerprint(ctx context.Context, obj *AudioFile, type_ string) (*string, error) {
+	return fingerprintResolver(obj.AudioFile.Fingerprints, type_)
+}
+
 func (r *basicFileResolver) Fingerprint(ctx context.Context, obj *BasicFile, type_ string) (*string, error) {
 	return fingerprintResolver(obj.BaseFile.Fingerprints, type_)
 }
@@ -40,8 +44,33 @@ func (r *imageFileResolver) ParentFolder(ctx context.Context, obj *ImageFile) (*
 	return loaders.From(ctx).FolderByID.Load(obj.ParentFolderID)
 }
 
+func (r *imageFileResolver) Images(ctx context.Context, obj *ImageFile) ([]*models.Image, error) {
+	imageIDs, err := loaders.From(ctx).ImageIDsByFileID.Load(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	var errs []error
+	ret, errs := loaders.From(ctx).ImageByID.LoadAll(imageIDs)
+	return withoutNil(ret), firstError(errs)
+}
+
 func (r *videoFileResolver) ParentFolder(ctx context.Context, obj *VideoFile) (*models.Folder, error) {
 	return loaders.From(ctx).FolderByID.Load(obj.ParentFolderID)
+}
+func (r *audioFileResolver) ParentFolder(ctx context.Context, obj *AudioFile) (*models.Folder, error) {
+	return loaders.From(ctx).FolderByID.Load(obj.ParentFolderID)
+}
+
+func (r *videoFileResolver) Scenes(ctx context.Context, obj *VideoFile) ([]*models.Scene, error) {
+	sceneIDs, err := loaders.From(ctx).SceneIDsByFileID.Load(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	var errs []error
+	ret, errs := loaders.From(ctx).SceneByID.LoadAll(sceneIDs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *basicFileResolver) ParentFolder(ctx context.Context, obj *BasicFile) (*models.Folder, error) {
@@ -67,11 +96,25 @@ func (r *galleryFileResolver) ZipFile(ctx context.Context, obj *GalleryFile) (*B
 	return zipFileResolver(ctx, obj.ZipFileID)
 }
 
+func (r *galleryFileResolver) Galleries(ctx context.Context, obj *GalleryFile) ([]*models.Gallery, error) {
+	galleryIDs, err := loaders.From(ctx).GalleryIDsByFileID.Load(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	var errs []error
+	ret, errs := loaders.From(ctx).GalleryByID.LoadAll(galleryIDs)
+	return withoutNil(ret), firstError(errs)
+}
+
 func (r *imageFileResolver) ZipFile(ctx context.Context, obj *ImageFile) (*BasicFile, error) {
 	return zipFileResolver(ctx, obj.ZipFileID)
 }
 
 func (r *videoFileResolver) ZipFile(ctx context.Context, obj *VideoFile) (*BasicFile, error) {
+	return zipFileResolver(ctx, obj.ZipFileID)
+}
+func (r *audioFileResolver) ZipFile(ctx context.Context, obj *AudioFile) (*BasicFile, error) {
 	return zipFileResolver(ctx, obj.ZipFileID)
 }
 

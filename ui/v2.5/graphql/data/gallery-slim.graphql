@@ -8,6 +8,7 @@ fragment SlimGalleryData on Gallery {
   photographer
   rating100
   organized
+  o_counter
   files {
     ...GalleryFileData
   }
@@ -37,7 +38,11 @@ fragment SlimGalleryData on Gallery {
     image_path
   }
   scenes {
-    ...SlimSceneData
+    id
+    title
+    files {
+      path
+    }
   }
   paths {
     cover

@@ -25,12 +25,17 @@ func (t *GenerateClipPreviewTask) Start(ctx context.Context) {
 	}
 
 	prevPath := GetInstance().Paths.Generated.GetClipPreviewPath(t.Image.Checksum, models.DefaultGthumbWidth)
-	filePath := t.Image.Files.Primary().Base().Path
+	f := t.Image.Files.Primary()
+	if f == nil {
+		return
+	}
+	filePath := f.Base().Path
 
 	clipPreviewOptions := image.ClipPreviewOptions{
 		InputArgs:  GetInstance().Config.GetTranscodeInputArgs(),
 		OutputArgs: GetInstance().Config.GetTranscodeOutputArgs(),
 		Preset:     GetInstance().Config.GetPreviewPreset().String(),
+		HWAccel:    GetInstance().Config.GetGenerationHardwareAcceleration(),
 	}
 
 	encoder := image.NewThumbnailEncoder(GetInstance().FFMpeg, GetInstance().FFProbe, clipPreviewOptions)

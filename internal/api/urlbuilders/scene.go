@@ -22,18 +22,13 @@ func NewSceneURLBuilder(baseURL string, scene *models.Scene) SceneURLBuilder {
 	}
 }
 
-func (b SceneURLBuilder) GetStreamURL(apiKey string) *url.URL {
+func (b SceneURLBuilder) GetStreamURL() *url.URL {
 	u, err := url.Parse(fmt.Sprintf("%s/scene/%s/stream", b.BaseURL, b.SceneID))
 	if err != nil {
 		// shouldn't happen
 		panic(err)
 	}
 
-	if apiKey != "" {
-		v := u.Query()
-		v.Set("apikey", apiKey)
-		u.RawQuery = v.Encode()
-	}
 	return u
 }
 
@@ -57,12 +52,46 @@ func (b SceneURLBuilder) GetScreenshotURL() string {
 	return b.BaseURL + "/scene/" + b.SceneID + "/screenshot?t=" + b.UpdatedAt
 }
 
-func (b SceneURLBuilder) GetFunscriptURL() string {
-	return b.BaseURL + "/scene/" + b.SceneID + "/funscript"
+func (b SceneURLBuilder) GetFunscriptPath() string {
+	return "/scene/" + b.SceneID + "/funscript"
+}
+
+func (b SceneURLBuilder) GetFunscriptURL() *url.URL {
+	u, err := url.Parse(fmt.Sprintf("%s%s", b.BaseURL, b.GetFunscriptPath()))
+	if err != nil {
+		// shouldn't happen
+		panic(err)
+	}
+
+	return u
+}
+
+func (b SceneURLBuilder) GetCaptionPath() string {
+	return "/scene/" + b.SceneID + "/caption"
 }
 
 func (b SceneURLBuilder) GetCaptionURL() string {
-	return b.BaseURL + "/scene/" + b.SceneID + "/caption"
+	return b.BaseURL + b.GetCaptionPath()
+}
+
+func (b SceneURLBuilder) GetInteractiveCSVPath() string {
+	return "/scene/" + b.SceneID + "/interactive_csv"
+}
+
+func (b SceneURLBuilder) GetInteractiveCSVURL(apiKey string) *url.URL {
+	u, err := url.Parse(fmt.Sprintf("%s%s", b.BaseURL, b.GetInteractiveCSVPath()))
+	if err != nil {
+		// shouldn't happen
+		panic(err)
+	}
+
+	if apiKey != "" {
+		v := u.Query()
+		v.Set("apikey", apiKey)
+		u.RawQuery = v.Encode()
+	}
+
+	return u
 }
 
 func (b SceneURLBuilder) GetInteractiveHeatmapURL() string {

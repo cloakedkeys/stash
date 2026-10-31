@@ -88,6 +88,27 @@ export interface INamedObject {
   sort_name?: string | null;
 }
 
+const makePerformerAudiosUrl = (
+  performer: Partial<GQL.PerformerDataFragment>,
+  extraPerformer?: ILabeledId,
+  extraCriteria?: ModifierCriterion<CriterionValue>[]
+) => {
+  if (!performer.id) return "#";
+  const filter = new ListFilterModel(GQL.FilterMode.Audios, undefined);
+  const criterion = new PerformersCriterion();
+  criterion.value.items = [
+    { id: performer.id, label: performer.name || `Performer ${performer.id}` },
+  ];
+
+  if (extraPerformer) {
+    criterion.value.items.push(extraPerformer);
+  }
+
+  filter.criteria.push(criterion);
+  addExtraCriteria(filter.criteria, extraCriteria);
+  return `/audios?${filter.makeQueryParameters()}`;
+};
+
 const makePerformerGalleriesUrl = (
   performer: INamedObject,
   extraPerformer?: ILabeledId,
@@ -181,6 +202,19 @@ const makeStudioImagesUrl = (studio: Partial<GQL.StudioDataFragment>) => {
   return `/images?${filter.makeQueryParameters()}`;
 };
 
+const makeStudioAudiosUrl = (studio: Partial<GQL.StudioDataFragment>) => {
+  if (!studio.id) return "#";
+  const filter = new ListFilterModel(GQL.FilterMode.Audios, undefined);
+  const criterion = new StudiosCriterion();
+  criterion.value = {
+    items: [{ id: studio.id, label: studio.name || `Studio ${studio.id}` }],
+    excluded: [],
+    depth: 0,
+  };
+  filter.criteria.push(criterion);
+  return `/audios?${filter.makeQueryParameters()}`;
+};
+
 const makeStudioGalleriesUrl = (studio: Partial<GQL.StudioDataFragment>) => {
   if (!studio.id) return "#";
   const filter = new ListFilterModel(GQL.FilterMode.Galleries, undefined);
@@ -244,6 +278,19 @@ const makeGroupScenesUrl = (group: Partial<GQL.GroupDataFragment>) => {
   return `/scenes?${filter.makeQueryParameters()}`;
 };
 
+const makeGroupAudiosUrl = (group: Partial<GQL.GroupDataFragment>) => {
+  if (!group.id) return "#";
+  const filter = new ListFilterModel(GQL.FilterMode.Audios, undefined);
+  const criterion = new GroupsCriterion(GroupsCriterionOption);
+  criterion.value = {
+    items: [{ id: group.id, label: group.name || `Group ${group.id}` }],
+    excluded: [],
+    depth: 0,
+  };
+  filter.criteria.push(criterion);
+  return `/audios?${filter.makeQueryParameters()}`;
+};
+
 const makeTagUrl = (id: string) => {
   return `/tags/${id}`;
 };
@@ -298,6 +345,10 @@ function makeTagFilter(mode: GQL.FilterMode, tag: INamedObject) {
 
 const makeTagScenesUrl = (tag: INamedObject) => {
   return `/scenes?${makeTagFilter(GQL.FilterMode.Scenes, tag)}`;
+};
+
+const makeTagAudiosUrl = (tag: INamedObject) => {
+  return `/audios?${makeTagFilter(GQL.FilterMode.Audios, tag)}`;
 };
 
 const makeTagPerformersUrl = (tag: INamedObject) => {
@@ -364,6 +415,19 @@ const makeGalleryImagesUrl = (
   return `/images?${filter.makeQueryParameters()}`;
 };
 
+const makeGalleryAudiosUrl = (
+  gallery: Partial<GQL.GalleryDataFragment | GQL.SlimGalleryDataFragment>,
+  extraCriteria?: ModifierCriterion<CriterionValue>[]
+) => {
+  if (!gallery.id) return "#";
+  const filter = new ListFilterModel(GQL.FilterMode.Audios, undefined);
+  const criterion = new GalleriesCriterion();
+  criterion.value = [{ id: gallery.id, label: galleryTitle(gallery) }];
+  filter.criteria.push(criterion);
+  addExtraCriteria(filter.criteria, extraCriteria);
+  return `/audios?${filter.makeQueryParameters()}`;
+};
+
 function stringEqualsCriterion(option: ModifierCriterionOption, value: string) {
   const criterion = new StringCriterion(option);
   criterion.modifier = GQL.CriterionModifier.Equals;
@@ -372,7 +436,7 @@ function stringEqualsCriterion(option: ModifierCriterionOption, value: string) {
 }
 
 const makeDirectorScenesUrl = (director: string) => {
-  if (director.length == 0) return "#";
+  if (director.length === 0) return "#";
   const filter = new ListFilterModel(GQL.FilterMode.Scenes, undefined);
   filter.criteria.push(
     stringEqualsCriterion(createStringCriterionOption("director"), director)
@@ -381,7 +445,7 @@ const makeDirectorScenesUrl = (director: string) => {
 };
 
 const makeDirectorGroupsUrl = (director: string) => {
-  if (director.length == 0) return "#";
+  if (director.length === 0) return "#";
   const filter = new ListFilterModel(GQL.FilterMode.Groups, undefined);
   filter.criteria.push(
     stringEqualsCriterion(createStringCriterionOption("director"), director)
@@ -390,7 +454,7 @@ const makeDirectorGroupsUrl = (director: string) => {
 };
 
 const makePhotographerGalleriesUrl = (photographer: string) => {
-  if (photographer.length == 0) return "#";
+  if (photographer.length === 0) return "#";
   const filter = new ListFilterModel(GQL.FilterMode.Galleries, undefined);
   filter.criteria.push(
     stringEqualsCriterion(
@@ -402,7 +466,7 @@ const makePhotographerGalleriesUrl = (photographer: string) => {
 };
 
 const makePhotographerImagesUrl = (photographer: string) => {
-  if (photographer.length == 0) return "#";
+  if (photographer.length === 0) return "#";
   const filter = new ListFilterModel(GQL.FilterMode.Images, undefined);
   filter.criteria.push(
     stringEqualsCriterion(
@@ -467,7 +531,7 @@ export function handleUnsavedChanges(
   basepath: string,
   id?: string
 ) {
-  return function (location: { pathname: string }) {
+  return (location: { pathname: string }) => {
     // #2291 - don't prompt if we're navigating within the gallery being edited
     if (id !== undefined && location.pathname === `/${basepath}/${id}`) {
       return true;
@@ -479,12 +543,14 @@ export function handleUnsavedChanges(
 
 const NavUtils = {
   makePerformerScenesUrl,
+  makePerformerAudiosUrl,
   makePerformerImagesUrl,
   makePerformerGalleriesUrl,
   makePerformerGroupsUrl,
   makePerformerSceneMarkersUrl,
   makePerformersCountryUrl,
   makeStudioScenesUrl,
+  makeStudioAudiosUrl,
   makeStudioImagesUrl,
   makeStudioGalleriesUrl,
   makeStudioGroupsUrl: makeStudioGroupsUrl,
@@ -495,6 +561,7 @@ const NavUtils = {
   makeChildTagsUrl,
   makeTagSceneMarkersUrl,
   makeTagScenesUrl,
+  makeTagAudiosUrl,
   makeTagPerformersUrl,
   makeTagStudiosUrl,
   makeTagGalleriesUrl,
@@ -504,8 +571,10 @@ const NavUtils = {
   makeSceneMarkerUrl,
   makeImagesPHashMatchUrl,
   makeGroupScenesUrl,
+  makeGroupAudiosUrl,
   makeChildStudiosUrl,
   makeGalleryImagesUrl,
+  makeGalleryAudiosUrl,
   makeDirectorScenesUrl,
   makePhotographerGalleriesUrl,
   makePhotographerImagesUrl,

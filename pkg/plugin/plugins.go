@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -53,6 +54,11 @@ type PluginUI struct {
 	// Content Security Policy configuration for the plugin.
 	CSP PluginCSP `json:"csp"`
 
+	// CSPSettings indicates whether the plugin has opted in to the csp_
+	// setting prefix mechanism. When true, settings with keys starting
+	// with "csp_" are treated as connect-src URLs for the CSP header.
+	CSPSettings bool `json:"csp_settings"`
+
 	// External Javascript files that will be injected into the stash UI.
 	ExternalScript []string `json:"external_script"`
 
@@ -86,6 +92,8 @@ type PluginSetting struct {
 	// defaults to key name
 	DisplayName string `json:"displayName"`
 	Description string `json:"description"`
+	// readable by accounts that aren't administrators
+	Public bool `json:"public"`
 }
 
 type ServerConfig interface {
@@ -95,6 +103,7 @@ type ServerConfig interface {
 	HasTLSConfig() bool
 	GetPluginsPath() string
 	GetDisabledPlugins() []string
+	GetPluginConfiguration(pluginID string) map[string]interface{}
 	GetPythonPath() string
 }
 
@@ -227,7 +236,7 @@ func (c Cache) ListPluginTasks() []*PluginTask {
 	return ret
 }
 
-func buildPluginInput(plugin *Config, operation *OperationConfig, serverConnection common.StashServerConnection, args OperationInput) common.PluginInput {
+func (c Cache) buildPluginInput(plugin *Config, operation *OperationConfig, serverConnection common.StashServerConnection, args OperationInput) common.PluginInput {
 	if args == nil {
 		args = make(OperationInput)
 	}
@@ -235,9 +244,19 @@ func buildPluginInput(plugin *Config, operation *OperationConfig, serverConnecti
 		applyDefaultArgs(args, operation.DefaultArgs)
 	}
 	serverConnection.PluginDir = plugin.getConfigPath()
+	// Each invocation receives its own settings snapshot so that plugin code and
+	// subsequent configuration updates cannot change an in-flight invocation.
+	settings := maps.Clone(c.config.GetPluginConfiguration(plugin.id))
+	// Keep the plugin input shape stable: an unconfigured plugin should receive
+	// an empty settings object rather than null.
+	if settings == nil {
+		settings = make(map[string]interface{})
+	}
+
 	return common.PluginInput{
 		ServerConnection: serverConnection,
 		Args:             toPluginArgs(args),
+		Settings:         settings,
 	}
 }
 
@@ -287,7 +306,7 @@ func (c Cache) CreateTask(ctx context.Context, pluginID string, operationName *s
 	task := pluginTask{
 		plugin:       plugin,
 		operation:    operation,
-		input:        buildPluginInput(plugin, operation, serverConnection, args),
+		input:        c.buildPluginInput(plugin, operation, serverConnection, args),
 		progress:     progress,
 		gqlHandler:   c.gqlHandler,
 		serverConfig: c.config,
@@ -305,7 +324,7 @@ func (c Cache) RunPlugin(ctx context.Context, pluginID string, args OperationInp
 	// find the plugin
 	plugin := c.getPlugin(pluginID)
 
-	pluginInput := buildPluginInput(plugin, nil, serverConnection, args)
+	pluginInput := c.buildPluginInput(plugin, nil, serverConnection, args)
 
 	pt := pluginTask{
 		plugin:       plugin,
@@ -383,6 +402,15 @@ func (c Cache) ExecuteSceneUpdatePostHooks(ctx context.Context, input models.Sce
 	c.ExecutePostHooks(ctx, id, hook.SceneUpdatePost, input, inputFields)
 }
 
+func (c Cache) ExecuteGalleryUpdatePostHooks(ctx context.Context, input models.GalleryUpdateInput, inputFields []string) {
+	id, err := strconv.Atoi(input.ID)
+	if err != nil {
+		logger.Errorf("error converting id in GalleryUpdatePostHooks: %v", err)
+		return
+	}
+	c.ExecutePostHooks(ctx, id, hook.GalleryUpdatePost, input, inputFields)
+}
+
 // maxCyclicLoopDepth is the maximum number of identical plugin hook calls that
 // can be made before a cyclic loop is detected. It is set to an arbitrary value
 // that should not be hit under normal circumstances.
@@ -404,7 +432,7 @@ func (c Cache) executePostHooks(ctx context.Context, hookType hook.TriggerEnum, 
 			newCtx := session.AddVisitedPluginHook(ctx, p.id, hookType)
 			serverConnection := c.makeServerConnection(newCtx)
 
-			pluginInput := buildPluginInput(&p, &h.OperationConfig, serverConnection, nil)
+			pluginInput := c.buildPluginInput(&p, &h.OperationConfig, serverConnection, nil)
 			addHookContext(pluginInput.Args, hookContext)
 
 			pt := pluginTask{

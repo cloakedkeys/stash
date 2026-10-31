@@ -55,3 +55,9 @@ mutation ImagesDestroy(
     }
   )
 }
+
+mutation ImageUserDataUpdate($input: UserRatingInput!) {
+  imageUserDataUpdate(input: $input) {
+    ...SlimImageData
+  }
+}

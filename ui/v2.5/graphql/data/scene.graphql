@@ -1,4 +1,8 @@
 fragment SceneData on Scene {
+  voice_actors {
+    id
+    name
+  }
   id
   title
   code
@@ -6,6 +10,7 @@ fragment SceneData on Scene {
   director
   urls
   date
+  production_date
   rating100
   o_counter
   organized
@@ -37,6 +42,7 @@ fragment SceneData on Scene {
     vtt
     sprite
     funscript
+    interactive_csv
     interactive_heatmap
     caption
   }
@@ -78,6 +84,8 @@ fragment SceneData on Scene {
     url
     mime_type
     label
+    stream_type
+    resolution
   }
 
   custom_fields
@@ -87,6 +95,7 @@ fragment SelectSceneData on Scene {
   id
   title
   date
+  production_date
   code
   studio {
     name

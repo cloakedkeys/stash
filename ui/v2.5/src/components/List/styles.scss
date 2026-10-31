@@ -156,13 +156,6 @@ input[type="range"].zoom-slider {
     flex-direction: column;
   }
 
-  .set-as-default-button {
-    float: right;
-    margin-right: 0.5rem;
-    padding: 0.25rem 0.5rem;
-    width: auto;
-  }
-
   .LoadingIndicator {
     height: auto;
     text-align: center;
@@ -207,11 +200,11 @@ input[type="range"].zoom-slider {
         border-radius: 0;
       }
     }
-
-    .delete-button {
-      color: $danger;
-    }
   }
+}
+
+.sidebar-saved-filter-list-container .saved-filter-list {
+  max-height: unset;
 }
 
 .sidebar-saved-filter-list-container .toolbar {
@@ -268,10 +261,6 @@ input[type="range"].zoom-slider {
         flex-shrink: 0;
       }
     }
-
-    .delete-button {
-      color: $danger;
-    }
   }
 
   .saved-filter-search-input {
@@ -288,6 +277,11 @@ input[type="range"].zoom-slider {
 
 .save-filter-button {
   color: $text-color;
+}
+
+.saved-filter-name-input {
+  flex-grow: 1;
+  margin: 0.125rem 0.25rem;
 }
 
 .saved-filter-overwrite-warning {
@@ -514,8 +508,8 @@ ul.selectable-list {
   max-height: 300px;
   overflow-y: auto;
   // to prevent unnecessary vertical scrollbar
-  padding-bottom: 0.15rem;
   padding-inline-start: 0;
+  padding-bottom: 0.15rem;
 
   .modifier-object {
     font-style: italic;
@@ -618,11 +612,9 @@ ul.selectable-list {
 .folder-filter ul {
   list-style-type: none;
   margin-bottom: 0.25rem;
-  max-height: 300px;
-  overflow-y: auto;
   // to prevent unnecessary vertical scrollbar
-  padding-bottom: 0.15rem;
   padding-inline-start: 0;
+  padding-bottom: 0.15rem;
 
   .modifier-object {
     font-style: italic;
@@ -928,7 +920,19 @@ ul.selectable-list {
 
   .table thead th {
     border: none;
+    padding-bottom: 0;
     white-space: nowrap;
+
+    &.sortable {
+      cursor: pointer;
+    }
+
+    .column-header {
+      align-items: center;
+      display: flex;
+      gap: 0.5rem;
+      justify-content: space-between;
+    }
   }
 
   tr {
@@ -1067,6 +1071,8 @@ ul.selectable-list {
 .pagination-footer-container {
   background-color: transparent;
   bottom: $navbar-height;
+  margin: auto;
+  pointer-events: none;
   position: sticky;
   z-index: 10;
 
@@ -1078,6 +1084,7 @@ ul.selectable-list {
 .pagination-footer {
   margin: auto;
   padding: 0.5rem 1rem 0.75rem;
+  pointer-events: auto;
 
   width: fit-content;
 
@@ -1209,5 +1216,68 @@ ul.selectable-list {
 
   @include media-breakpoint-down(xs) {
     top: 0;
+  }
+}
+
+.sort-by-select .dropdown-menu {
+  min-width: 250px;
+  padding-top: 0;
+
+  .dropdown-divider {
+    border-top-color: $textfield-bg;
+    margin: 0.25rem 0;
+  }
+
+  .sort-by-filter-container {
+    background-color: $secondary;
+    border-bottom: solid 1px $textfield-bg;
+    display: flex;
+    padding: 5px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+
+    .clearable-input-group {
+      flex-grow: 1;
+    }
+
+    .clearable-text-field {
+      background-color: $textfield-bg;
+      width: 100%;
+    }
+
+    .clearable-text-field-clear {
+      background-color: unset;
+      border: unset;
+    }
+  }
+
+  .sort-by-option {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    padding-right: 0;
+
+    .pin-sort-by-button {
+      border: 0;
+      color: $text-color;
+      font-size: 0.8rem;
+      margin-left: 0.5rem;
+      padding-bottom: 0;
+      padding-top: 0;
+      visibility: hidden;
+
+      @media (pointer: coarse) {
+        visibility: visible;
+      }
+
+      &:hover svg {
+        transform: rotate(0);
+      }
+    }
+
+    &:hover .pin-sort-by-button {
+      visibility: visible;
+    }
   }
 }

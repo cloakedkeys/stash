@@ -10,6 +10,7 @@ import (
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/stashapp/stash/internal/build"
 	"github.com/stashapp/stash/internal/manager"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/plugin/hook"
@@ -35,9 +36,11 @@ type hookExecutor interface {
 type Resolver struct {
 	repository     models.Repository
 	sceneService   manager.SceneService
+	audioService   manager.AudioService
 	imageService   manager.ImageService
 	galleryService manager.GalleryService
 	groupService   manager.GroupService
+	userService    manager.UserService
 
 	hookExecutor hookExecutor
 }
@@ -55,6 +58,8 @@ func (r *Resolver) GalleryChapter() GalleryChapterResolver {
 func (r *Resolver) Mutation() MutationResolver {
 	return &mutationResolver{r}
 }
+func (r *Resolver) VoiceActor() VoiceActorResolver { return &voiceActorResolver{r} }
+
 func (r *Resolver) Performer() PerformerResolver {
 	return &performerResolver{r}
 }
@@ -63,6 +68,9 @@ func (r *Resolver) Query() QueryResolver {
 }
 func (r *Resolver) Scene() SceneResolver {
 	return &sceneResolver{r}
+}
+func (r *Resolver) Audio() AudioResolver {
+	return &audioResolver{r}
 }
 func (r *Resolver) Image() ImageResolver {
 	return &imageResolver{r}
@@ -93,6 +101,9 @@ func (r *Resolver) GalleryFile() GalleryFileResolver {
 func (r *Resolver) VideoFile() VideoFileResolver {
 	return &videoFileResolver{r}
 }
+func (r *Resolver) AudioFile() AudioFileResolver {
+	return &audioFileResolver{r}
+}
 func (r *Resolver) ImageFile() ImageFileResolver {
 	return &imageFileResolver{r}
 }
@@ -111,6 +122,12 @@ func (r *Resolver) Plugin() PluginResolver {
 func (r *Resolver) ConfigResult() ConfigResultResolver {
 	return &configResultResolver{r}
 }
+func (r *Resolver) ScraperURLConflict() ScraperURLConflictResolver {
+	return &scraperURLConflictResolver{r}
+}
+func (r *Resolver) User() UserResolver {
+	return &userResolver{r}
+}
 
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
@@ -119,8 +136,10 @@ type subscriptionResolver struct{ *Resolver }
 type galleryResolver struct{ *Resolver }
 type galleryChapterResolver struct{ *Resolver }
 type performerResolver struct{ *Resolver }
+type voiceActorResolver struct{ *Resolver }
 type sceneResolver struct{ *Resolver }
 type sceneMarkerResolver struct{ *Resolver }
+type audioResolver struct{ *Resolver }
 type imageResolver struct{ *Resolver }
 type studioResolver struct{ *Resolver }
 
@@ -131,12 +150,15 @@ type movieResolver struct{ *groupResolver }
 type tagResolver struct{ *Resolver }
 type galleryFileResolver struct{ *Resolver }
 type videoFileResolver struct{ *Resolver }
+type audioFileResolver struct{ *Resolver }
 type imageFileResolver struct{ *Resolver }
 type basicFileResolver struct{ *Resolver }
 type folderResolver struct{ *Resolver }
 type savedFilterResolver struct{ *Resolver }
 type pluginResolver struct{ *Resolver }
 type configResultResolver struct{ *Resolver }
+type scraperURLConflictResolver struct{ *Resolver }
+type userResolver struct{ *Resolver }
 
 func (r *Resolver) withTxn(ctx context.Context, fn func(ctx context.Context) error) error {
 	return r.repository.WithTxn(ctx, fn)
@@ -186,10 +208,15 @@ func (r *queryResolver) MarkerStrings(ctx context.Context, q *string, sort *stri
 }
 
 func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
+	if models.LibraryLimitFromContext(ctx) != nil {
+		return r.limitedStats(ctx)
+	}
+
 	var ret StatsResultType
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		repo := r.repository
 		sceneQB := repo.Scene
+		audioQB := repo.Audio
 		imageQB := repo.Image
 		galleryQB := repo.Gallery
 		studioQB := repo.Studio
@@ -210,6 +237,21 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 		}
 
 		scenesDuration, err := sceneQB.Duration(ctx)
+		if err != nil {
+			return err
+		}
+
+		audiosCount, err := audioQB.Count(ctx)
+		if err != nil {
+			return err
+		}
+
+		audiosSize, err := audioQB.Size(ctx)
+		if err != nil {
+			return err
+		}
+
+		audiosDuration, err := audioQB.Duration(ctx)
 		if err != nil {
 			return err
 		}
@@ -257,19 +299,44 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 		if err != nil {
 			return err
 		}
-		totalOCount := scenesTotalOCount + imagesTotalOCount
+		galleriesTotalOCount, err := galleryQB.OCount(ctx)
+		if err != nil {
+			return err
+		}
+		audiosTotalOCount, err := audioQB.GetAllOCount(ctx)
+		if err != nil {
+			return err
+		}
+		totalOCount := scenesTotalOCount + imagesTotalOCount + galleriesTotalOCount + audiosTotalOCount
 
-		totalPlayDuration, err := sceneQB.PlayDuration(ctx)
+		scenesPlayDuration, err := sceneQB.PlayDuration(ctx)
 		if err != nil {
 			return err
 		}
 
-		totalPlayCount, err := sceneQB.CountAllViews(ctx)
+		audiosPlayDuration, err := audioQB.PlayDuration(ctx)
 		if err != nil {
 			return err
 		}
+		totalPlayDuration := scenesPlayDuration + audiosPlayDuration
+
+		scenesPlayCount, err := sceneQB.CountAllViews(ctx)
+		if err != nil {
+			return err
+		}
+
+		audiosPlayCount, err := audioQB.CountAllViews(ctx)
+		if err != nil {
+			return err
+		}
+		totalPlayCount := scenesPlayCount + audiosPlayCount
 
 		uniqueScenePlayCount, err := sceneQB.CountUniqueViews(ctx)
+		if err != nil {
+			return err
+		}
+
+		uniqueAudioPlayCount, err := audioQB.CountUniqueViews(ctx)
 		if err != nil {
 			return err
 		}
@@ -278,6 +345,9 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 			SceneCount:        scenesCount,
 			ScenesSize:        scenesSize,
 			ScenesDuration:    scenesDuration,
+			AudioCount:        audiosCount,
+			AudiosSize:        audiosSize,
+			AudiosDuration:    audiosDuration,
 			ImageCount:        imageCount,
 			ImagesSize:        imageSize,
 			GalleryCount:      galleryCount,
@@ -290,6 +360,7 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 			TotalPlayDuration: totalPlayDuration,
 			TotalPlayCount:    totalPlayCount,
 			ScenesPlayed:      uniqueScenePlayCount,
+			AudiosPlayed:      uniqueAudioPlayCount,
 		}
 
 		return nil
@@ -364,6 +435,18 @@ func (r *mutationResolver) QuerySQL(ctx context.Context, sql string, args []inte
 		Columns: cols,
 		Rows:    rows,
 	}, nil
+}
+
+func (r *queryResolver) GetDatabaseBackend(context.Context) (SQLDatabaseType, error) {
+	db := manager.GetInstance().Database
+	switch db.DatabaseBackend() {
+	case database.PostgresBackend:
+		return SQLDatabaseTypePostgres, nil
+	case database.SqliteBackend:
+		return SQLDatabaseTypeSQLIte, nil
+	}
+
+	return "", errors.New("unknown database type")
 }
 
 // Get scene marker tags which show up under the video.

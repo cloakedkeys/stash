@@ -262,7 +262,9 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 
 	for f := range queue {
 		if job.IsCancelled(ctx) {
-			break
+			// keep draining the queue so the producer goroutine can finish
+			// and release its read transaction, otherwise the DB stays locked
+			continue
 		}
 
 		wg.Add()
@@ -450,6 +452,7 @@ func (j *GenerateJob) queueSceneJobs(ctx context.Context, g *generate.Generator,
 	if j.input.Previews {
 		task := &GeneratePreviewTask{
 			Scene:               *scene,
+			VideoPreview:        true,
 			ImagePreview:        j.input.ImagePreviews,
 			Options:             options,
 			Overwrite:           j.overwrite,

@@ -39,6 +39,9 @@ func (db *Database) Begin(ctx context.Context, writable bool) (context.Context, 
 
 	dbtx := db.readDB
 	if writable {
+		if err := db.Ready(); err != nil {
+			return nil, fmt.Errorf("database not ready: %w", err)
+		}
 		dbtx = db.writeDB
 	}
 
@@ -117,19 +120,25 @@ func (db *Database) IsLocked(err error) bool {
 
 func (db *Database) Repository() models.Repository {
 	return models.Repository{
-		TxnManager:     db,
-		Blob:           db.Blobs,
-		File:           db.File,
-		Folder:         db.Folder,
-		Gallery:        db.Gallery,
-		GalleryChapter: db.GalleryChapter,
-		Image:          db.Image,
-		Group:          db.Group,
-		Performer:      db.Performer,
-		Scene:          db.Scene,
-		SceneMarker:    db.SceneMarker,
-		Studio:         db.Studio,
-		Tag:            db.Tag,
-		SavedFilter:    db.SavedFilter,
+		TxnManager: models.TxnManager{
+			Manager:          db,
+			DatabaseProvider: db,
+		},
+		Blob:           db.Blobs(),
+		File:           db.File(),
+		Folder:         db.Folder(),
+		Gallery:        db.Gallery(),
+		GalleryChapter: db.GalleryChapter(),
+		Image:          db.Image(),
+		Group:          db.Group(),
+		Performer:      db.Performer(),
+		Audio:          db.Audio(),
+		VoiceActor:     db.VoiceActor(),
+		Scene:          db.Scene(),
+		SceneMarker:    db.SceneMarker(),
+		Studio:         db.Studio(),
+		Tag:            db.Tag(),
+		SavedFilter:    db.SavedFilter(),
+		UserUIConfig:   db.UserUIConfig(),
 	}
 }

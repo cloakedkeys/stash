@@ -20,6 +20,8 @@ fragment StudioData on Studio {
   image_path
   scene_count
   scene_count_all: scene_count(depth: -1)
+  audio_count
+  audio_count_all: audio_count(depth: -1)
   image_count
   image_count_all: image_count(depth: -1)
   gallery_count
@@ -28,6 +30,7 @@ fragment StudioData on Studio {
   performer_count_all: performer_count(depth: -1)
   group_count
   group_count_all: group_count(depth: -1)
+  scene_marker_count
   stash_ids {
     stash_id
     endpoint
@@ -41,6 +44,7 @@ fragment StudioData on Studio {
     ...SlimTagData
   }
   o_counter
+  o_counter_all: o_counter(depth: -1)
   custom_fields
 }
 

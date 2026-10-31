@@ -15,11 +15,17 @@ interface ICue extends TextTrackCue {
 const loadDelay = 200;
 
 function offsetMiddleware(player: VideoJsPlayer) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- allow access to private tech methods
+  // biome-ignore lint/suspicious/noExplicitAny: allow access to private tech methods
   let tech: any;
   let source: ISource;
   let offsetStart: number | undefined;
   let seeking = 0;
+
+  // The cast device seeks the stream itself, so the transcode offset only applies to the local tech.
+  function isCasting() {
+    const Chromecast = videojs.getTech("Chromecast");
+    return !!Chromecast && tech?.constructor === Chromecast;
+  }
 
   function initCues(cues: TextTrackCueList) {
     const offset = offsetStart ?? 0;
@@ -76,7 +82,11 @@ function offsetMiddleware(player: VideoJsPlayer) {
       tech.trigger("timeupdate");
       tech.trigger("pause");
       tech.trigger("seeking");
-      tech.play();
+      // not every tech returns a promise from play
+      Promise.resolve(tech.play()).catch(() => {
+        // auto-play failed due to browser restrictions
+        seeking = 0;
+      });
     },
     loadDelay,
     { leading: true }
@@ -139,7 +149,7 @@ function offsetMiddleware(player: VideoJsPlayer) {
       }
     },
     buffered(buffers: TimeRanges) {
-      if (offsetStart === undefined) {
+      if (offsetStart === undefined || isCasting()) {
         return buffers;
       }
 
@@ -152,14 +162,15 @@ function offsetMiddleware(player: VideoJsPlayer) {
       }
 
       // types for createTimeRanges are incorrect, should be number[][] not TimeRange[]
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // biome-ignore lint/suspicious/noExplicitAny: intentional
       return videojs.createTimeRanges(timeRanges as any);
     },
     currentTime(seconds: number) {
+      if (isCasting()) return seconds;
       return (offsetStart ?? 0) + seconds;
     },
     setCurrentTime(seconds: number) {
-      if (offsetStart === undefined) {
+      if (offsetStart === undefined || isCasting()) {
         return seconds;
       }
 

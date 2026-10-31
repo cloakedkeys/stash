@@ -1,23 +1,74 @@
-import { FilterMode, Scene } from "src/core/generated-graphql";
+import {
+  FilterMode,
+  Scene,
+  SceneMarker,
+  Tag,
+} from "src/core/generated-graphql";
 import { ListFilterModel } from "./list-filter/filter";
 import { INamedObject } from "src/utils/navigation";
+import { IFile } from "src/core/files";
 
 export type QueuedScene = Pick<Scene, "id" | "title" | "date" | "paths"> & {
+  files: IFile[];
   performers?: INamedObject[] | null;
   studio?: INamedObject | null;
 };
+
+export type QueuedSceneMarker = Pick<
+  SceneMarker,
+  "id" | "seconds" | "title" | "screenshot" | "end_seconds"
+> & {
+  tags?: INamedObject[] | null;
+  primary_tag: Pick<Tag, "id" | "name">;
+  scene: Pick<Scene, "id" | "title"> & {
+    files: IFile[];
+    performers?: INamedObject[] | null;
+  };
+};
+
+export type QueuedItem = QueuedScene | QueuedSceneMarker;
+
+export function isQueuedMarker(item: QueuedItem): item is QueuedSceneMarker {
+  return "seconds" in item;
+}
+
+// the id of the scene that plays a queued scene or marker
+export function queuedItemSceneID(item: QueuedItem) {
+  return isQueuedMarker(item) ? item.scene.id : item.id;
+}
+
+// whether a queued item is the one being shown. Markers are matched on their
+// scene and their start time (whole seconds), since the scene page URL only
+// carries the scene id and the start time.
+export function isCurrentQueuedItem(
+  item: QueuedItem,
+  sceneID: string,
+  timestamp: number
+) {
+  if (isQueuedMarker(item)) {
+    return (
+      item.scene.id === sceneID &&
+      Math.trunc(item.seconds) === Math.trunc(timestamp)
+    );
+  }
+
+  return item.id === sceneID;
+}
 
 export interface IPlaySceneOptions {
   sceneIndex?: number;
   newPage?: number;
   autoPlay?: boolean;
   continue?: boolean;
+  loop?: boolean;
   start?: number;
+  end?: number | null;
 }
 
 export class SceneQueue {
   public query?: ListFilterModel;
   public sceneIDs?: number[];
+  public sceneMarkerIDs?: number[];
   private originalQueryPage?: number;
   private originalQueryPageSize?: number;
 
@@ -37,6 +88,12 @@ export class SceneQueue {
   public static fromSceneIDList(sceneIDs: string[]) {
     const ret = new SceneQueue();
     ret.sceneIDs = sceneIDs.map((v) => Number(v));
+    return ret;
+  }
+
+  public static fromSceneMarkerIDList(sceneMarkerIDs: string[]) {
+    const ret = new SceneQueue();
+    ret.sceneMarkerIDs = sceneMarkerIDs.map((v) => Number(v));
     return ret;
   }
 
@@ -75,9 +132,17 @@ export class SceneQueue {
         qfp = String(newPage);
       }
       ret.push(`qfp=${qfp}`);
+
+      if (this.query.mode === FilterMode.SceneMarkers) {
+        ret.push("qfm=scene_marker");
+      }
     } else if (this.sceneIDs && this.sceneIDs.length > 0) {
       for (const id of this.sceneIDs) {
         ret.push(`qs=${id}`);
+      }
+    } else if (this.sceneMarkerIDs && this.sceneMarkerIDs.length > 0) {
+      for (const id of this.sceneMarkerIDs) {
+        ret.push(`qm=${id}`);
       }
     }
 
@@ -95,20 +160,43 @@ export class SceneQueue {
         p: params.get("qfp"),
         c: params.getAll("qfc"),
       };
+
+      const filterMode =
+        params.get("qfm") === "scene_marker"
+          ? FilterMode.SceneMarkers
+          : FilterMode.Scenes;
+
       const decoded = ListFilterModel.decodeParams(translated);
-      const query = new ListFilterModel(FilterMode.Scenes);
+      const query = new ListFilterModel(filterMode);
       query.configureFromDecodedParams(decoded);
       ret.query = query;
     } else if (params.has("qs")) {
       // must be scene list
       ret.sceneIDs = params.getAll("qs").map((v) => Number(v));
+    } else if (params.has("qm")) {
+      // must be marker list
+      ret.sceneMarkerIDs = params.getAll("qm").map((v) => Number(v));
     }
 
     return ret;
   }
 
+  // returns a copy of this queue with the given scene removed. Only applies
+  // to scene ID queues - filter queues are re-queried from the server, which
+  // will exclude deleted scenes.
+  public withoutSceneID(sceneID: string) {
+    if (!this.sceneIDs) return this;
+
+    const ret = new SceneQueue();
+    ret.query = this.query;
+    ret.originalQueryPage = this.originalQueryPage;
+    ret.originalQueryPageSize = this.originalQueryPageSize;
+    ret.sceneIDs = this.sceneIDs.filter((id) => id !== Number(sceneID));
+    return ret;
+  }
+
   public makeLink(sceneID: string, options: IPlaySceneOptions) {
-    let params = [
+    const params = [
       this.makeQueryParameters(options.sceneIndex, options.newPage),
     ];
     if (options.autoPlay) {
@@ -117,8 +205,15 @@ export class SceneQueue {
     if (options.continue !== undefined) {
       params.push("continue=" + options.continue);
     }
+    if (options.loop !== undefined) {
+      params.push("loop=" + options.loop);
+    }
     if (options.start !== undefined) {
-      params.push("t=" + options.start);
+      if (options.end) {
+        params.push("t=" + options.start + "," + options.end);
+      } else {
+        params.push("t=" + options.start);
+      }
     }
     return `/scenes/${sceneID}${params.length ? "?" + params.join("&") : ""}`;
   }

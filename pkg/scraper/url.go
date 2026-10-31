@@ -9,14 +9,19 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
+	"github.com/enetx/g"
+	"github.com/enetx/surf"
 	jsoniter "github.com/json-iterator/go"
 	"golang.org/x/net/html/charset"
 
@@ -25,11 +30,17 @@ import (
 
 const scrapeDefaultSleep = time.Second * 2
 
-func loadURL(ctx context.Context, loadURL string, client *http.Client, def Definition, globalConfig GlobalConfig) (io.Reader, error) {
+var proxyAuthRE = regexp.MustCompile(`^(https?:\/\/)(([\P{Cc}]+):([\P{Cc}]+)@)?(([a-zA-Z0-9][a-zA-Z0-9.-]*)(:[0-9]{1,5})?)`)
+
+func loadURL(ctx context.Context, loadURL string, client *http.Client, def Definition, globalConfig GlobalConfig, preferRawJSON bool) (io.Reader, error) {
 	driverOptions := def.DriverOptions
-	if driverOptions != nil && driverOptions.UseCDP {
-		// get the page using chrome dp
-		return urlFromCDP(ctx, loadURL, *driverOptions, globalConfig)
+	if driverOptions != nil {
+		switch {
+		case driverOptions.UseCDP:
+			return urlFromCDP(ctx, loadURL, *driverOptions, globalConfig, preferRawJSON)
+		case driverOptions.UseSurf:
+			return urlFromSurf(ctx, loadURL, *driverOptions, def, globalConfig)
+		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, loadURL, nil)
@@ -71,11 +82,77 @@ func loadURL(ctx context.Context, loadURL string, client *http.Client, def Defin
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("http error %d:%s", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	bodyReader := bytes.NewReader(body)
+	printCookies(jar, def, "Jar cookies found for scraper urls")
+	return charset.NewReader(bodyReader, resp.Header.Get("Content-Type"))
+}
+
+// func urlFromSurf uses enetx/surf with TLS browser emulation to bypass fingerprint-based blocking.
+// this is a step down from CDP but faster and more lightweight and can succeed where CDP might fail
+func urlFromSurf(ctx context.Context, loadURL string, driverOptions scraperDriverOptions, def Definition, globalConfig GlobalConfig) (io.Reader, error) {
+	// get cookies
+	jar, err := def.jar()
+	if err != nil {
+		return nil, fmt.Errorf("error creating cookie jar: %w", err)
+	}
+
+	// create client
+	builder := surf.NewClient().
+		Builder().
+		Impersonate().Chrome()
+
+	// get global proxy
+	proxyURL := globalConfig.GetProxy()
+	if proxyURL != "" {
+		builder = builder.Proxy(g.String(proxyURL))
+	}
+
+	client := builder.
+		Build().
+		Unwrap().
+		Std() // use stdlib adapter
+
+	// pass in jar directly
+	client.Jar = jar
+
+	// try to mimic normal method above
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, loadURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	// remove User-Agent header. This undermines TLS fingerprinting
+	// because of GREASE (RFC 8701)
+	// older fingerprints + UAs are still sustainable.
+	for _, h := range driverOptions.Headers {
+		if h.Key != "" {
+			if strings.ToLower(h.Key) == "user-agent" {
+				continue
+			}
+			req.Header.Set(h.Key, h.Value)
+			logger.Debugf("[scraper] adding header <%s:%s>", h.Key, h.Value)
+		}
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("http error %d:%s", resp.StatusCode, http.StatusText(resp.StatusCode))
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -90,8 +167,10 @@ func loadURL(ctx context.Context, loadURL string, client *http.Client, def Defin
 // func urlFromCDP uses chrome cdp and DOM to load and process the url
 // if remote is set as true in the scraperConfig  it will try to use localhost:9222
 // else it will look for google-chrome in path
-func urlFromCDP(ctx context.Context, urlCDP string, driverOptions scraperDriverOptions, globalConfig GlobalConfig) (io.Reader, error) {
-
+//
+// preferRawJSON is true for JSON scrapers (read raw body) and false for
+// XPath scrapers (always need the HTML-wrapped OuterHTML view).
+func urlFromCDP(ctx context.Context, urlCDP string, driverOptions scraperDriverOptions, globalConfig GlobalConfig, preferRawJSON bool) (io.Reader, error) {
 	if !driverOptions.UseCDP {
 		return nil, fmt.Errorf("url shouldn't be fetched through CDP")
 	}
@@ -108,42 +187,9 @@ func urlFromCDP(ctx context.Context, urlCDP string, driverOptions scraperDriverO
 		var cancelAct context.CancelFunc
 
 		if isCDPPathHTTP(globalConfig) || isCDPPathWS(globalConfig) {
-			remote := cdpPath
-
-			// -------------------------------------------------------------------
-			// #1023
-			// when chromium is listening over RDP it only accepts requests
-			// with host headers that are either IPs or `localhost`
-			cdpURL, err := url.Parse(remote)
+			remote, err := resolveRemoteCDP(ctx, cdpPath)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse CDP Path: %v", err)
-			}
-			hostname := cdpURL.Hostname()
-			if hostname != "localhost" {
-				if net.ParseIP(hostname) == nil { // not an IP
-					addr, err := net.LookupIP(hostname)
-					if err != nil || len(addr) == 0 { // can not resolve to IP
-						return nil, fmt.Errorf("CDP: hostname <%s> can not be resolved", hostname)
-					}
-					if len(addr[0]) == 0 { // nil IP
-						return nil, fmt.Errorf("CDP: hostname <%s> resolved to nil", hostname)
-					}
-					// addr is a valid IP
-					// replace the host part of the cdpURL with the IP
-					cdpURL.Host = strings.Replace(cdpURL.Host, hostname, addr[0].String(), 1)
-					// use that for remote
-					remote = cdpURL.String()
-				}
-			}
-			// --------------------------------------------------------------------
-
-			// if CDPPath is http(s) then we need to get the websocket URL
-			if isCDPPathHTTP(globalConfig) {
-				var err error
-				remote, err = getRemoteCDPWSAddress(ctx, remote)
-				if err != nil {
-					return nil, err
-				}
+				return nil, err
 			}
 
 			ctx, cancelAct = chromedp.NewRemoteAllocator(ctx, remote)
@@ -180,6 +226,17 @@ func urlFromCDP(ctx context.Context, urlCDP string, driverOptions scraperDriverO
 	var res string
 	headers := cdpHeaders(driverOptions)
 
+	// Track the main frame's latest document for the raw-JSON-body path below.
+	// Main frame ID is set from the first action, once the target exists.
+	var jsonDoc jsonDocumentTracker
+	chromedp.ListenTarget(ctx, func(ev interface{}) {
+		if ev, ok := ev.(*network.EventResponseReceived); ok {
+			if ev.Type == network.ResourceTypeDocument {
+				jsonDoc.markDocument(ev.FrameID, ev.RequestID, ev.Response.MimeType)
+			}
+		}
+	})
+
 	if proxyUsesAuth(globalConfig.GetProxy()) {
 		_, user, pass := splitProxyAuth(globalConfig.GetProxy())
 
@@ -214,6 +271,14 @@ func urlFromCDP(ctx context.Context, urlCDP string, driverOptions scraperDriverO
 	}
 
 	err := chromedp.Run(ctx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			tree, err := page.GetFrameTree().Do(ctx)
+			if err != nil {
+				return err
+			}
+			jsonDoc.setMainFrame(tree.Frame.ID)
+			return nil
+		}),
 		network.Enable(),
 		setCDPCookies(driverOptions),
 		printCDPCookies(driverOptions, "Cookies found"),
@@ -221,7 +286,21 @@ func urlFromCDP(ctx context.Context, urlCDP string, driverOptions scraperDriverO
 		chromedp.Navigate(urlCDP),
 		chromedp.Sleep(sleepDuration),
 		setCDPClicks(driverOptions),
-		chromedp.OuterHTML("html", &res, chromedp.ByQuery),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			requestID, isJSON := jsonDoc.mainDocument()
+
+			if preferRawJSON && isJSON {
+				body, err := network.GetResponseBody(requestID).Do(ctx)
+				if err != nil {
+					// e.g. evicted from Chrome's cache.
+					logger.Warnf("[scraper] could not get raw response body for JSON document, falling back to OuterHTML (the scrape will likely still fail as a result): %v", err)
+					return chromedp.OuterHTML("html", &res, chromedp.ByQuery).Do(ctx)
+				}
+				res = string(body)
+				return nil
+			}
+			return chromedp.OuterHTML("html", &res, chromedp.ByQuery).Do(ctx)
+		}),
 		printCDPCookies(driverOptions, "Cookies set"),
 	)
 
@@ -278,14 +357,124 @@ func getRemoteCDPWSAddress(ctx context.Context, url string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("CDP: %s returned HTTP status %d", url, resp.StatusCode)
+	}
+
 	var result map[string]interface{}
 	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return "", fmt.Errorf("CDP: %s did not return a CDP version response: %w", url, err)
 	}
-	remote := result["webSocketDebuggerUrl"].(string)
+	remote, ok := result["webSocketDebuggerUrl"].(string)
+	if !ok || remote == "" {
+		return "", fmt.Errorf("CDP: %s did not return a webSocketDebuggerUrl", url)
+	}
 	logger.Debugf("Remote cdp instance found %s", remote)
-	return remote, err
+	return remote, nil
+}
+
+// resolveRemoteCDP turns a remote http(s):// or ws:// CDP path into the
+// websocket address to connect to.
+func resolveRemoteCDP(ctx context.Context, cdpPath string) (string, error) {
+	remote := cdpPath
+
+	// -------------------------------------------------------------------
+	// #1023
+	// when chromium is listening over RDP it only accepts requests
+	// with host headers that are either IPs or `localhost`
+	cdpURL, err := url.Parse(remote)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse CDP Path: %v", err)
+	}
+	hostname := cdpURL.Hostname()
+	if hostname != "localhost" {
+		if net.ParseIP(hostname) == nil { // not an IP
+			addr, err := net.LookupIP(hostname)
+			if err != nil || len(addr) == 0 { // can not resolve to IP
+				return "", fmt.Errorf("CDP: hostname <%s> can not be resolved", hostname)
+			}
+			if len(addr[0]) == 0 { // nil IP
+				return "", fmt.Errorf("CDP: hostname <%s> resolved to nil", hostname)
+			}
+			// addr is a valid IP
+			// replace the host part of the cdpURL with the IP
+			setCDPHost(cdpURL, addr[0])
+			// use that for remote
+			remote = cdpURL.String()
+		}
+	}
+	// --------------------------------------------------------------------
+
+	// if CDPPath is http(s) then we need to get the websocket URL
+	if isHTTPCDPPath(cdpPath) {
+		remote, err = getRemoteCDPWSAddress(ctx, remote)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return remote, nil
+}
+
+func setCDPHost(cdpURL *url.URL, ip net.IP) {
+	if port := cdpURL.Port(); port != "" {
+		cdpURL.Host = net.JoinHostPort(ip.String(), port)
+	} else if ip.To4() == nil {
+		cdpURL.Host = "[" + ip.String() + "]"
+	} else {
+		cdpURL.Host = ip.String()
+	}
+}
+
+// isJSONMimeType reports whether mimeType indicates JSON content.
+func isJSONMimeType(mimeType string) bool {
+	mimeType, _, _ = strings.Cut(mimeType, ";")
+	mimeType = strings.TrimSpace(strings.ToLower(mimeType))
+
+	return mimeType == "application/json" ||
+		strings.HasSuffix(mimeType, "+json") ||
+		mimeType == "text/json"
+}
+
+// jsonDocumentTracker records the main frame's latest Document response and
+// whether it was JSON, ignoring iframes. "Latest" lets this follow redirects
+// and challenge pages to wherever they land. Mutex-guarded: markDocument
+// runs on chromedp's event goroutine, the rest on the action sequence.
+type jsonDocumentTracker struct {
+	mutex       sync.Mutex
+	mainFrameID cdp.FrameID
+	requestID   network.RequestID
+	isJSON      bool
+}
+
+// setMainFrame sets the frame ID markDocument should track.
+func (t *jsonDocumentTracker) setMainFrame(id cdp.FrameID) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	t.mainFrameID = id
+}
+
+// markDocument overwrites the tracked document if frameID is the main frame.
+func (t *jsonDocumentTracker) markDocument(frameID cdp.FrameID, requestID network.RequestID, mimeType string) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	if t.mainFrameID == "" || frameID != t.mainFrameID {
+		return
+	}
+	t.requestID = requestID
+	t.isJSON = isJSONMimeType(mimeType)
+}
+
+// mainDocument returns the main document's request ID and whether it was
+// JSON.
+func (t *jsonDocumentTracker) mainDocument() (network.RequestID, bool) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	return t.requestID, t.isJSON
 }
 
 func cdpHeaders(driverOptions scraperDriverOptions) map[string]interface{} {
@@ -305,8 +494,7 @@ func proxyUsesAuth(proxyUrl string) bool {
 	if proxyUrl == "" {
 		return false
 	}
-	reg := regexp.MustCompile(`^(https?:\/\/)(([\P{Cc}]+):([\P{Cc}]+)@)?(([a-zA-Z0-9][a-zA-Z0-9.-]*)(:[0-9]{1,5})?)`)
-	matches := reg.FindAllStringSubmatch(proxyUrl, -1)
+	matches := proxyAuthRE.FindAllStringSubmatch(proxyUrl, -1)
 	if matches != nil {
 		split := matches[0]
 		return len(split) == 0 || (len(split) > 5 && split[3] != "")
@@ -319,8 +507,7 @@ func splitProxyAuth(proxyUrl string) (string, string, string) {
 	if proxyUrl == "" {
 		return "", "", ""
 	}
-	reg := regexp.MustCompile(`^(https?:\/\/)(([\P{Cc}]+):([\P{Cc}]+)@)?(([a-zA-Z0-9][a-zA-Z0-9.-]*)(:[0-9]{1,5})?)`)
-	matches := reg.FindAllStringSubmatch(proxyUrl, -1)
+	matches := proxyAuthRE.FindAllStringSubmatch(proxyUrl, -1)
 
 	if matches != nil && len(matches[0]) > 5 {
 		split := matches[0]
@@ -328,4 +515,46 @@ func splitProxyAuth(proxyUrl string) (string, string, string) {
 	}
 
 	return proxyUrl, "", ""
+}
+
+const cdpValidateTimeout = 15 * time.Second
+
+// ValidateCDPPath checks that a Chrome CDP path can be used the way CDP
+// scrapers would use it. Remote http(s):// and ws:// paths are resolved and
+// connected to. A local path is only looked up, not started. On success it
+// returns a message describing what was checked.
+func ValidateCDPPath(ctx context.Context, cdpPath string) (string, error) {
+	cdpPath = strings.TrimSpace(cdpPath)
+	if cdpPath == "" {
+		return "No CDP path set. Chrome will be looked for in its default install locations when a scraper needs it.", nil
+	}
+
+	if !isHTTPCDPPath(cdpPath) && !isWSCDPPath(cdpPath) {
+		found, err := exec.LookPath(cdpPath)
+		if err != nil {
+			return "", fmt.Errorf("chrome executable not found: %w", err)
+		}
+		return fmt.Sprintf("Found Chrome executable at %s. It is started when a scraper needs it.", found), nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, cdpValidateTimeout)
+	defer cancel()
+
+	remote, err := resolveRemoteCDP(ctx, cdpPath)
+	if err != nil {
+		return "", err
+	}
+
+	allocCtx, cancelAlloc := chromedp.NewRemoteAllocator(ctx, remote)
+	defer cancelAlloc()
+	browserCtx, cancelBrowser := chromedp.NewContext(allocCtx)
+	defer cancelBrowser()
+
+	// running with no actions connects to the browser and opens a tab,
+	// which is closed again when browserCtx is cancelled
+	if err := chromedp.Run(browserCtx); err != nil {
+		return "", fmt.Errorf("could not connect to CDP at %s: %w", remote, err)
+	}
+
+	return fmt.Sprintf("Connected to Chrome at %s", remote), nil
 }

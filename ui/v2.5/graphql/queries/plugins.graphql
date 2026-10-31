@@ -23,6 +23,7 @@ query Plugins {
       display_name
       description
       type
+      public
     }
 
     requires

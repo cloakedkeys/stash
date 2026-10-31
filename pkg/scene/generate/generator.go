@@ -3,6 +3,7 @@ package generate
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -48,6 +49,7 @@ type ScenePaths interface {
 type FFMpegConfig interface {
 	GetTranscodeInputArgs() []string
 	GetTranscodeOutputArgs() []string
+	GetGenerationHardwareAcceleration() bool
 }
 
 type Generator struct {
@@ -68,6 +70,17 @@ func (g Generator) tempFile(p Paths, pattern string) (*os.File, error) {
 	}
 	_ = tmpFile.Close()
 	return tmpFile, err
+}
+
+func (g *Generator) DetermineCodecAndHW(ctx context.Context, path string, width, height, targetHeight int) (ffmpeg.VideoCodec, bool) {
+	codec := ffmpeg.VideoCodecLibX264
+	fullhw := false
+	if g.FFMpegConfig.GetGenerationHardwareAcceleration() {
+		codec = g.Encoder.HWCodecMP4Compatible(codec)
+		fullhw = codec != ffmpeg.VideoCodecLibX264 &&
+			g.Encoder.HWCanFullHWTranscode(ctx, codec, path, width, height, targetHeight)
+	}
+	return codec, fullhw
 }
 
 // generateFile performs a generate operation by generating a temporary file using p and pattern, then
@@ -137,9 +150,9 @@ func (g Generator) generate(ctx *fsutil.LockContext, args []string) error {
 		return fmt.Errorf("error starting command: %w", err)
 	}
 
-	ctx.AttachCommand(cmd)
+	wait := ctx.AttachCommand(cmd)
 
-	if err := cmd.Wait(); err != nil {
+	if err := wait(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			exitErr.Stderr = stderr.Bytes()
@@ -165,9 +178,9 @@ func (g Generator) generateOutput(lockCtx *fsutil.LockContext, args []string) ([
 		return nil, fmt.Errorf("error starting command: %w", err)
 	}
 
-	lockCtx.AttachCommand(cmd)
+	wait := lockCtx.AttachCommand(cmd)
 
-	if err := cmd.Wait(); err != nil {
+	if err := wait(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			exitErr.Stderr = stderr.Bytes()

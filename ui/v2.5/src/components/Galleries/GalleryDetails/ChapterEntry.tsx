@@ -6,7 +6,7 @@ import { Button } from "react-bootstrap";
 interface IChapterEntries {
   galleryChapters: GQL.GalleryChapterDataFragment[];
   onClickChapter: (image_index: number) => void;
-  onEdit: (chapter: GQL.GalleryChapterDataFragment) => void;
+  onEdit?: (chapter: GQL.GalleryChapterDataFragment) => void;
 }
 
 export const ChapterEntries: React.FC<IChapterEntries> = ({
@@ -31,13 +31,15 @@ export const ChapterEntries: React.FC<IChapterEntries> = ({
               {chapter.image_index}
             </div>
           </Button>
-          <Button
-            variant="link"
-            className="ml-auto"
-            onClick={() => onEdit(chapter)}
-          >
-            <FormattedMessage id="actions.edit" />
-          </Button>
+          {onEdit && (
+            <Button
+              variant="link"
+              className="ml-auto"
+              onClick={() => onEdit(chapter)}
+            >
+              <FormattedMessage id="actions.edit" />
+            </Button>
+          )}
         </div>
       </div>
     );

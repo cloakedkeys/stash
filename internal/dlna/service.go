@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/stashapp/stash/internal/ip"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/txn"
@@ -19,6 +20,7 @@ type Repository struct {
 
 	SceneFinder     SceneFinder
 	FileGetter      models.FileGetter
+	AudioFinder     AudioFinder
 	StudioFinder    StudioFinder
 	TagFinder       TagFinder
 	PerformerFinder PerformerFinder
@@ -29,6 +31,7 @@ func NewRepository(repo models.Repository) Repository {
 	return Repository{
 		TxnManager:      repo.TxnManager,
 		FileGetter:      repo.File,
+		AudioFinder:     repo.Audio,
 		SceneFinder:     repo.Scene,
 		StudioFinder:    repo.Studio,
 		TagFinder:       repo.Tag,
@@ -44,15 +47,9 @@ func (r *Repository) WithReadTxn(ctx context.Context, fn txn.TxnFunc) error {
 type Status struct {
 	Running bool `json:"running"`
 	// If not currently running, time until it will be started. If running, time until it will be stopped
-	Until              *time.Time `json:"until"`
-	RecentIPAddresses  []string   `json:"recentIPAddresses"`
-	AllowedIPAddresses []*Dlnaip  `json:"allowedIPAddresses"`
-}
-
-type Dlnaip struct {
-	IPAddress string `json:"ipAddress"`
-	// Time until IP will be no longer allowed/disallowed
-	Until *time.Time `json:"until"`
+	Until              *time.Time   `json:"until"`
+	RecentIPAddresses  []string     `json:"recentIPAddresses"`
+	AllowedIPAddresses []*ip.IPTime `json:"allowedIPAddresses"`
 }
 
 type dmsConfig struct {
@@ -69,6 +66,11 @@ type dmsConfig struct {
 type sceneServer interface {
 	StreamSceneDirect(scene *models.Scene, w http.ResponseWriter, r *http.Request)
 	ServeScreenshot(scene *models.Scene, w http.ResponseWriter, r *http.Request)
+}
+
+type audioServer interface {
+	StreamAudioDirect(audio *models.Audio, w http.ResponseWriter, r *http.Request)
+	ServeScreenshot(audio *models.Audio, w http.ResponseWriter, r *http.Request)
 }
 
 type Config interface {
@@ -98,7 +100,8 @@ type Service struct {
 	repository      Repository
 	config          Config
 	sceneServer     sceneServer
-	ipWhitelistMgr  *ipWhitelistManager
+	audioServer     audioServer
+	IPWhitelistMgr  *ip.WhitelistManager
 	activityTracker *ActivityTracker
 
 	server  *Server
@@ -170,7 +173,8 @@ func (s *Service) init() error {
 	s.server = &Server{
 		repository:         s.repository,
 		sceneServer:        s.sceneServer,
-		ipWhitelistManager: s.ipWhitelistMgr,
+		audioServer:        s.audioServer,
+		ipWhitelistManager: s.IPWhitelistMgr,
 		activityTracker:    s.activityTracker,
 		Interfaces:         interfaces,
 		HTTPConn: func() net.Listener {
@@ -231,25 +235,33 @@ func (s *Service) init() error {
 // 	return bytes.NewReader(buff.Bytes())
 // }
 
+// SetActivityUserResolver sets the resolver used to determine the user that DLNA activity is recorded for.
+// Must be called before the service is started.
+func (s *Service) SetActivityUserResolver(r ActivityUserResolver) {
+	s.activityTracker.userResolver = r
+}
+
 // NewService initialises and returns a new DLNA service.
 // The sceneWriter parameter should implement SceneActivityWriter (typically models.SceneReaderWriter).
+// The audioWriter parameter should implement AudioActivityWriter (typically models.AudioReaderWriter).
 // The minPlayPercent parameter is the minimum percentage of video that must be played to increment play count.
-func NewService(repo Repository, cfg Config, sceneServer sceneServer, sceneWriter SceneActivityWriter, minPlayPercent int) *Service {
+func NewService(repo Repository, cfg Config, sceneServer sceneServer, audioServer audioServer, sceneWriter SceneActivityWriter, audioWriter AudioActivityWriter, minPlayPercent int) *Service {
 	activityCfg := &activityConfig{
 		config:         cfg,
 		minPlayPercent: minPlayPercent,
 	}
 
 	ret := &Service{
-		repository:  repo,
-		sceneServer: sceneServer,
-		config:      cfg,
-		ipWhitelistMgr: &ipWhitelistManager{
-			config: cfg,
-		},
-		activityTracker: NewActivityTracker(repo.TxnManager, sceneWriter, activityCfg),
+		repository:      repo,
+		sceneServer:     sceneServer,
+		audioServer:     audioServer,
+		config:          cfg,
+		IPWhitelistMgr:  &ip.WhitelistManager{},
+		activityTracker: NewActivityTracker(repo.TxnManager, sceneWriter, audioWriter, activityCfg),
 		mutex:           sync.Mutex{},
 	}
+
+	ret.IPWhitelistMgr.SetDefaultWhitelist(cfg.GetDLNADefaultIPWhitelist())
 
 	return ret
 }
@@ -358,8 +370,8 @@ func (s *Service) Status() *Status {
 
 	ret := &Status{
 		Running:            s.running,
-		RecentIPAddresses:  s.ipWhitelistMgr.getRecent(),
-		AllowedIPAddresses: s.ipWhitelistMgr.getTempAllowed(),
+		RecentIPAddresses:  s.IPWhitelistMgr.GetRecent(),
+		AllowedIPAddresses: s.IPWhitelistMgr.GetTempAllowed(),
 	}
 
 	if s.startTime != nil {
@@ -376,9 +388,9 @@ func (s *Service) Status() *Status {
 }
 
 func (s *Service) AddTempDLNAIP(pattern string, duration *time.Duration) {
-	s.ipWhitelistMgr.allowPattern(pattern, duration)
+	s.IPWhitelistMgr.AllowPattern(pattern, duration)
 }
 
 func (s *Service) RemoveTempDLNAIP(pattern string) bool {
-	return s.ipWhitelistMgr.removePattern(pattern)
+	return s.IPWhitelistMgr.RemovePattern(pattern)
 }

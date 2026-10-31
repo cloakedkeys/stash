@@ -45,17 +45,26 @@ type GlobalConfig interface {
 }
 
 func isCDPPathHTTP(c GlobalConfig) bool {
-	return strings.HasPrefix(c.GetScraperCDPPath(), "http://") || strings.HasPrefix(c.GetScraperCDPPath(), "https://")
+	return isHTTPCDPPath(c.GetScraperCDPPath())
 }
 
 func isCDPPathWS(c GlobalConfig) bool {
-	return strings.HasPrefix(c.GetScraperCDPPath(), "ws://")
+	return isWSCDPPath(c.GetScraperCDPPath())
+}
+
+func isHTTPCDPPath(p string) bool {
+	return strings.HasPrefix(p, "http://") || strings.HasPrefix(p, "https://")
+}
+
+func isWSCDPPath(p string) bool {
+	return strings.HasPrefix(p, "ws://")
 }
 
 type SceneFinder interface {
 	models.SceneGetter
 	models.URLLoader
 	models.VideoFileLoader
+	models.PerformerIDLoader
 }
 
 type PerformerFinder interface {
@@ -70,6 +79,7 @@ type StudioFinder interface {
 
 type TagFinder interface {
 	models.TagGetter
+	models.TagNameFinder
 	models.TagAutoTagQueryer
 }
 
@@ -433,6 +443,10 @@ func (c Cache) getScene(ctx context.Context, sceneID int) (*models.Scene, error)
 		}
 
 		if err := ret.LoadFiles(ctx, qb); err != nil {
+			return err
+		}
+
+		if err := ret.LoadPerformerIDs(ctx, qb); err != nil {
 			return err
 		}
 

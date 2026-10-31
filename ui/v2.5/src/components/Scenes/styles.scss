@@ -273,6 +273,13 @@ textarea.scene-description {
       top: 0;
       transition-delay: 0.2s;
     }
+
+    // hide the cover behind a playing preview, so it doesn't show through
+    // the letterboxing of a contained video. Tied to hover so the cover is
+    // back as soon as the pointer leaves, before the video has paused.
+    .scene-card-preview.playing .scene-card-preview-image {
+      visibility: hidden;
+    }
   }
 }
 
@@ -324,7 +331,6 @@ textarea.scene-description {
 .scene-tabs {
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 4rem);
   overflow-wrap: break-word;
   word-wrap: break-word;
 
@@ -566,6 +572,11 @@ input[type="range"].blue-slider {
     font-size: 0.85em;
   }
 
+  .form-container.saving {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
   @include media-breakpoint-up(xl) {
     .custom-fields-input {
       .custom-fields-field {
@@ -607,10 +618,6 @@ input[type="range"].blue-slider {
   &.not-organized {
     color: rgba(191, 204, 214, 0.5);
   }
-
-  &.organized {
-    color: #664c3f;
-  }
 }
 
 .o-counter .dropdown-toggle {
@@ -622,14 +629,19 @@ input[type="range"].blue-slider {
 
 @media (min-width: 1200px) {
   #queue-viewer {
-    .queue-scene-details {
+    .queue-scene-details,
+    .queue-marker-details {
       width: 245px;
     }
 
     .queue-scene-title,
     .queue-scene-studio,
     .queue-scene-performers,
-    .queue-scene-date {
+    .queue-scene-date,
+    .queue-marker-title,
+    .queue-marker-scene,
+    .queue-marker-performers,
+    .queue-marker-tags {
       margin-right: auto;
       min-width: 245px;
       overflow: hidden;
@@ -642,7 +654,11 @@ input[type="range"].blue-slider {
     .queue-scene-title:hover,
     .queue-scene-studio:hover,
     .queue-scene-performers:hover,
-    .queue-scene-date:hover {
+    .queue-scene-date:hover,
+    .queue-marker-title:hover,
+    .queue-marker-scene:hover,
+    .queue-marker-performers:hover,
+    .queue-marker-tags:hover {
       transform: translateX(calc(245px - 100%));
     }
   }
@@ -659,15 +675,21 @@ input[type="range"].blue-slider {
     position: sticky;
     top: 0;
     z-index: 100;
+
+    .form-check {
+      display: inline-block;
+    }
   }
 
-  .queue-scene-details {
+  .queue-scene-details,
+  .queue-marker-details {
     display: grid;
     overflow: hidden;
     position: relative;
   }
 
-  .queue-scene-title {
+  .queue-scene-title,
+  .queue-marker-title {
     font-size: 1.2rem;
 
     @media (max-width: 576px) {
@@ -675,13 +697,16 @@ input[type="range"].blue-slider {
     }
   }
 
-  .queue-scene-studio {
+  .queue-scene-studio,
+  .queue-marker-scene {
     color: #d3d0d0;
     font-weight: 600;
   }
 
   .queue-scene-performers,
-  .queue-scene-date {
+  .queue-scene-date,
+  .queue-marker-performers,
+  .queue-marker-tags {
     color: #d3d0d0;
     font-size: 0.9rem;
     font-weight: 400;

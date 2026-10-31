@@ -13,6 +13,7 @@ import (
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
 
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/studio"
 	"github.com/stashapp/stash/pkg/utils"
@@ -31,17 +32,21 @@ const (
 	studioNameColumn      = "name"
 	studioImageBlobColumn = "image_blob"
 	studiosTagsTable      = "studios_tags"
+	studiosUserDataTable  = "studios_user_data"
 )
 
+var studioUserData = userDataTable{
+	table:       studiosUserDataTable,
+	idColumn:    studioIDColumn,
+	objectTable: studioTable,
+}
+
 type studioRow struct {
-	ID        int         `db:"id" goqu:"skipinsert"`
-	Name      zero.String `db:"name"`
-	ParentID  null.Int    `db:"parent_id,omitempty"`
-	CreatedAt Timestamp   `db:"created_at"`
-	UpdatedAt Timestamp   `db:"updated_at"`
-	// expressed as 1-100
-	Rating        null.Int    `db:"rating"`
-	Favorite      bool        `db:"favorite"`
+	ID            int         `db:"id" goqu:"skipinsert"`
+	Name          zero.String `db:"name"`
+	ParentID      null.Int    `db:"parent_id,omitempty"`
+	CreatedAt     Timestamp   `db:"created_at"`
+	UpdatedAt     Timestamp   `db:"updated_at"`
 	Details       zero.String `db:"details"`
 	IgnoreAutoTag bool        `db:"ignore_auto_tag"`
 	Organized     bool        `db:"organized"`
@@ -56,8 +61,6 @@ func (r *studioRow) fromStudio(o models.Studio) {
 	r.ParentID = intFromPtr(o.ParentID)
 	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
-	r.Rating = intFromPtr(o.Rating)
-	r.Favorite = o.Favorite
 	r.Details = zero.StringFrom(o.Details)
 	r.IgnoreAutoTag = o.IgnoreAutoTag
 	r.Organized = o.Organized
@@ -70,14 +73,42 @@ func (r *studioRow) resolve() *models.Studio {
 		ParentID:      nullIntPtr(r.ParentID),
 		CreatedAt:     r.CreatedAt.Timestamp,
 		UpdatedAt:     r.UpdatedAt.Timestamp,
-		Rating:        nullIntPtr(r.Rating),
-		Favorite:      r.Favorite,
 		Details:       r.Details.String,
 		IgnoreAutoTag: r.IgnoreAutoTag,
 		Organized:     r.Organized,
 	}
 
 	return ret
+}
+
+// studioUserDataRow is a row of a user's data for a studio.
+type studioUserDataRow struct {
+	StudioID int `db:"studio_id"`
+	UserID   int `db:"user_id"`
+	// expressed as 1-100
+	Rating   null.Int `db:"rating"`
+	Favorite bool     `db:"favorite"`
+}
+
+func (r studioUserDataRow) apply(s *models.Studio) {
+	s.Rating = nullIntPtr(r.Rating)
+	s.Favorite = r.Favorite
+}
+
+func studioUserDataRecord(o models.Studio) goqu.Record {
+	return goqu.Record{
+		"rating":   intFromPtr(o.Rating),
+		"favorite": o.Favorite,
+	}
+}
+
+func studioUserDataPartialRecord(o models.StudioPartial) goqu.Record {
+	r := updateRecord{
+		Record: make(exp.Record),
+	}
+	r.setNullInt("rating", o.Rating)
+	r.setBool("favorite", o.Favorite)
+	return goqu.Record(r.Record)
 }
 
 type studioRowRecord struct {
@@ -89,8 +120,6 @@ func (r *studioRowRecord) fromPartial(o models.StudioPartial) {
 	r.setNullInt("parent_id", o.ParentID)
 	r.setTimestamp("created_at", o.CreatedAt)
 	r.setTimestamp("updated_at", o.UpdatedAt)
-	r.setNullInt("rating", o.Rating)
-	r.setBool("favorite", o.Favorite)
 	r.setNullString("details", o.Details)
 	r.setBool("ignore_auto_tag", o.IgnoreAutoTag)
 	r.setBool("organized", o.Organized)
@@ -103,6 +132,7 @@ type studioRepositoryType struct {
 	tags     joinRepository
 
 	scenes    repository
+	audios    repository
 	images    repository
 	galleries repository
 	groups    repository
@@ -122,6 +152,10 @@ var (
 		},
 		scenes: repository{
 			tableName: sceneTable,
+			idColumn:  studioIDColumn,
+		},
+		audios: repository{
+			tableName: audioTable,
 			idColumn:  studioIDColumn,
 		},
 		images: repository{
@@ -195,6 +229,10 @@ func (qb *StudioStore) Create(ctx context.Context, newObject *models.CreateStudi
 		return err
 	}
 
+	if err := studioUserData.upsert(ctx, id, studioUserDataRecord(*newObject.Studio)); err != nil {
+		return err
+	}
+
 	if newObject.Aliases.Loaded() {
 		if err := studio.ValidateAliases(ctx, id, newObject.Aliases.List(), qb); err != nil {
 			return err
@@ -251,6 +289,10 @@ func (qb *StudioStore) UpdatePartial(ctx context.Context, input models.StudioPar
 		}
 	}
 
+	if err := studioUserData.upsert(ctx, input.ID, studioUserDataPartialRecord(input)); err != nil {
+		return nil, err
+	}
+
 	if input.Aliases != nil {
 		if err := studiosAliasesTableMgr.modifyJoins(ctx, input.ID, input.Aliases.Values, input.Aliases.Mode); err != nil {
 			return nil, err
@@ -286,6 +328,10 @@ func (qb *StudioStore) Update(ctx context.Context, updatedObject *models.UpdateS
 	r.fromStudio(*updatedObject.Studio)
 
 	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
+		return err
+	}
+
+	if err := studioUserData.upsert(ctx, updatedObject.ID, studioUserDataRecord(*updatedObject.Studio)); err != nil {
 		return err
 	}
 
@@ -337,6 +383,11 @@ func (qb *StudioStore) Find(ctx context.Context, id int) (*models.Studio, error)
 }
 
 func (qb *StudioStore) FindMany(ctx context.Context, ids []int) ([]*models.Studio, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Studios, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	ret := make([]*models.Studio, len(ids))
 
 	table := qb.table()
@@ -393,6 +444,8 @@ func (qb *StudioStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.
 }
 
 func (qb *StudioStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Studio, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Studios)
+
 	const single = false
 	var ret []*models.Studio
 	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
@@ -409,7 +462,41 @@ func (qb *StudioStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*m
 		return nil, err
 	}
 
+	if err := qb.loadUserData(ctx, ret); err != nil {
+		return nil, err
+	}
+
 	return ret, nil
+}
+
+// loadUserData sets the current user's data on the provided studios.
+func (qb *StudioStore) loadUserData(ctx context.Context, studios []*models.Studio) error {
+	if _, ok := models.UserIDFromContext(ctx); !ok || len(studios) == 0 {
+		return nil
+	}
+
+	byID := make(map[int]*models.Studio, len(studios))
+	ids := make([]int, len(studios))
+	for i, s := range studios {
+		byID[s.ID] = s
+		ids[i] = s.ID
+	}
+
+	return batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := studioUserData.selectForUser(ctx, batch)
+		const single = false
+		return queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+			var r studioUserDataRow
+			if err := rows.StructScan(&r); err != nil {
+				return err
+			}
+
+			if s := byID[r.StudioID]; s != nil {
+				r.apply(s)
+			}
+			return nil
+		})
+	})
 }
 
 func (qb *StudioStore) findBySubquery(ctx context.Context, sq *goqu.SelectDataset) ([]*models.Studio, error) {
@@ -565,6 +652,9 @@ func (qb *StudioStore) makeQuery(ctx context.Context, studioFilter *models.Studi
 	}
 
 	query := studioRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Studios); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, studioTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
@@ -582,7 +672,7 @@ func (qb *StudioStore) makeQuery(ctx context.Context, studioFilter *models.Studi
 	}
 
 	var err error
-	query.sortAndPagination, err = qb.getStudioSort(findFilter)
+	query.sortAndPagination, err = qb.getStudioSort(ctx, findFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -639,6 +729,26 @@ func (qb *StudioStore) sortByScenesSize(direction string) string {
 	) %s`, fileTable, sceneTable, scenesFilesTable, scenesFilesTable, sceneIDColumn, sceneTable, fileTable, fileTable, scenesFilesTable, sceneTable, studioIDColumn, studioTable, getSortDirection(direction))
 }
 
+func (qb *StudioStore) sortByAudiosDuration(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		SELECT COALESCE(SUM(audio_files.duration), 0)
+		FROM %s
+		LEFT JOIN %s ON %s.%s = %s.id
+		LEFT JOIN audio_files ON audio_files.file_id = %s.file_id
+		WHERE %s.%s = %s.id
+	) %s`, audioTable, audiosFilesTable, audiosFilesTable, audioIDColumn, audioTable, audiosFilesTable, audioTable, studioIDColumn, studioTable, getSortDirection(direction))
+}
+
+func (qb *StudioStore) sortByAudiosSize(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		SELECT COALESCE(SUM(%s.size), 0)
+		FROM %s
+		LEFT JOIN %s ON %s.%s = %s.id
+		LEFT JOIN %s ON %s.id = %s.file_id
+		WHERE %s.%s = %s.id
+	) %s`, fileTable, audioTable, audiosFilesTable, audiosFilesTable, audioIDColumn, audioTable, fileTable, fileTable, audiosFilesTable, audioTable, studioIDColumn, studioTable, getSortDirection(direction))
+}
+
 // used for sorting on performer latest scene
 var selectStudioLatestSceneSQL = utils.StrFormat(
 	"SELECT MAX(date) FROM ("+
@@ -658,6 +768,123 @@ func (qb *StudioStore) sortByLatestScene(direction string) string {
 	return " ORDER BY (" + selectStudioLatestSceneSQL + ") " + direction
 }
 
+func (qb *StudioStore) sortByScenesCountAll(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		WITH RECURSIVE sub_studios AS (
+			SELECT s.id FROM %[1]s s WHERE s.id = %[1]s.id
+			UNION ALL
+			SELECT s.id FROM %[1]s s
+			INNER JOIN sub_studios ss ON s.parent_id = ss.id
+		)
+		SELECT COUNT(*) FROM %[2]s
+		WHERE %[2]s.%[3]s IN (SELECT id FROM sub_studios)
+	) %[4]s`, studioTable, sceneTable, studioIDColumn, getSortDirection(direction))
+}
+
+// performer counts include the studio's scenes, images and galleries, matching
+// the studio's performer_count field and filter
+func (qb *StudioStore) sortByPerformerCount(direction string) string {
+	return " ORDER BY (" + selectStudioPerformerCountSQL + ") " + getSortDirection(direction)
+}
+
+func (qb *StudioStore) sortByPerformerCountAll(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		WITH RECURSIVE sub_studios AS (
+			SELECT s.id FROM %[1]s s WHERE s.id = %[1]s.id
+			UNION ALL
+			SELECT s.id FROM %[1]s s
+			INNER JOIN sub_studios ss ON s.parent_id = ss.id
+		)
+		SELECT COUNT(*) FROM (
+			SELECT %[2]s.performer_id FROM %[2]s
+			INNER JOIN %[3]s ON %[3]s.id = %[2]s.scene_id
+			WHERE %[3]s.studio_id IN (SELECT id FROM sub_studios)
+			UNION
+			SELECT %[4]s.performer_id FROM %[4]s
+			INNER JOIN %[5]s ON %[5]s.id = %[4]s.image_id
+			WHERE %[5]s.studio_id IN (SELECT id FROM sub_studios)
+			UNION
+			SELECT %[6]s.performer_id FROM %[6]s
+			INNER JOIN %[7]s ON %[7]s.id = %[6]s.gallery_id
+			WHERE %[7]s.studio_id IN (SELECT id FROM sub_studios)
+		)
+	) %[8]s`, studioTable,
+		performersScenesTable, sceneTable,
+		performersImagesTable, imageTable,
+		performersGalleriesTable, galleryTable,
+		getSortDirection(direction))
+}
+
+func (qb *StudioStore) sortByOCounter(ctx context.Context, direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		SELECT COALESCE((
+			SELECT COUNT(*) FROM %[3]s
+			INNER JOIN %[4]s ON %[3]s.id = %[4]s.scene_id AND %[4]s.user_id = %[7]d
+			WHERE %[3]s.%[2]s = %[1]s.id
+		), 0) + COALESCE((
+			SELECT SUM(%[8]s.o_counter) FROM %[5]s
+			INNER JOIN %[8]s ON %[5]s.id = %[8]s.image_id AND %[8]s.user_id = %[7]d
+			WHERE %[5]s.%[2]s = %[1]s.id
+		), 0) + COALESCE((
+			SELECT SUM(%[10]s.o_counter) FROM %[9]s
+			INNER JOIN %[10]s ON %[9]s.id = %[10]s.gallery_id AND %[10]s.user_id = %[7]d
+			WHERE %[9]s.%[2]s = %[1]s.id
+		) ,0) + COALESCE((
+            SELECT COUNT(*) FROM %[11]s
+            INNER JOIN %[12]s ON %[11]s.id = %[12]s.audio_id AND %[12]s.user_id = %[7]d
+            WHERE %[11]s.%[2]s = %[1]s.id
+        ), 0)
+	) %[6]s`, studioTable, studioIDColumn, sceneTable, scenesODatesTable, imageTable, getSortDirection(direction), currentUserID(ctx), imagesUserDataTable, galleryTable, galleriesUserDataTable, audioTable, audiosODatesTable)
+}
+
+func (qb *StudioStore) sortByOCounterAll(ctx context.Context, direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		WITH RECURSIVE sub_studios AS (
+			SELECT s.id FROM %[1]s s WHERE s.id = %[1]s.id
+			UNION ALL
+			SELECT ch.id FROM %[1]s ch
+			INNER JOIN sub_studios ss ON ch.parent_id = ss.id
+		)
+		SELECT COALESCE((
+			SELECT COUNT(*) FROM %[3]s
+			INNER JOIN %[4]s ON %[3]s.id = %[4]s.scene_id AND %[4]s.user_id = %[7]d
+			WHERE %[3]s.%[2]s IN (SELECT id FROM sub_studios)
+		), 0) + COALESCE((
+			SELECT SUM(%[8]s.o_counter) FROM %[5]s
+			INNER JOIN %[8]s ON %[5]s.id = %[8]s.image_id AND %[8]s.user_id = %[7]d
+			WHERE %[5]s.%[2]s IN (SELECT id FROM sub_studios)
+		), 0) + COALESCE((
+			SELECT SUM(%[10]s.o_counter) FROM %[9]s
+			INNER JOIN %[10]s ON %[9]s.id = %[10]s.gallery_id AND %[10]s.user_id = %[7]d
+			WHERE %[9]s.%[2]s IN (SELECT id FROM sub_studios)
+		) ,0) + COALESCE((
+            SELECT COUNT(*) FROM %[11]s
+            INNER JOIN %[12]s ON %[11]s.id = %[12]s.audio_id AND %[12]s.user_id = %[7]d
+            WHERE %[11]s.%[2]s IN (SELECT id FROM sub_studios)
+        ), 0)
+	) %[6]s`, studioTable, studioIDColumn, sceneTable, scenesODatesTable, imageTable, getSortDirection(direction), currentUserID(ctx), imagesUserDataTable, galleryTable, galleriesUserDataTable, audioTable, audiosODatesTable)
+
+}
+
+// used for sorting on performer latest audio
+var selectStudioLatestAudioSQL = utils.StrFormat(
+	"SELECT MAX(date) FROM ("+
+		"SELECT {date} FROM {audios} s "+
+		"WHERE s.{studio_id} = {studios}.id"+
+		")",
+	map[string]interface{}{
+		"audios":    audioTable,
+		"studios":   studioTable,
+		"studio_id": studioIDColumn,
+		"date":      audioDateColumn,
+	},
+)
+
+func (qb *StudioStore) sortByLatestAudio(direction string) string {
+	// need to get the latest date from audios
+	return " ORDER BY (" + selectStudioLatestAudioSQL + ") " + direction
+}
+
 var studioSortOptions = sortOptions{
 	"child_count",
 	"created_at",
@@ -666,16 +893,26 @@ var studioSortOptions = sortOptions{
 	"images_count",
 	"latest_scene",
 	"name",
+	"favorite",
+	"o_counter",
+	"o_counter_all",
+	"performer_count",
+	"performer_count_all",
 	"scenes_count",
+	"scenes_count_all",
 	"scenes_duration",
 	"scenes_size",
+	"scene_markers_count",
+	"audios_count",
+	"audios_duration",
+	"audios_size",
 	"random",
 	"rating",
 	"tag_count",
 	"updated_at",
 }
 
-func (qb *StudioStore) getStudioSort(findFilter *models.FindFilterType) (string, error) {
+func (qb *StudioStore) getStudioSort(ctx context.Context, findFilter *models.FindFilterType) (string, error) {
 	var sort string
 	var direction string
 	if findFilter == nil {
@@ -697,18 +934,40 @@ func (qb *StudioStore) getStudioSort(findFilter *models.FindFilterType) (string,
 		sortQuery += getCountSort(studioTable, studiosTagsTable, studioIDColumn, direction)
 	case "scenes_count":
 		sortQuery += getCountSort(studioTable, sceneTable, studioIDColumn, direction)
+	case "scenes_count_all":
+		sortQuery += qb.sortByScenesCountAll(direction)
 	case "scenes_duration":
 		sortQuery += qb.sortByScenesDuration(direction)
 	case "scenes_size":
 		sortQuery += qb.sortByScenesSize(direction)
+	case "audios_count":
+		sortQuery += getCountSort(studioTable, audioTable, studioIDColumn, direction)
+	case "audios_duration":
+		sortQuery += qb.sortByAudiosDuration(direction)
+	case "audios_size":
+		sortQuery += qb.sortByAudiosSize(direction)
 	case "images_count":
 		sortQuery += getCountSort(studioTable, imageTable, studioIDColumn, direction)
 	case "galleries_count":
 		sortQuery += getCountSort(studioTable, galleryTable, studioIDColumn, direction)
 	case "child_count":
 		sortQuery += getCountSort(studioTable, studioTable, studioParentIDColumn, direction)
+	case "scene_markers_count":
+		sortQuery += fmt.Sprintf(" ORDER BY (SELECT COUNT(*) FROM %s INNER JOIN %s ON %[1]s.scene_id = %[2]s.id WHERE %[2]s.%s = %s.id) %s", sceneMarkerTable, sceneTable, studioIDColumn, studioTable, getSortDirection(direction))
 	case "latest_scene":
 		sortQuery += qb.sortByLatestScene(direction)
+	case "latest_audio":
+		sortQuery += qb.sortByLatestAudio(direction)
+	case "o_counter":
+		sortQuery += qb.sortByOCounter(ctx, direction)
+	case "o_counter_all":
+		sortQuery += qb.sortByOCounterAll(ctx, direction)
+	case "performer_count":
+		sortQuery += qb.sortByPerformerCount(direction)
+	case "performer_count_all":
+		sortQuery += qb.sortByPerformerCountAll(direction)
+	case "rating", "favorite":
+		sortQuery += studioUserData.orderBy(ctx, sort, direction)
 	default:
 		sortQuery += getSort(sort, direction, "studios")
 	}
@@ -740,6 +999,12 @@ func (qb *StudioStore) GetStashIDs(ctx context.Context, studioID int) ([]models.
 
 func (qb *StudioStore) GetAliases(ctx context.Context, studioID int) ([]string, error) {
 	return studiosAliasesTableMgr.get(ctx, studioID)
+}
+
+// GetAllAliases returns a map of studio id to its aliases. Lets callers that
+// need aliases for many studios avoid N+1 per-id lookups.
+func (qb *StudioStore) GetAllAliases(ctx context.Context) (map[int][]string, error) {
+	return studiosAliasesTableMgr.getAll(ctx)
 }
 
 func (qb *StudioStore) GetURLs(ctx context.Context, studioID int) ([]string, error) {

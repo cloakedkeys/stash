@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stashapp/stash/pkg/models"
 )
@@ -88,6 +89,7 @@ func getSortDirection(direction string) string {
 		return direction
 	}
 }
+
 func getSort(sort string, direction string, tableName string) string {
 	direction = getSortDirection(direction)
 
@@ -96,9 +98,6 @@ func getSort(sort string, direction string, tableName string) string {
 		var relationTableName = strings.TrimSuffix(sort, "_count") // TODO: pluralize?
 		colName := getColumn(relationTableName, "id")
 		return " ORDER BY COUNT(distinct " + colName + ") " + direction
-	case strings.Compare(sort, "filesize") == 0:
-		colName := getColumn(tableName, "size")
-		return " ORDER BY " + colName + " " + direction
 	case strings.HasPrefix(sort, randomSeedPrefix):
 		// seed as a parameter from the UI
 		seedStr := sort[len(randomSeedPrefix):]
@@ -140,11 +139,22 @@ func getRandomSort(tableName string, direction string, seed uint64) string {
 	// ORDER BY ((n+seed)*(n+seed)*p1 + (n+seed)*p2) % p3
 	// since sqlite converts overflowing numbers to reals, a custom db function that uses uints with overflow should be faster,
 	// however in practice the overhead of calling a custom function vastly outweighs the benefits
-	return fmt.Sprintf(" ORDER BY mod((%[1]s + %[2]d) * (%[1]s + %[2]d) * 52959209 + (%[1]s + %[2]d) * 1047483763, 2147483647) %[3]s", colName, seed, direction)
+	return fmt.Sprintf(" ORDER BY (%[1]s + %[2]d) * (%[1]s + %[2]d) * 52959209 + (%[1]s + %[2]d) * 1047483763 %% 2147483647 %[3]s", colName, seed, direction)
 }
 
 func getCountSort(primaryTable, joinTable, primaryFK, direction string) string {
 	return fmt.Sprintf(" ORDER BY (SELECT COUNT(*) FROM %s AS sort WHERE sort.%s = %s.id) %s", joinTable, primaryFK, primaryTable, getSortDirection(direction))
+}
+
+// getUserCountSort is getCountSort for a per-user join table.
+// Only rows belonging to the provided user are counted.
+func getUserCountSort(primaryTable, joinTable, primaryFK string, userID int, direction string) string {
+	return fmt.Sprintf(" ORDER BY (SELECT COUNT(*) FROM %s AS sort WHERE sort.%s = %s.id AND sort.%s = %d) %s", joinTable, primaryFK, primaryTable, userIDColumn, userID, getSortDirection(direction))
+}
+
+// getFileSizeSort sorts by the combined size of all files attached to the primary object.
+func getFileSizeSort(primaryTable, joinTable, primaryFK, direction string) string {
+	return fmt.Sprintf(" ORDER BY (SELECT COALESCE(SUM(sort_files.size), 0) FROM %s AS sort INNER JOIN %s AS sort_files ON sort.file_id = sort_files.id WHERE sort.%s = %s.id) %s", joinTable, fileTable, primaryFK, primaryTable, getSortDirection(direction))
 }
 
 // getStringSearchClause returns a sqlClause for searching strings in the provided columns.
@@ -370,12 +380,36 @@ func getCountCriterionClause(primaryTable, joinTable, primaryFK string, criterio
 	return getIntCriterionWhereClause(lhs, criterion)
 }
 
+// getUserCountCriterionClause is getCountCriterionClause for a per-user join table.
+// Only rows belonging to the provided user are counted.
+func getUserCountCriterionClause(primaryTable, joinTable, primaryFK string, userID int, criterion models.IntCriterionInput) (string, []interface{}) {
+	lhs := fmt.Sprintf("(SELECT COUNT(*) FROM %s s WHERE s.%s = %s.id AND s.%s = %d)", joinTable, primaryFK, primaryTable, userIDColumn, userID)
+	return getIntCriterionWhereClause(lhs, criterion)
+}
+
 func coalesce(column string) string {
 	return fmt.Sprintf("COALESCE(%s, '')", column)
 }
 
+// wraps a string with wildcard characters for use in LIKE queries
 func like(v string) string {
 	return "%" + v + "%"
+}
+
+// wraps a string with wildcard characters and converts it to lowercase
+// for use in case-insensitive LIKE queries with the lower_unicode() SQL function.
+func likeLower(v string) string {
+	return "%" + strings.ToLower(v) + "%"
+}
+
+// isASCII reports whether s contains only ASCII bytes.
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
 }
 
 type sqlTable string

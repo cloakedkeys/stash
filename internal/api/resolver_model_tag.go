@@ -5,6 +5,7 @@ import (
 
 	"github.com/stashapp/stash/internal/api/loaders"
 	"github.com/stashapp/stash/internal/api/urlbuilders"
+	"github.com/stashapp/stash/pkg/audio"
 	"github.com/stashapp/stash/pkg/gallery"
 	"github.com/stashapp/stash/pkg/group"
 	"github.com/stashapp/stash/pkg/image"
@@ -13,6 +14,10 @@ import (
 	"github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/studio"
 )
+
+func (r *tagResolver) Rating100(ctx context.Context, obj *models.Tag) (*int, error) {
+	return obj.Rating, nil
+}
 
 func (r *tagResolver) Parents(ctx context.Context, obj *models.Tag) (ret []*models.Tag, err error) {
 	if !obj.ParentIDs.Loaded() {
@@ -25,7 +30,7 @@ func (r *tagResolver) Parents(ctx context.Context, obj *models.Tag) (ret []*mode
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.ParentIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *tagResolver) Children(ctx context.Context, obj *models.Tag) (ret []*models.Tag, err error) {
@@ -39,7 +44,7 @@ func (r *tagResolver) Children(ctx context.Context, obj *models.Tag) (ret []*mod
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.ChildIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *tagResolver) Aliases(ctx context.Context, obj *models.Tag) (ret []string, err error) {
@@ -67,6 +72,17 @@ func (r *tagResolver) StashIds(ctx context.Context, obj *models.Tag) ([]*models.
 func (r *tagResolver) SceneCount(ctx context.Context, obj *models.Tag, depth *int) (ret int, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		ret, err = scene.CountByTagID(ctx, r.repository.Scene, obj.ID, depth)
+		return err
+	}); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (r *tagResolver) AudioCount(ctx context.Context, obj *models.Tag, depth *int) (ret int, err error) {
+	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+		ret, err = audio.CountByTagID(ctx, r.repository.Audio, obj.ID, depth)
 		return err
 	}); err != nil {
 		return 0, err
@@ -162,7 +178,7 @@ func (r *tagResolver) ImagePath(ctx context.Context, obj *models.Tag) (*string, 
 
 func (r *tagResolver) ParentCount(ctx context.Context, obj *models.Tag) (ret int, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		ret, err = r.repository.Tag.CountByParentTagID(ctx, obj.ID)
+		ret, err = r.tagParentCount(ctx, obj.ID)
 		return err
 	}); err != nil {
 		return ret, err
@@ -173,7 +189,7 @@ func (r *tagResolver) ParentCount(ctx context.Context, obj *models.Tag) (ret int
 
 func (r *tagResolver) ChildCount(ctx context.Context, obj *models.Tag) (ret int, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		ret, err = r.repository.Tag.CountByChildTagID(ctx, obj.ID)
+		ret, err = r.tagChildCount(ctx, obj.ID)
 		return err
 	}); err != nil {
 		return ret, err

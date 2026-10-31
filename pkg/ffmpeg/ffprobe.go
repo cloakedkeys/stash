@@ -400,3 +400,185 @@ func (v *VideoFile) getStreamIndex(fileType string, probeJSON FFProbeJSON) int {
 
 	return ret
 }
+
+// AUDIO
+
+// AudioFile represents the ffprobe output for a audio file.
+type AudioFile struct {
+	JSON        FFProbeJSON
+	AudioStream *FFProbeStream
+
+	Path      string
+	Title     string
+	Comment   string
+	Container string
+	// FileDuration is the declared (meta-data) duration of the *file*.
+	FileDuration float64
+	StartTime    float64
+	Bitrate      int64
+	Size         int64
+	CreationTime time.Time
+
+	AudioCodec string
+	SampleRate int64
+
+	// Tags holds the metadata tags of the file, keyed by lower-case name.
+	Tags map[string]string
+	// HasCoverArt is true if the file has an embedded cover image.
+	HasCoverArt bool
+}
+
+// audioTagsJSON is the part of the ffprobe output needed to read the tags of a
+// file. Tag names are arbitrary and their case depends on the container, and
+// some containers, such as ogg, keep them on the stream rather than the format.
+type audioTagsJSON struct {
+	Format struct {
+		Tags map[string]string `json:"tags"`
+	} `json:"format"`
+	Streams []struct {
+		CodecType string            `json:"codec_type"`
+		Tags      map[string]string `json:"tags"`
+	} `json:"streams"`
+}
+
+func parseAudioTags(out []byte) map[string]string {
+	var parsed audioTagsJSON
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		return nil
+	}
+
+	ret := make(map[string]string)
+	add := func(tags map[string]string) {
+		for k, v := range tags {
+			k = strings.ToLower(k)
+			if _, found := ret[k]; !found && v != "" {
+				ret[k] = v
+			}
+		}
+	}
+
+	add(parsed.Format.Tags)
+	for _, s := range parsed.Streams {
+		if s.CodecType == "audio" {
+			add(s.Tags)
+		}
+	}
+
+	return ret
+}
+
+// NewAudioFile runs ffprobe on the given path and returns a AudioFile.
+func (f *FFProbe) NewAudioFile(audioPath string) (*AudioFile, error) {
+	args := []string{
+		"-v",
+		"quiet",
+		"-print_format", "json",
+		"-show_format",
+		"-show_streams",
+		"-show_error",
+	}
+
+	// show_entries stream_side_data=rotation requires 5.x or later ffprobe
+	if f.version.major >= 5 {
+		args = append(args, "-show_entries", "stream_side_data=rotation")
+	}
+
+	args = append(args, audioPath)
+
+	cmd := stashExec.Command(f.path, args...)
+	out, err := cmd.Output()
+
+	if err != nil {
+		return nil, fmt.Errorf("FFProbe encountered an error with <%s>.\nError JSON:\n%s\nError: %s", audioPath, string(out), err.Error())
+	}
+
+	probeJSON := &FFProbeJSON{}
+	if err := json.Unmarshal(out, probeJSON); err != nil {
+		return nil, fmt.Errorf("error unmarshalling audio data for <%s>: %s", audioPath, err.Error())
+	}
+
+	result, err := parseAudio(audioPath, probeJSON)
+	if err != nil {
+		return nil, err
+	}
+
+	result.Tags = parseAudioTags(out)
+
+	return result, nil
+}
+
+func parseAudio(filePath string, probeJSON *FFProbeJSON) (*AudioFile, error) {
+	if probeJSON == nil {
+		return nil, fmt.Errorf("failed to get ffprobe json for <%s>", filePath)
+	}
+
+	result := &AudioFile{}
+	result.JSON = *probeJSON
+
+	if result.JSON.Error.Code != 0 {
+		return nil, fmt.Errorf("ffprobe error code %d: %s", result.JSON.Error.Code, result.JSON.Error.String)
+	}
+
+	result.Path = filePath
+	result.Title = probeJSON.Format.Tags.Title
+
+	result.Comment = probeJSON.Format.Tags.Comment
+	result.Bitrate, _ = strconv.ParseInt(probeJSON.Format.BitRate, 10, 64)
+
+	result.Container = probeJSON.Format.FormatName
+	duration, _ := strconv.ParseFloat(probeJSON.Format.Duration, 64)
+	result.FileDuration = math.Round(duration*100) / 100
+	fileStat, err := os.Stat(filePath)
+	if err != nil {
+		statErr := fmt.Errorf("error statting file <%s>: %w", filePath, err)
+		logger.Errorf("%v", statErr)
+		return nil, statErr
+	}
+	result.Size = fileStat.Size()
+	result.StartTime, _ = strconv.ParseFloat(probeJSON.Format.StartTime, 64)
+	result.CreationTime = probeJSON.Format.Tags.CreationTime.Time
+
+	audioStream := result.getAudioStream()
+	if audioStream != nil {
+		result.AudioCodec = audioStream.CodecName
+		result.SampleRate, _ = strconv.ParseInt(audioStream.SampleRate, 10, 64)
+		result.AudioStream = audioStream
+	}
+
+	for _, stream := range probeJSON.Streams {
+		if stream.CodecType == "video" && stream.Disposition.AttachedPic != 0 {
+			result.HasCoverArt = true
+			break
+		}
+	}
+
+	return result, nil
+}
+
+func (a *AudioFile) getAudioStream() *FFProbeStream {
+	index := a.getStreamIndex("audio", a.JSON)
+	if index != -1 {
+		return &a.JSON.Streams[index]
+	}
+	return nil
+}
+
+func (a *AudioFile) getStreamIndex(fileType string, probeJSON FFProbeJSON) int {
+	ret := -1
+	for i, stream := range probeJSON.Streams {
+		// skip cover art/thumbnails
+		if stream.CodecType == fileType && stream.Disposition.AttachedPic == 0 {
+			// prefer default stream
+			if stream.Disposition.Default == 1 {
+				return i
+			}
+
+			// backwards compatible behaviour - fallback to first matching stream
+			if ret == -1 {
+				ret = i
+			}
+		}
+	}
+
+	return ret
+}

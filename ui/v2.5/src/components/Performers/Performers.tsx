@@ -1,5 +1,6 @@
 import React from "react";
 import { Route, Switch } from "react-router-dom";
+import { ModifyRoute } from "src/components/Shared/ModifyRoute";
 import { Helmet } from "react-helmet";
 import { useTitleProps } from "src/hooks/title";
 import Performer from "./PerformerDetails/Performer";
@@ -18,7 +19,7 @@ const PerformerRoutes: React.FC = () => {
       <Helmet {...titleProps} />
       <Switch>
         <Route exact path="/performers" component={Performers} />
-        <Route path="/performers/new" component={PerformerCreate} />
+        <ModifyRoute path="/performers/new" component={PerformerCreate} />
         <Route path="/performers/:id/:tab?" component={Performer} />
       </Switch>
     </>

@@ -9,12 +9,15 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
@@ -124,7 +127,8 @@ func Initialize() (*Server, error) {
 
 	r.Use(middleware.Heartbeat("/healthz"))
 	r.Use(cors.AllowAll().Handler)
-	r.Use(authenticateHandler())
+	r.Use(RequestIPMiddleware)
+	r.Use(authenticateHandler(mgr.Repository.TxnManager, cfg))
 	visitedPluginHandler := mgr.SessionStore.VisitedPluginHandler()
 	r.Use(visitedPluginHandler)
 
@@ -140,6 +144,7 @@ func Initialize() (*Server, error) {
 	r.Use(middleware.Compress(4))
 	r.Use(middleware.StripSlashes)
 	r.Use(BaseURLMiddleware)
+	r.Use(rateLimitGraphql(cfg.GetUserGraphqlRateLimit(), cfg.GetUserGraphqlRateLimitWindow()))
 
 	recoverFunc := func(ctx context.Context, err interface{}) error {
 		logger.Error(err)
@@ -159,19 +164,38 @@ func Initialize() (*Server, error) {
 
 	pluginCache := mgr.PluginCache
 	sceneService := mgr.SceneService
+	audioService := mgr.AudioService
 	imageService := mgr.ImageService
 	galleryService := mgr.GalleryService
 	groupService := mgr.GroupService
+	userService := mgr.UserService
+
 	resolver := &Resolver{
 		repository:     repo,
 		sceneService:   sceneService,
+		audioService:   audioService,
 		imageService:   imageService,
 		galleryService: galleryService,
 		groupService:   groupService,
+		userService:    userService,
 		hookExecutor:   pluginCache,
 	}
 
-	gqlSrv := gqlHandler.New(NewExecutableSchema(Config{Resolvers: resolver}))
+	// observe user service changes as we need to update resolvers
+	mgr.UserServiceObservers.Subscribe(func(userService manager.UserService) {
+		resolver.userService = userService
+	})
+
+	gqlCfg := Config{
+		Resolvers: resolver,
+		Directives: DirectiveRoot{
+			HasRole:     HasRoleDirective,
+			IsUserOwner: IsUserOwnerDirective,
+		},
+	}
+
+	gqlSrv := gqlHandler.New(NewExecutableSchema(gqlCfg))
+	gqlSrv.AroundFields(resolver.LibraryLimitMiddleware)
 	gqlSrv.SetRecoverFunc(recoverFunc)
 	gqlSrv.AddTransport(gqlTransport.Websocket{
 		Upgrader: websocket.Upgrader{
@@ -213,6 +237,7 @@ func Initialize() (*Server, error) {
 
 	r.Mount("/performer", server.getPerformerRoutes())
 	r.Mount("/scene", server.getSceneRoutes())
+	r.Mount("/audio", server.getAudioRoutes())
 	r.Mount("/gallery", server.getGalleryRoutes())
 	r.Mount("/image", server.getImageRoutes())
 	r.Mount("/studio", server.getStudioRoutes())
@@ -227,8 +252,10 @@ func Initialize() (*Server, error) {
 
 	staticLoginUI := statigz.FileServer(ui.LoginUIBox.(fs.ReadDirFS))
 
+	sessionStore := mgr.SessionStore
+
 	r.Get(loginEndpoint, handleLogin())
-	r.Post(loginEndpoint, handleLoginPost())
+	r.Post(loginEndpoint, handleLoginPost(sessionStore, cfg))
 	r.Get(logoutEndpoint, handleLogout())
 	r.Get(loginLocaleEndpoint, handleLoginLocale(cfg))
 	r.HandleFunc(loginEndpoint+"/*", func(w http.ResponseWriter, r *http.Request) {
@@ -364,6 +391,15 @@ func (s *Server) getSceneRoutes() chi.Router {
 		captionFinder:     repo.File,
 		sceneMarkerFinder: repo.SceneMarker,
 		tagFinder:         repo.Tag,
+	}.Routes()
+}
+
+func (s *Server) getAudioRoutes() chi.Router {
+	repo := s.manager.Repository
+	return audioRoutes{
+		routes:      routes{txnManager: repo.TxnManager},
+		audioFinder: repo.Audio,
+		fileGetter:  repo.File,
 	}.Routes()
 }
 
@@ -551,6 +587,73 @@ func isURL(s string) bool {
 	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
 }
 
+const cspSettingPrefix = "csp_"
+
+// cspConnectSrcFromSettings returns validated http(s) connect-src URLs from
+// the plugin's settings, plus the keys that were skipped as invalid.
+// Settings keys beginning with "csp_" are treated as connect-src sources.
+func cspConnectSrcFromSettings(settings map[string]interface{}) (valid []string, skipped map[string]string) {
+	for k, v := range settings {
+		if !strings.HasPrefix(k, cspSettingPrefix) {
+			continue
+		}
+		s, ok := v.(string)
+		if !ok || !isValidConnectSrcURL(s) {
+			if skipped == nil {
+				skipped = make(map[string]string)
+			}
+			skipped[k] = fmt.Sprintf("%v", v)
+			continue
+		}
+		valid = append(valid, s)
+	}
+
+	// settings is a map, so sort to keep the emitted header stable between requests
+	sort.Strings(valid)
+
+	return valid, skipped
+}
+
+// declaredSettings returns only the settings declared in the plugin's configuration file.
+// configurePlugin accepts any key, so without this a csp_ key the plugin author never
+// declared could be added at runtime to widen the policy.
+func declaredSettings(settings map[string]interface{}, declared []plugin.PluginSetting) map[string]interface{} {
+	ret := make(map[string]interface{})
+	for _, s := range declared {
+		if v, ok := settings[s.Name]; ok {
+			ret[s.Name] = v
+		}
+	}
+	return ret
+}
+
+// warnedCSPSettings tracks the invalid csp_ settings already logged, so that a
+// misconfigured plugin does not emit a warning on every page request. The value
+// is re-logged if the user changes the setting to another invalid value.
+var warnedCSPSettings sync.Map
+
+func warnInvalidCSPSettings(pluginID string, skipped map[string]string) {
+	for key, value := range skipped {
+		k := pluginID + "\x00" + key
+		if prev, ok := warnedCSPSettings.Load(k); ok && prev == value {
+			continue
+		}
+		warnedCSPSettings.Store(k, value)
+		logger.Warnf("plugin %q: ignoring setting %q: not a valid connect-src URL", pluginID, key)
+	}
+}
+
+func isValidConnectSrcURL(s string) bool {
+	if strings.ContainsAny(s, " ,\t\r\n;\"'") {
+		return false
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return false
+	}
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.Hostname() != "" && u.User == nil && !strings.Contains(u.Host, "*")
+}
+
 func setPageSecurityHeaders(w http.ResponseWriter, r *http.Request, plugins []*plugin.Plugin) {
 	c := config.GetInstance()
 
@@ -608,8 +711,19 @@ func setPageSecurityHeaders(w http.ResponseWriter, r *http.Request, plugins []*p
 		}
 
 		connectSrcSlice = append(connectSrcSlice, ui.CSP.ConnectSrc...)
+
+		// only read plugin settings if the plugin opted in to the csp_ prefix
+		if ui.CSPSettings {
+			if settings := c.GetPluginConfiguration(plugin.ID); settings != nil {
+				valid, skipped := cspConnectSrcFromSettings(declaredSettings(settings, plugin.Settings))
+				connectSrcSlice = append(connectSrcSlice, valid...)
+				warnInvalidCSPSettings(plugin.ID, skipped)
+			}
+		}
+
 		scriptSrcSlice = append(scriptSrcSlice, ui.CSP.ScriptSrc...)
 		styleSrcSlice = append(styleSrcSlice, ui.CSP.StyleSrc...)
+		mediaSrc += " " + strings.Join(ui.CSP.MediaSrc, " ")
 	}
 
 	connectSrc := strings.Join(connectSrcSlice, " ")
@@ -638,6 +752,7 @@ type contextKey struct {
 
 var (
 	BaseURLCtxKey = &contextKey{"BaseURL"}
+	IPCtxKey      = &contextKey{"requestIP"}
 )
 
 func BaseURLMiddleware(next http.Handler) http.Handler {

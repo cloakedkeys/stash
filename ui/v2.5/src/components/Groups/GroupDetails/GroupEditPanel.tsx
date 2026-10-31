@@ -22,6 +22,7 @@ import { formikUtils } from "src/utils/form";
 import {
   yupDateString,
   yupFormikValidate,
+  yupRequiredStringArray,
   yupUniqueStringList,
 } from "src/utils/yup";
 import { Studio, StudioSelect } from "src/components/Studios/StudioSelect";
@@ -32,7 +33,7 @@ import {
   CustomFieldsInput,
   formatCustomFieldInput,
 } from "src/components/Shared/CustomFields";
-import { cloneDeep } from "@apollo/client/utilities";
+import cloneDeep from "lodash-es/cloneDeep";
 
 interface IGroupEditPanel {
   group: Partial<GQL.GroupDataFragment>;
@@ -71,7 +72,7 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
 
   const schema = yup.object({
     name: yup.string().required(),
-    aliases: yup.string().ensure(),
+    alias_list: yupRequiredStringArray(intl).defined(),
     duration: yup.number().integer().min(0).nullable().defined(),
     date: yupDateString(intl),
     studio_id: yup.string().required().nullable(),
@@ -94,7 +95,7 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
 
   const initialValues = {
     name: group?.name ?? "",
-    aliases: group?.aliases ?? "",
+    alias_list: group?.alias_list ?? [],
     duration: group?.duration ?? null,
     date: group?.date ?? "",
     studio_id: group?.studio?.id ?? null,
@@ -127,10 +128,8 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
     onSubmit: submit,
   });
 
-  const { tags, updateTagsStateFromScraper, tagsControl } = useTagsEdit(
-    group.tags,
-    (ids) => formik.setFieldValue("tag_ids", ids)
-  );
+  const { tags, updateTagsStateFromScraper, resetTagsState, tagsControl } =
+    useTagsEdit(group.tags, (ids) => formik.setFieldValue("tag_ids", ids));
 
   const containingGroupEntries = useMemo(() => {
     return formik.values.containing_groups
@@ -181,8 +180,8 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
       formik.setFieldValue("name", state.name);
     }
 
-    if (state.aliases) {
-      formik.setFieldValue("aliases", state.aliases);
+    if (state.alias_list) {
+      formik.setFieldValue("alias_list", state.alias_list);
     }
 
     if (state.duration) {
@@ -196,7 +195,7 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
       formik.setFieldValue("date", state.date);
     }
 
-    if (state.studio && state.studio.stored_id) {
+    if (state.studio?.stored_id) {
       onSetStudio({
         id: state.studio.stored_id,
         name: state.studio.name ?? "",
@@ -230,6 +229,11 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
     try {
       await onSubmit(input, andNew);
       formik.resetForm();
+      if (andNew) {
+        setStudio(group.studio ?? null);
+        setContainingGroups(group.containing_groups?.map((m) => m.group) ?? []);
+        resetTagsState();
+      }
     } catch (e) {
       Toast.error(e);
     }
@@ -250,7 +254,7 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
 
     try {
       const result = await queryScrapeGroupURL(url);
-      if (!result.data || !result.data.scrapeGroupURL) {
+      if (!result.data?.scrapeGroupURL) {
         return;
       }
 
@@ -400,6 +404,7 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
     renderInputField,
     renderDateField,
     renderDurationField,
+    renderStringListField,
     renderURLListField,
   } = formikUtils(intl, formik);
 
@@ -469,7 +474,7 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
 
       <Form noValidate onSubmit={formik.handleSubmit} id="group-edit">
         {renderInputField("name")}
-        {renderInputField("aliases")}
+        {renderStringListField("alias_list", "aliases")}
         {renderDurationField("duration")}
         {renderDateField("date")}
         {renderContainingGroupsField()}

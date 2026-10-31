@@ -11,6 +11,7 @@ import (
 	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/jmoiron/sqlx"
 	"github.com/mattn/go-sqlite3"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/hash/md5"
 	"github.com/stashapp/stash/pkg/logger"
@@ -24,18 +25,6 @@ const (
 	blobChecksumColumn = "checksum"
 )
 
-type BlobStoreOptions struct {
-	// UseFilesystem should be true if blob data should be stored in the filesystem
-	UseFilesystem bool
-	// UseDatabase should be true if blob data should be stored in the database
-	UseDatabase bool
-	// Path is the filesystem path to use for storing blobs
-	Path string
-	// SupplementaryPaths are alternative filesystem paths that will be used to find blobs
-	// No changes will be made to these filesystems
-	SupplementaryPaths []string
-}
-
 type BlobStore struct {
 	repository
 
@@ -44,10 +33,10 @@ type BlobStore struct {
 	fsStore *blob.FilesystemStore
 	// supplementary stores
 	otherStores []blob.FilesystemReader
-	options     BlobStoreOptions
+	options     database.BlobStoreOptions
 }
 
-func NewBlobStore(options BlobStoreOptions) *BlobStore {
+func NewBlobStore(options database.BlobStoreOptions) *BlobStore {
 	fs := &file.OsFS{}
 
 	ret := &BlobStore{
@@ -301,6 +290,17 @@ func (qb *BlobStore) readFromDatabase(ctx context.Context, checksum string) ([]b
 // Delete marks a checksum as no longer in use by a single reference.
 // If no references remain, the blob is deleted from the database and filesystem.
 func (qb *BlobStore) Delete(ctx context.Context, checksum string) error {
+	// an audio doesn't stop the delete below: its foreign key clears the cover
+	// instead, and tracks from the same album usually share one
+	inUse, err := qb.usedByAudio(ctx, checksum)
+	if err != nil {
+		return fmt.Errorf("checking audio covers: %w", err)
+	}
+	if inUse {
+		logger.Debugf("Blob %s is still referenced - not deleting", checksum)
+		return nil
+	}
+
 	// try to delete the blob from the database
 	if err := qb.delete(ctx, checksum); err != nil {
 		if qb.isConstraintError(err) {
@@ -322,6 +322,17 @@ func (qb *BlobStore) Delete(ctx context.Context, checksum string) error {
 	}
 
 	return nil
+}
+
+func (qb *BlobStore) usedByAudio(ctx context.Context, checksum string) (bool, error) {
+	q := dialect.From(audioTable).Select(goqu.COUNT("*")).Where(goqu.C(audioCoverBlobColumn).Eq(checksum))
+
+	var found int
+	if err := querySimple(ctx, q, &found); err != nil {
+		return false, fmt.Errorf("querying %s: %w", audioTable, err)
+	}
+
+	return found != 0, nil
 }
 
 func (qb *BlobStore) isConstraintError(err error) bool {

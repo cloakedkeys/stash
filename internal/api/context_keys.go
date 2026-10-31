@@ -5,7 +5,7 @@ package api
 type key int
 
 const (
-	galleryKey key = 0
+	galleryKey key = iota
 	performerKey
 	sceneKey
 	studioKey
@@ -14,4 +14,5 @@ const (
 	downloadKey
 	imageKey
 	pluginKey
+	audioKey
 )

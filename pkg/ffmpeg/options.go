@@ -37,6 +37,11 @@ func (a Args) Seek(seconds float64) Args {
 	return append(a, "-ss", fmt.Sprint(seconds))
 }
 
+// NoAccurateSeek adds the -noaccurate_seek flag and returns the result.
+func (a Args) NoAccurateSeek() Args {
+	return append(a, "-noaccurate_seek")
+}
+
 // Duration sets the duration (-t) to the given seconds and returns the result.
 func (a Args) Duration(seconds float64) Args {
 	return append(a, "-t", fmt.Sprint(seconds))
@@ -80,8 +85,11 @@ func (a Args) VideoFilter(vf VideoFilter) Args {
 	return append(a, vf.Args()...)
 }
 
-// VSync adds the VsyncMethod and returns the result.
-func (a Args) VSync(m VSyncMethod) Args {
+// VSync adds the VsyncMethod for ffmpeg version v and returns the result.
+func (a Args) VSync(m VSyncMethod, v Version) Args {
+	if v.Gteq(fpsModeVersion) {
+		return append(a, m.FPSModeArgs()...)
+	}
 	return append(a, m.Args()...)
 }
 
@@ -166,6 +174,28 @@ func (m VSyncMethod) Args() []string {
 	}
 
 	return []string{"-vsync", string(m)}
+}
+
+// fpsModeVersion is the ffmpeg version that replaced -vsync with -fps_mode.
+// -vsync was removed in ffmpeg 9.
+var fpsModeVersion = Version{major: 5, minor: 1}
+
+var fpsModes = map[VSyncMethod]string{
+	VSyncMethodPassthrough: "passthrough",
+	VSyncMethodCFR:         "cfr",
+	VSyncMethodVFR:         "vfr",
+	VSyncMethodAuto:        "auto",
+}
+
+// FPSModeArgs returns the -fps_mode arguments equivalent to the vsync method.
+// -fps_mode has no drop mode, so drop falls back to -vsync.
+func (m VSyncMethod) FPSModeArgs() []string {
+	mode, ok := fpsModes[m]
+	if !ok {
+		return m.Args()
+	}
+
+	return []string{"-fps_mode", mode}
 }
 
 // Video sync methods for ffmpeg. See -vsync entry under https://ffmpeg.org/ffmpeg.html#Advanced-options

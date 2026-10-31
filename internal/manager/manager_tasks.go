@@ -10,12 +10,16 @@ import (
 
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/file"
+	file_audio "github.com/stashapp/stash/pkg/file/audio"
 	file_image "github.com/stashapp/stash/pkg/file/image"
 	"github.com/stashapp/stash/pkg/file/video"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/job"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/scene"
+	"github.com/stashapp/stash/pkg/stashbox"
+	"github.com/stashapp/stash/pkg/utils"
 )
 
 func useAsVideo(pathname string) bool {
@@ -25,6 +29,10 @@ func useAsVideo(pathname string) bool {
 		return false
 	}
 	return isVideo(pathname)
+}
+
+func useAsAudio(pathname string) bool {
+	return isAudio(pathname)
 }
 
 func useAsImage(pathname string) bool {
@@ -43,6 +51,11 @@ func isZip(pathname string) bool {
 func isVideo(pathname string) bool {
 	vidExt := config.GetInstance().GetVideoExtensions()
 	return fsutil.MatchExtension(pathname, vidExt)
+}
+
+func isAudio(pathname string) bool {
+	imgExt := config.GetInstance().GetAudioExtensions()
+	return fsutil.MatchExtension(pathname, imgExt)
 }
 
 func isImage(pathname string) bool {
@@ -117,21 +130,25 @@ type ScanMetaDataFilterInput struct {
 	MinModTime *time.Time `json:"minModTime"`
 }
 
-func (s *Manager) Scan(ctx context.Context, input ScanMetadataInput) (int, error) {
-	if err := s.validateFFmpeg(); err != nil {
-		return 0, err
-	}
-
+func (s *Manager) makeScanner(rescan bool, minModTime time.Time, inferVRMetadata bool) *file.Scanner {
 	cfg := config.GetInstance()
+	repo := s.Repository
 
-	scanner := &file.Scanner{
+	return &file.Scanner{
 		Repository: file.NewRepository(s.Repository),
 		FileDecorators: []file.Decorator{
 			&file.FilteredDecorator{
 				Decorator: &video.Decorator{
-					FFProbe: s.FFProbe,
+					FFProbe:         s.FFProbe,
+					InferVRMetadata: inferVRMetadata,
 				},
 				Filter: file.FilterFunc(videoFileFilter),
+			},
+			&file.FilteredDecorator{
+				Decorator: &file_audio.Decorator{
+					FFProbe: s.FFProbe,
+				},
+				Filter: file.FilterFunc(audioFileFilter),
 			},
 			&file.FilteredDecorator{
 				Decorator: &file_image.Decorator{
@@ -143,19 +160,164 @@ func (s *Manager) Scan(ctx context.Context, input ScanMetadataInput) (int, error
 		FingerprintCalculator: &fingerprintCalculator{s.Config},
 		FS:                    &file.OsFS{},
 		ZipFileExtensions:     cfg.GetGalleryExtensions(),
-		// ScanFilters is set in ScanJob.Execute
-		// HandlerRequiredFilters is set in ScanJob.Execute
-		RootPaths: cfg.GetStashPaths().Paths(),
-		Rescan:    input.Rescan,
+		// FileHandlers must be set during execute as it needs progress reference
+		ScanFilters:            []file.PathFilter{newScanFilter(cfg, repo, minModTime)},
+		HandlerRequiredFilters: []file.Filter{newHandlerRequiredFilter(cfg, repo)},
+		// #4425 - isRootPath compares these against the NFC paths stored during scanning
+		RootPaths: fsutil.NormalizePaths(cfg.GetStashPaths().Paths()),
+		Rescan:    rescan,
 	}
+}
+
+type ScanGenerateOptions struct {
+	// Generate covers during scan
+	GenerateCovers *models.GenerateTiming `json:"generateCovers,omitempty"`
+	// Generate video previews during scan
+	GeneratePreviews *models.GenerateTiming `json:"generatePreviews,omitempty"`
+	// Generate image previews during scan
+	GenerateImagePreviews *models.GenerateTiming `json:"generateImagePreviews,omitempty"`
+	// Generate video sprites during scan
+	GenerateSprites *models.GenerateTiming `json:"generateSprites,omitempty"`
+	// Generate video phashes during scan
+	GenerateVideoPhashes *models.GenerateTiming `json:"generateVideoPhashes,omitempty"`
+	// Generate image phashes during scan
+	GenerateImagePhashes *models.GenerateTiming `json:"generateImagePhashes,omitempty"`
+	// Generate image thumbnails during scan
+	GenerateThumbnails *models.GenerateTiming `json:"generateThumbnails,omitempty"`
+	// Generate image clip previews during scan
+	GenerateClipPreviews *models.GenerateTiming `json:"generateClipPreviews,omitempty"`
+}
+
+func makeGenerateOptions(input ScanMetadataInput) ScanGenerateOptions {
+	cfg := config.GetInstance()
+	timing := models.GenerateTimingAsync
+	if cfg.GetSequentialScanning() {
+		timing = models.GenerateTimingSync
+	}
+
+	setTiming := func(include bool) *models.GenerateTiming {
+		if include {
+			return &timing
+		}
+		return nil
+	}
+
+	setTimingSync := func(include bool) *models.GenerateTiming {
+		if include {
+			v := models.GenerateTimingSync
+			return &v
+		}
+		return nil
+	}
+
+	return ScanGenerateOptions{
+		// covers should be generated synchronously to ensure they are available
+		// when the scene is created, as they are used as the default cover
+		GenerateCovers:        setTimingSync(input.ScanGenerateCovers),
+		GeneratePreviews:      setTiming(input.ScanGeneratePreviews),
+		GenerateImagePreviews: setTiming(input.ScanGenerateImagePreviews),
+		GenerateSprites:       setTiming(input.ScanGenerateSprites),
+		GenerateVideoPhashes:  setTiming(input.ScanGeneratePhashes),
+		GenerateThumbnails:    setTiming(input.ScanGenerateThumbnails),
+		GenerateClipPreviews:  setTiming(input.ScanGenerateClipPreviews),
+		GenerateImagePhashes:  setTiming(input.ScanGenerateImagePhashes),
+	}
+}
+
+func (s *Manager) Scan(ctx context.Context, input ScanMetadataInput) (int, error) {
+	if err := s.validateFFmpeg(); err != nil {
+		return 0, err
+	}
+
+	var minModTime time.Time
+	if input.Filter != nil && input.Filter.MinModTime != nil {
+		minModTime = *input.Filter.MinModTime
+	}
+
+	scanner := s.makeScanner(input.Rescan, minModTime, input.InferVRMetadata)
+
+	// we want the generate task to run concurrently, but it shouldn't be created first
+	jobID := s.JobManager.Add(ctx, "Scanning...", job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error {
+		taskQueueChan := make(chan *job.TaskQueue)
+
+		// add the generate task in here
+		s.JobManager.Start(ctx, "Generating for scanned files...", job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error {
+			const taskQueueSize = 200000
+			nTasks := s.Config.GetParallelTasksWithAutoDetection()
+			taskQueue := job.NewTaskQueue(ctx, progress, taskQueueSize, nTasks)
+
+			taskQueueChan <- taskQueue
+			close(taskQueueChan)
+
+			taskQueue.Wait()
+			logger.Debug("Finished generating from scanned files")
+			return nil
+		}))
+
+		taskQueue := <-taskQueueChan
+
+		scanJob := ScanJob{
+			scanner:         scanner,
+			generateOptions: makeGenerateOptions(input),
+			paths:           input.Paths,
+			taskQueue:       taskQueue,
+			subscriptions:   s.scanSubs,
+		}
+
+		// scan job does not return error
+		_ = scanJob.Execute(ctx, progress)
+
+		// close task queue
+		taskQueue.Close()
+
+		return nil
+	}))
+
+	return jobID, nil
+}
+
+type ScanFileInput struct {
+	Path string `json:"path"`
+	// Forces a rescan on files even if modification time is unchanged
+	Rescan *bool `json:"rescan,omitempty"`
+
+	ScanGenerateOptions
+}
+
+func (s *Manager) ScanFile(ctx context.Context, input ScanFileInput) (models.File, error) {
+	if err := s.validateFFmpeg(); err != nil {
+		return nil, err
+	}
+
+	taskQueueChan := make(chan *job.TaskQueue)
+
+	s.JobManager.Add(ctx, "Generating for scanned file...", job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error {
+		nTasks := s.Config.GetParallelTasksWithAutoDetection()
+
+		const taskQueueSize = 200000
+		taskQueue := job.NewTaskQueue(ctx, progress, taskQueueSize, nTasks)
+		taskQueueChan <- taskQueue
+		close(taskQueueChan)
+		taskQueue.Wait()
+		return nil
+	}))
+
+	taskQueue := <-taskQueueChan
+
+	scanner := s.makeScanner(utils.IsTrue(input.Rescan), time.Time{}, false)
+	scanner.FileHandlers = getScanHandlers(input.ScanGenerateOptions, taskQueue, nil)
 
 	scanJob := ScanJob{
-		scanner:       scanner,
-		input:         input,
-		subscriptions: s.scanSubs,
+		scanner:         scanner,
+		generateOptions: input.ScanGenerateOptions,
 	}
 
-	return s.JobManager.Add(ctx, "Scanning...", &scanJob), nil
+	f, err := scanJob.scanFile(ctx, input.Path)
+	taskQueue.Close()
+
+	s.scanSubs.notify()
+
+	return f, err
 }
 
 func (s *Manager) Import(ctx context.Context) (int, error) {
@@ -319,25 +481,56 @@ type CleanMetadataInput struct {
 }
 
 func (s *Manager) Clean(ctx context.Context, input CleanMetadataInput) int {
-	cleaner := &file.Cleaner{
+	// deprecated - run verify paths task with purge missing turned on
+	return s.VerifyPaths(ctx, file.VerifyOptions{
+		Paths:                 input.Paths,
+		IgnoreZipFileContents: input.IgnoreZipFileContents,
+		DryRun:                input.DryRun,
+		PurgeMissing:          !input.DryRun,
+	})
+}
+
+func (s *Manager) VerifyPaths(ctx context.Context, options file.VerifyOptions) int {
+	verifier := &file.Verifier{
 		FS:         &file.OsFS{},
 		Repository: file.NewRepository(s.Repository),
-		Handlers: []file.CleanHandler{
-			&cleanHandler{},
+		PurgeHandlers: []file.PurgeHandler{
+			&purgeHandler{},
 		},
 		TrashPath: s.Config.GetDeleteTrashPath(),
 	}
 
-	j := cleanJob{
-		cleaner:      cleaner,
+	j := verifyJob{
+		verifier:     verifier,
 		repository:   s.Repository,
 		sceneService: s.SceneService,
 		imageService: s.ImageService,
-		input:        input,
+		options:      options,
 		scanSubs:     s.scanSubs,
 	}
 
-	return s.JobManager.Add(ctx, "Cleaning...", &j)
+	return s.JobManager.Add(ctx, "Verifying paths...", &j)
+}
+
+func (s *Manager) PurgeMissing(ctx context.Context, options file.PurgeMissingOptions) int {
+	purger := &file.MissingPurger{
+		Repository: file.NewRepository(s.Repository),
+		PurgeHandlers: []file.PurgeHandler{
+			&purgeHandler{},
+		},
+		TrashPath: s.Config.GetDeleteTrashPath(),
+	}
+
+	j := purgeMissingJob{
+		purger:       purger,
+		repository:   s.Repository,
+		sceneService: s.SceneService,
+		imageService: s.ImageService,
+		options:      options,
+		scanSubs:     s.scanSubs,
+	}
+
+	return s.JobManager.Add(ctx, "Purging missing files and folders...", &j)
 }
 
 func (s *Manager) OptimiseDatabase(ctx context.Context) int {
@@ -431,6 +624,8 @@ type StashBoxBatchTagInput struct {
 	StashBoxEndpoint *string `json:"stash_box_endpoint"`
 	// Fields to exclude when executing the tagging
 	ExcludeFields []string `json:"exclude_fields"`
+	// Collection fields to merge (add to existing) instead of overwriting when executing the tagging
+	MergeFields []string `json:"merge_fields"`
 	// Refresh items already tagged by StashBox if true. Only tag items with no StashBox tagging if false
 	Refresh bool `json:"refresh"`
 	// If batch adding studios or tags, should their parent entities also be created?
@@ -480,6 +675,7 @@ func (s *Manager) batchTagPerformersByIds(ctx context.Context, input StashBoxBat
 						performer:      performer,
 						box:            box,
 						excludedFields: input.ExcludeFields,
+						mergeFields:    input.MergeFields,
 					})
 				}
 			}
@@ -500,6 +696,7 @@ func (s *Manager) batchTagPerformersByNamesOrStashIds(input StashBoxBatchTagInpu
 				stashID:        &stashID,
 				box:            box,
 				excludedFields: input.ExcludeFields,
+				mergeFields:    input.MergeFields,
 			})
 		}
 	}
@@ -516,6 +713,7 @@ func (s *Manager) batchTagPerformersByNamesOrStashIds(input StashBoxBatchTagInpu
 				name:           &name,
 				box:            box,
 				excludedFields: input.ExcludeFields,
+				mergeFields:    input.MergeFields,
 			})
 		}
 	}
@@ -546,12 +744,71 @@ func (s *Manager) batchTagAllPerformers(ctx context.Context, input StashBoxBatch
 				performer:      performer,
 				box:            box,
 				excludedFields: input.ExcludeFields,
+				mergeFields:    input.MergeFields,
 			})
 		}
 		return nil
 	})
 
 	return tasks, err
+}
+
+func newSubmitStashBoxFingerprintsJob(
+	endpoint string,
+	loadScenes func(context.Context) ([]*models.Scene, error),
+	submit func(context.Context, []*models.Scene, *job.Progress) (*stashbox.FingerprintSubmissionResult, error),
+) job.JobExec {
+	return job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error {
+		scenes, err := loadScenes(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return fmt.Errorf("failed to load scenes for fingerprint submission: %w", err)
+		}
+		logger.Infof("Submitting fingerprints for %d scene(s) to stash-box endpoint %s", len(scenes), endpoint)
+
+		result, err := submit(ctx, scenes, progress)
+
+		// log the summary on all paths, including when the submission aborts
+		// part-way through, so the outcome is always visible
+		if result != nil {
+			if result.Failed > 0 {
+				logger.Warnf("Submitted %d fingerprint(s) to stash-box, %d failed", result.Succeeded, result.Failed)
+			} else {
+				logger.Infof("Submitted %d fingerprint(s) to stash-box", result.Succeeded)
+			}
+		}
+
+		// The job manager treats a returned error as a failure. A canceled
+		// context already records the cancellation state, so let it finish
+		// normally and preserve the job's CANCELLED status.
+		if ctx.Err() != nil {
+			return nil
+		}
+		return err
+	})
+}
+
+func (s *Manager) SubmitStashBoxFingerprints(ctx context.Context, box *models.StashBox, sceneIDs []int) int {
+	j := newSubmitStashBoxFingerprintsJob(
+		box.Endpoint,
+		func(ctx context.Context) ([]*models.Scene, error) {
+			var scenes []*models.Scene
+			err := s.Repository.WithReadTxn(ctx, func(ctx context.Context) error {
+				var err error
+				scenes, err = s.SceneService.FindByIDs(ctx, sceneIDs, scene.LoadStashIDs, scene.LoadFiles)
+				return err
+			})
+			return scenes, err
+		},
+		func(ctx context.Context, scenes []*models.Scene, progress *job.Progress) (*stashbox.FingerprintSubmissionResult, error) {
+			client := stashbox.NewClient(*box, stashbox.ExcludeTagPatterns(s.Config.GetScraperExcludeTagPatterns()))
+			return client.SubmitFingerprints(ctx, scenes, progress)
+		},
+	)
+
+	return s.JobManager.Add(ctx, "Submitting fingerprints to stash-box...", j)
 }
 
 func (s *Manager) StashBoxBatchPerformerTag(ctx context.Context, box *models.StashBox, input StashBoxBatchTagInput) int {

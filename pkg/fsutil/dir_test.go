@@ -3,10 +3,41 @@ package fsutil
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+// TestIsPathInDirNormalization verifies that containment holds when the dir and
+// the path use different Unicode normalization forms, as happens on macOS where
+// the filesystem may report NFD while the configured/stored path is NFC.
+func TestIsPathInDirNormalization(t *testing.T) {
+	dirNFC := filepath.Join("/library", gaNFC)
+	fileNFD := filepath.Join("/library", gaNFD, "video.mp4")
+
+	// Only macOS treats NFC and NFD as equivalent; elsewhere they differ
+	// byte-wise and the path is considered outside the dir.
+	want := runtime.GOOS == "darwin"
+	assert.Equal(t, want, IsPathInDir(dirNFC, fileNFD))
+
+	// An exact (same-form) match must always hold.
+	assert.True(t, IsPathInDir(filepath.Join("/library", gaNFC), filepath.Join("/library", gaNFC, "video.mp4")))
+}
+
+func TestGetHomeDirectoryFromEnvironment(t *testing.T) {
+	homeDir := t.TempDir()
+	switch runtime.GOOS {
+	case "windows":
+		t.Setenv("USERPROFILE", homeDir)
+	case "plan9":
+		t.Setenv("home", homeDir)
+	default:
+		t.Setenv("HOME", homeDir)
+	}
+
+	assert.Equal(t, homeDir, GetHomeDirectory())
+}
 
 func TestIsPathInDir(t *testing.T) {
 	type test struct {

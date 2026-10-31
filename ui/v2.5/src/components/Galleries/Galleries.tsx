@@ -1,5 +1,6 @@
 import React from "react";
 import { Redirect, Route, RouteComponentProps, Switch } from "react-router-dom";
+import { ModifyRoute } from "src/components/Shared/ModifyRoute";
 import { Helmet } from "react-helmet";
 import { useTitleProps } from "src/hooks/title";
 import Gallery from "./GalleryDetails/Gallery";
@@ -20,14 +21,14 @@ const GalleryImage: React.FC<RouteComponentProps<IGalleryImageParams>> = ({
 }) => {
   const { id, index: indexStr } = match.params;
 
-  let index = parseInt(indexStr);
-  if (isNaN(index)) {
+  let index = parseInt(indexStr, 10);
+  if (Number.isNaN(index)) {
     index = 0;
   }
 
   const { data, loading, error } = useFindGalleryImageID(id, index);
 
-  if (isNaN(index)) {
+  if (Number.isNaN(index)) {
     return <Redirect to={`/galleries/${id}`} />;
   }
 
@@ -50,7 +51,7 @@ const GalleryRoutes: React.FC = () => {
       <Helmet {...titleProps} />
       <Switch>
         <Route exact path="/galleries" component={Galleries} />
-        <Route exact path="/galleries/new" component={GalleryCreate} />
+        <ModifyRoute exact path="/galleries/new" component={GalleryCreate} />
         <Route
           exact
           path="/galleries/:id/images/:index"

@@ -1,3 +1,4 @@
+import { useCanAdminister } from "src/hooks/CurrentUser";
 import React, { useEffect, useState, useMemo } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import {
@@ -10,6 +11,7 @@ import {
   SplitButton,
 } from "react-bootstrap";
 import Mousetrap from "mousetrap";
+import cx from "classnames";
 import * as GQL from "src/core/generated-graphql";
 import * as yup from "yup";
 import {
@@ -28,11 +30,18 @@ import { addUpdateStashID, getStashIDs } from "src/utils/stashIds";
 import { useFormik } from "formik";
 import { Prompt } from "react-router-dom";
 import { useConfigurationContext } from "src/hooks/Config";
+import { IUIConfig } from "src/core/config";
 import { IGroupEntry, SceneGroupTable } from "./SceneGroupTable";
-import { faSearch, faPlus } from "@fortawesome/free-solid-svg-icons";
+import {
+  faSearch,
+  faPlus,
+  faArrowsRotate,
+  faCameraRotate,
+} from "@fortawesome/free-solid-svg-icons";
 import { objectTitle } from "src/core/files";
 import { galleryTitle } from "src/core/galleries";
 import { lazyComponent } from "src/utils/lazyComponent";
+import { sceneAgeFromDate } from "src/utils/scene";
 import isEqual from "lodash-es/isEqual";
 import {
   yupDateString,
@@ -44,17 +53,22 @@ import {
   PerformerSelect,
 } from "src/components/Performers/PerformerSelect";
 import { formikUtils } from "src/utils/form";
+import {
+  VoiceActorSelect,
+  VoiceActorOption,
+} from "src/components/VoiceActors/VoiceActorSelect";
 import { Studio, StudioSelect } from "src/components/Studios/StudioSelect";
 import { Gallery, GallerySelect } from "src/components/Galleries/GallerySelect";
 import { Group } from "src/components/Groups/GroupSelect";
 import { useTagsEdit } from "src/hooks/tagsEdit";
+import { useInitialState } from "src/hooks/state";
 import { ScraperMenu } from "src/components/Shared/ScraperMenu";
 import StashBoxIDSearchModal from "src/components/Shared/StashBoxIDSearchModal";
 import {
   CustomFieldsInput,
   formatCustomFieldInput,
 } from "src/components/Shared/CustomFields";
-import { cloneDeep } from "@apollo/client/utilities";
+import cloneDeep from "lodash-es/cloneDeep";
 
 const SceneScrapeDialog = lazyComponent(() => import("./SceneScrapeDialog"));
 const SceneQueryModal = lazyComponent(() => import("./SceneQueryModal"));
@@ -64,6 +78,8 @@ interface IProps {
   initialCoverImage?: string;
   isNew?: boolean;
   isVisible: boolean;
+  onGenerateThumbFromCurrent?: () => Promise<void>;
+  onGenerateThumbDefault?: () => Promise<void>;
   onSubmit: (input: GQL.SceneCreateInput, andNew?: boolean) => Promise<void>;
   onDelete?: () => void;
 }
@@ -73,20 +89,45 @@ export const SceneEditPanel: React.FC<IProps> = ({
   initialCoverImage,
   isNew = false,
   isVisible,
+  onGenerateThumbFromCurrent,
+  onGenerateThumbDefault,
   onSubmit,
   onDelete,
 }) => {
   const intl = useIntl();
+  const isAdmin = useCanAdminister();
   const Toast = useToast();
 
   const [galleries, setGalleries] = useState<Gallery[]>([]);
-  const [performers, setPerformers] = useState<Performer[]>([]);
+  const [performers, setPerformers, setInitialPerformers] = useInitialState<
+    Performer[]
+  >(scene.performers ?? []);
+  const [voiceActors, setVoiceActors, setInitialVoiceActors] = useInitialState<
+    VoiceActorOption[]
+  >(scene.voice_actors ?? []);
+  useEffect(() => {
+    setInitialVoiceActors(scene.voice_actors ?? []);
+  }, [scene.voice_actors, setInitialVoiceActors]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [studio, setStudio] = useState<Studio | null>(null);
 
   const Scrapers = useListSceneScrapers();
-  const [fragmentScrapers, setFragmentScrapers] = useState<GQL.Scraper[]>([]);
-  const [queryableScrapers, setQueryableScrapers] = useState<GQL.Scraper[]>([]);
+
+  const fragmentScrapers: GQL.Scraper[] = useMemo(() => {
+    return (
+      Scrapers?.data?.listScrapers?.filter((s) =>
+        s.scene?.supported_scrapes.includes(GQL.ScrapeType.Fragment)
+      ) ?? []
+    );
+  }, [Scrapers.data?.listScrapers]);
+
+  const queryableScrapers: GQL.Scraper[] = useMemo(() => {
+    return (
+      Scrapers?.data?.listScrapers?.filter((s) =>
+        s.scene?.supported_scrapes.includes(GQL.ScrapeType.Name)
+      ) ?? []
+    );
+  }, [Scrapers.data?.listScrapers]);
 
   const [scraper, setScraper] = useState<GQL.ScraperSourceInput>();
   const [isScraperQueryModalOpen, setIsScraperQueryModalOpen] =
@@ -108,8 +149,9 @@ export const SceneEditPanel: React.FC<IProps> = ({
   }, [scene.galleries]);
 
   useEffect(() => {
-    setPerformers(scene.performers ?? []);
-  }, [scene.performers]);
+    // Scene cache updates must not replace an unsaved performer selection.
+    setInitialPerformers(scene.performers ?? []);
+  }, [scene.performers, setInitialPerformers]);
 
   useEffect(() => {
     setGroups(scene.groups?.map((m) => m.group) ?? []);
@@ -123,15 +165,19 @@ export const SceneEditPanel: React.FC<IProps> = ({
 
   // Network state
   const [isLoading, setIsLoading] = useState(false);
+  // keep the form mounted while auto-saving so the scroll position stays
+  const [isSaving, setIsSaving] = useState(false);
 
   const schema = yup.object({
     title: yup.string().ensure(),
     code: yup.string().ensure(),
     urls: yupUniqueStringList(intl),
     date: yupDateString(intl),
+    production_date: yupDateString(intl),
     director: yup.string().ensure(),
     gallery_ids: yup.array(yup.string().required()).defined(),
     studio_id: yup.string().required().nullable(),
+    voice_actor_ids: yup.array(yup.string().required()).defined(),
     performer_ids: yup.array(yup.string().required()).defined(),
     groups: yup
       .array(
@@ -154,9 +200,11 @@ export const SceneEditPanel: React.FC<IProps> = ({
       code: scene.code ?? "",
       urls: scene.urls ?? [],
       date: scene.date ?? "",
+      production_date: scene.production_date ?? "",
       director: scene.director ?? "",
       gallery_ids: (scene.galleries ?? []).map((g) => g.id),
       studio_id: scene.studio?.id ?? null,
+      voice_actor_ids: (scene.voice_actors ?? []).map((p) => p.id),
       performer_ids: (scene.performers ?? []).map((p) => p.id),
       groups: (scene.groups ?? []).map((m) => {
         return { group_id: m.group.id, scene_index: m.scene_index ?? null };
@@ -189,10 +237,65 @@ export const SceneEditPanel: React.FC<IProps> = ({
     onSubmit: submit,
   });
 
-  const { tags, updateTagsStateFromScraper, tagsControl } = useTagsEdit(
+  const {
+    tags,
+    updateTagsStateFromScraper,
+    resetTagsState,
+    tagsControl,
+    markTagsStateSaved,
+  } = useTagsEdit(
     scene.tags,
-    (ids) => formik.setFieldValue("tag_ids", ids)
+    (ids) => formik.setFieldValue("tag_ids", ids),
+    true
   );
+
+  // auto-save only covers explicit selections, never a new scene
+  const autoSaveEnabled =
+    !isNew &&
+    ((stashConfig?.ui as IUIConfig)?.autoSaveConfirmedFields ?? false);
+
+  // Callers often set a field value and ask for a save in the same handler.
+  // Submitting straight away can send the values from before that change,
+  // so the save is only requested here and submitted after the next render.
+  // A request made while a save is running waits for it instead of being
+  // dropped.
+  const [autoSavePending, setAutoSavePending] = useState(false);
+
+  function autoSave() {
+    if (autoSaveEnabled) {
+      setAutoSavePending(true);
+    }
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only a new request or the end of a save should submit
+  useEffect(() => {
+    if (!autoSavePending || isSaving) return;
+    setAutoSavePending(false);
+    formik.submitForm();
+  }, [autoSavePending, isSaving]);
+
+  // save once focus leaves the field, so several picks in a row are one save
+  function autoSaveField(field: keyof InputValues, control: React.ReactNode) {
+    return (
+      <div
+        onBlur={(e) => {
+          const next = e.relatedTarget as HTMLElement | null;
+          // Save and Delete act on the form themselves
+          if (
+            e.currentTarget.contains(next) ||
+            next?.closest(".edit-buttons")
+          ) {
+            return;
+          }
+          if (!isEqual(formik.values[field], formik.initialValues[field])) {
+            autoSave();
+          }
+        }}
+      >
+        {control}
+      </div>
+    );
+  }
 
   const coverImagePreview = useMemo(() => {
     const sceneImage = scene.paths?.screenshot;
@@ -259,20 +362,6 @@ export const SceneEditPanel: React.FC<IProps> = ({
     }
   });
 
-  useEffect(() => {
-    const toFilter = Scrapers?.data?.listScrapers ?? [];
-
-    const newFragmentScrapers = toFilter.filter((s) =>
-      s.scene?.supported_scrapes.includes(GQL.ScrapeType.Fragment)
-    );
-    const newQueryableScrapers = toFilter.filter((s) =>
-      s.scene?.supported_scrapes.includes(GQL.ScrapeType.Name)
-    );
-
-    setFragmentScrapers(newFragmentScrapers);
-    setQueryableScrapers(newQueryableScrapers);
-  }, [Scrapers, stashConfig]);
-
   function onSetGroups(items: Group[]) {
     setGroups(items);
 
@@ -294,13 +383,41 @@ export const SceneEditPanel: React.FC<IProps> = ({
   }
 
   async function onSave(input: InputValues, andNew?: boolean) {
-    setIsLoading(true);
+    if (autoSaveEnabled) {
+      setIsSaving(true);
+    } else {
+      setIsLoading(true);
+    }
     try {
       await onSubmit(input, andNew);
-      formik.resetForm();
+      markTagsStateSaved();
+      setInitialPerformers(performers);
+      setInitialVoiceActors(voiceActors);
+      if (!autoSaveEnabled) {
+        formik.resetForm();
+      }
+      if (andNew) {
+        setGalleries(
+          scene.galleries?.map((g) => ({
+            id: g.id,
+            title: galleryTitle(g),
+            files: g.files,
+            folder: g.folder,
+          })) ?? []
+        );
+        const initialPerformers = scene.performers ?? [];
+        setPerformers(initialPerformers);
+        setInitialPerformers(initialPerformers);
+        setVoiceActors(scene.voice_actors ?? []);
+        setInitialVoiceActors(scene.voice_actors ?? []);
+        setGroups(scene.groups?.map((m) => m.group) ?? []);
+        setStudio(scene.studio ?? null);
+        resetTagsState();
+      }
     } catch (e) {
       Toast.error(e);
     }
+    setIsSaving(false);
     setIsLoading(false);
   }
 
@@ -330,7 +447,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
     setIsLoading(true);
     try {
       const result = await queryScrapeScene(s, scene.id!);
-      if (!result.data || !result.data.scrapeSingleScene?.length) {
+      if (!result.data?.scrapeSingleScene?.length) {
         Toast.success("No scenes found");
         return;
       }
@@ -352,6 +469,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
     try {
       const input: GQL.ScrapedSceneInput = {
         date: fragment.date,
+        production_date: fragment.production_date,
         code: fragment.code,
         details: fragment.details,
         director: fragment.director,
@@ -361,7 +479,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
       };
 
       const result = await queryScrapeSceneQueryFragment(s, input);
-      if (!result.data || !result.data.scrapeSingleScene?.length) {
+      if (!result.data?.scrapeSingleScene?.length) {
         Toast.success("No scenes found");
         return;
       }
@@ -484,11 +602,15 @@ export const SceneEditPanel: React.FC<IProps> = ({
       formik.setFieldValue("date", updatedScene.date);
     }
 
+    if (updatedScene.production_date) {
+      formik.setFieldValue("production_date", updatedScene.production_date);
+    }
+
     if (updatedScene.urls) {
       formik.setFieldValue("urls", updatedScene.urls);
     }
 
-    if (updatedScene.studio && updatedScene.studio.stored_id) {
+    if (updatedScene.studio?.stored_id) {
       onSetStudio({
         id: updatedScene.studio.stored_id,
         name: updatedScene.studio.name ?? "",
@@ -576,7 +698,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
     setIsLoading(true);
     try {
       const result = await queryScrapeSceneURL(url);
-      if (!result.data || !result.data.scrapeSceneURL) {
+      if (!result.data?.scrapeSceneURL) {
         return;
       }
       setScrapedScene(result.data.scrapeSceneURL);
@@ -593,6 +715,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
       "stash_ids",
       addUpdateStashID(formik.values.stash_ids, item)
     );
+    autoSave();
   }
 
   const image = useMemo(() => {
@@ -662,7 +785,8 @@ export const SceneEditPanel: React.FC<IProps> = ({
 
   function renderGalleriesField() {
     const title = intl.formatMessage({ id: "galleries" });
-    const control = (
+    const control = autoSaveField(
+      "gallery_ids",
       <GallerySelect
         values={galleries}
         onSelect={(items) => onSetGalleries(items)}
@@ -675,7 +799,8 @@ export const SceneEditPanel: React.FC<IProps> = ({
 
   function renderStudioField() {
     const title = intl.formatMessage({ id: "studio" });
-    const control = (
+    const control = autoSaveField(
+      "studio_id",
       <StudioSelect
         onSelect={(items) => onSetStudio(items.length > 0 ? items[0] : null)}
         values={studio ? [studio] : []}
@@ -686,16 +811,22 @@ export const SceneEditPanel: React.FC<IProps> = ({
   }
 
   function renderPerformersField() {
-    const date = (() => {
+    const validateField = (field: string) => {
       try {
-        return schema.validateSyncAt("date", formik.values);
-      } catch (e) {
+        return schema.validateSyncAt(field, formik.values);
+      } catch (_e) {
         return undefined;
       }
-    })();
+    };
+
+    const date = sceneAgeFromDate(
+      validateField("production_date"),
+      validateField("date")
+    );
 
     const title = intl.formatMessage({ id: "performers" });
-    const control = (
+    const control = autoSaveField(
+      "performer_ids",
       <PerformerSelect
         isMulti
         onSelect={onSetPerformers}
@@ -720,7 +851,8 @@ export const SceneEditPanel: React.FC<IProps> = ({
 
   function renderGroupsField() {
     const title = intl.formatMessage({ id: "groups" });
-    const control = (
+    const control = autoSaveField(
+      "groups",
       <SceneGroupTable value={groupEntries} onUpdate={onSetGroupEntries} />
     );
 
@@ -729,7 +861,9 @@ export const SceneEditPanel: React.FC<IProps> = ({
 
   function renderTagsField() {
     const title = intl.formatMessage({ id: "tags" });
-    return renderField("tag_ids", title, tagsControl(), fullWidthProps);
+    const control = autoSaveField("tag_ids", tagsControl());
+
+    return renderField("tag_ids", title, control, fullWidthProps);
   }
 
   function renderDetailsField() {
@@ -750,8 +884,9 @@ export const SceneEditPanel: React.FC<IProps> = ({
 
   return (
     <div id="scene-edit-details">
+      {/* a save started by leaving a field finishes after the page changes */}
       <Prompt
-        when={formik.dirty}
+        when={formik.dirty && !isSaving}
         message={intl.formatMessage({ id: "dialogs.unsaved_changes" })}
       />
 
@@ -780,7 +915,9 @@ export const SceneEditPanel: React.FC<IProps> = ({
                 className="edit-button"
                 variant="primary"
                 disabled={
-                  !isEqual(formik.errors, {}) || customFieldsError !== undefined
+                  isSaving ||
+                  !isEqual(formik.errors, {}) ||
+                  customFieldsError !== undefined
                 }
                 title={intl.formatMessage({ id: "actions.save" })}
                 onClick={() => formik.submitForm()}
@@ -795,6 +932,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
                 variant="primary"
                 disabled={
                   (!isNew && !formik.dirty) ||
+                  isSaving ||
                   !isEqual(formik.errors, {}) ||
                   customFieldsError !== undefined
                 }
@@ -807,6 +945,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
               <Button
                 className="edit-button"
                 variant="danger"
+                disabled={isSaving}
                 onClick={() => onDelete()}
               >
                 <FormattedMessage id="actions.delete" />
@@ -835,7 +974,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
             </div>
           )}
         </Row>
-        <Row className="form-container px-3">
+        <Row className={cx("form-container px-3", { saving: isSaving })}>
           <Col lg={7} xl={12}>
             {renderInputField("title")}
             {renderInputField("code", "text", "scene_code")}
@@ -848,12 +987,34 @@ export const SceneEditPanel: React.FC<IProps> = ({
               urlProps
             )}
 
-            {renderDateField("date")}
+            {renderDateField("date", undefined, undefined, autoSave)}
+            {renderDateField("production_date", undefined, undefined, autoSave)}
             {renderInputField("director")}
 
             {renderGalleriesField()}
             {renderStudioField()}
             {renderPerformersField()}
+            {renderField(
+              "voice_actor_ids",
+              intl.formatMessage({
+                id: "voice_actors",
+                defaultMessage: "Voice actors",
+              }),
+              autoSaveField(
+                "voice_actor_ids",
+                <VoiceActorSelect
+                  values={voiceActors}
+                  onSelect={(items) => {
+                    setVoiceActors(items);
+                    formik.setFieldValue(
+                      "voice_actor_ids",
+                      items.map((item) => item.id)
+                    );
+                  }}
+                />
+              ),
+              fullWidthProps
+            )}
             {renderGroupsField()}
             {renderTagsField()}
 
@@ -884,7 +1045,30 @@ export const SceneEditPanel: React.FC<IProps> = ({
                 isEditing
                 onImageChange={onCoverImageChange}
                 onImageURL={onImageLoad}
-                onReset={scene.id ? onResetCover : undefined}
+                // Generate-from-server actions require a saved scene.
+                extraActions={
+                  !isNew && isAdmin
+                    ? [
+                        {
+                          icon: faArrowsRotate,
+                          labelId: "actions.generate_thumb_default",
+                          onClick: () => onGenerateThumbDefault?.(),
+                        },
+                        {
+                          icon: faCameraRotate,
+                          labelId: "actions.generate_thumb_from_current",
+                          onClick: () => onGenerateThumbFromCurrent?.(),
+                        },
+                      ]
+                    : undefined
+                }
+                onReset={
+                  formik.values.cover_image ||
+                  (formik.values.cover_image !== null &&
+                    scene.paths?.screenshot)
+                    ? () => onResetCover()
+                    : undefined
+                }
               />
             </Form.Group>
 

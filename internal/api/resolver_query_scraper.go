@@ -23,6 +23,17 @@ func (r *queryResolver) ListScrapers(ctx context.Context, types []scraper.Scrape
 	return r.scraperCache().ListScrapers(types), nil
 }
 
+func (r *queryResolver) ScraperURLConflicts(ctx context.Context) ([]*scraper.ScraperURLConflict, error) {
+	conflicts := r.scraperCache().FindURLConflicts()
+
+	ret := make([]*scraper.ScraperURLConflict, len(conflicts))
+	for i := range conflicts {
+		ret[i] = &conflicts[i]
+	}
+
+	return ret, nil
+}
+
 func (r *queryResolver) ScrapePerformerURL(ctx context.Context, url string) (*models.ScrapedPerformer, error) {
 	content, err := r.scraperCache().ScrapeURL(ctx, url, scraper.ScrapeContentTypePerformer)
 	if err != nil {
@@ -117,6 +128,7 @@ func (r *queryResolver) ScrapeGroupURL(ctx context.Context, url string) (*models
 		StoredID:   ret.StoredID,
 		Name:       ret.Name,
 		Aliases:    ret.Aliases,
+		AliasList:  ret.AliasList,
 		Duration:   ret.Duration,
 		Date:       ret.Date,
 		Rating:     ret.Rating,

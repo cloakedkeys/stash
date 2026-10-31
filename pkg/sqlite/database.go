@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 )
@@ -34,51 +36,29 @@ const (
 	cacheSizeEnv = "STASH_SQLITE_CACHE_SIZE"
 )
 
-var appSchemaVersion uint = 85
+var appSchemaVersion uint = 99
 
 //go:embed migrations/*.sql
 var migrationsBox embed.FS
-
-var (
-	// ErrDatabaseNotInitialized indicates that the database is not
-	// initialized, usually due to an incomplete configuration.
-	ErrDatabaseNotInitialized = errors.New("database not initialized")
-)
-
-// ErrMigrationNeeded indicates that a database migration is needed
-// before the database can be initialized
-type MigrationNeededError struct {
-	CurrentSchemaVersion  uint
-	RequiredSchemaVersion uint
-}
-
-func (e *MigrationNeededError) Error() string {
-	return fmt.Sprintf("database schema version %d does not match required schema version %d", e.CurrentSchemaVersion, e.RequiredSchemaVersion)
-}
-
-type MismatchedSchemaVersionError struct {
-	CurrentSchemaVersion  uint
-	RequiredSchemaVersion uint
-}
-
-func (e *MismatchedSchemaVersionError) Error() string {
-	return fmt.Sprintf("schema version %d is incompatible with required schema version %d", e.CurrentSchemaVersion, e.RequiredSchemaVersion)
-}
 
 type storeRepository struct {
 	Blobs          *BlobStore
 	File           *FileStore
 	Folder         *FolderStore
+	Audio          *AudioStore
 	Image          *ImageStore
 	Gallery        *GalleryStore
 	GalleryChapter *GalleryChapterStore
 	Scene          *SceneStore
 	SceneMarker    *SceneMarkerStore
 	Performer      *PerformerStore
+	VoiceActor     *VoiceActorStore
 	SavedFilter    *SavedFilterStore
 	Studio         *StudioStore
 	Tag            *TagStore
 	Group          *GroupStore
+	User           *UserStore
+	UserUIConfig   *UserUIConfigStore
 }
 
 type Database struct {
@@ -97,7 +77,7 @@ func NewDatabase() *Database {
 	fileStore := NewFileStore()
 	folderStore := NewFolderStore()
 	galleryStore := NewGalleryStore(fileStore, folderStore)
-	blobStore := NewBlobStore(BlobStoreOptions{})
+	blobStore := NewBlobStore(database.BlobStoreOptions{})
 	performerStore := NewPerformerStore(blobStore)
 	studioStore := NewStudioStore(blobStore)
 	tagStore := NewTagStore(blobStore)
@@ -109,14 +89,18 @@ func NewDatabase() *Database {
 		Folder:         folderStore,
 		Scene:          NewSceneStore(r, blobStore),
 		SceneMarker:    NewSceneMarkerStore(),
+		Audio:          NewAudioStore(r, blobStore),
 		Image:          NewImageStore(r),
 		Gallery:        galleryStore,
 		GalleryChapter: NewGalleryChapterStore(),
 		Performer:      performerStore,
+		VoiceActor:     &VoiceActorStore{},
 		Studio:         studioStore,
 		Tag:            tagStore,
 		Group:          NewGroupStore(blobStore),
 		SavedFilter:    NewSavedFilterStore(),
+		User:           NewUserStore(),
+		UserUIConfig:   NewUserUIConfigStore(),
 	}
 
 	ret := &Database{
@@ -127,14 +111,25 @@ func NewDatabase() *Database {
 	return ret
 }
 
-func (db *Database) SetBlobStoreOptions(options BlobStoreOptions) {
-	*db.Blobs = *NewBlobStore(options)
+func (db *Database) DatabaseBackend() database.DatabaseType {
+	return database.SqliteBackend
+}
+
+func (db *Database) SetBlobStoreOptions(options database.BlobStoreOptions) {
+	*db.storeRepository.Blobs = *NewBlobStore(options)
 }
 
 // Ready returns an error if the database is not ready to begin transactions.
 func (db *Database) Ready() error {
 	if db.readDB == nil || db.writeDB == nil {
-		return ErrDatabaseNotInitialized
+		return database.ErrDatabaseNotInitialized
+	}
+
+	if db.needsMigration() {
+		return &database.MigrationNeededError{
+			CurrentSchemaVersion:  db.schemaVersion,
+			RequiredSchemaVersion: appSchemaVersion,
+		}
 	}
 
 	return nil
@@ -144,11 +139,11 @@ func (db *Database) Ready() error {
 // performs a full migration to the latest schema version. Otherwise, any
 // necessary migrations must be run separately using RunMigrations.
 // Returns true if the database is new.
-func (db *Database) Open(dbPath string) error {
+func (db *Database) Open(ctx context.Context, dbPath string) error {
 	db.lock()
 	defer db.unlock()
 
-	db.dbPath = dbPath
+	db.dbPath, _ = strings.CutPrefix(dbPath, string(database.SqliteBackend)+":")
 
 	databaseSchemaVersion, err := db.getDatabaseSchemaVersion()
 	if err != nil {
@@ -161,24 +156,19 @@ func (db *Database) Open(dbPath string) error {
 
 	if isNew {
 		// new database, just run the migrations
-		if err := db.RunAllMigrations(); err != nil {
+		if err := db.RunAllMigrations(ctx); err != nil {
 			return fmt.Errorf("error running initial schema migrations: %w", err)
 		}
 	} else {
 		if databaseSchemaVersion > appSchemaVersion {
-			return &MismatchedSchemaVersionError{
+			return &database.MismatchedSchemaVersionError{
 				CurrentSchemaVersion:  databaseSchemaVersion,
 				RequiredSchemaVersion: appSchemaVersion,
 			}
 		}
 
-		// if migration is needed, then don't open the connection
-		if db.needsMigration() {
-			return &MigrationNeededError{
-				CurrentSchemaVersion:  databaseSchemaVersion,
-				RequiredSchemaVersion: appSchemaVersion,
-			}
-		}
+		// if migration is needed, then still open the connection
+		// but don't allow most operations to run until the migration is complete
 	}
 
 	if err := db.initialise(); err != nil {
@@ -236,7 +226,8 @@ func (db *Database) Close() error {
 
 func (db *Database) open(disableForeignKeys bool, writable bool) (*sqlx.DB, error) {
 	// https://github.com/mattn/go-sqlite3
-	url := "file:" + db.dbPath + "?_journal=WAL&_sync=NORMAL&_busy_timeout=50"
+	// 5s timeout is the default.
+	url := "file:" + db.dbPath + "?_journal=WAL&_sync=NORMAL&_busy_timeout=5000"
 	if !disableForeignKeys {
 		url += "&_fk=true"
 	}
@@ -327,12 +318,21 @@ func (db *Database) Remove() error {
 
 func (db *Database) Reset() error {
 	databasePath := db.dbPath
+	accounts, err := db.readAccounts()
+	if err != nil {
+		return fmt.Errorf("[reset DB] reading accounts: %w", err)
+	}
+
 	if err := db.Remove(); err != nil {
 		return err
 	}
 
-	if err := db.Open(databasePath); err != nil {
+	if err := db.Open(context.Background(), databasePath); err != nil {
 		return fmt.Errorf("[reset DB] unable to initialize: %w", err)
+	}
+
+	if err := db.restoreAccounts(accounts); err != nil {
+		return fmt.Errorf("[reset DB] restoring accounts: %w", err)
 	}
 
 	return nil

@@ -17,7 +17,10 @@ import (
 	"github.com/stashapp/stash/pkg/models"
 )
 
-const ffmpegImageQuality = 5
+const (
+	ffmpegImageQuality = 5
+	clipPreviewCRF     = 25
+)
 
 var vipsPath string
 var once sync.Once
@@ -36,6 +39,7 @@ type ClipPreviewOptions struct {
 	InputArgs  []string
 	OutputArgs []string
 	Preset     string
+	HWAccel    bool
 }
 
 func GetVipsPath() string {
@@ -66,6 +70,11 @@ func NewThumbnailEncoder(ffmpegEncoder *ffmpeg.FFMpeg, ffProbe *ffmpeg.FFProbe, 
 // It returns nil and an error if an error occurs reading, decoding or encoding
 // the image, or if the image is not suitable for thumbnails.
 func (e *ThumbnailEncoder) GetThumbnail(f models.File, maxSize int) ([]byte, error) {
+	// Video-backed image clips can be large, so avoid buffering the whole file.
+	if _, ok := f.(*models.VideoFile); ok {
+		return e.ffmpegImageThumbnailPath(f.Base().Path, maxSize)
+	}
+
 	reader, err := f.Open(&file.OsFS{})
 	if err != nil {
 		return nil, err
@@ -108,11 +117,6 @@ func (e *ThumbnailEncoder) GetThumbnail(f models.File, maxSize int) ([]byte, err
 		}
 	}
 
-	// Videofiles can only be thumbnailed with ffmpeg
-	if _, ok := f.(*models.VideoFile); ok {
-		return e.ffmpegImageThumbnail(buf, maxSize)
-	}
-
 	// vips has issues loading files from stdin on Windows
 	if e.vips != nil {
 		if runtime.GOOS == "windows" && f.Base().ZipFileID == nil {
@@ -140,7 +144,7 @@ func (e *ThumbnailEncoder) GetPreview(inPath string, outPath string, maxSize int
 	if clipDuration > 30.0 {
 		clipDuration = 30.0
 	}
-	return e.getClipPreview(inPath, outPath, maxSize, clipDuration, fileData.FrameRate)
+	return e.getClipPreview(inPath, outPath, maxSize, clipDuration, fileData.FrameRate, fileData)
 }
 
 func (e *ThumbnailEncoder) ffmpegImageThumbnail(image *bytes.Buffer, maxSize int) ([]byte, error) {
@@ -170,27 +174,32 @@ func (e *ThumbnailEncoder) ffmpegImageThumbnailPath(inputPath string, maxSize in
 	return e.FFMpeg.GenerateOutput(context.TODO(), args, nil)
 }
 
-func (e *ThumbnailEncoder) getClipPreview(inPath string, outPath string, maxSize int, clipDuration float64, frameRate float64) error {
-	var thumbFilter ffmpeg.VideoFilter
-	thumbFilter = thumbFilter.ScaleMaxSize(maxSize)
+func (e *ThumbnailEncoder) getClipPreview(inPath string, outPath string, maxSize int, clipDuration float64, frameRate float64, fileData *ffmpeg.VideoFile) error {
+	codec := ffmpeg.VideoCodecVP9
+	if e.ClipPreviewOptions.HWAccel {
+		codec = e.FFMpeg.HWCodecWEBMCompatible(codec)
+	}
 
-	var thumbArgs ffmpeg.Args
-	thumbArgs = thumbArgs.VideoFilter(thumbFilter)
+	var thumbFilter ffmpeg.VideoFilter
+	// TODO: switching this to a HW-compatible scale filter would let us enable
+	// full hardware encoding here. ScaleMaxSize uses force_original_aspect_ratio
+	// which the HW scaler templates don't handle, so we fall back to non-fullhw.
+	thumbFilter = thumbFilter.ScaleMaxSize(maxSize)
 
 	o := e.ClipPreviewOptions
 
+	thumbArgs := codec.ExtraArgsHQ(o.Preset, clipPreviewCRF)
+	thumbArgs = thumbArgs.VideoFilter(thumbFilter)
+
 	thumbArgs = append(thumbArgs,
-		"-pix_fmt", "yuv420p",
-		"-preset", o.Preset,
-		"-crf", "25",
-		"-threads", "4",
-		"-strict", "-2",
 		"-f", "webm",
 	)
 
 	if frameRate <= 0.01 {
-		thumbArgs = append(thumbArgs, "-vsync", "2")
+		thumbArgs = thumbArgs.VSync(ffmpeg.VSyncMethodVFR, e.FFMpeg.Version())
 	}
+
+	extraInputArgs := e.FFMpeg.HWDeviceInit(o.InputArgs, codec, false)
 
 	thumbOptions := transcoder.TranscodeOptions{
 		OutputPath: outPath,
@@ -200,10 +209,10 @@ func (e *ThumbnailEncoder) getClipPreview(inPath string, outPath string, maxSize
 		XError:   true,
 		SlowSeek: false,
 
-		VideoCodec: ffmpeg.VideoCodecVP9,
+		VideoCodec: codec,
 		VideoArgs:  thumbArgs,
 
-		ExtraInputArgs:  o.InputArgs,
+		ExtraInputArgs:  extraInputArgs,
 		ExtraOutputArgs: o.OutputArgs,
 	}
 

@@ -135,6 +135,18 @@ The ffmpeg arguments configuration is split into `Input` and `Output` arguments.
 
 Arguments are accepted as a list of strings. Each string is a separate argument. For example, a single argument of `-foo bar` would be treated as a single argument `"-foo bar"`. The correct way to pass this argument would be to split it into two separate arguments: `"-foo", "bar"`.
 
+## Library limits
+
+An administrator can limit what a read-only account can see, under Settings > Security. API keys and signed links of the account follow the same limit, and a change applies from the account's next request.
+
+* The account sees items that are in any of the chosen folders, tags or studios, including their sub-folders, sub-tags and sub-studios. If nothing is chosen, it sees nothing.
+* Images in a gallery it can see are also visible.
+* Performers, tags, studios, groups and voice actors only appear if they are linked to something it can see. Their counts only include what it can see.
+* Files, folders, duplicates, jobs and other questions about the library as a whole are refused.
+* Accounts with the admin or modify role can't be limited, because they could change the library to get around the limit.
+
+Limits don't apply to the guest account or to DLNA, which don't log in. If you turn either of them on, it can reach the whole library. Sorting or filtering a list by a count, such as a performer's scene count, can still count hidden items, although the counts shown don't.
+
 ## Scraping
 
 ### User Agent string
@@ -185,9 +197,16 @@ These options are typically not exposed in the UI and must be changed manually i
 | `max_upload_size` | Maximum file upload size for import files. Defaults to 1GB. |
 | `theme_color` | Sets the `theme-color` property in the UI. |
 | `gallery_cover_regex` | The regex responsible for selecting images as gallery covers |
+| `guest_account_enabled` | If true, allows read-only access to the system without authentication. Cannot be enabled when running in single-user mode. |
 | `proxy` | The url of a HTTP(S) proxy to be used when stash makes calls to online services. Example: https://user:password@my.proxy:8080. Note: SOCKS5 proxies are unsupported. |
 | `no_proxy` | A list of domains for which the proxy must not be used. Default is all local LAN: localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12 |
 | `sequential_scanning` | Modifies behaviour of the scanning functionality to generate support files (previews/sprites/phash) at the same time as fingerprinting/screenshotting. Useful when scanning cached remote files. |
+| `trusted_proxies` | A list of trusted proxy IPs or CIDR ranges. If a request comes from a trusted proxy or if the request IP address is a local address, the `X-FORWARDED-FOR` header will be used to determine the client's real IP address. Default is empty (no trusted proxies). |
+| `public_access` | By default, stash rejects any request from a public IP address. Setting this to true will allow requests from public IP addresses. Cannot be enabled when running in single-user mode. |
+| `public_whitelist` | A list of public IP addresses or subnets (in CIDR range format eg: `192.168.1.0/24`) that are allowed to access the system when `public_access` is disabled. |
+| `signed_url_expiry` | The expiry time for signed URLs, in seconds. Signed URLs are used when authentication is required. Defaults to 4 hours to accommodate long video playback sessions. |
+| `user_graphql_rate_limit` | The maximum number of API requests per user allowed within the `user_graphql_rate_limit_window_seconds` time window. |
+| `user_graphql_rate_limit_window_seconds` | The time window in seconds for GraphQL API user-based rate limiting. Only applies if `user_graphql_rate_limit` is set. Default is 60 (1 minute). |
 
 The following environment variables are also supported:
 

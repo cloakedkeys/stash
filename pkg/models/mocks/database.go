@@ -18,11 +18,13 @@ type Database struct {
 	Image          *ImageReaderWriter
 	Group          *GroupReaderWriter
 	Performer      *PerformerReaderWriter
+	Audio          *AudioReaderWriter
 	Scene          *SceneReaderWriter
 	SceneMarker    *SceneMarkerReaderWriter
 	Studio         *StudioReaderWriter
 	Tag            *TagReaderWriter
 	SavedFilter    *SavedFilterReaderWriter
+	UserUIConfig   *UserUIConfigReaderWriter
 }
 
 func (*Database) Begin(ctx context.Context, exclusive bool) (context.Context, error) {
@@ -67,11 +69,13 @@ func NewDatabase() *Database {
 		Image:          &ImageReaderWriter{},
 		Group:          &GroupReaderWriter{},
 		Performer:      &PerformerReaderWriter{},
+		Audio:          &AudioReaderWriter{},
 		Scene:          &SceneReaderWriter{},
 		SceneMarker:    &SceneMarkerReaderWriter{},
 		Studio:         &StudioReaderWriter{},
 		Tag:            &TagReaderWriter{},
 		SavedFilter:    &SavedFilterReaderWriter{},
+		UserUIConfig:   &UserUIConfigReaderWriter{},
 	}
 }
 
@@ -83,11 +87,13 @@ func (db *Database) AssertExpectations(t mock.TestingT) {
 	db.Image.AssertExpectations(t)
 	db.Group.AssertExpectations(t)
 	db.Performer.AssertExpectations(t)
+	db.Audio.AssertExpectations(t)
 	db.Scene.AssertExpectations(t)
 	db.SceneMarker.AssertExpectations(t)
 	db.Studio.AssertExpectations(t)
 	db.Tag.AssertExpectations(t)
 	db.SavedFilter.AssertExpectations(t)
+	db.UserUIConfig.AssertExpectations(t)
 }
 
 // WithTxnCtx runs fn with a context that has a transaction hook manager registered,
@@ -102,7 +108,10 @@ func (db *Database) WithTxnCtx(fn func(ctx context.Context)) {
 
 func (db *Database) Repository() models.Repository {
 	return models.Repository{
-		TxnManager:     db,
+		TxnManager: models.TxnManager{
+			Manager:          db,
+			DatabaseProvider: db,
+		},
 		File:           db.File,
 		Folder:         db.Folder,
 		Gallery:        db.Gallery,
@@ -110,10 +119,12 @@ func (db *Database) Repository() models.Repository {
 		Image:          db.Image,
 		Group:          db.Group,
 		Performer:      db.Performer,
+		Audio:          db.Audio,
 		Scene:          db.Scene,
 		SceneMarker:    db.SceneMarker,
 		Studio:         db.Studio,
 		Tag:            db.Tag,
 		SavedFilter:    db.SavedFilter,
+		UserUIConfig:   db.UserUIConfig,
 	}
 }

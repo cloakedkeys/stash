@@ -7,7 +7,7 @@ Only `docker` is required. For the most part your understanding of the technolog
 Installation instructions are available below, and if your distributions's repository ships a current version of docker, you may use that.
 https://docs.docker.com/engine/install/
 
-On some distributions, `docker compose` is shipped seperately, usually as `docker-cli-compose`. docker-compose is not recommended.
+On some distributions, `docker compose` is shipped separately, usually as `docker-cli-compose`. docker-compose is not recommended.
 
 ### Get the docker-compose.yml file
 
@@ -27,6 +27,30 @@ docker compose up -d
 Installing StashApp this way will by default bind stash to port 9999. This is available in your web browser locally at http://localhost:9999 or on your network as http://YOUR-LOCAL-IP:9999
 
 Good luck and have fun!
+
+### Run as a non-root user
+
+The image runs as root by default for compatibility with existing installations. To run Stash without root privileges, set a numeric user and group in `docker-compose.yml`:
+
+```yaml
+services:
+  stash:
+    user: "1000:1000"
+    environment:
+      - HOME=/config
+      - USER=stash
+      - STASH_CONFIG_FILE=/config/config.yml
+    volumes:
+      - ./config:/config
+```
+
+Replace `1000:1000` with the UID and GID that should own files created by Stash. That user must have access to the host directories mounted for config, media, metadata, cache, blobs, and generated content before the container starts. The container does not change ownership of mounted files.
+
+The numeric UID does not need an entry in the image's `/etc/passwd`, but `HOME` must point to a writable directory.
+
+Using `/config` as `HOME` also gives Python scrapers and plugins a writable location for their cache.
+
+The CUDA image skips the optional NVIDIA driver patch when it is launched as a non-root user because patching the mounted driver libraries requires root. Hardware encoding remains subject to the limits of the host driver in that mode.
 
 ### Docker
 Docker is effectively a cross-platform software package repository. It allows you to ship an entire environment in what's referred to as a container. Containers are intended to hold everything that is needed to run an application from one place to another, making it easy for everyone along the way to reproduce the environment.

@@ -13,6 +13,7 @@ import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import isEqual from "lodash-es/isEqual";
 import { useToast } from "src/hooks/Toast";
 import { useConfigurationContext } from "src/hooks/Config";
+import { useIsAdmin } from "src/hooks/CurrentUser";
 import { handleUnsavedChanges } from "src/utils/navigation";
 import { formikUtils } from "src/utils/form";
 import { yupFormikValidate, yupRequiredStringArray } from "src/utils/yup";
@@ -24,7 +25,7 @@ import {
   CustomFieldsInput,
   formatCustomFieldInput,
 } from "src/components/Shared/CustomFields";
-import { cloneDeep } from "@apollo/client/utilities";
+import cloneDeep from "lodash-es/cloneDeep";
 
 interface ITagEditPanel {
   tag: Partial<GQL.TagDataFragment>;
@@ -44,6 +45,7 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
   setEncodingImage,
 }) => {
   const intl = useIntl();
+  const isAdmin = useIsAdmin();
   const Toast = useToast();
   const { configuration: stashConfig } = useConfigurationContext();
 
@@ -63,6 +65,7 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
     sort_name: yup.string().ensure(),
     aliases: yupRequiredStringArray(intl).defined(),
     description: yup.string().ensure(),
+    rating100: yup.number().nullable().defined(),
     parent_ids: yup.array(yup.string().required()).defined(),
     child_ids: yup.array(yup.string().required()).defined(),
     ignore_auto_tag: yup.boolean().defined(),
@@ -76,6 +79,7 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
     sort_name: tag?.sort_name ?? "",
     aliases: tag?.aliases ?? [],
     description: tag?.description ?? "",
+    rating100: tag?.rating100 ?? null,
     parent_ids: (tag?.parents ?? []).map((t) => t.id),
     child_ids: (tag?.children ?? []).map((t) => t.id),
     ignore_auto_tag: tag?.ignore_auto_tag ?? false,
@@ -142,8 +146,16 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
   async function onSave(input: InputValues, andNew?: boolean) {
     setIsLoading(true);
     try {
-      await onSubmit(input, andNew);
+      // ignore_auto_tag may only be changed by administrators
+      await onSubmit(
+        isAdmin ? input : { ...input, ignore_auto_tag: undefined },
+        andNew
+      );
       formik.resetForm();
+      if (andNew) {
+        setParentTags(tag.parents ?? []);
+        setChildTags(tag.children ?? []);
+      }
     } catch (e) {
       Toast.error(e);
     }
@@ -188,6 +200,7 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
   const {
     renderField,
     renderInputField,
+    renderRatingField,
     renderStringListField,
     renderStashIDsField,
   } = formikUtils(intl, formik);
@@ -269,6 +282,7 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
           {renderInputField("sort_name", "text")}
           {renderStringListField("aliases", "aliases", { orderable: false })}
           {renderInputField("description", "textarea")}
+          {renderRatingField("rating100")}
           {renderParentTagsField()}
           {renderSubTagsField()}
           {renderStashIDsField(
@@ -295,7 +309,7 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
           />
 
           <hr />
-          {renderInputField("ignore_auto_tag", "checkbox")}
+          {isAdmin && renderInputField("ignore_auto_tag", "checkbox")}
         </Form>
 
         <DetailsEditNavbar

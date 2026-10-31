@@ -48,13 +48,13 @@ func (qb *folderFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		return
 	}
 
+	f.handleCriterion(ctx, qb.criterionHandler())
+
 	sf := folderFilter.SubFilter()
 	if sf != nil {
 		sub := &folderFilterHandler{folderFilter: sf, table: qb.table}
 		handleSubFilter(ctx, sub, f, folderFilter.OperatorFilter)
 	}
-
-	f.handleCriterion(ctx, qb.criterionHandler())
 }
 
 func (qb *folderFilterHandler) criterionHandler() criterionHandler {
@@ -73,6 +73,7 @@ func (qb *folderFilterHandler) criterionHandler() criterionHandler {
 
 		qb.galleryCountCriterionHandler(folderFilter.GalleryCount),
 
+		&timestampCriterionHandler{folderFilter.MissingSince, qb.table.Col("missing_since"), nil},
 		&timestampCriterionHandler{folderFilter.CreatedAt, qb.table.Col("created_at"), nil},
 		&timestampCriterionHandler{folderFilter.UpdatedAt, qb.table.Col("updated_at"), nil},
 

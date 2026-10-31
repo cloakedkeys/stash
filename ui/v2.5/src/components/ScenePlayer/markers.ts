@@ -29,21 +29,24 @@ class MarkersPlugin extends videojs.getPlugin("plugin") {
   constructor(player: VideoJsPlayer) {
     super(player);
     player.ready(() => {
+      // the player may have been disposed by the time this runs, for
+      // example when moving to another scene
+      const playerEl = player.el();
+      if (!playerEl) return;
+
       const tooltip = videojs.dom.createEl("div") as HTMLElement;
       tooltip.className = "vjs-marker-tooltip";
       tooltip.style.visibility = "hidden";
 
-      const parent = player
-        .el()
-        .querySelector(".vjs-progress-holder .vjs-mouse-display");
+      const parent = playerEl.querySelector(
+        ".vjs-progress-holder .vjs-mouse-display"
+      );
       if (parent) parent.appendChild(tooltip);
       this.markerTooltip = tooltip;
 
-      this.defaultTooltip = player
-        .el()
-        .querySelector<HTMLElement>(
-          ".vjs-progress-holder .vjs-mouse-display .vjs-time-tooltip"
-        );
+      this.defaultTooltip = playerEl.querySelector<HTMLElement>(
+        ".vjs-progress-holder .vjs-mouse-display .vjs-time-tooltip"
+      );
     });
   }
 
@@ -62,12 +65,17 @@ class MarkersPlugin extends videojs.getPlugin("plugin") {
   }
 
   addDotMarker(marker: IMarker) {
+    // markers are added a frame after loading, when the player may already
+    // have been disposed
+    const playerEl = this.player.el();
+    if (!playerEl) return;
+
     const duration = this.player.duration();
     const markerSet: {
       dot?: HTMLDivElement;
       range?: HTMLDivElement;
     } = {};
-    const seekBar = this.player.el().querySelector(".vjs-progress-holder");
+    const seekBar = playerEl.querySelector(".vjs-progress-holder");
 
     markerSet.dot = videojs.dom.createEl("div") as HTMLDivElement;
     markerSet.dot.className = "vjs-marker";
@@ -86,11 +94,7 @@ class MarkersPlugin extends videojs.getPlugin("plugin") {
     markerSet.dot.toggleAttribute("marker-tooltip-shown", true);
 
     // Set background color based on tag (if available)
-    if (
-      marker.primaryTag &&
-      marker.primaryTag.name &&
-      this.tagColors[marker.primaryTag.name]
-    ) {
+    if (marker.primaryTag?.name && this.tagColors[marker.primaryTag.name]) {
       markerSet.dot.style.backgroundColor =
         this.tagColors[marker.primaryTag.name];
     }
@@ -116,9 +120,13 @@ class MarkersPlugin extends videojs.getPlugin("plugin") {
   }
 
   private renderRangeMarkers(markers: IMarker[], layer: number) {
+    // see addDotMarker
+    const playerEl = this.player.el();
+    if (!playerEl) return;
+
     const duration = this.player.duration();
-    const parent = this.player.el().querySelector(".vjs-progress-control");
-    const seekBar = this.player.el().querySelector(".vjs-progress-holder");
+    const parent = playerEl.querySelector(".vjs-progress-control");
+    const seekBar = playerEl.querySelector(".vjs-progress-holder");
     if (!seekBar || !parent || !duration) return;
 
     markers.forEach((marker) => {
@@ -130,7 +138,7 @@ class MarkersPlugin extends videojs.getPlugin("plugin") {
     marker: IMarker,
     layer: number,
     duration: number,
-    seekBar: Element,
+    _seekBar: Element,
     parent: Element
   ) {
     if (!marker.end_seconds) return;
@@ -163,11 +171,7 @@ class MarkersPlugin extends videojs.getPlugin("plugin") {
     rangeDiv.style.display = "none"; // Initially hidden
 
     // Set background color based on tag (if available)
-    if (
-      marker.primaryTag &&
-      marker.primaryTag.name &&
-      this.tagColors[marker.primaryTag.name]
-    ) {
+    if (marker.primaryTag?.name && this.tagColors[marker.primaryTag.name]) {
       rangeDiv.style.backgroundColor = this.tagColors[marker.primaryTag.name];
     }
 
@@ -415,7 +419,7 @@ class MarkersPlugin extends videojs.getPlugin("plugin") {
     const q = v * (1 - f * s);
     const t = v * (1 - (1 - f) * s);
 
-    let r, g, b;
+    let r: number, g: number, b: number;
     switch (i % 6) {
       case 0:
         r = v;
@@ -465,7 +469,6 @@ class MarkersPlugin extends videojs.getPlugin("plugin") {
 
 videojs.registerPlugin("markers", MarkersPlugin);
 
-/* eslint-disable @typescript-eslint/naming-convention */
 declare module "video.js" {
   interface VideoJsPlayer {
     markers: () => MarkersPlugin;

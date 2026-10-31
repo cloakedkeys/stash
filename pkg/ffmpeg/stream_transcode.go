@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -19,84 +21,12 @@ type StreamFormat struct {
 	Args     func(codec VideoCodec, videoFilter VideoFilter, videoOnly bool) Args
 }
 
-func CodecInit(codec VideoCodec) (args Args) {
-	args = args.VideoCodec(codec)
-
-	switch codec {
-	// CPU Codecs
-	case VideoCodecLibX264:
-		args = append(args,
-			"-pix_fmt", "yuv420p",
-			"-preset", "veryfast",
-			"-crf", "25",
-			"-sc_threshold", "0",
-		)
-	case VideoCodecVP9:
-		args = append(args,
-			"-pix_fmt", "yuv420p",
-			"-deadline", "realtime",
-			"-cpu-used", "5",
-			"-row-mt", "1",
-			"-crf", "30",
-			"-b:v", "0",
-		)
-	// HW Codecs
-	case VideoCodecN264:
-		args = append(args,
-			"-rc", "vbr",
-			"-cq", "15",
-		)
-	case VideoCodecN264H:
-		args = append(args,
-			"-profile", "p7",
-			"-tune", "hq",
-			"-profile", "high",
-			"-rc", "vbr",
-			"-rc-lookahead", "60",
-			"-surfaces", "64",
-			"-spatial-aq", "1",
-			"-aq-strength", "15",
-			"-cq", "15",
-			"-coder", "cabac",
-			"-b_ref_mode", "middle",
-		)
-	case VideoCodecI264, VideoCodecIVP9:
-		args = append(args,
-			"-global_quality", "20",
-			"-preset", "faster",
-		)
-	case VideoCodecI264C:
-		args = append(args,
-			"-q", "20",
-			"-preset", "faster",
-		)
-	case VideoCodecV264, VideoCodecVVP9:
-		args = append(args,
-			"-qp", "20",
-		)
-	case VideoCodecA264:
-		args = append(args,
-			"-quality", "speed",
-		)
-	case VideoCodecM264:
-		args = append(args,
-			"-realtime", "1",
-		)
-	case VideoCodecO264:
-		args = append(args,
-			"-preset", "superfast",
-			"-crf", "25",
-		)
-	}
-
-	return args
-}
-
 var (
 	StreamTypeMP4 = StreamFormat{
 		MimeType: MimeMp4Video,
 		Args: func(codec VideoCodec, videoFilter VideoFilter, videoOnly bool) (args Args) {
-			args = CodecInit(codec)
+			args = args.VideoCodec(codec)
+			args = append(args, codec.ExtraArgs()...)
 			args = append(args, "-movflags", "frag_keyframe+empty_moov")
 			args = args.VideoFilter(videoFilter)
 			if videoOnly {
@@ -111,7 +41,8 @@ var (
 	StreamTypeWEBM = StreamFormat{
 		MimeType: MimeWebmVideo,
 		Args: func(codec VideoCodec, videoFilter VideoFilter, videoOnly bool) (args Args) {
-			args = CodecInit(codec)
+			args = args.VideoCodec(codec)
+			args = append(args, codec.ExtraArgs()...)
 			args = args.VideoFilter(videoFilter)
 			if videoOnly {
 				args = args.SkipAudio()
@@ -125,7 +56,8 @@ var (
 	StreamTypeMKV = StreamFormat{
 		MimeType: MimeMkvVideo,
 		Args: func(codec VideoCodec, videoFilter VideoFilter, videoOnly bool) (args Args) {
-			args = CodecInit(codec)
+			args = args.VideoCodec(codec)
+			args = append(args, codec.ExtraArgs()...)
 			if videoOnly {
 				args = args.SkipAudio()
 			} else {
@@ -166,16 +98,16 @@ func (o TranscodeOptions) FileGetCodec(sm *StreamManager, maxTranscodeSize int) 
 			return VideoCodecCopy
 		}
 		codec = VideoCodecLibX264
-		if hwcodec := sm.encoder.hwCodecMP4Compatible(); hwcodec != nil && sm.config.GetTranscodeHardwareAcceleration() {
-			codec = *hwcodec
+		if sm.config.GetTranscodeHardwareAcceleration() {
+			codec = sm.encoder.HWCodecMP4Compatible(VideoCodecLibX264)
 		}
 	case MimeWebmVideo:
 		if !needsResize && (o.VideoFile.VideoCodec == Vp8 || o.VideoFile.VideoCodec == Vp9) {
 			return VideoCodecCopy
 		}
 		codec = VideoCodecVP9
-		if hwcodec := sm.encoder.hwCodecWEBMCompatible(); hwcodec != nil && sm.config.GetTranscodeHardwareAcceleration() {
-			codec = *hwcodec
+		if sm.config.GetTranscodeHardwareAcceleration() {
+			codec = sm.encoder.HWCodecWEBMCompatible(VideoCodecVP9)
 		}
 	case MimeMkvVideo:
 		codec = VideoCodecCopy
@@ -197,11 +129,15 @@ func (o TranscodeOptions) makeStreamArgs(sm *StreamManager) Args {
 
 	codec := o.FileGetCodec(sm, maxTranscodeSize)
 
-	fullhw := sm.config.GetTranscodeHardwareAcceleration() && sm.encoder.hwCanFullHWTranscode(sm.context, codec, o.VideoFile, maxTranscodeSize)
-	args = sm.encoder.hwDeviceInit(args, codec, fullhw)
+	fullhw := sm.config.GetTranscodeHardwareAcceleration() && sm.encoder.HWCanFullHWTranscode(sm.context, codec, o.VideoFile.Path, o.VideoFile.Width, o.VideoFile.Height, maxTranscodeSize)
+	args = sm.encoder.HWDeviceInit(args, codec, fullhw)
 	args = append(args, extraInputArgs...)
 
 	if o.StartTime != 0 {
+		if codec == VideoCodecCopy {
+			// #7103 - keep audio aligned with copied video, which can only start at a keyframe
+			args = args.NoAccurateSeek()
+		}
 		args = args.Seek(o.StartTime)
 	}
 
@@ -209,7 +145,7 @@ func (o TranscodeOptions) makeStreamArgs(sm *StreamManager) Args {
 
 	videoOnly := ProbeAudioCodec(o.VideoFile.AudioCodec) == MissingUnsupported
 
-	videoFilter := sm.encoder.hwMaxResFilter(codec, o.VideoFile, maxTranscodeSize, fullhw)
+	videoFilter := sm.encoder.HWMaxResFilter(codec, o.VideoFile.Width, o.VideoFile.Height, maxTranscodeSize, fullhw)
 
 	args = append(args, o.StreamType.Args(codec, videoFilter, videoOnly)...)
 
@@ -245,8 +181,19 @@ func (sm *StreamManager) ServeTranscode(w http.ResponseWriter, r *http.Request, 
 	handler(w, r)
 }
 
+// isAlreadyExitedKillError returns true if err came from stopping a process
+// that had already exited. Windows reports this as access denied rather than
+// the process being finished, so it isn't a real failure.
+func isAlreadyExitedKillError(err error) bool {
+	var syscallErr *os.SyscallError
+	return errors.As(err, &syscallErr) && syscallErr.Syscall == "TerminateProcess" && errors.Is(syscallErr.Err, fs.ErrPermission)
+}
+
 func (sm *StreamManager) getTranscodeStream(ctx *fsutil.LockContext, options TranscodeOptions) (http.HandlerFunc, error) {
-	args := options.makeStreamArgs(sm)
+	return sm.startTranscodeStream(ctx, options.makeStreamArgs(sm), options.StreamType.MimeType)
+}
+
+func (sm *StreamManager) startTranscodeStream(ctx *fsutil.LockContext, args Args, mimeType string) (http.HandlerFunc, error) {
 	cmd := sm.encoder.Command(ctx, args)
 
 	stdout, err := cmd.StdoutPipe()
@@ -264,13 +211,13 @@ func (sm *StreamManager) getTranscodeStream(ctx *fsutil.LockContext, options Tra
 	if err = cmd.Start(); err != nil {
 		return nil, err
 	}
-	ctx.AttachCommand(cmd)
+	wait := ctx.AttachCommand(cmd)
 
 	// stderr must be consumed or the process deadlocks
 	go func() {
 		errStr, _ := io.ReadAll(stderr)
 
-		errCmd := cmd.Wait()
+		errCmd := wait()
 
 		var err error
 
@@ -283,12 +230,11 @@ func (sm *StreamManager) getTranscodeStream(ctx *fsutil.LockContext, options Tra
 
 		// ignore ExitErrors, the process is always forcibly killed
 		var exitError *exec.ExitError
-		if err != nil && !errors.As(err, &exitError) {
+		if err != nil && !errors.As(err, &exitError) && !isAlreadyExitedKillError(err) {
 			logger.Errorf("[transcode] ffmpeg error when running command <%s>: %v", strings.Join(cmd.Args, " "), err)
 		}
 	}()
 
-	mimeType := options.StreamType.MimeType
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", mimeType)

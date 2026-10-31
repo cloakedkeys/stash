@@ -19,7 +19,7 @@ import GenderIcon from "./GenderIcon";
 import { faLink, faTag } from "@fortawesome/free-solid-svg-icons";
 import { faInstagram, faTwitter } from "@fortawesome/free-brands-svg-icons";
 import { RatingBanner } from "../Shared/RatingBanner";
-import { usePerformerUpdate } from "src/core/StashService";
+import { usePerformerUserDataUpdate } from "src/core/StashService";
 import { ILabeledId } from "src/models/list-filter/types";
 import { FavoriteIcon } from "../Shared/FavoriteIcon";
 import { PatchComponent } from "src/patch";
@@ -172,11 +172,11 @@ const PerformerCardOverlays: React.FC<IPerformerCardProps> = PatchComponent(
   ({ performer }) => {
     const { configuration } = useConfigurationContext();
     const uiConfig = configuration?.ui;
-    const [updatePerformer] = usePerformerUpdate();
+    const [setPerformerUserData] = usePerformerUserDataUpdate();
 
     function onToggleFavorite(v: boolean) {
       if (performer.id) {
-        updatePerformer({
+        setPerformerUserData({
           variables: {
             input: {
               id: performer.id,
@@ -320,14 +320,12 @@ const PerformerCardImage: React.FC<IPerformerCardProps> = PatchComponent(
   "PerformerCard.Image",
   ({ performer }) => {
     return (
-      <>
-        <img
-          loading="lazy"
-          className="performer-card-image"
-          alt={performer.name ?? ""}
-          src={performer.image_path ?? ""}
-        />
-      </>
+      <img
+        loading="lazy"
+        className="performer-card-image"
+        alt={performer.name ?? ""}
+        src={performer.image_path ?? ""}
+      />
     );
   }
 );

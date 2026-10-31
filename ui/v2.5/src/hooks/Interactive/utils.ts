@@ -16,9 +16,11 @@ export interface IInteractiveClientProviderOptions {
   defaultClientProvider?: IInteractiveClientProvider;
   stashConfig?: GQL.ConfigDataFragment;
 }
-export interface IInteractiveClientProvider {
-  (options: IInteractiveClientProviderOptions): IInteractiveClient;
-}
+
+// convert this to interface if more methods are added
+export type IInteractiveClientProvider = (
+  options: IInteractiveClientProviderOptions
+) => IInteractiveClient;
 
 /**
  * Interface that is used for InteractiveProvider
@@ -26,7 +28,11 @@ export interface IInteractiveClientProvider {
 export interface IInteractiveClient {
   connect(): Promise<void>;
   handyKey: string;
-  uploadScript: (funscriptPath: string, apiKey?: string) => Promise<void>;
+  uploadScript: (
+    funscriptPath: string,
+    apiKey?: string,
+    interactiveCsvPath?: string
+  ) => Promise<void>;
   sync(): Promise<number>;
   configure(config: Partial<IDeviceSettings>): Promise<void>;
   play(position: number): Promise<void>;

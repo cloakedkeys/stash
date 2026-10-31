@@ -3,6 +3,7 @@ import React, { forwardRef, useMemo } from "react";
 import { Button, InputGroup, Form } from "react-bootstrap";
 import ReactDatePicker from "react-datepicker";
 import TextUtils from "src/utils/text";
+import { normalizeDateString } from "src/utils/yup";
 import { Icon } from "./Icon";
 
 import "react-datepicker/dist/react-datepicker.css";
@@ -17,6 +18,8 @@ interface IProps {
   value: string;
   isTime?: boolean;
   onValueChange(value: string): void;
+  // called after onValueChange when the value comes from the calendar, not from typing
+  onPick?(value: string): void;
   placeholder?: string;
   placeholderOverride?: string;
   error?: string;
@@ -65,7 +68,9 @@ const _DateInput: React.FC<IProps> = (props: IProps) => {
         <ReactDatePicker
           selected={date}
           onChange={(v) => {
-            props.onValueChange(v ? dateToString(v) : "");
+            const value = v ? dateToString(v) : "";
+            props.onValueChange(value);
+            props.onPick?.(value);
           }}
           customInput={<ShowPickerButton onClick={() => {}} />}
           showMonthDropdown
@@ -89,6 +94,23 @@ const _DateInput: React.FC<IProps> = (props: IProps) => {
     ? `${props.placeholder} (${formatHint})`
     : formatHint;
 
+  function normalizeOnBlur() {
+    if (!props.value) return;
+
+    const separator = props.isTime ? " " : undefined;
+    const datePart = separator
+      ? props.value.split(separator, 1)[0]
+      : props.value;
+    const normalizedDate = normalizeDateString(datePart);
+    if (!normalizedDate) return;
+
+    const suffix = separator ? props.value.slice(datePart.length) : "";
+    const normalized = `${normalizedDate}${suffix}`;
+    if (normalized !== props.value) {
+      props.onValueChange(normalized);
+    }
+  }
+
   return (
     <InputGroup hasValidation className={groupClassName}>
       <Form.Control
@@ -96,9 +118,10 @@ const _DateInput: React.FC<IProps> = (props: IProps) => {
         disabled={props.disabled}
         value={props.value}
         onChange={(e) => props.onValueChange(e.currentTarget.value)}
+        onBlur={normalizeOnBlur}
         placeholder={
           !props.disabled
-            ? props.placeholderOverride ?? placeholderText
+            ? (props.placeholderOverride ?? placeholderText)
             : undefined
         }
         isInvalid={!!props.error}
@@ -162,8 +185,8 @@ export const BulkUpdateDateInput: React.FC<IBulkUpdateDateInputProps> = ({
     props.value === null
       ? `<${intl.formatMessage({ id: "empty_value" })}>`
       : props.value === undefined
-      ? `<${intl.formatMessage({ id: "existing_value" })}>`
-      : undefined;
+        ? `<${intl.formatMessage({ id: "existing_value" })}>`
+        : undefined;
 
   function outValue(v: string | undefined) {
     if (v === "") {

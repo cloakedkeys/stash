@@ -130,6 +130,21 @@ func (i IntCriterionInput) ValidModifier() bool {
 	return false
 }
 
+type HierarchicalCountInput struct {
+	Value    int               `json:"value"`
+	Value2   *int              `json:"value2"`
+	Modifier CriterionModifier `json:"modifier"`
+	Depth    *int              `json:"depth"`
+}
+
+func (i HierarchicalCountInput) ValidModifier() bool {
+	switch i.Modifier {
+	case CriterionModifierEquals, CriterionModifierNotEquals, CriterionModifierGreaterThan, CriterionModifierLessThan, CriterionModifierIsNull, CriterionModifierNotNull, CriterionModifierBetween, CriterionModifierNotBetween:
+		return true
+	}
+	return false
+}
+
 type FloatCriterionInput struct {
 	Value    float64           `json:"value"`
 	Value2   *float64          `json:"value2"`
@@ -221,6 +236,14 @@ type VideoFileFilterInput struct {
 	Captions         *StringCriterionInput `json:"captions,omitempty"`
 	Interactive      *bool                 `json:"interactive,omitempty"`
 	InteractiveSpeed *IntCriterionInput    `json:"interactive_speed,omitempty"`
+}
+type AudioFileFilterInput struct {
+	Format     *StringCriterionInput `json:"format,omitempty"`
+	SampleRate *IntCriterionInput    `json:"sample_rate,omitempty"`
+	Bitrate    *IntCriterionInput    `json:"bitrate,omitempty"`
+	AudioCodec *StringCriterionInput `json:"audio_codec,omitempty"`
+	// in seconds
+	Duration *IntCriterionInput `json:"duration,omitempty"`
 }
 
 type ImageFileFilterInput struct {

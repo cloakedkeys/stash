@@ -24,6 +24,7 @@ interface ISortNameLinkProps {
   link: string;
   className?: string;
   sortName?: string;
+  children?: React.ReactNode;
 }
 
 const SortNameLinkComponent: React.FC<ISortNameLinkProps> = ({
@@ -47,6 +48,7 @@ const SortNameLinkComponent: React.FC<ISortNameLinkProps> = ({
 interface ICommonLinkProps {
   link: string;
   className?: string;
+  children?: React.ReactNode;
 }
 
 const CommonLinkComponent: React.FC<ICommonLinkProps> = ({
@@ -63,7 +65,7 @@ const CommonLinkComponent: React.FC<ICommonLinkProps> = ({
 
 interface IPerformerLinkProps {
   performer: INamedObject & { disambiguation?: string | null };
-  linkType?: "scene" | "gallery" | "image" | "scene_marker";
+  linkType?: "scene" | "audio" | "gallery" | "image" | "scene_marker";
   className?: string;
 }
 
@@ -76,13 +78,15 @@ export const PerformerLink: React.FC<IPerformerLinkProps> = ({
 }) => {
   const link = useMemo(() => {
     switch (linkType) {
+      case "audio":
+        return NavUtils.makePerformerAudiosUrl(performer);
       case "gallery":
         return NavUtils.makePerformerGalleriesUrl(performer);
       case "image":
         return NavUtils.makePerformerImagesUrl(performer);
       case "scene_marker":
         return NavUtils.makePerformerSceneMarkersUrl(performer);
-      case "scene":
+      // case "scene":
       default:
         return NavUtils.makePerformerScenesUrl(performer);
     }
@@ -103,7 +107,7 @@ export const PerformerLink: React.FC<IPerformerLinkProps> = ({
 interface IGroupLinkProps {
   group: INamedObject;
   description?: string;
-  linkType?: "scene" | "sub_group" | "details";
+  linkType?: "scene" | "audio" | "sub_group" | "details";
   className?: string;
 }
 
@@ -117,6 +121,8 @@ export const GroupLink: React.FC<IGroupLinkProps> = ({
     switch (linkType) {
       case "scene":
         return NavUtils.makeGroupScenesUrl(group);
+      case "audio":
+        return NavUtils.makeGroupAudiosUrl(group);
       case "sub_group":
         return NavUtils.makeSubGroupsUrl(group);
       case "details":
@@ -196,6 +202,33 @@ export const SceneLink: React.FC<ISceneLinkProps> = ({
   );
 };
 
+interface IAudioLinkProps {
+  audio: IObjectWithIDTitleFiles;
+  linkType?: "details";
+  className?: string;
+}
+
+export const AudioLink: React.FC<IAudioLinkProps> = ({
+  audio,
+  linkType = "details",
+  className,
+}) => {
+  const link = useMemo(() => {
+    switch (linkType) {
+      case "details":
+        return `/audios/${audio.id}`;
+    }
+  }, [audio, linkType]);
+
+  const title = objectTitle(audio);
+
+  return (
+    <CommonLinkComponent link={link} className={className}>
+      {title}
+    </CommonLinkComponent>
+  );
+};
+
 interface IGallery extends IObjectWithIDTitleFiles {
   folder?: GQL.Maybe<IFile>;
 }
@@ -231,6 +264,7 @@ interface ITagLinkProps {
   tag: INamedObject;
   linkType?:
     | "scene"
+    | "audio"
     | "gallery"
     | "image"
     | "details"
@@ -258,6 +292,8 @@ export const TagLink: React.FC<ITagLinkProps> = PatchComponent(
       switch (linkType) {
         case "scene":
           return NavUtils.makeTagScenesUrl(tag);
+        case "audio":
+          return NavUtils.makeTagAudiosUrl(tag);
         case "performer":
           return NavUtils.makeTagPerformersUrl(tag);
         case "studio":
@@ -279,6 +315,7 @@ export const TagLink: React.FC<ITagLinkProps> = PatchComponent(
 
     const tooltip = useMemo(() => {
       if (!hierarchyTooltipID) {
+        // biome-ignore lint/complexity/noUselessFragments: tooltip requires a single child, so we need to return an empty fragment if there's no tooltip
         return <></>;
       }
 

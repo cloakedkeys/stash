@@ -123,3 +123,9 @@ mutation SceneMerge($input: SceneMergeInput!) {
     id
   }
 }
+
+mutation SceneUserDataUpdate($input: UserRatingInput!) {
+  sceneUserDataUpdate(input: $input) {
+    ...SceneData
+  }
+}

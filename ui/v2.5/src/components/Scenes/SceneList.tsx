@@ -1,3 +1,4 @@
+import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useCallback, useEffect, useMemo } from "react";
 import cloneDeep from "lodash-es/cloneDeep";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -11,6 +12,7 @@ import { Tagger } from "../Tagger/scenes/SceneTagger";
 import { IPlaySceneOptions, SceneQueue } from "src/models/sceneQueue";
 import { SceneWallPanel } from "./SceneWallPanel";
 import { SceneListTable } from "./SceneListTable";
+import { reverseMap, sortFieldToColumn } from "src/utils/data";
 import { EditScenesDialog } from "./EditScenesDialog";
 import { DeleteScenesDialog } from "./DeleteScenesDialog";
 import { GenerateDialog } from "../Dialogs/GenerateDialog";
@@ -179,15 +181,28 @@ function useAddKeybinds(filter: ListFilterModel, count: number) {
   }, [playRandom]);
 }
 
+// list table columns whose sort field has a different name
+const sceneColumnSortMap: Record<string, string> = {
+  scene_code: "code",
+};
+const sceneSortColumnMap = reverseMap(sceneColumnSortMap);
+
 const SceneList: React.FC<{
   scenes: GQL.SlimSceneDataFragment[];
   filter: ListFilterModel;
   selectedIds: Set<string>;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
   fromGroupId?: string;
+  onSort?: (value: string) => void;
 }> = PatchComponent(
   "SceneList",
-  ({ scenes, filter, selectedIds, onSelectChange, fromGroupId }) => {
+  ({ scenes, filter, selectedIds, onSelectChange, fromGroupId, onSort }) => {
+    const canModify = useCanModify();
+    const activeSortColumn = sortFieldToColumn(
+      sceneSortColumnMap,
+      filter.sortBy
+    );
+
     const queue = useMemo(
       () => SceneQueue.fromListFilterModel(filter),
       [filter]
@@ -216,6 +231,9 @@ const SceneList: React.FC<{
           queue={queue}
           selectedIds={selectedIds}
           onSelectChange={onSelectChange}
+          onSort={onSort}
+          sortBy={activeSortColumn}
+          sortDirection={filter.sortDirection}
         />
       );
     }
@@ -230,7 +248,7 @@ const SceneList: React.FC<{
         />
       );
     }
-    if (filter.displayMode === DisplayMode.Tagger) {
+    if (canModify && filter.displayMode === DisplayMode.Tagger) {
       return (
         <Tagger
           scenes={scenes}
@@ -398,6 +416,20 @@ export const FilteredSceneList = PatchComponent(
 
     const { filter, setFilter } = filterState;
 
+    const onSort = useCallback(
+      (value: string) => {
+        const backendField = sceneColumnSortMap[value] ?? value;
+        if (filter.sortBy === backendField) {
+          setFilter(filter.toggleSortDirection());
+        } else {
+          const newFilter = filter.setSortBy(backendField);
+          newFilter.sortDirection = GQL.SortDirectionEnum.Asc;
+          setFilter(newFilter);
+        }
+      },
+      [filter, setFilter]
+    );
+
     const { effectiveFilter, result, cachedResult, items, totalCount } =
       queryResult;
 
@@ -466,7 +498,8 @@ export const FilteredSceneList = PatchComponent(
         Mousetrap.unbind("e");
         Mousetrap.unbind("d d");
       };
-    }, [onSelectAll, onSelectNone, hasSelection, onEdit, onDelete]);
+    }, [hasSelection, onEdit, onDelete]);
+
     useZoomKeybinds({
       zoomIndex: filter.zoomIndex,
       onChangeZoom: (zoom) => setFilter(filter.setZoom(zoom)),
@@ -479,8 +512,8 @@ export const FilteredSceneList = PatchComponent(
     }, [cachedResult]);
 
     const queue = useMemo(
-      () => SceneQueue.fromListFilterModel(filter),
-      [filter]
+      () => SceneQueue.fromListFilterModel(effectiveFilter),
+      [effectiveFilter]
     );
 
     const playRandom = usePlayRandom(effectiveFilter, totalCount);
@@ -488,7 +521,7 @@ export const FilteredSceneList = PatchComponent(
     const playFirst = usePlayFirst();
 
     function onCreateNew() {
-      let queryParam = new URLSearchParams(location.search).get("q");
+      const queryParam = new URLSearchParams(location.search).get("q");
       let newPath = "/scenes/new";
       if (queryParam) {
         newPath += "?q=" + encodeURIComponent(queryParam);
@@ -562,6 +595,7 @@ export const FilteredSceneList = PatchComponent(
         ),
         onClick: () => onCreateNew(),
         isDisplayed: () => !hasSelection,
+        requiredRole: GQL.RoleEnum.Modify,
         className: "create-new-item",
       },
       {
@@ -586,6 +620,7 @@ export const FilteredSceneList = PatchComponent(
       },
       {
         text: `${intl.formatMessage({ id: "actions.generate" })}…`,
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () =>
           showModal(
             <GenerateDialog
@@ -598,6 +633,7 @@ export const FilteredSceneList = PatchComponent(
       },
       {
         text: `${intl.formatMessage({ id: "actions.identify" })}…`,
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () =>
           showModal(
             <IdentifyDialog
@@ -609,16 +645,19 @@ export const FilteredSceneList = PatchComponent(
       },
       {
         text: `${intl.formatMessage({ id: "actions.merge" })}…`,
+        requiredRole: GQL.RoleEnum.Modify,
         onClick: () => onMerge(),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(false),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export_all" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(true),
       },
     ];
@@ -678,6 +717,7 @@ export const FilteredSceneList = PatchComponent(
                 />
 
                 <FilterTags
+                  view={view}
                   criteria={filter.criteria}
                   onEditCriterion={(c) =>
                     showEditFilter(c.criterionOption.type)
@@ -709,6 +749,7 @@ export const FilteredSceneList = PatchComponent(
                     selectedIds={selectedIds}
                     onSelectChange={onSelectChange}
                     fromGroupId={fromGroupId}
+                    onSort={onSort}
                   />
                 </LoadedContent>
 

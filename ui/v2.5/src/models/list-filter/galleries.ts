@@ -30,12 +30,21 @@ const sortByOptions = ["date", ...MediaSortByOptions]
   .map(ListFilterOptions.createSortBy)
   .concat([
     {
+      messageID: "performer_age",
+      value: "performer_age",
+    },
+    {
       messageID: "image_count",
       value: "images_count",
     },
     {
       messageID: "zip_file_count",
       value: "file_count",
+    },
+    {
+      messageID: "o_count",
+      value: "o_counter",
+      sfwMessageID: "o_count_sfw",
     },
   ]);
 
@@ -57,6 +66,9 @@ const criterionOptions = [
   ParentFolderCriterionOption,
   createStringCriterionOption("checksum", "media_info.md5"),
   RatingCriterionOption,
+  createMandatoryNumberCriterionOption("o_counter", "o_count", {
+    sfwMessageID: "o_count_sfw",
+  }),
   OrganizedCriterionOption,
   AverageResolutionCriterionOption,
   GalleryIsMissingCriterionOption,

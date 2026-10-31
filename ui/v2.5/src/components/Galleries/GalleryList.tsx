@@ -5,6 +5,8 @@ import { useHistory } from "react-router-dom";
 import Mousetrap from "mousetrap";
 import * as GQL from "src/core/generated-graphql";
 import { useFilteredItemList } from "../List/ItemList";
+import { useGalleriesLightbox } from "src/hooks/Lightbox/hooks";
+import { useConfigurationContext } from "src/hooks/Config";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { DisplayMode } from "src/models/list-filter/types";
 import { queryFindGalleries, useFindGalleries } from "src/core/StashService";
@@ -12,7 +14,9 @@ import GalleryWallCard from "./GalleryWallCard";
 import { EditGalleriesDialog } from "./EditGalleriesDialog";
 import { DeleteGalleriesDialog } from "./DeleteGalleriesDialog";
 import { ExportDialog } from "../Shared/ExportDialog";
+import { reverseMap, sortFieldToColumn } from "src/utils/data";
 import { GenerateDialog } from "../Dialogs/GenerateDialog";
+import { IdentifyDialog } from "../Dialogs/IdentifyDialog/IdentifyDialog";
 import { GalleryListTable } from "./GalleryListTable";
 import { GalleryCardGrid } from "./GalleryCardGrid";
 import { View } from "../List/views";
@@ -54,14 +58,41 @@ import { PerformerAgeCriterionOption } from "src/models/list-filter/galleries";
 import { SidebarFolderFilter } from "../List/Filters/FolderFilter";
 import { ParentFolderCriterionOption } from "src/models/list-filter/criteria/folder";
 
+// list table columns whose sort field has a different name
+const galleryColumnSortMap: Record<string, string> = {
+  images: "images_count",
+};
+const gallerySortColumnMap = reverseMap(galleryColumnSortMap);
+
 const GalleryList: React.FC<{
   galleries: GQL.SlimGalleryDataFragment[];
   filter: ListFilterModel;
   selectedIds: Set<string>;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
+  onSort?: (value: string) => void;
 }> = PatchComponent(
   "GalleryList",
-  ({ galleries, filter, selectedIds, onSelectChange }) => {
+  ({ galleries, filter, selectedIds, onSelectChange, onSort }) => {
+    const activeSortColumn = sortFieldToColumn(
+      gallerySortColumnMap,
+      filter.sortBy
+    );
+    const { configuration } = useConfigurationContext();
+    const showLightbox = useGalleriesLightbox();
+
+    const onPreview = useCallback(
+      (
+        gallery: GQL.SlimGalleryDataFragment,
+        index: number,
+        ev?: React.MouseEvent
+      ) => {
+        const autostart = configuration?.ui.autostartGallerySlideshow ?? false;
+        showLightbox(gallery, index, true, autostart);
+        ev?.preventDefault();
+      },
+      [showLightbox, configuration?.ui.autostartGallerySlideshow]
+    );
+
     if (galleries.length === 0) {
       return null;
     }
@@ -73,6 +104,7 @@ const GalleryList: React.FC<{
           selectedIds={selectedIds}
           zoomIndex={filter.zoomIndex}
           onSelectChange={onSelectChange}
+          onPreview={onPreview}
         />
       );
     }
@@ -82,6 +114,9 @@ const GalleryList: React.FC<{
           galleries={galleries}
           selectedIds={selectedIds}
           onSelectChange={onSelectChange}
+          onSort={onSort}
+          sortBy={activeSortColumn}
+          sortDirection={filter.sortDirection}
         />
       );
     }
@@ -280,6 +315,20 @@ export const FilteredGalleryList = PatchComponent(
 
     const { filter, setFilter } = filterState;
 
+    const onSort = useCallback(
+      (value: string) => {
+        const backendField = galleryColumnSortMap[value] ?? value;
+        if (filter.sortBy === backendField) {
+          setFilter(filter.toggleSortDirection());
+        } else {
+          const newFilter = filter.setSortBy(backendField);
+          newFilter.sortDirection = GQL.SortDirectionEnum.Asc;
+          setFilter(newFilter);
+        }
+      },
+      [filter, setFilter]
+    );
+
     const { effectiveFilter, result, cachedResult, items, totalCount } =
       queryResult;
 
@@ -410,16 +459,32 @@ export const FilteredGalleryList = PatchComponent(
       },
       {
         text: `${intl.formatMessage({ id: "actions.generate" })}…`,
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: onGenerate,
         isDisplayed: () => hasSelection,
       },
       {
+        text: `${intl.formatMessage({ id: "actions.identify" })}…`,
+        requiredRole: GQL.RoleEnum.Admin,
+        onClick: () =>
+          showModal(
+            <IdentifyDialog
+              selectedIds={Array.from(selectedIds.values())}
+              type="gallery"
+              onClose={() => closeModal()}
+            />
+          ),
+        isDisplayed: () => hasSelection,
+      },
+      {
         text: intl.formatMessage({ id: "actions.export" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(false),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export_all" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(true),
       },
     ];
@@ -477,6 +542,7 @@ export const FilteredGalleryList = PatchComponent(
               />
 
               <FilterTags
+                view={view}
                 criteria={filter.criteria}
                 onEditCriterion={(c) => showEditFilter(c.criterionOption.type)}
                 onRemoveCriterion={removeCriterion}
@@ -504,6 +570,7 @@ export const FilteredGalleryList = PatchComponent(
                   galleries={items}
                   selectedIds={selectedIds}
                   onSelectChange={onSelectChange}
+                  onSort={onSort}
                 />
               </LoadedContent>
 

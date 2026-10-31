@@ -1,0 +1,1339 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"path/filepath"
+	"time"
+
+	"github.com/doug-martin/goqu/v9"
+	"github.com/doug-martin/goqu/v9/exp"
+	"github.com/jmoiron/sqlx"
+	"github.com/stashapp/stash/pkg/models"
+	"gopkg.in/guregu/null.v4"
+)
+
+const (
+	fileTable      = "files"
+	videoFileTable = "video_files"
+	audioFileTable = "audio_files"
+	imageFileTable = "image_files"
+	fileIDColumn   = "file_id"
+
+	videoCaptionsTable    = "video_captions"
+	captionCodeColumn     = "language_code"
+	captionFilenameColumn = "filename"
+	captionTypeColumn     = "caption_type"
+)
+
+type basicFileRow struct {
+	ID             models.FileID   `db:"id" goqu:"skipinsert"`
+	Basename       string          `db:"basename"`
+	ZipFileID      null.Int        `db:"zip_file_id"`
+	ParentFolderID models.FolderID `db:"parent_folder_id"`
+	MissingSince   NullTimestamp   `db:"missing_since"`
+	Size           int64           `db:"size"`
+	ModTime        Timestamp       `db:"mod_time"`
+	CreatedAt      Timestamp       `db:"created_at"`
+	UpdatedAt      Timestamp       `db:"updated_at"`
+}
+
+func (r *basicFileRow) fromBasicFile(o models.BaseFile) {
+	r.ID = o.ID
+	r.Basename = o.Basename
+	r.ZipFileID = nullIntFromFileIDPtr(o.ZipFileID)
+	r.ParentFolderID = o.ParentFolderID
+	r.Size = o.Size
+	r.MissingSince = NullTimestampFromTimePtr(o.MissingSince)
+	r.ModTime = Timestamp{Timestamp: o.ModTime}
+	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
+	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
+}
+
+type videoFileRow struct {
+	FileID           models.FileID `db:"file_id"`
+	Format           string        `db:"format"`
+	Width            int           `db:"width"`
+	Height           int           `db:"height"`
+	Duration         float64       `db:"duration"`
+	VideoCodec       string        `db:"video_codec"`
+	AudioCodec       string        `db:"audio_codec"`
+	FrameRate        float64       `db:"frame_rate"`
+	BitRate          int64         `db:"bit_rate"`
+	Interactive      bool          `db:"interactive"`
+	InteractiveSpeed null.Int      `db:"interactive_speed"`
+	Projection       null.String   `db:"projection"`
+	StereoMode       null.String   `db:"stereo_mode"`
+	VRCorrections    null.String   `db:"vr_corrections"`
+	VRPassthrough    null.String   `db:"vr_passthrough"`
+}
+
+func (f *videoFileRow) fromVideoFile(ff models.VideoFile) {
+	f.FileID = ff.ID
+	f.Format = ff.Format
+	f.Width = ff.Width
+	f.Height = ff.Height
+	f.Duration = ff.Duration
+	f.VideoCodec = ff.VideoCodec
+	f.AudioCodec = ff.AudioCodec
+	f.FrameRate = ff.FrameRate
+	f.BitRate = ff.BitRate
+	f.Interactive = ff.Interactive
+	f.InteractiveSpeed = intFromPtr(ff.InteractiveSpeed)
+	f.Projection = null.StringFromPtr(projectionEnumPtr(ff.Projection))
+	f.StereoMode = null.StringFromPtr(stereoModeEnumPtr(ff.StereoMode))
+	f.VRCorrections = vrCorrectionsToNullString(ff.VRCorrections)
+	f.VRPassthrough = vrPassthroughToNullString(ff.VRPassthrough)
+}
+
+type audioFileRow struct {
+	FileID     models.FileID `db:"file_id"`
+	Format     string        `db:"format"`
+	Duration   float64       `db:"duration"`
+	AudioCodec string        `db:"audio_codec"`
+	SampleRate int64         `db:"sample_rate"`
+	BitRate    int64         `db:"bit_rate"`
+}
+
+func (f *audioFileRow) fromAudioFile(ff models.AudioFile) {
+	f.FileID = ff.ID
+	f.Format = ff.Format
+	f.Duration = ff.Duration
+	f.AudioCodec = ff.AudioCodec
+	f.SampleRate = ff.SampleRate
+	f.BitRate = ff.BitRate
+}
+
+type imageFileRow struct {
+	FileID models.FileID `db:"file_id"`
+	Format string        `db:"format"`
+	Width  int           `db:"width"`
+	Height int           `db:"height"`
+}
+
+func (f *imageFileRow) fromImageFile(ff models.ImageFile) {
+	f.FileID = ff.ID
+	f.Format = ff.Format
+	f.Width = ff.Width
+	f.Height = ff.Height
+}
+
+// we redefine this to change the columns around
+// otherwise, we collide with the image file columns
+type videoFileQueryRow struct {
+	FileID           null.Int    `db:"file_id_video"`
+	Format           null.String `db:"video_format"`
+	Width            null.Int    `db:"video_width"`
+	Height           null.Int    `db:"video_height"`
+	Duration         null.Float  `db:"duration"`
+	VideoCodec       null.String `db:"video_codec"`
+	AudioCodec       null.String `db:"audio_codec"`
+	FrameRate        null.Float  `db:"frame_rate"`
+	BitRate          null.Int    `db:"bit_rate"`
+	Interactive      null.Bool   `db:"interactive"`
+	InteractiveSpeed null.Int    `db:"interactive_speed"`
+	Projection       null.String `db:"projection"`
+	StereoMode       null.String `db:"stereo_mode"`
+	VRCorrections    null.String `db:"vr_corrections"`
+	VRPassthrough    null.String `db:"vr_passthrough"`
+}
+
+func (f *videoFileQueryRow) resolve() *models.VideoFile {
+	return &models.VideoFile{
+		Format:           f.Format.String,
+		Width:            int(f.Width.Int64),
+		Height:           int(f.Height.Int64),
+		Duration:         f.Duration.Float64,
+		VideoCodec:       f.VideoCodec.String,
+		AudioCodec:       f.AudioCodec.String,
+		FrameRate:        f.FrameRate.Float64,
+		BitRate:          f.BitRate.Int64,
+		Interactive:      f.Interactive.Bool,
+		InteractiveSpeed: nullIntPtr(f.InteractiveSpeed),
+		Projection:       projectionEnumFromNullString(f.Projection),
+		StereoMode:       stereoModeEnumFromNullString(f.StereoMode),
+		VRCorrections:    vrCorrectionsFromNullString(f.VRCorrections),
+		VRPassthrough:    vrPassthroughFromNullString(f.VRPassthrough),
+	}
+}
+
+func videoFileQueryColumns() []interface{} {
+	table := videoFileTableMgr.table
+	return []interface{}{
+		table.Col("file_id").As("file_id_video"),
+		table.Col("format").As("video_format"),
+		table.Col("width").As("video_width"),
+		table.Col("height").As("video_height"),
+		table.Col("duration"),
+		table.Col("video_codec"),
+		table.Col("audio_codec"),
+		table.Col("frame_rate"),
+		table.Col("bit_rate"),
+		table.Col("interactive"),
+		table.Col("interactive_speed"),
+		table.Col("projection"),
+		table.Col("stereo_mode"),
+		table.Col("vr_corrections"),
+		table.Col("vr_passthrough"),
+	}
+}
+
+// we redefine this to change the columns around
+// otherwise, we collide with the video file columns
+type audioFileQueryRow struct {
+	FileID     null.Int    `db:"file_id_audio"`
+	Format     null.String `db:"audio_format"`
+	Duration   null.Float  `db:"audio_duration"`
+	AudioCodec null.String `db:"audio_audio_codec"`
+	SampleRate null.Int    `db:"audio_sample_rate"`
+	BitRate    null.Int    `db:"audio_bit_rate"`
+}
+
+func (f *audioFileQueryRow) resolve() *models.AudioFile {
+	return &models.AudioFile{
+		Format:     f.Format.String,
+		Duration:   f.Duration.Float64,
+		AudioCodec: f.AudioCodec.String,
+		SampleRate: f.SampleRate.Int64,
+		BitRate:    f.BitRate.Int64,
+	}
+}
+
+func audioFileQueryColumns() []interface{} {
+	table := audioFileTableMgr.table
+	return []interface{}{
+		table.Col("file_id").As("file_id_audio"),
+		table.Col("format").As("audio_format"),
+		table.Col("duration").As("audio_duration"),
+		table.Col("audio_codec").As("audio_audio_codec"),
+		table.Col("sample_rate").As("audio_sample_rate"),
+		table.Col("bit_rate").As("audio_bit_rate"),
+	}
+}
+
+// we redefine this to change the columns around
+// otherwise, we collide with the video file columns
+type imageFileQueryRow struct {
+	Format null.String `db:"image_format"`
+	Width  null.Int    `db:"image_width"`
+	Height null.Int    `db:"image_height"`
+}
+
+func (imageFileQueryRow) columns(table *table) []interface{} {
+	ex := table.table
+	return []interface{}{
+		ex.Col("format").As("image_format"),
+		ex.Col("width").As("image_width"),
+		ex.Col("height").As("image_height"),
+	}
+}
+
+func (f *imageFileQueryRow) resolve() *models.ImageFile {
+	return &models.ImageFile{
+		Format: f.Format.String,
+		Width:  int(f.Width.Int64),
+		Height: int(f.Height.Int64),
+	}
+}
+
+type fileQueryRow struct {
+	FileID         null.Int      `db:"file_id"`
+	Basename       null.String   `db:"basename"`
+	ZipFileID      null.Int      `db:"zip_file_id"`
+	ParentFolderID null.Int      `db:"parent_folder_id"`
+	MissingSince   NullTimestamp `db:"missing_since"`
+	Size           null.Int      `db:"size"`
+	ModTime        NullTimestamp `db:"mod_time"`
+	CreatedAt      NullTimestamp `db:"file_created_at"`
+	UpdatedAt      NullTimestamp `db:"file_updated_at"`
+
+	ZipBasename   null.String `db:"zip_basename"`
+	ZipFolderPath null.String `db:"zip_folder_path"`
+	ZipSize       null.Int    `db:"zip_size"`
+
+	FolderPath null.String `db:"parent_folder_path"`
+	fingerprintQueryRow
+	videoFileQueryRow
+	audioFileQueryRow
+	imageFileQueryRow
+}
+
+func (r *fileQueryRow) resolve() models.File {
+	basic := &models.BaseFile{
+		ID: models.FileID(r.FileID.Int64),
+		DirEntry: models.DirEntry{
+			ZipFileID:    nullIntFileIDPtr(r.ZipFileID),
+			ModTime:      r.ModTime.Timestamp.UTC(),
+			MissingSince: r.MissingSince.TimePtr(),
+		},
+		Path:           filepath.Join(r.FolderPath.String, r.Basename.String),
+		ParentFolderID: models.FolderID(r.ParentFolderID.Int64),
+		Basename:       r.Basename.String,
+		Size:           r.Size.Int64,
+		CreatedAt:      r.CreatedAt.Timestamp.UTC(),
+		UpdatedAt:      r.UpdatedAt.Timestamp.UTC(),
+	}
+
+	if basic.ZipFileID != nil && r.ZipFolderPath.Valid && r.ZipBasename.Valid {
+		basic.ZipFile = &models.BaseFile{
+			ID:       *basic.ZipFileID,
+			Path:     filepath.Join(r.ZipFolderPath.String, r.ZipBasename.String),
+			Basename: r.ZipBasename.String,
+			Size:     r.ZipSize.Int64,
+		}
+	}
+
+	var ret models.File = basic
+
+	if r.videoFileQueryRow.Format.Valid {
+		vf := r.videoFileQueryRow.resolve()
+		vf.BaseFile = basic
+		ret = vf
+	}
+
+	if r.audioFileQueryRow.Format.Valid {
+		vf := r.audioFileQueryRow.resolve()
+		vf.BaseFile = basic
+		ret = vf
+	}
+
+	if r.imageFileQueryRow.Format.Valid {
+		imf := r.imageFileQueryRow.resolve()
+		imf.BaseFile = basic
+		ret = imf
+	}
+
+	r.appendRelationships(basic)
+
+	return ret
+}
+
+func appendFingerprintsUnique(vs []models.Fingerprint, v ...models.Fingerprint) []models.Fingerprint {
+	for _, vv := range v {
+		found := false
+		for _, vsv := range vs {
+			if vsv.Type == vv.Type {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			vs = append(vs, vv)
+		}
+	}
+	return vs
+}
+
+func (r *fileQueryRow) appendRelationships(i *models.BaseFile) {
+	if r.fingerprintQueryRow.valid() {
+		i.Fingerprints = appendFingerprintsUnique(i.Fingerprints, r.fingerprintQueryRow.resolve())
+	}
+}
+
+type fileQueryRows []fileQueryRow
+
+func (r fileQueryRows) resolve() []models.File {
+	var ret []models.File
+	var last models.File
+	var lastID models.FileID
+
+	for _, row := range r {
+		if last == nil || lastID != models.FileID(row.FileID.Int64) {
+			f := row.resolve()
+			last = f
+			lastID = models.FileID(row.FileID.Int64)
+			ret = append(ret, last)
+			continue
+		}
+
+		// must be merging with previous row
+		row.appendRelationships(last.Base())
+	}
+
+	return ret
+}
+
+type fileRepositoryType struct {
+	repository
+	scenes    joinRepository
+	audios    joinRepository
+	images    joinRepository
+	galleries joinRepository
+}
+
+var (
+	fileRepository = fileRepositoryType{
+		repository: repository{
+			tableName: fileTable,
+			idColumn:  idColumn,
+		},
+		scenes: joinRepository{
+			repository: repository{
+				tableName: scenesFilesTable,
+				idColumn:  fileIDColumn,
+			},
+			fkColumn: sceneIDColumn,
+		},
+		audios: joinRepository{
+			repository: repository{
+				tableName: audiosFilesTable,
+				idColumn:  fileIDColumn,
+			},
+			fkColumn: sceneIDColumn,
+		},
+		images: joinRepository{
+			repository: repository{
+				tableName: imagesFilesTable,
+				idColumn:  fileIDColumn,
+			},
+			fkColumn: imageIDColumn,
+		},
+		galleries: joinRepository{
+			repository: repository{
+				tableName: galleriesFilesTable,
+				idColumn:  fileIDColumn,
+			},
+			fkColumn: galleryIDColumn,
+		},
+	}
+)
+
+type FileStore struct {
+	repository
+
+	tableMgr *table
+}
+
+func NewFileStore() *FileStore {
+	return &FileStore{
+		repository: repository{
+			tableName: fileTable,
+			idColumn:  idColumn,
+		},
+
+		tableMgr: fileTableMgr,
+	}
+}
+
+func (qb *FileStore) table() exp.IdentifierExpression {
+	return qb.tableMgr.table
+}
+
+func (qb *FileStore) Create(ctx context.Context, f models.File) error {
+	var r basicFileRow
+	r.fromBasicFile(*f.Base())
+
+	id, err := qb.tableMgr.insertID(ctx, r)
+	if err != nil {
+		return err
+	}
+
+	fileID := models.FileID(id)
+
+	// create extended stuff here
+	switch ef := f.(type) {
+	case *models.VideoFile:
+		if err := qb.createVideoFile(ctx, fileID, *ef); err != nil {
+			return err
+		}
+	case *models.AudioFile:
+		if err := qb.createAudioFile(ctx, fileID, *ef); err != nil {
+			return err
+		}
+	case *models.ImageFile:
+		if err := qb.createImageFile(ctx, fileID, *ef); err != nil {
+			return err
+		}
+	}
+
+	if err := FingerprintReaderWriter.insertJoins(ctx, fileID, f.Base().Fingerprints); err != nil {
+		return err
+	}
+
+	updated, err := qb.Find(ctx, fileID)
+	if err != nil {
+		return fmt.Errorf("finding after create: %w", err)
+	}
+
+	base := f.Base()
+	*base = *updated[0].Base()
+
+	return nil
+}
+
+func (qb *FileStore) Update(ctx context.Context, f models.File) error {
+	var r basicFileRow
+	r.fromBasicFile(*f.Base())
+
+	id := f.Base().ID
+
+	if err := qb.tableMgr.updateByID(ctx, id, r); err != nil {
+		return err
+	}
+
+	// create extended stuff here
+	switch ef := f.(type) {
+	case *models.VideoFile:
+		if err := qb.updateOrCreateVideoFile(ctx, id, *ef); err != nil {
+			return err
+		}
+	case *models.AudioFile:
+		if err := qb.updateOrCreateAudioFile(ctx, id, *ef); err != nil {
+			return err
+		}
+	case *models.ImageFile:
+		if err := qb.updateOrCreateImageFile(ctx, id, *ef); err != nil {
+			return err
+		}
+	}
+
+	if err := FingerprintReaderWriter.replaceJoins(ctx, id, f.Base().Fingerprints); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (qb *FileStore) SetMissing(ctx context.Context, id models.FileID, missingSince *time.Time) error {
+	if err := qb.tableMgr.checkIDExists(ctx, int(id)); err != nil {
+		return err
+	}
+
+	table := qb.tableMgr.table
+
+	var timestampValue NullTimestamp
+	if missingSince != nil {
+		timestampValue = NullTimestamp{Timestamp: *missingSince, Valid: true}
+	}
+
+	q := dialect.Update(table).Set(goqu.Record{
+		"missing_since": timestampValue,
+	}).Where(qb.tableMgr.byID(id))
+
+	if _, err := exec(ctx, q); err != nil {
+		return fmt.Errorf("updating %s: %w", table.GetTable(), err)
+	}
+
+	return nil
+}
+
+// ModifyFingerprints updates existing fingerprints and adds new ones.
+func (qb *FileStore) ModifyFingerprints(ctx context.Context, fileID models.FileID, fingerprints []models.Fingerprint) error {
+	return FingerprintReaderWriter.upsertJoins(ctx, fileID, fingerprints)
+}
+
+func (qb *FileStore) DestroyFingerprints(ctx context.Context, fileID models.FileID, types []string) error {
+	return FingerprintReaderWriter.destroyJoins(ctx, fileID, types)
+}
+
+func (qb *FileStore) Destroy(ctx context.Context, id models.FileID) error {
+	return qb.tableMgr.destroyExisting(ctx, []int{int(id)})
+}
+
+func (qb *FileStore) createVideoFile(ctx context.Context, id models.FileID, f models.VideoFile) error {
+	var r videoFileRow
+	r.fromVideoFile(f)
+	r.FileID = id
+	if _, err := videoFileTableMgr.insert(ctx, r); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (qb *FileStore) updateOrCreateVideoFile(ctx context.Context, id models.FileID, f models.VideoFile) error {
+	exists, err := videoFileTableMgr.idExists(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return qb.createVideoFile(ctx, id, f)
+	}
+
+	var r videoFileRow
+	r.fromVideoFile(f)
+	r.FileID = id
+	if err := videoFileTableMgr.updateByID(ctx, id, r); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func projectionEnumPtr(e *models.ProjectionEnum) *string {
+	if e == nil {
+		return nil
+	}
+	s := string(*e)
+	return &s
+}
+func projectionEnumFromNullString(s null.String) *models.ProjectionEnum {
+	if !s.Valid {
+		return nil
+	}
+	e := models.ProjectionEnum(s.String)
+	return &e
+}
+func stereoModeEnumPtr(e *models.StereoModeEnum) *string {
+	if e == nil {
+		return nil
+	}
+	s := string(*e)
+	return &s
+}
+func stereoModeEnumFromNullString(s null.String) *models.StereoModeEnum {
+	if !s.Valid {
+		return nil
+	}
+	e := models.StereoModeEnum(s.String)
+	return &e
+}
+func vrCorrectionsToNullString(vc *models.VRCorrections) null.String {
+	if vc == nil {
+		return null.String{}
+	}
+	b, err := json.Marshal(vc)
+	if err != nil {
+		return null.String{}
+	}
+	return null.StringFrom(string(b))
+}
+func vrCorrectionsFromNullString(s null.String) *models.VRCorrections {
+	if !s.Valid || s.String == "" {
+		return nil
+	}
+	var vc models.VRCorrections
+	if err := json.Unmarshal([]byte(s.String), &vc); err != nil {
+		return nil
+	}
+	return &vc
+}
+
+func vrPassthroughToNullString(vp *models.VRPassthrough) null.String {
+	if vp == nil {
+		return null.String{}
+	}
+	b, err := json.Marshal(vp)
+	if err != nil {
+		return null.String{}
+	}
+	return null.StringFrom(string(b))
+}
+
+func vrPassthroughFromNullString(s null.String) *models.VRPassthrough {
+	if !s.Valid || s.String == "" {
+		return nil
+	}
+	var vp models.VRPassthrough
+	if err := json.Unmarshal([]byte(s.String), &vp); err != nil {
+		return nil
+	}
+	return &vp
+}
+
+// ModifyVideoFileMetadata sets the VR metadata fields; nil clears a field.
+// Only the VR columns are written, the rest of the video file is left alone.
+func (qb *FileStore) ModifyVideoFileMetadata(ctx context.Context, fileID models.FileID, projection *models.ProjectionEnum, stereoMode *models.StereoModeEnum, vrCorrections *models.VRCorrections, vrPassthrough *models.VRPassthrough) error {
+	record := goqu.Record{
+		"projection":     null.StringFromPtr(projectionEnumPtr(projection)),
+		"stereo_mode":    null.StringFromPtr(stereoModeEnumPtr(stereoMode)),
+		"vr_corrections": vrCorrectionsToNullString(vrCorrections),
+		"vr_passthrough": vrPassthroughToNullString(vrPassthrough),
+	}
+	if err := videoFileTableMgr.updateByID(ctx, fileID, record); err != nil {
+		return fmt.Errorf("updating vr metadata: %w", err)
+	}
+	return nil
+}
+
+func (qb *FileStore) createAudioFile(ctx context.Context, id models.FileID, f models.AudioFile) error {
+	var r audioFileRow
+	r.fromAudioFile(f)
+	r.FileID = id
+	if _, err := audioFileTableMgr.insert(ctx, r); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (qb *FileStore) updateOrCreateAudioFile(ctx context.Context, id models.FileID, f models.AudioFile) error {
+	exists, err := audioFileTableMgr.idExists(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return qb.createAudioFile(ctx, id, f)
+	}
+
+	var r audioFileRow
+	r.fromAudioFile(f)
+	r.FileID = id
+	if err := audioFileTableMgr.updateByID(ctx, id, r); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (qb *FileStore) createImageFile(ctx context.Context, id models.FileID, f models.ImageFile) error {
+	var r imageFileRow
+	r.fromImageFile(f)
+	r.FileID = id
+	if _, err := imageFileTableMgr.insert(ctx, r); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (qb *FileStore) updateOrCreateImageFile(ctx context.Context, id models.FileID, f models.ImageFile) error {
+	exists, err := imageFileTableMgr.idExists(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return qb.createImageFile(ctx, id, f)
+	}
+
+	var r imageFileRow
+	r.fromImageFile(f)
+	r.FileID = id
+	if err := imageFileTableMgr.updateByID(ctx, id, r); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (qb *FileStore) selectDataset() *goqu.SelectDataset {
+	table := qb.table()
+
+	folderTable := folderTableMgr.table
+	fingerprintTable := fingerprintTableMgr.table
+	videoFileTable := videoFileTableMgr.table
+	audioFileTable := audioFileTableMgr.table
+	imageFileTable := imageFileTableMgr.table
+
+	zipFileTable := table.As("zip_files")
+	zipFolderTable := folderTable.As("zip_files_folders")
+
+	cols := []interface{}{
+		table.Col("id").As("file_id"),
+		table.Col("basename"),
+		table.Col("zip_file_id"),
+		table.Col("parent_folder_id"),
+		table.Col("size"),
+		table.Col("mod_time"),
+		table.Col("missing_since"),
+		table.Col("created_at").As("file_created_at"),
+		table.Col("updated_at").As("file_updated_at"),
+		folderTable.Col("path").As("parent_folder_path"),
+		fingerprintTable.Col("type").As("fingerprint_type"),
+		fingerprintTable.Col("fingerprint"),
+		zipFileTable.Col("basename").As("zip_basename"),
+		zipFolderTable.Col("path").As("zip_folder_path"),
+		// size is needed to open containing zip files
+		zipFileTable.Col("size").As("zip_size"),
+	}
+
+	cols = append(cols, videoFileQueryColumns()...)
+	cols = append(cols, audioFileQueryColumns()...)
+	cols = append(cols, imageFileQueryRow{}.columns(imageFileTableMgr)...)
+
+	ret := dialect.From(table).Select(cols...)
+
+	return ret.InnerJoin(
+		folderTable,
+		goqu.On(table.Col("parent_folder_id").Eq(folderTable.Col(idColumn))),
+	).LeftJoin(
+		fingerprintTable,
+		goqu.On(table.Col(idColumn).Eq(fingerprintTable.Col(fileIDColumn))),
+	).LeftJoin(
+		videoFileTable,
+		goqu.On(table.Col(idColumn).Eq(videoFileTable.Col(fileIDColumn))),
+	).LeftJoin(
+		audioFileTable,
+		goqu.On(table.Col(idColumn).Eq(audioFileTable.Col(fileIDColumn))),
+	).LeftJoin(
+		imageFileTable,
+		goqu.On(table.Col(idColumn).Eq(imageFileTable.Col(fileIDColumn))),
+	).LeftJoin(
+		zipFileTable,
+		goqu.On(table.Col("zip_file_id").Eq(zipFileTable.Col("id"))),
+	).LeftJoin(
+		zipFolderTable,
+		goqu.On(zipFileTable.Col("parent_folder_id").Eq(zipFolderTable.Col(idColumn))),
+	)
+}
+
+func (qb *FileStore) countDataset() *goqu.SelectDataset {
+	table := qb.table()
+
+	folderTable := folderTableMgr.table
+	fingerprintTable := fingerprintTableMgr.table
+	videoFileTable := videoFileTableMgr.table
+	audioFileTable := audioFileTableMgr.table
+	imageFileTable := imageFileTableMgr.table
+
+	zipFileTable := table.As("zip_files")
+	zipFolderTable := folderTable.As("zip_files_folders")
+
+	ret := dialect.From(table).Select(goqu.COUNT(goqu.DISTINCT(table.Col("id"))))
+
+	return ret.InnerJoin(
+		folderTable,
+		goqu.On(table.Col("parent_folder_id").Eq(folderTable.Col(idColumn))),
+	).LeftJoin(
+		fingerprintTable,
+		goqu.On(table.Col(idColumn).Eq(fingerprintTable.Col(fileIDColumn))),
+	).LeftJoin(
+		videoFileTable,
+		goqu.On(table.Col(idColumn).Eq(videoFileTable.Col(fileIDColumn))),
+	).LeftJoin(
+		audioFileTable,
+		goqu.On(table.Col(idColumn).Eq(audioFileTable.Col(fileIDColumn))),
+	).LeftJoin(
+		imageFileTable,
+		goqu.On(table.Col(idColumn).Eq(imageFileTable.Col(fileIDColumn))),
+	).LeftJoin(
+		zipFileTable,
+		goqu.On(table.Col("zip_file_id").Eq(zipFileTable.Col("id"))),
+	).LeftJoin(
+		zipFolderTable,
+		goqu.On(zipFileTable.Col("parent_folder_id").Eq(zipFolderTable.Col(idColumn))),
+	)
+}
+
+func (qb *FileStore) get(ctx context.Context, q *goqu.SelectDataset) (models.File, error) {
+	ret, err := qb.getMany(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(ret) == 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	return ret[0], nil
+}
+
+func (qb *FileStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]models.File, error) {
+	const single = false
+	var rows fileQueryRows
+	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
+		var f fileQueryRow
+		if err := r.StructScan(&f); err != nil {
+			return err
+		}
+
+		f.fingerprintQueryRow.correct()
+
+		rows = append(rows, f)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return rows.resolve(), nil
+}
+
+func (qb *FileStore) Find(ctx context.Context, ids ...models.FileID) ([]models.File, error) {
+	var files []models.File
+	for _, id := range ids {
+		file, err := qb.find(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+
+		if file == nil {
+			return nil, fmt.Errorf("file with id %d not found", id)
+		}
+
+		files = append(files, file)
+	}
+
+	return files, nil
+}
+
+func (qb *FileStore) find(ctx context.Context, id models.FileID) (models.File, error) {
+	q := qb.selectDataset().Where(qb.tableMgr.byID(id))
+
+	ret, err := qb.get(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("getting file by id %d: %w", id, err)
+	}
+
+	return ret, nil
+}
+
+// FindByPath returns the first file that matches the given path. The * wildcard is supported.
+func (qb *FileStore) FindByPath(ctx context.Context, p string, caseSensitive bool) (models.File, error) {
+
+	ret, err := qb.FindAllByPath(ctx, p, caseSensitive)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(ret) == 0 {
+		return nil, nil
+	}
+
+	return ret[0], nil
+}
+
+// FindAllByPath returns all the files that match the given path.
+// The * wildcard is supported.
+func (qb *FileStore) FindAllByPath(ctx context.Context, p string, caseSensitive bool) ([]models.File, error) {
+	// separate basename from path
+	basename := filepath.Base(p)
+	dirName := filepath.Dir(p)
+
+	table := qb.table()
+	folderTable := folderTableMgr.table
+
+	q := qb.selectDataset().Prepared(true).OrderAppend(goqu.I("files_fingerprints.type").Asc())
+
+	switch {
+	case pathHasWildcard(basename) || pathHasWildcard(dirName):
+		q = q.Where(
+			pathLike(folderTable.Col("path"), dirName),
+			pathLike(table.Col("basename"), basename),
+		)
+	case !caseSensitive:
+		q = q.Where(
+			pathEqNoCase(folderTable.Col("path"), dirName),
+			pathEqNoCase(table.Col("basename"), basename),
+		)
+	default:
+		q = q.Where(
+			folderTable.Col("path").Eq(dirName),
+			table.Col("basename").Eq(basename),
+		)
+	}
+
+	ret, err := qb.getMany(ctx, q)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("getting file by path %s: %w", p, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *FileStore) allInPaths(q *goqu.SelectDataset, p []string) *goqu.SelectDataset {
+	folderTable := folderTableMgr.table
+
+	var conds []exp.Expression
+	for _, pp := range p {
+		ppWildcard := pp + string(filepath.Separator) + "%"
+
+		conds = append(conds, folderTable.Col("path").Eq(pp), folderTable.Col("path").ILike(ppWildcard))
+	}
+
+	return q.Where(
+		goqu.Or(conds...),
+	)
+}
+
+// FindAllByPaths returns the all files that are within any of the given paths.
+// Returns all if limit is < 0.
+// Returns all files if p is empty.
+func (qb *FileStore) FindAllInPaths(ctx context.Context, p []string, includeZipContents bool, limit, offset int) ([]models.File, error) {
+	table := qb.table()
+	folderTable := folderTableMgr.table
+
+	q := dialect.From(table).Prepared(true).InnerJoin(
+		folderTable,
+		goqu.On(table.Col("parent_folder_id").Eq(folderTable.Col(idColumn))),
+	).Select(table.Col(idColumn))
+
+	q = qb.allInPaths(q, p)
+
+	if !includeZipContents {
+		q = q.Where(table.Col("zip_file_id").IsNull())
+	}
+
+	if limit > -1 {
+		q = q.Limit(uint(limit))
+	}
+
+	q = q.Offset(uint(offset))
+
+	ret, err := qb.findBySubquery(ctx, q)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("getting files by path %s: %w", p, err)
+	}
+
+	return ret, nil
+}
+
+// CountAllInPaths returns a count of all files that are within any of the given paths.
+// Returns count of all files if p is empty.
+func (qb *FileStore) CountAllInPaths(ctx context.Context, p []string) (int, error) {
+	q := qb.countDataset().Prepared(true)
+	q = qb.allInPaths(q, p)
+
+	return count(ctx, q)
+}
+
+func (qb *FileStore) FindMissingInPaths(ctx context.Context, p []string, missingSinceBefore *time.Time, limit, offset int) ([]models.File, error) {
+	table := qb.table()
+	folderTable := folderTableMgr.table
+
+	q := dialect.From(table).Prepared(true).InnerJoin(
+		folderTable,
+		goqu.On(table.Col("parent_folder_id").Eq(folderTable.Col(idColumn))),
+	).Select(table.Col(idColumn))
+
+	q = qb.allInPaths(q, p)
+
+	if missingSinceBefore != nil {
+		v := missingSinceBefore.Format(time.RFC3339)
+		q = q.Where(qb.table().Col("missing_since").Lt(v))
+	} else {
+		q = q.Where(qb.table().Col("missing_since").IsNotNull())
+	}
+
+	// stable order so that callers can page through the results
+	q = q.Order(table.Col(idColumn).Asc())
+
+	if limit > -1 {
+		q = q.Limit(uint(limit))
+	}
+
+	q = q.Offset(uint(offset))
+
+	ret, err := qb.findBySubquery(ctx, q)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("getting files by path %s: %w", p, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *FileStore) CountMissingInPaths(ctx context.Context, p []string, missingSinceBefore *time.Time) (int, error) {
+	q := qb.countDataset().Prepared(true)
+	q = qb.allInPaths(q, p)
+
+	if missingSinceBefore != nil {
+		v := missingSinceBefore.Format(time.RFC3339)
+		q = q.Where(qb.table().Col("missing_since").Lt(v))
+	} else {
+		q = q.Where(qb.table().Col("missing_since").IsNotNull())
+	}
+
+	return count(ctx, q)
+}
+
+func (qb *FileStore) findBySubquery(ctx context.Context, sq *goqu.SelectDataset) ([]models.File, error) {
+	table := qb.table()
+
+	q := qb.selectDataset().Prepared(true).OrderAppend(goqu.I("files_fingerprints.type").Asc()).Where(
+		table.Col(idColumn).Eq(
+			sq,
+		),
+	)
+
+	return qb.getMany(ctx, q)
+}
+
+func (qb *FileStore) FindByFingerprint(ctx context.Context, fp models.Fingerprint) ([]models.File, error) {
+	fingerprintTable := fingerprintTableMgr.table
+
+	fingerprints := fingerprintTable.As("fp")
+
+	sq := dialect.From(fingerprints).Select(fingerprints.Col(fileIDColumn)).Where(
+		fingerprints.Col("type").Eq(fp.Type),
+		fingerprints.Col("fingerprint").Eq(fp.Fingerprint),
+	)
+
+	return qb.findBySubquery(ctx, sq)
+}
+
+func (qb *FileStore) FindByFolderID(ctx context.Context, folderID models.FolderID) ([]models.File, error) {
+	table := qb.table()
+
+	q := qb.selectDataset().Prepared(true).OrderAppend(goqu.I("files_fingerprints.type").Asc()).Where(
+		table.Col("parent_folder_id").Eq(folderID),
+	)
+
+	return qb.getMany(ctx, q)
+}
+
+func (qb *FileStore) FindByZipFileID(ctx context.Context, zipFileID models.FileID) ([]models.File, error) {
+	table := qb.table()
+
+	q := qb.selectDataset().Prepared(true).OrderAppend(goqu.I("files_fingerprints.type").Asc()).Where(
+		table.Col("zip_file_id").Eq(zipFileID),
+	)
+
+	return qb.getMany(ctx, q)
+}
+
+// FindByFileInfo finds files that match the base name, size, and mod time of the given file.
+func (qb *FileStore) FindByFileInfo(ctx context.Context, info fs.FileInfo, size int64) ([]models.File, error) {
+	table := qb.table()
+
+	modTime := info.ModTime().Format(time.RFC3339)
+
+	q := qb.selectDataset().Prepared(true).OrderAppend(goqu.I("files_fingerprints.type").Asc()).Where(
+		table.Col("basename").Eq(info.Name()),
+		table.Col("size").Eq(size),
+		table.Col("mod_time").Eq(modTime),
+	)
+
+	return qb.getMany(ctx, q)
+}
+
+func (qb *FileStore) CountByFolderID(ctx context.Context, folderID models.FolderID) (int, error) {
+	table := qb.table()
+
+	q := qb.countDataset().Prepared(true).Where(
+		table.Col("parent_folder_id").Eq(folderID),
+	)
+
+	return count(ctx, q)
+}
+
+func (qb *FileStore) IsPrimary(ctx context.Context, fileID models.FileID) (bool, error) {
+	joinTables := []exp.IdentifierExpression{
+		scenesFilesJoinTable,
+		audiosFilesJoinTable,
+		galleriesFilesJoinTable,
+		imagesFilesJoinTable,
+	}
+
+	var sq *goqu.SelectDataset
+
+	for _, t := range joinTables {
+		qq := dialect.From(t).Select(t.Col(fileIDColumn)).Where(
+			t.Col(fileIDColumn).Eq(fileID),
+			t.Col("primary").IsTrue(),
+		)
+
+		if sq == nil {
+			sq = qq
+		} else {
+			sq = sq.Union(qq)
+		}
+	}
+
+	q := dialect.Select(goqu.COUNT("*").As("count")).Prepared(true).From(
+		sq,
+	)
+
+	var ret int
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return false, err
+	}
+
+	return ret > 0, nil
+}
+
+func (qb *FileStore) validateFilter(fileFilter *models.FileFilterType) error {
+	const and = "AND"
+	const or = "OR"
+	const not = "NOT"
+
+	if fileFilter.And != nil {
+		if fileFilter.Or != nil {
+			return illegalFilterCombination(and, or)
+		}
+		if fileFilter.Not != nil {
+			return illegalFilterCombination(and, not)
+		}
+
+		return qb.validateFilter(fileFilter.And)
+	}
+
+	if fileFilter.Or != nil {
+		if fileFilter.Not != nil {
+			return illegalFilterCombination(or, not)
+		}
+
+		return qb.validateFilter(fileFilter.Or)
+	}
+
+	if fileFilter.Not != nil {
+		return qb.validateFilter(fileFilter.Not)
+	}
+
+	return nil
+}
+
+func (qb *FileStore) Query(ctx context.Context, options models.FileQueryOptions) (*models.FileQueryResult, error) {
+	fileFilter := options.FileFilter
+	findFilter := options.FindFilter
+
+	if fileFilter == nil {
+		fileFilter = &models.FileFilterType{}
+	}
+	if findFilter == nil {
+		findFilter = &models.FindFilterType{}
+	}
+
+	query := qb.newQuery()
+	query.join(folderTable, "", "files.parent_folder_id = folders.id")
+
+	distinctIDs(&query, fileTable)
+
+	if q := findFilter.Q; q != nil && *q != "" {
+		filepathColumn := "folders.path || '" + string(filepath.Separator) + "' || files.basename"
+		searchColumns := []string{filepathColumn}
+		query.parseQueryString(searchColumns, *q)
+	}
+
+	if err := qb.validateFilter(fileFilter); err != nil {
+		return nil, err
+	}
+	filter := filterBuilderFromHandler(ctx, &fileFilterHandler{
+		fileFilter: fileFilter,
+	})
+
+	if err := query.addFilter(filter); err != nil {
+		return nil, err
+	}
+
+	if err := qb.setQuerySort(&query, findFilter); err != nil {
+		return nil, err
+	}
+	query.pagination = getPagination(findFilter)
+
+	result, err := qb.queryGroupedFields(ctx, options, query)
+	if err != nil {
+		return nil, fmt.Errorf("error querying aggregate fields: %w", err)
+	}
+
+	idsResult, err := query.findIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error finding IDs: %w", err)
+	}
+
+	result.IDs = make([]models.FileID, len(idsResult))
+	for i, id := range idsResult {
+		result.IDs[i] = models.FileID(id)
+	}
+
+	return result, nil
+}
+
+func (qb *FileStore) queryGroupedFields(ctx context.Context, options models.FileQueryOptions, query queryBuilder) (*models.FileQueryResult, error) {
+	if !options.Count && !options.TotalDuration && !options.Megapixels && !options.TotalSize {
+		// nothing to do - return empty result
+		return models.NewFileQueryResult(qb), nil
+	}
+
+	aggregateQuery := qb.newQuery()
+
+	if options.Count {
+		aggregateQuery.addColumn("COUNT(DISTINCT temp.id) as total")
+	}
+
+	if options.TotalDuration {
+		query.addJoins(
+			join{
+				table:    videoFileTable,
+				onClause: "files.id = video_files.file_id",
+			},
+		)
+		query.addColumn("COALESCE(video_files.duration, 0) as duration")
+		aggregateQuery.addColumn("COALESCE(SUM(temp.duration), 0) as duration")
+	}
+	if options.Megapixels {
+		query.addJoins(
+			join{
+				table:    imageFileTable,
+				onClause: "files.id = image_files.file_id",
+			},
+		)
+		query.addColumn("COALESCE(image_files.width, 0) * COALESCE(image_files.height, 0) as megapixels")
+		aggregateQuery.addColumn("COALESCE(SUM(temp.megapixels), 0) / 1000000 as megapixels")
+	}
+
+	if options.TotalSize {
+		query.addColumn("COALESCE(files.size, 0) as size")
+		aggregateQuery.addColumn("COALESCE(SUM(temp.size), 0) as size")
+	}
+
+	const includeSortPagination = false
+	aggregateQuery.from = fmt.Sprintf("(%s) as temp", query.toSQL(includeSortPagination))
+
+	out := struct {
+		Total      int
+		Duration   float64
+		Megapixels float64
+		Size       int64
+	}{}
+	if err := qb.repository.queryStruct(ctx, aggregateQuery.toSQL(includeSortPagination), query.allArgs(), &out); err != nil {
+		return nil, err
+	}
+
+	ret := models.NewFileQueryResult(qb)
+	ret.Count = out.Total
+	ret.Megapixels = out.Megapixels
+	ret.TotalDuration = out.Duration
+	ret.TotalSize = out.Size
+
+	return ret, nil
+}
+
+var fileSortOptions = sortOptions{
+	"created_at",
+	"id",
+	"path",
+	"random",
+	"missing_since",
+	"updated_at",
+}
+
+func (qb *FileStore) setQuerySort(query *queryBuilder, findFilter *models.FindFilterType) error {
+	if findFilter == nil || findFilter.Sort == nil || *findFilter.Sort == "" {
+		return nil
+	}
+	sort := findFilter.GetSort("path")
+
+	// CVE-2024-32231 - ensure sort is in the list of allowed sorts
+	if err := fileSortOptions.validateSort(sort); err != nil {
+		return err
+	}
+
+	direction := findFilter.GetDirection()
+	switch sort {
+	case "path":
+		// special handling for path
+		query.sort += fmt.Sprintf(" ORDER BY folders.path %s, files.basename %[1]s", direction)
+		query.addGroupBy("folders.path", "files.basename")
+	default:
+		add, agg := getSort(sort, direction, "files")
+		query.sort += add
+		query.addGroupBy(agg...)
+	}
+
+	return nil
+}
+
+func (qb *FileStore) captionRepository() *captionRepository {
+	return &captionRepository{
+		repository: repository{
+			tableName: videoCaptionsTable,
+			idColumn:  fileIDColumn,
+		},
+	}
+}
+
+func (qb *FileStore) GetCaptions(ctx context.Context, fileID models.FileID) ([]*models.VideoCaption, error) {
+	return qb.captionRepository().get(ctx, fileID)
+}
+
+func (qb *FileStore) UpdateCaptions(ctx context.Context, fileID models.FileID, captions []*models.VideoCaption) error {
+	return qb.captionRepository().replace(ctx, fileID, captions)
+}

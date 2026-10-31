@@ -10,6 +10,7 @@ import { ImageRecommendationRow } from "../Images/ImageRecommendationRow";
 import { GroupRecommendationRow } from "../Groups/GroupRecommendationRow";
 import { PerformerRecommendationRow } from "../Performers/PerformerRecommendationRow";
 import { SceneRecommendationRow } from "../Scenes/SceneRecommendationRow";
+import { AudioRecommendationRow } from "../Audios/AudioRecommendationRow";
 import { StudioRecommendationRow } from "../Studios/StudioRecommendationRow";
 import { TagRecommendationRow } from "../Tags/TagRecommendationRow";
 import { SceneMarkerRecommendationRow } from "../Scenes/SceneMarkerRecommendationRow";
@@ -31,6 +32,14 @@ const RecommendationRow: React.FC<IFilter> = ({ mode, filter, header }) => {
     case GQL.FilterMode.Scenes:
       return (
         <SceneRecommendationRow
+          isTouch={isTouch}
+          filter={filter}
+          header={header}
+        />
+      );
+    case GQL.FilterMode.Audios:
+      return (
+        <AudioRecommendationRow
           isTouch={isTouch}
           filter={filter}
           header={header}
@@ -94,7 +103,7 @@ const RecommendationRow: React.FC<IFilter> = ({ mode, filter, header }) => {
         />
       );
     default:
-      return <></>;
+      return null;
   }
 };
 
@@ -121,7 +130,7 @@ const SavedFilterResults: React.FC<ISavedFilterResults> = ({
   }, [data?.findSavedFilter, config]);
 
   if (loading || !data?.findSavedFilter || !filter) {
-    return <></>;
+    return null;
   }
 
   const { name, mode } = data.findSavedFilter;
@@ -155,7 +164,7 @@ const CustomFilterResults: React.FC<ICustomFilterProps> = ({
         { id: customFilter.message.id },
         customFilter.message.values
       )
-    : customFilter.title ?? "";
+    : (customFilter.title ?? "");
 
   return (
     <RecommendationRow
@@ -183,6 +192,6 @@ export const Control: React.FC<IProps> = ({ content }) => {
     case "CustomFilter":
       return <CustomFilterResults customFilter={content} />;
     default:
-      return <></>;
+      return null;
   }
 };

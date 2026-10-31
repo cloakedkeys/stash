@@ -1,3 +1,4 @@
+import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useCallback, useEffect } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import cloneDeep from "lodash-es/cloneDeep";
@@ -13,9 +14,12 @@ import { useFilteredItemList } from "../List/ItemList";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { DisplayMode } from "src/models/list-filter/types";
 import { ExportDialog } from "../Shared/ExportDialog";
+import { reverseMap, sortFieldToColumn } from "src/utils/data";
+import { useConfigurationContext } from "src/hooks/Config";
 import { DeleteEntityDialog } from "../Shared/DeleteEntityDialog";
 import { StudioTagger } from "../Tagger/studios/StudioTagger";
 import { StudioCardGrid } from "./StudioCardGrid";
+import { StudioListTable } from "./StudioListTable";
 import { View } from "../List/views";
 import { EditStudiosDialog } from "./EditStudiosDialog";
 import {
@@ -47,15 +51,48 @@ import { FavoriteStudioCriterionOption } from "src/models/list-filter/criteria/f
 import { Button } from "react-bootstrap";
 import cx from "classnames";
 
+// list table columns whose sort field has a different name
+const studioColumnSortMap: Record<string, string> = {
+  scene_count: "scenes_count",
+  image_count: "images_count",
+  gallery_count: "galleries_count",
+  favourite: "favorite",
+};
+// with child studio content shown, these columns show totals that include
+// sub-studios, so sort by those totals
+const studioChildColumnSortMap: Record<string, string> = {
+  ...studioColumnSortMap,
+  scene_count: "scenes_count_all",
+  o_counter: "o_counter_all",
+  performer_count: "performer_count_all",
+};
+
+function getColumnSortMap(showChildContent: boolean) {
+  return showChildContent ? studioChildColumnSortMap : studioColumnSortMap;
+}
+
+function useShowChildStudioContent() {
+  const { configuration } = useConfigurationContext();
+  return configuration?.ui?.showChildStudioContent ?? false;
+}
+
 const StudioList: React.FC<{
   studios: GQL.StudioDataFragment[];
   filter: ListFilterModel;
   selectedIds: Set<string>;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
   fromParent?: boolean;
+  onSort?: (value: string) => void;
 }> = PatchComponent(
   "StudioList",
-  ({ studios, filter, selectedIds, onSelectChange, fromParent }) => {
+  ({ studios, filter, selectedIds, onSelectChange, fromParent, onSort }) => {
+    const canModify = useCanModify();
+    const showChildContent = useShowChildStudioContent();
+    const activeSortColumn = sortFieldToColumn(
+      reverseMap(getColumnSortMap(showChildContent)),
+      filter.sortBy
+    );
+
     if (studios.length === 0 && filter.displayMode !== DisplayMode.Tagger) {
       return null;
     }
@@ -72,12 +109,21 @@ const StudioList: React.FC<{
       );
     }
     if (filter.displayMode === DisplayMode.List) {
-      return <h1>TODO</h1>;
+      return (
+        <StudioListTable
+          studios={studios}
+          selectedIds={selectedIds}
+          onSelectChange={onSelectChange}
+          onSort={onSort}
+          sortBy={activeSortColumn}
+          sortDirection={filter.sortDirection}
+        />
+      );
     }
     if (filter.displayMode === DisplayMode.Wall) {
       return <h1>TODO</h1>;
     }
-    if (filter.displayMode === DisplayMode.Tagger) {
+    if (canModify && filter.displayMode === DisplayMode.Tagger) {
       return <StudioTagger studios={studios} />;
     }
 
@@ -230,6 +276,21 @@ export const FilteredStudioList = PatchComponent(
 
     const { filter, setFilter } = filterState;
 
+    const showChildContent = useShowChildStudioContent();
+    const onSort = useCallback(
+      (value: string) => {
+        const backendField = getColumnSortMap(showChildContent)[value] ?? value;
+        if (filter.sortBy === backendField) {
+          setFilter(filter.toggleSortDirection());
+        } else {
+          const newFilter = filter.setSortBy(backendField);
+          newFilter.sortDirection = GQL.SortDirectionEnum.Asc;
+          setFilter(newFilter);
+        }
+      },
+      [filter, setFilter, showChildContent]
+    );
+
     const { effectiveFilter, result, cachedResult, items, totalCount } =
       queryResult;
 
@@ -348,11 +409,13 @@ export const FilteredStudioList = PatchComponent(
       },
       {
         text: intl.formatMessage({ id: "actions.export" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(false),
         isDisplayed: () => hasSelection,
       },
       {
         text: intl.formatMessage({ id: "actions.export_all" }),
+        requiredRole: GQL.RoleEnum.Admin,
         onClick: () => onExport(true),
       },
     ];
@@ -410,6 +473,7 @@ export const FilteredStudioList = PatchComponent(
               />
 
               <FilterTags
+                view={view}
                 criteria={filter.criteria}
                 onEditCriterion={(c) => showEditFilter(c.criterionOption.type)}
                 onRemoveCriterion={removeCriterion}
@@ -437,6 +501,7 @@ export const FilteredStudioList = PatchComponent(
                   studios={items}
                   selectedIds={selectedIds}
                   onSelectChange={onSelectChange}
+                  onSort={onSort}
                 />
               </LoadedContent>
 

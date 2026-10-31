@@ -15,6 +15,7 @@ type SystemStatus struct {
 	HomeDir        string           `json:"home_dir"`
 	FfmpegPath     *string          `json:"ffmpegPath"`
 	FfprobePath    *string          `json:"ffprobePath"`
+	LocalIPs       []string         `json:"localIPs"`
 }
 
 type SetupInput struct {
@@ -32,6 +33,10 @@ type SetupInput struct {
 	StoreBlobsInDatabase bool `json:"storeBlobsInDatabase"`
 	// Empty to indicate default
 	BlobsLocation string `json:"blobsLocation"`
+
+	// Initial credentials
+	InitialUsername string `json:"initialUsername"`
+	InitialPassword string `json:"initialPassword"`
 }
 
 type MigrateInput struct {

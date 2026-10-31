@@ -9,11 +9,70 @@ import (
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/scraper"
+	"github.com/stashapp/stash/pkg/session"
 	"golang.org/x/text/collate"
 )
 
 func (r *queryResolver) Configuration(ctx context.Context) (*ConfigResult, error) {
-	return makeConfigResult(), nil
+	ret := makeConfigResult()
+
+	ui, err := r.getUIConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ret.UI = ui
+
+	if !currentUserIsAdmin(ctx) {
+		redactConfig(ret)
+	}
+
+	// where the library is stored would show folders outside the limit
+	if models.LibraryLimitFromContext(ctx) != nil {
+		ret.General.Stashes = []*config.StashConfig{}
+	}
+
+	return ret, nil
+}
+
+func currentUserIsAdmin(ctx context.Context) bool {
+	// there is no current user when no credentials are required
+	u := session.GetCurrentUser(ctx)
+	return u == nil || u.Roles.HasRole(models.RoleEnumAdmin)
+}
+
+// redactConfig removes credentials and the layout of the server from the
+// settings, leaving what the interface needs to work for other accounts.
+func redactConfig(c *ConfigResult) {
+	g := c.General
+	g.DatabasePath = ""
+	g.BackupDirectoryPath = ""
+	g.DeleteTrashPath = ""
+	g.GeneratedPath = ""
+	g.MetadataPath = ""
+	g.ConfigFilePath = ""
+	g.ScrapersPath = ""
+	g.PluginsPath = ""
+	g.CachePath = ""
+	g.BlobsPath = ""
+	g.FfmpegPath = ""
+	g.FfprobePath = ""
+	g.PythonPath = ""
+	g.LogFile = nil
+	g.CustomPerformerImageLocation = nil
+
+	stashBoxes := make([]*models.StashBox, len(g.StashBoxes))
+	for i, box := range g.StashBoxes {
+		redacted := *box
+		redacted.APIKey = ""
+		stashBoxes[i] = &redacted
+	}
+	g.StashBoxes = stashBoxes
+
+	empty := ""
+	c.Interface.HandyKey = &empty
+	c.Scraping.ScraperCDPPath = &empty
+	c.Dlna.WhitelistedIPs = []string{}
 }
 
 func (r *queryResolver) Directory(ctx context.Context, path, locale *string) (*Directory, error) {
@@ -25,7 +84,7 @@ func (r *queryResolver) Directory(ctx context.Context, path, locale *string) (*D
 
 	var dirPath = ""
 	if path != nil {
-		dirPath = *path
+		dirPath = strings.Trim(*path, "\"")
 	}
 	currentDir := getDir(dirPath)
 	directories, err := listDir(col, currentDir)
@@ -65,7 +124,6 @@ func makeConfigResult() *ConfigResult {
 		Dlna:      makeConfigDLNAResult(),
 		Scraping:  makeConfigScrapingResult(),
 		Defaults:  makeConfigDefaultsResult(),
-		UI:        makeConfigUIResult(),
 	}
 }
 
@@ -79,65 +137,70 @@ func makeConfigGeneralResult() *ConfigGeneralResult {
 	customPerformerImageLocation := config.GetCustomPerformerImageLocation()
 
 	return &ConfigGeneralResult{
-		Stashes:                       config.GetStashPaths(),
-		DatabasePath:                  config.GetDatabasePath(),
-		BackupDirectoryPath:           config.GetBackupDirectoryPath(),
-		DeleteTrashPath:               config.GetDeleteTrashPath(),
-		GeneratedPath:                 config.GetGeneratedPath(),
-		MetadataPath:                  config.GetMetadataPath(),
-		ConfigFilePath:                config.GetConfigFile(),
-		ScrapersPath:                  config.GetScrapersPath(),
-		PluginsPath:                   config.GetPluginsPath(),
-		CachePath:                     config.GetCachePath(),
-		BlobsPath:                     config.GetBlobsPath(),
-		BlobsStorage:                  config.GetBlobsStorage(),
-		FfmpegPath:                    config.GetFFMpegPath(),
-		FfprobePath:                   config.GetFFProbePath(),
-		CalculateMd5:                  config.IsCalculateMD5(),
-		VideoFileNamingAlgorithm:      config.GetVideoFileNamingAlgorithm(),
-		ParallelTasks:                 config.GetParallelTasks(),
-		UseCustomSpriteInterval:       config.GetUseCustomSpriteInterval(),
-		SpriteInterval:                config.GetSpriteInterval(),
-		SpriteScreenshotSize:          config.GetSpriteScreenshotSize(),
-		MinimumSprites:                config.GetMinimumSprites(),
-		MaximumSprites:                config.GetMaximumSprites(),
-		PreviewAudio:                  config.GetPreviewAudio(),
-		PreviewSegments:               config.GetPreviewSegments(),
-		PreviewSegmentDuration:        config.GetPreviewSegmentDuration(),
-		PreviewExcludeStart:           config.GetPreviewExcludeStart(),
-		PreviewExcludeEnd:             config.GetPreviewExcludeEnd(),
-		PreviewPreset:                 config.GetPreviewPreset(),
-		TranscodeHardwareAcceleration: config.GetTranscodeHardwareAcceleration(),
-		MaxTranscodeSize:              &maxTranscodeSize,
-		MaxStreamingTranscodeSize:     &maxStreamingTranscodeSize,
-		WriteImageThumbnails:          config.IsWriteImageThumbnails(),
-		CreateImageClipsFromVideos:    config.IsCreateImageClipsFromVideos(),
-		GalleryCoverRegex:             config.GetGalleryCoverRegex(),
-		APIKey:                        config.GetAPIKey(),
-		Username:                      config.GetUsername(),
-		Password:                      config.GetPasswordHash(),
-		MaxSessionAge:                 config.GetMaxSessionAge(),
-		LogFile:                       &logFile,
-		LogOut:                        config.GetLogOut(),
-		LogLevel:                      config.GetLogLevel(),
-		LogAccess:                     config.GetLogAccess(),
-		LogFileMaxSize:                config.GetLogFileMaxSize(),
-		VideoExtensions:               config.GetVideoExtensions(),
-		ImageExtensions:               config.GetImageExtensions(),
-		GalleryExtensions:             config.GetGalleryExtensions(),
-		CreateGalleriesFromFolders:    config.GetCreateGalleriesFromFolders(),
-		Excludes:                      config.GetExcludes(),
-		ImageExcludes:                 config.GetImageExcludes(),
-		CustomPerformerImageLocation:  &customPerformerImageLocation,
-		StashBoxes:                    config.GetStashBoxes(),
-		PythonPath:                    config.GetPythonPath(),
-		TranscodeInputArgs:            config.GetTranscodeInputArgs(),
-		TranscodeOutputArgs:           config.GetTranscodeOutputArgs(),
-		LiveTranscodeInputArgs:        config.GetLiveTranscodeInputArgs(),
-		LiveTranscodeOutputArgs:       config.GetLiveTranscodeOutputArgs(),
-		DrawFunscriptHeatmapRange:     config.GetDrawFunscriptHeatmapRange(),
-		ScraperPackageSources:         config.GetScraperPackageSources(),
-		PluginPackageSources:          config.GetPluginPackageSources(),
+		Stashes:                        config.GetStashPaths(),
+		DatabasePath:                   config.GetDatabasePath(),
+		BackupDirectoryPath:            config.GetBackupDirectoryPath(),
+		DeleteTrashPath:                config.GetDeleteTrashPath(),
+		GeneratedPath:                  config.GetGeneratedPath(),
+		MetadataPath:                   config.GetMetadataPath(),
+		ConfigFilePath:                 config.GetConfigFile(),
+		ScrapersPath:                   config.GetScrapersPath(),
+		PluginsPath:                    config.GetPluginsPath(),
+		CachePath:                      config.GetCachePath(),
+		BlobsPath:                      config.GetBlobsPath(),
+		BlobsStorage:                   config.GetBlobsStorage(),
+		FfmpegPath:                     config.GetFFMpegPath(),
+		FfprobePath:                    config.GetFFProbePath(),
+		CalculateMd5:                   config.IsCalculateMD5(),
+		VideoFileNamingAlgorithm:       config.GetVideoFileNamingAlgorithm(),
+		ParallelTasks:                  config.GetParallelTasks(),
+		UseCustomSpriteInterval:        config.GetUseCustomSpriteInterval(),
+		SpriteInterval:                 config.GetSpriteInterval(),
+		SpriteScreenshotSize:           config.GetSpriteScreenshotSize(),
+		MinimumSprites:                 config.GetMinimumSprites(),
+		MaximumSprites:                 config.GetMaximumSprites(),
+		PreviewAudio:                   config.GetPreviewAudio(),
+		PreviewSegments:                config.GetPreviewSegments(),
+		PreviewSegmentDuration:         config.GetPreviewSegmentDuration(),
+		MaxMarkerPreviewDuration:       config.GetMaxMarkerPreviewDuration(),
+		DefaultMarkerPreviewDuration:   config.GetDefaultMarkerPreviewDuration(),
+		PreviewExcludeStart:            config.GetPreviewExcludeStart(),
+		PreviewExcludeEnd:              config.GetPreviewExcludeEnd(),
+		PreviewPreset:                  config.GetPreviewPreset(),
+		TranscodeHardwareAcceleration:  config.GetTranscodeHardwareAcceleration(),
+		GenerationHardwareAcceleration: config.GetGenerationHardwareAcceleration(),
+		MaxTranscodeSize:               &maxTranscodeSize,
+		MaxStreamingTranscodeSize:      &maxStreamingTranscodeSize,
+		WriteImageThumbnails:           config.IsWriteImageThumbnails(),
+		CreateImageClipsFromVideos:     config.IsCreateImageClipsFromVideos(),
+		GalleryCoverRegex:              config.GetGalleryCoverRegex(),
+		APIKey:                         "",
+		Username:                       nil,
+		Password:                       nil,
+		GuestAccountEnabled:            config.GetGuestUserEnabled(),
+		MaxSessionAge:                  config.GetMaxSessionAge(),
+		LogFile:                        &logFile,
+		LogOut:                         config.GetLogOut(),
+		LogLevel:                       config.GetLogLevel(),
+		LogAccess:                      config.GetLogAccess(),
+		LogFileMaxSize:                 config.GetLogFileMaxSize(),
+		VideoExtensions:                config.GetVideoExtensions(),
+		AudioExtensions:                config.GetAudioExtensions(),
+		ImageExtensions:                config.GetImageExtensions(),
+		GalleryExtensions:              config.GetGalleryExtensions(),
+		CreateGalleriesFromFolders:     config.GetCreateGalleriesFromFolders(),
+		Excludes:                       config.GetExcludes(),
+		ImageExcludes:                  config.GetImageExcludes(),
+		CustomPerformerImageLocation:   &customPerformerImageLocation,
+		StashBoxes:                     config.GetStashBoxes(),
+		PythonPath:                     config.GetPythonPath(),
+		TranscodeInputArgs:             config.GetTranscodeInputArgs(),
+		TranscodeOutputArgs:            config.GetTranscodeOutputArgs(),
+		LiveTranscodeInputArgs:         config.GetLiveTranscodeInputArgs(),
+		LiveTranscodeOutputArgs:        config.GetLiveTranscodeOutputArgs(),
+		DrawFunscriptHeatmapRange:      config.GetDrawFunscriptHeatmapRange(),
+		ScraperPackageSources:          config.GetScraperPackageSources(),
+		PluginPackageSources:           config.GetPluginPackageSources(),
 	}
 }
 
@@ -154,6 +217,7 @@ func makeConfigInterfaceResult() *ConfigInterfaceResult {
 	autostartVideo := config.GetAutostartVideo()
 	autostartVideoOnPlaySelected := config.GetAutostartVideoOnPlaySelected()
 	continuePlaylistDefault := config.GetContinuePlaylistDefault()
+	loopPlaylistDefault := config.GetLoopPlaylistDefault()
 	showStudioAsText := config.GetShowStudioAsText()
 	css := config.GetCSS()
 	cssEnabled := config.GetCSSEnabled()
@@ -183,6 +247,7 @@ func makeConfigInterfaceResult() *ConfigInterfaceResult {
 		ShowStudioAsText:             &showStudioAsText,
 		AutostartVideoOnPlaySelected: &autostartVideoOnPlaySelected,
 		ContinuePlaylistDefault:      &continuePlaylistDefault,
+		LoopPlaylistDefault:          &loopPlaylistDefault,
 		CSS:                          &css,
 		CSSEnabled:                   &cssEnabled,
 		Javascript:                   &javascript,
@@ -244,10 +309,6 @@ func makeConfigDefaultsResult() *ConfigDefaultSettingsResult {
 	}
 }
 
-func makeConfigUIResult() map[string]interface{} {
-	return config.GetInstance().GetUIConfiguration()
-}
-
 func (r *queryResolver) ValidateStashBoxCredentials(ctx context.Context, input config.StashBoxInput) (*StashBoxValidationResult, error) {
 	box := models.StashBox{Endpoint: input.Endpoint, APIKey: input.APIKey}
 	client := r.newStashBoxClient(box)
@@ -284,4 +345,23 @@ func (r *queryResolver) ValidateStashBoxCredentials(ctx context.Context, input c
 	}
 
 	return &result, nil
+}
+
+func (r *queryResolver) ValidateCDPPath(ctx context.Context, path *string) (*CDPValidationResult, error) {
+	cdpPath := config.GetInstance().GetScraperCDPPath()
+	if path != nil {
+		cdpPath = *path
+	}
+
+	status, err := scraper.ValidateCDPPath(ctx, cdpPath)
+	if err != nil {
+		return &CDPValidationResult{
+			Valid:  false,
+			Status: err.Error(),
+		}, nil
+	}
+	return &CDPValidationResult{
+		Valid:  true,
+		Status: status,
+	}, nil
 }

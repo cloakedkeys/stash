@@ -35,6 +35,9 @@ func (t *GenerateImageThumbnailTask) Start(ctx context.Context) {
 
 	thumbPath := GetInstance().Paths.Generated.GetThumbnailPath(t.Image.Checksum, models.DefaultGthumbWidth)
 	f := t.Image.Files.Primary()
+	if f == nil {
+		return
+	}
 	path := f.Base().Path
 
 	logger.Debugf("Generating thumbnail for %s", path)
@@ -46,6 +49,7 @@ func (t *GenerateImageThumbnailTask) Start(ctx context.Context) {
 		InputArgs:  c.GetTranscodeInputArgs(),
 		OutputArgs: c.GetTranscodeOutputArgs(),
 		Preset:     c.GetPreviewPreset().String(),
+		HWAccel:    c.GetGenerationHardwareAcceleration(),
 	}
 
 	encoder := image.NewThumbnailEncoder(mgr.FFMpeg, mgr.FFProbe, clipPreviewOptions)

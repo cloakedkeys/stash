@@ -13,6 +13,7 @@ import (
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
 
+	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 )
 
@@ -29,22 +30,29 @@ const (
 	groupURLColumn = "url"
 
 	groupRelationsTable = "groups_relations"
+
+	groupAliasesTable   = "group_aliases"
+	groupAliasColumn    = "alias"
+	groupsUserDataTable = "groups_user_data"
 )
+
+var groupUserData = userDataTable{
+	table:       groupsUserDataTable,
+	idColumn:    groupIDColumn,
+	objectTable: groupTable,
+}
 
 type groupRow struct {
 	ID            int         `db:"id" goqu:"skipinsert"`
 	Name          zero.String `db:"name"`
-	Aliases       zero.String `db:"aliases"`
 	Duration      null.Int    `db:"duration"`
 	Date          NullDate    `db:"date"`
 	DatePrecision null.Int    `db:"date_precision"`
-	// expressed as 1-100
-	Rating      null.Int    `db:"rating"`
-	StudioID    null.Int    `db:"studio_id,omitempty"`
-	Director    zero.String `db:"director"`
-	Description zero.String `db:"description"`
-	CreatedAt   Timestamp   `db:"created_at"`
-	UpdatedAt   Timestamp   `db:"updated_at"`
+	StudioID      null.Int    `db:"studio_id,omitempty"`
+	Director      zero.String `db:"director"`
+	Description   zero.String `db:"description"`
+	CreatedAt     Timestamp   `db:"created_at"`
+	UpdatedAt     Timestamp   `db:"updated_at"`
 
 	// not used in resolutions or updates
 	FrontImageBlob zero.String `db:"front_image_blob"`
@@ -54,11 +62,9 @@ type groupRow struct {
 func (r *groupRow) fromGroup(o models.Group) {
 	r.ID = o.ID
 	r.Name = zero.StringFrom(o.Name)
-	r.Aliases = zero.StringFrom(o.Aliases)
 	r.Duration = intFromPtr(o.Duration)
 	r.Date = NullDateFromDatePtr(o.Date)
 	r.DatePrecision = datePrecisionFromDatePtr(o.Date)
-	r.Rating = intFromPtr(o.Rating)
 	r.StudioID = intFromPtr(o.StudioID)
 	r.Director = zero.StringFrom(o.Director)
 	r.Description = zero.StringFrom(o.Synopsis)
@@ -70,10 +76,8 @@ func (r *groupRow) resolve() *models.Group {
 	ret := &models.Group{
 		ID:        r.ID,
 		Name:      r.Name.String,
-		Aliases:   r.Aliases.String,
 		Duration:  nullIntPtr(r.Duration),
 		Date:      r.Date.DatePtr(r.DatePrecision),
-		Rating:    nullIntPtr(r.Rating),
 		StudioID:  nullIntPtr(r.StudioID),
 		Director:  r.Director.String,
 		Synopsis:  r.Description.String,
@@ -84,16 +88,40 @@ func (r *groupRow) resolve() *models.Group {
 	return ret
 }
 
+// groupUserDataRow is a row of a user's data for a group.
+type groupUserDataRow struct {
+	GroupID int `db:"group_id"`
+	UserID  int `db:"user_id"`
+	// expressed as 1-100
+	Rating null.Int `db:"rating"`
+}
+
+func (r groupUserDataRow) apply(g *models.Group) {
+	g.Rating = nullIntPtr(r.Rating)
+}
+
+func groupUserDataRecord(o models.Group) goqu.Record {
+	return goqu.Record{
+		"rating": intFromPtr(o.Rating),
+	}
+}
+
+func groupUserDataPartialRecord(o models.GroupPartial) goqu.Record {
+	r := updateRecord{
+		Record: make(exp.Record),
+	}
+	r.setNullInt("rating", o.Rating)
+	return goqu.Record(r.Record)
+}
+
 type groupRowRecord struct {
 	updateRecord
 }
 
 func (r *groupRowRecord) fromPartial(o models.GroupPartial) {
 	r.setNullString("name", o.Name)
-	r.setNullString("aliases", o.Aliases)
 	r.setNullInt("duration", o.Duration)
 	r.setNullDate("date", "date_precision", o.Date)
-	r.setNullInt("rating", o.Rating)
 	r.setNullInt("studio_id", o.StudioID)
 	r.setNullString("director", o.Director)
 	r.setNullString("description", o.Synopsis)
@@ -104,6 +132,7 @@ func (r *groupRowRecord) fromPartial(o models.GroupPartial) {
 type groupRepositoryType struct {
 	repository
 	scenes repository
+	audios repository
 	tags   joinRepository
 }
 
@@ -115,6 +144,10 @@ var (
 		},
 		scenes: repository{
 			tableName: groupsScenesTable,
+			idColumn:  groupIDColumn,
+		},
+		audios: repository{
+			tableName: groupsAudiosTable,
 			idColumn:  groupIDColumn,
 		},
 		tags: joinRepository{
@@ -178,6 +211,16 @@ func (qb *GroupStore) Create(ctx context.Context, newObject *models.Group) error
 		return err
 	}
 
+	if newObject.Aliases.Loaded() {
+		if err := groupAliasesTableMgr.insertJoins(ctx, id, newObject.Aliases.List()); err != nil {
+			return err
+		}
+	}
+
+	if err := groupUserData.upsert(ctx, id, groupUserDataRecord(*newObject)); err != nil {
+		return err
+	}
+
 	if newObject.URLs.Loaded() {
 		const startPos = 0
 		if err := groupsURLsTableMgr.insertJoins(ctx, id, startPos, newObject.URLs.List()); err != nil {
@@ -222,6 +265,16 @@ func (qb *GroupStore) UpdatePartial(ctx context.Context, id int, partial models.
 		}
 	}
 
+	if partial.Aliases != nil {
+		if err := groupAliasesTableMgr.modifyJoins(ctx, id, partial.Aliases.Values, partial.Aliases.Mode); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := groupUserData.upsert(ctx, id, groupUserDataPartialRecord(partial)); err != nil {
+		return nil, err
+	}
+
 	if partial.URLs != nil {
 		if err := groupsURLsTableMgr.modifyJoins(ctx, id, partial.URLs.Values, partial.URLs.Mode); err != nil {
 			return nil, err
@@ -252,6 +305,16 @@ func (qb *GroupStore) Update(ctx context.Context, updatedObject *models.Group) e
 	r.fromGroup(*updatedObject)
 
 	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
+		return err
+	}
+
+	if updatedObject.Aliases.Loaded() {
+		if err := groupAliasesTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.Aliases.List()); err != nil {
+			return err
+		}
+	}
+
+	if err := groupUserData.upsert(ctx, updatedObject.ID, groupUserDataRecord(*updatedObject)); err != nil {
 		return err
 	}
 
@@ -295,6 +358,11 @@ func (qb *GroupStore) Find(ctx context.Context, id int) (*models.Group, error) {
 }
 
 func (qb *GroupStore) FindMany(ctx context.Context, ids []int) ([]*models.Group, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Groups, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
 	ret := make([]*models.Group, len(ids))
 
 	table := qb.table()
@@ -351,6 +419,8 @@ func (qb *GroupStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.G
 }
 
 func (qb *GroupStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Group, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Groups)
+
 	const single = false
 	var ret []*models.Group
 	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
@@ -367,7 +437,41 @@ func (qb *GroupStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*mo
 		return nil, err
 	}
 
+	if err := qb.loadUserData(ctx, ret); err != nil {
+		return nil, err
+	}
+
 	return ret, nil
+}
+
+// loadUserData sets the current user's data on the provided groups.
+func (qb *GroupStore) loadUserData(ctx context.Context, groups []*models.Group) error {
+	if _, ok := models.UserIDFromContext(ctx); !ok || len(groups) == 0 {
+		return nil
+	}
+
+	byID := make(map[int]*models.Group, len(groups))
+	ids := make([]int, len(groups))
+	for i, g := range groups {
+		byID[g.ID] = g
+		ids[i] = g.ID
+	}
+
+	return batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := groupUserData.selectForUser(ctx, batch)
+		const single = false
+		return queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+			var r groupUserDataRow
+			if err := rows.StructScan(&r); err != nil {
+				return err
+			}
+
+			if g := byID[r.GroupID]; g != nil {
+				r.apply(g)
+			}
+			return nil
+		})
+	})
 }
 
 func (qb *GroupStore) FindByName(ctx context.Context, name string, nocase bool) (*models.Group, error) {
@@ -438,10 +542,14 @@ func (qb *GroupStore) makeQuery(ctx context.Context, groupFilter *models.GroupFi
 	}
 
 	query := groupRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Groups); ok {
+		query.addWhere(where)
+	}
 	distinctIDs(&query, groupTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
-		searchColumns := []string{"groups.name", "groups.aliases"}
+		query.join(groupAliasesTable, "", "group_aliases.group_id = groups.id")
+		searchColumns := []string{"groups.name", "group_aliases.alias"}
 		query.parseQueryString(searchColumns, *q)
 	}
 
@@ -453,7 +561,7 @@ func (qb *GroupStore) makeQuery(ctx context.Context, groupFilter *models.GroupFi
 		return nil, err
 	}
 
-	if err := qb.setGroupSort(&query, findFilter); err != nil {
+	if err := qb.setGroupSort(ctx, &query, findFilter); err != nil {
 		return nil, err
 	}
 
@@ -499,13 +607,16 @@ var groupSortOptions = sortOptions{
 	"random",
 	"rating",
 	"scenes_count",
+	"audios_count",
 	"o_counter",
+	"performer_count",
+	"sub_group_description",
 	"sub_group_order",
 	"tag_count",
 	"updated_at",
 }
 
-func (qb *GroupStore) setGroupSort(query *queryBuilder, findFilter *models.FindFilterType) error {
+func (qb *GroupStore) setGroupSort(ctx context.Context, query *queryBuilder, findFilter *models.FindFilterType) error {
 	var sort string
 	var direction string
 	if findFilter == nil {
@@ -532,12 +643,28 @@ func (qb *GroupStore) setGroupSort(query *queryBuilder, findFilter *models.FindF
 			query.joinSort(groupRelationsTable, "", "groups.id = groups_relations.sub_id")
 			query.sortAndPagination += getSort("order_index", direction, groupRelationsTable)
 		}
+	case "sub_group_description":
+		// as above, we need to handle parent groups differently here
+		const clause = " ORDER BY COALESCE(%s.description, '') COLLATE NATURAL_CI %s"
+		if query.hasJoin("groups_parents") {
+			query.sortAndPagination += fmt.Sprintf(clause, "groups_parents", direction)
+		} else {
+			query.joinSort(groupRelationsTable, "", "groups.id = groups_relations.sub_id")
+			query.sortAndPagination += fmt.Sprintf(clause, groupRelationsTable, direction)
+		}
 	case "tag_count":
 		query.sortAndPagination += getCountSort(groupTable, groupsTagsTable, groupIDColumn, direction)
 	case "scenes_count": // generic getSort won't work for this
 		query.sortAndPagination += getCountSort(groupTable, groupsScenesTable, groupIDColumn, direction)
+	case "audios_count": // generic getSort won't work for this
+		query.sortAndPagination += getCountSort(groupTable, groupsAudiosTable, groupIDColumn, direction)
 	case "o_counter":
-		query.sortAndPagination += qb.sortByOCounter(direction)
+		query.sortAndPagination += qb.sortByOCounter(ctx, direction)
+	case "rating":
+		groupUserData.joinSort(ctx, query)
+		query.sortAndPagination += getSort(sort, direction, groupsUserDataTable)
+	case "performer_count":
+		query.sortAndPagination += " ORDER BY (" + selectGroupPerformerCountSQL + ") " + getSortDirection(direction)
 	default:
 		query.sortAndPagination += getSort(sort, direction, "groups")
 	}
@@ -548,6 +675,8 @@ func (qb *GroupStore) setGroupSort(query *queryBuilder, findFilter *models.FindF
 }
 
 func (qb *GroupStore) queryGroups(ctx context.Context, query string, args []interface{}) ([]*models.Group, error) {
+	query = librarylimit.WrapQuery(ctx, query, librarylimit.Groups)
+
 	const single = false
 	var ret []*models.Group
 	if err := groupRepository.queryFunc(ctx, query, args, single, func(r *sqlx.Rows) error {
@@ -561,6 +690,10 @@ func (qb *GroupStore) queryGroups(ctx context.Context, query string, args []inte
 		ret = append(ret, s)
 		return nil
 	}); err != nil {
+		return nil, err
+	}
+
+	if err := qb.loadUserData(ctx, ret); err != nil {
 		return nil, err
 	}
 
@@ -716,7 +849,11 @@ func (qb *GroupStore) FindInAncestors(ctx context.Context, ascestorIDs []int, id
 	return ret, nil
 }
 
-func (qb *GroupStore) sortByOCounter(direction string) string {
+func (qb *GroupStore) sortByOCounter(ctx context.Context, direction string) string {
 	// need to sum the o_counter from scenes and images
-	return " ORDER BY (" + selectGroupOCountSQL + ") " + direction
+	return " ORDER BY (" + fmt.Sprintf(selectGroupOCountSQL, currentUserID(ctx)) + ") " + direction
+}
+
+func (qb *GroupStore) GetAliases(ctx context.Context, groupId int) ([]string, error) {
+	return groupAliasesTableMgr.get(ctx, groupId)
 }

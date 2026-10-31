@@ -72,6 +72,7 @@ type PluginCSP struct {
 	ScriptSrc  []string `json:"script-src" yaml:"script-src"`
 	StyleSrc   []string `json:"style-src" yaml:"style-src"`
 	ConnectSrc []string `json:"connect-src" yaml:"connect-src"`
+	MediaSrc   []string `json:"media-src" yaml:"media-src"`
 }
 
 type UIConfig struct {
@@ -81,6 +82,13 @@ type UIConfig struct {
 
 	// Content Security Policy configuration for the plugin.
 	CSP PluginCSP `yaml:"csp"`
+
+	// CSPSettings enables the csp_ plugin setting prefix for this plugin.
+	// When true, any plugin setting whose key starts with "csp_" and whose
+	// value is a valid http/https URL will be added to the connect-src
+	// CSP directive. This is an opt-in mechanism to prevent accidental
+	// namespace collisions with non-CSP settings.
+	CSPSettings bool `yaml:"csp-settings"`
 
 	// Javascript files that will be injected into the stash UI.
 	// These may be URLs or paths to files relative to the plugin configuration file.
@@ -158,6 +166,10 @@ type SettingConfig struct {
 	// defaults to key name
 	DisplayName string `yaml:"displayName"`
 	Description string `yaml:"description"`
+	// Public settings can be read by accounts that aren't administrators, so
+	// interface plugins work for them. Settings can hold credentials, so they
+	// are private unless the plugin says otherwise.
+	Public bool `yaml:"public"`
 }
 
 func (c Config) getPluginTasks(includePlugin bool) []*PluginTask {
@@ -228,6 +240,7 @@ func (c Config) getPluginSettings() []PluginSetting {
 			DisplayName: o.DisplayName,
 			Description: o.Description,
 			Type:        t,
+			Public:      o.Public,
 		}
 
 		ret = append(ret, s)
@@ -260,6 +273,7 @@ func (c Config) toPlugin() *Plugin {
 			Javascript:     c.UI.getJavascriptFiles(c),
 			CSS:            c.UI.getCSSFiles(c),
 			CSP:            c.UI.CSP,
+			CSPSettings:    c.UI.CSPSettings,
 			Assets:         c.UI.Assets,
 		},
 		Settings:   c.getPluginSettings(),

@@ -1,3 +1,4 @@
+import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useEffect, useMemo, useState } from "react";
 import { Button, Tabs, Tab, Col, Row } from "react-bootstrap";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -9,6 +10,7 @@ import * as GQL from "src/core/generated-graphql";
 import {
   useFindPerformer,
   usePerformerUpdate,
+  usePerformerUserDataUpdate,
   usePerformerDestroy,
   mutateMetadataAutoTag,
 } from "src/core/StashService";
@@ -23,6 +25,7 @@ import {
   PerformerDetailsPanel,
 } from "./PerformerDetailsPanel";
 import { PerformerScenesPanel } from "./PerformerScenesPanel";
+import { PerformerAudiosPanel } from "./PerformerAudiosPanel";
 import { PerformerGalleriesPanel } from "./PerformerGalleriesPanel";
 import { PerformerGroupsPanel } from "./PerformerGroupsPanel";
 import { PerformerImagesPanel } from "./PerformerImagesPanel";
@@ -64,6 +67,7 @@ interface IPerformerParams {
 const validTabs = [
   "default",
   "scenes",
+  "audios",
   "galleries",
   "images",
   "groups",
@@ -82,12 +86,14 @@ const PerformerTabs: React.FC<{
 }> = ({ tabKey, performer, abbreviateCounter }) => {
   const populatedDefaultTab = useMemo(() => {
     let ret: TabKey = "scenes";
-    if (performer.scene_count == 0) {
-      if (performer.gallery_count != 0) {
+    if (performer.scene_count === 0) {
+      if (performer.audio_count !== 0) {
+        ret = "audios";
+      } else if (performer.gallery_count !== 0) {
         ret = "galleries";
-      } else if (performer.image_count != 0) {
+      } else if (performer.image_count !== 0) {
         ret = "images";
-      } else if (performer.group_count != 0) {
+      } else if (performer.group_count !== 0) {
         ret = "groups";
       }
     }
@@ -95,7 +101,7 @@ const PerformerTabs: React.FC<{
     return ret;
   }, [performer]);
 
-  const { setTabKey } = useTabKey({
+  const { activeTabKey, setTabKey } = useTabKey({
     tabKey,
     validTabs,
     defaultTabKey: populatedDefaultTab,
@@ -119,7 +125,7 @@ const PerformerTabs: React.FC<{
       id="performer-tabs"
       mountOnEnter
       unmountOnExit
-      activeKey={tabKey}
+      activeKey={activeTabKey}
       onSelect={setTabKey}
     >
       <Tab
@@ -133,7 +139,23 @@ const PerformerTabs: React.FC<{
         }
       >
         <PerformerScenesPanel
-          active={tabKey === "scenes"}
+          active={activeTabKey === "scenes"}
+          performer={performer}
+        />
+      </Tab>
+
+      <Tab
+        eventKey="audios"
+        title={
+          <TabTitleCounter
+            messageID="audios"
+            count={performer.audio_count}
+            abbreviateCounter={abbreviateCounter}
+          />
+        }
+      >
+        <PerformerAudiosPanel
+          active={activeTabKey === "audios"}
           performer={performer}
         />
       </Tab>
@@ -149,7 +171,7 @@ const PerformerTabs: React.FC<{
         }
       >
         <PerformerGalleriesPanel
-          active={tabKey === "galleries"}
+          active={activeTabKey === "galleries"}
           performer={performer}
         />
       </Tab>
@@ -165,7 +187,7 @@ const PerformerTabs: React.FC<{
         }
       >
         <PerformerImagesPanel
-          active={tabKey === "images"}
+          active={activeTabKey === "images"}
           performer={performer}
         />
       </Tab>
@@ -181,7 +203,7 @@ const PerformerTabs: React.FC<{
         }
       >
         <PerformerGroupsPanel
-          active={tabKey === "groups"}
+          active={activeTabKey === "groups"}
           performer={performer}
         />
       </Tab>
@@ -197,7 +219,7 @@ const PerformerTabs: React.FC<{
         }
       >
         <PerformerAppearsWithPanel
-          active={tabKey === "appearswith"}
+          active={activeTabKey === "appearswith"}
           performer={performer}
         />
       </Tab>
@@ -276,6 +298,8 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
     );
 
     const [updatePerformer] = usePerformerUpdate();
+
+    const [setPerformerUserData] = usePerformerUserDataUpdate();
     const [deletePerformer, { loading: isDestroying }] = usePerformerDestroy();
 
     async function onAutoTag() {
@@ -320,9 +344,11 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
       setRating
     );
 
+    const canModify = useCanModify();
+
     // set up hotkeys
     useEffect(() => {
-      Mousetrap.bind("e", () => toggleEditing());
+      if (canModify) Mousetrap.bind("e", () => toggleEditing());
       Mousetrap.bind("f", () => setFavorite(!performer.favorite));
       Mousetrap.bind(",", () => setCollapsed(!collapsed));
 
@@ -375,7 +401,7 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
 
     function setFavorite(v: boolean) {
       if (performer.id) {
-        updatePerformer({
+        setPerformerUserData({
           variables: {
             input: {
               id: performer.id,
@@ -388,7 +414,7 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
 
     function setRating(v: number | null) {
       if (performer.id) {
-        updatePerformer({
+        setPerformerUserData({
           variables: {
             input: {
               id: performer.id,

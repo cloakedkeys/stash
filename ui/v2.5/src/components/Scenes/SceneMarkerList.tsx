@@ -1,14 +1,14 @@
 import cloneDeep from "lodash-es/cloneDeep";
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import { useHistory } from "react-router-dom";
 import { FormattedMessage, useIntl } from "react-intl";
 import Mousetrap from "mousetrap";
 import * as GQL from "src/core/generated-graphql";
 import {
   queryFindSceneMarkers,
+  queryFindSceneMarkersByID,
   useFindSceneMarkers,
 } from "src/core/StashService";
-import NavUtils from "src/utils/navigation";
 import { useFilteredItemList } from "../List/ItemList";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { DisplayMode } from "src/models/list-filter/types";
@@ -47,6 +47,9 @@ import useFocus from "src/utils/focus";
 import { SidebarPerformersFilter } from "../List/Filters/PerformersFilter";
 import { SidebarTagsFilter } from "../List/Filters/TagsFilter";
 import { Button } from "react-bootstrap";
+import { IPlaySceneOptions, SceneQueue } from "src/models/sceneQueue";
+import { useConfigurationContext } from "src/hooks/Config";
+import { faPlay } from "@fortawesome/free-solid-svg-icons";
 
 const SceneMarkerList: React.FC<{
   markers: GQL.SceneMarkerDataFragment[];
@@ -56,6 +59,11 @@ const SceneMarkerList: React.FC<{
 }> = PatchComponent(
   "SceneMarkerList",
   ({ markers, filter, selectedIds, onSelectChange }) => {
+    const queue = useMemo(
+      () => SceneQueue.fromListFilterModel(filter),
+      [filter]
+    );
+
     if (markers.length === 0) {
       return null;
     }
@@ -67,6 +75,7 @@ const SceneMarkerList: React.FC<{
           zoomIndex={filter.zoomIndex}
           selectedIds={selectedIds}
           onSelectChange={onSelectChange}
+          sceneQueue={queue}
         />
       );
     }
@@ -75,6 +84,7 @@ const SceneMarkerList: React.FC<{
       return (
         <SceneMarkerCardGrid
           markers={markers}
+          queue={queue}
           zoomIndex={filter.zoomIndex}
           selectedIds={selectedIds}
           onSelectChange={onSelectChange}
@@ -86,8 +96,58 @@ const SceneMarkerList: React.FC<{
   }
 );
 
-function usePlayRandom(filter: ListFilterModel, count: number) {
+function usePlayMarker() {
   const history = useHistory();
+
+  const { configuration: config } = useConfigurationContext();
+  const cont = config?.interface.continuePlaylistDefault ?? false;
+  const autoPlay = config?.interface.autostartVideoOnPlaySelected ?? false;
+
+  const playMarker = useCallback(
+    (
+      queue: SceneQueue,
+      marker: Pick<
+        GQL.SceneMarkerDataFragment,
+        "seconds" | "end_seconds" | "scene"
+      >,
+      options?: IPlaySceneOptions
+    ) => {
+      history.push(
+        queue.makeLink(marker.scene.id, {
+          autoPlay,
+          continue: cont,
+          start: marker.seconds,
+          end: marker.end_seconds,
+          ...options,
+        })
+      );
+    },
+    [history, cont, autoPlay]
+  );
+
+  return playMarker;
+}
+
+function usePlaySelected(selectedIds: Set<string>) {
+  const playMarker = usePlayMarker();
+
+  const playSelected = useCallback(async () => {
+    // populate queue and go to the first marker
+    const sceneMarkerIDs = Array.from(selectedIds.values());
+    const queue = SceneQueue.fromSceneMarkerIDList(sceneMarkerIDs);
+
+    const query = await queryFindSceneMarkersByID([Number(sceneMarkerIDs[0])]);
+    const marker = query.data.findSceneMarkers.scene_markers[0];
+    if (marker) {
+      playMarker(queue, marker);
+    }
+  }, [selectedIds, playMarker]);
+
+  return playSelected;
+}
+
+function usePlayRandom(filter: ListFilterModel, count: number) {
+  const playMarker = usePlayMarker();
 
   const playRandom = useCallback(async () => {
     // query for a random scene
@@ -106,11 +166,11 @@ function usePlayRandom(filter: ListFilterModel, count: number) {
     const queryResults = await queryFindSceneMarkers(filterCopy);
     const marker = queryResults.data.findSceneMarkers.scene_markers[index];
     if (marker) {
-      // navigate to the scene player page
-      const url = NavUtils.makeSceneMarkerUrl(marker);
-      history.push(url);
+      // navigate to the scene player page, queueing the rest of the markers
+      const queue = SceneQueue.fromListFilterModel(filterCopy);
+      playMarker(queue, marker, { sceneIndex: index });
     }
-  }, [filter, count, history]);
+  }, [filter, count, playMarker]);
 
   return playRandom;
 }
@@ -308,7 +368,7 @@ export const FilteredSceneMarkerList = PatchComponent(
         Mousetrap.unbind("e");
         Mousetrap.unbind("d d");
       };
-    }, [onSelectAll, onSelectNone, hasSelection, onEdit, onDelete]);
+    }, [hasSelection, onEdit, onDelete]);
 
     useZoomKeybinds({
       zoomIndex: filter.zoomIndex,
@@ -316,6 +376,7 @@ export const FilteredSceneMarkerList = PatchComponent(
     });
 
     const playRandom = usePlayRandom(effectiveFilter, totalCount);
+    const playSelected = usePlaySelected(selectedIds);
 
     const convertedExtraOperations: IListFilterOperation[] =
       extraOperations.map((o) => ({
@@ -344,6 +405,12 @@ export const FilteredSceneMarkerList = PatchComponent(
         text: intl.formatMessage({ id: "actions.invert_selection" }),
         onClick: () => onInvertSelection(),
         isDisplayed: () => totalCount > 0,
+      },
+      {
+        text: intl.formatMessage({ id: "actions.play_selected" }),
+        onClick: playSelected,
+        isDisplayed: () => hasSelection,
+        icon: faPlay,
       },
       {
         text: intl.formatMessage({ id: "actions.play_random" }),
@@ -417,6 +484,7 @@ export const FilteredSceneMarkerList = PatchComponent(
               />
 
               <FilterTags
+                view={view}
                 criteria={filter.criteria}
                 onEditCriterion={(c) => showEditFilter(c.criterionOption.type)}
                 onRemoveCriterion={removeCriterion}

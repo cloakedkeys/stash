@@ -2,11 +2,8 @@ import { IntlShape } from "react-intl";
 import { ITypename } from "src/utils/data";
 import { ImageWallOptions } from "src/utils/imageWall";
 import { RatingSystemOptions } from "src/utils/rating";
-import {
-  FilterMode,
-  SavedFilterDataFragment,
-  SortDirectionEnum,
-} from "./generated-graphql";
+import { FilterMode, SortDirectionEnum } from "./generated-graphql";
+import type { SavedFilterDataFragment } from "./generated-graphql";
 import { View } from "src/components/List/views";
 import { ITaggerConfig } from "src/components/Tagger/constants";
 
@@ -37,6 +34,13 @@ export type DefaultFilters = {
 
 export type FrontPageContent = ISavedFilterRow | ICustomFilter;
 
+export interface ISavedFilterMenuItem {
+  id: string;
+  label: string;
+  filterId: string;
+  mode: FilterMode;
+}
+
 export const defaultMaxOptionsShown = 200;
 export const defaultPreviewVolume = 25;
 
@@ -54,6 +58,9 @@ export interface IUIConfig {
   previewVolume?: number;
 
   abbreviateCounters?: boolean;
+
+  // if true, the scene edit form saves when a changed selection field loses focus, or right after a stash ID or a calendar date is picked
+  autoSaveConfirmedFields?: boolean;
 
   ratingSystemOptions?: RatingSystemOptions;
 
@@ -73,6 +80,9 @@ export interface IUIConfig {
   // if true the chromecast option will enabled
   enableChromecast?: boolean;
 
+  // if true the slideshow autostarts when opening a gallery's lightbox from the galleries page
+  autostartGallerySlideshow?: boolean;
+
   // if true the fullscreen mobile media auto-rotate option will be disabled
   disableMobileMediaAutoRotateEnabled?: boolean;
 
@@ -88,6 +98,14 @@ export interface IUIConfig {
 
   showAbLoopControls?: boolean;
 
+  // resolution and stream type automatically selected when streaming a scene.
+  defaultStreamingResolution?: string;
+  defaultStreamType?: string;
+
+  // if true, deleting a scene from the scene player page loads the next scene
+  // in the queue instead of returning to the previous page
+  playNextOnDelete?: boolean;
+
   // maximum number of items to shown in the dropdown list - defaults to 200
   // upper limit of 1000
   maxOptionsShown?: number;
@@ -99,11 +117,16 @@ export interface IUIConfig {
   vrTag?: string;
 
   pinnedFilters?: Record<string, string[]>;
+  savedFilterMenuItems?: ISavedFilterMenuItem[];
   tableColumns?: Record<string, string[]>;
+  pinnedSortBy?: Record<string, string[]>;
 
   advancedMode?: boolean;
 
-  taskDefaults?: Record<string, {}>;
+  taskDefaults?: Record<string, object>;
+
+  // if true the auto tag confirmation warning is skipped
+  disableAutoTagWarning?: boolean;
 
   defaultFilters?: DefaultFilters;
 
@@ -168,6 +191,8 @@ export function generatePremadeFrontPageContent(intl: IntlShape) {
     recentlyAdded(intl, FilterMode.Scenes, "scenes"),
     recentlyReleased(intl, FilterMode.Galleries, "galleries"),
     recentlyAdded(intl, FilterMode.Galleries, "galleries"),
+    recentlyReleased(intl, FilterMode.Audios, "audios"),
+    recentlyAdded(intl, FilterMode.Audios, "audios"),
     recentlyAdded(intl, FilterMode.Images, "images"),
     recentlyReleased(intl, FilterMode.Groups, "groups"),
     recentlyAdded(intl, FilterMode.Groups, "groups"),

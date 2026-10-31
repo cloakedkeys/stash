@@ -10,10 +10,12 @@ ifdef IS_WIN_SHELL
   RM := del /s /q
   RMDIR := rmdir /s /q
   NOOP := @@
+  PREFIX := $(USERPROFILE)\\bin
 else
   RM := rm -f
   RMDIR := rm -rf
   NOOP := @:
+  PREFIX := $(HOME)/.local
 endif
 
 # set LDFLAGS environment variable to any extra ldflags required
@@ -27,7 +29,10 @@ ifdef OUTPUT
   PHASHER_OUTPUT := $(OUTPUT)
 endif
 ifdef STASH_OUTPUT
+  STASH_BINARY := $(STASH_OUTPUT)
   STASH_OUTPUT := -o $(STASH_OUTPUT)
+else
+  STASH_BINARY := stash
 endif
 ifdef PHASHER_OUTPUT
   PHASHER_OUTPUT := -o $(PHASHER_OUTPUT)
@@ -40,9 +45,6 @@ GO_BUILD_FLAGS := $(GO_BUILD_FLAGS)
 GO_BUILD_TAGS := $(GO_BUILD_TAGS)
 GO_BUILD_TAGS += sqlite_stat4 sqlite_math_functions
 
-# set STASH_NOLEGACY environment variable or uncomment to disable legacy browser support
-# STASH_NOLEGACY := true
-
 # set STASH_SOURCEMAPS environment variable or uncomment to enable UI sourcemaps
 # STASH_SOURCEMAPS := true
 
@@ -53,8 +55,14 @@ ifndef COMPILER_IMAGE
   COMPILER_IMAGE := ghcr.io/stashapp/compiler:latest
 endif
 
+# cannot really parallelise the release target
+# generate requires pre-ui, ui requires generate and build-release requires ui, so they must be run sequentially
 .PHONY: release
-release: pre-ui generate ui build-release
+release: 
+	$(MAKE) pre-ui
+	$(MAKE) generate
+	$(MAKE) ui
+	$(MAKE) build-release
 
 # targets to set various build flags
 # use combinations on the make command-line to configure a build, e.g.:
@@ -95,10 +103,21 @@ flags-static-windows:
 	$(eval GO_BUILD_FLAGS += -buildmode=pie)
 	$(eval GO_BUILD_TAGS += sqlite_omit_load_extension osusergo)
 
+# getDate.go must run on the host, even when a build-cc target exports a different GOOS/GOARCH.
+# cmd cannot set variables in front of a command, so on Windows they are set as exported
+# target-specific variables instead, which $(shell) receives from GNU make 4.4 onwards.
 .PHONY: build-info
+ifeq ($(OS),Windows_NT)
+build-info: export GOOS = $(shell go env GOHOSTOS)
+build-info: export GOARCH = $(shell go env GOHOSTARCH)
+endif
 build-info:
 ifndef BUILD_DATE
+ifeq ($(OS),Windows_NT)
 	$(eval BUILD_DATE := $(shell go run scripts/getDate.go))
+else
+	$(eval BUILD_DATE := $(shell GOOS=$$(go env GOHOSTOS) GOARCH=$$(go env GOHOSTARCH) go run scripts/getDate.go))
+endif
 endif
 ifndef GITHASH
 	$(eval GITHASH := $(shell git rev-parse --short HEAD))
@@ -117,6 +136,9 @@ build-flags: build-info
 	$(eval BUILD_LDFLAGS += -X 'github.com/stashapp/stash/internal/build.githash=$(GITHASH)')
 	$(eval BUILD_LDFLAGS += -X 'github.com/stashapp/stash/internal/build.version=$(STASH_VERSION)')
 	$(eval BUILD_LDFLAGS += -X 'github.com/stashapp/stash/internal/build.officialBuild=$(OFFICIAL_BUILD)')
+ifdef UPDATE_REPO
+	$(eval BUILD_LDFLAGS += -X 'github.com/stashapp/stash/internal/build.updateRepo=$(UPDATE_REPO)')
+endif
 	$(eval BUILD_FLAGS := -v -tags "$(GO_BUILD_TAGS)" $(GO_BUILD_FLAGS) -ldflags "$(BUILD_LDFLAGS)")
 
 .PHONY: stash
@@ -283,7 +305,7 @@ generate: generate-backend generate-ui
 
 .PHONY: generate-ui
 generate-ui:
-	cd ui/v2.5 && npm run gqlgen
+	cd ui/v2.5 && pnpm run gqlgen
 
 .PHONY: generate-backend
 generate-backend: touch-ui
@@ -321,6 +343,15 @@ test:
 it:
 	$(eval GO_BUILD_TAGS += integration)
 	go test -tags "$(GO_BUILD_TAGS)" ./...
+
+# runs a single test. Includes integration flag.
+# Usage: make it-one PKG=./pkg/sqlite GO_TEST_FLAGS="-run 'audioQueryBuilder'"
+# 	PKG - mandatory, provide the relative package path
+# 	GO_TEST_FLAGS - optional. Commands to send. Useful to limit to a single test within a package
+.PHONY: it-one
+it-one:
+	$(eval GO_BUILD_TAGS += integration)
+	go test -tags "$(GO_BUILD_TAGS)" $(GO_TEST_FLAGS) $(PKG)
 
 # generates test mocks
 .PHONY: generate-test-mocks
@@ -365,9 +396,6 @@ ui-env: build-info
 	$(eval export VITE_APP_DATE := $(BUILD_DATE))
 	$(eval export VITE_APP_GITHASH := $(GITHASH))
 	$(eval export VITE_APP_STASH_VERSION := $(STASH_VERSION))
-ifdef STASH_NOLEGACY
-	$(eval export VITE_APP_NOLEGACY := true)
-endif
 ifdef STASH_SOURCEMAPS
 	$(eval export VITE_APP_SOURCEMAPS := true)
 endif
@@ -377,7 +405,7 @@ ui: ui-only generate-login-locale
 
 .PHONY: ui-only
 ui-only: ui-env
-	cd ui/v2.5 && npm run build
+	cd ui/v2.5 && pnpm run build
 
 .PHONY: zip-ui
 zip-ui:
@@ -386,23 +414,23 @@ zip-ui:
 
 .PHONY: ui-start
 ui-start: ui-env
-	cd ui/v2.5 && npm run start -- --host
+	cd ui/v2.5 && pnpm run start --host
 
 .PHONY: fmt-ui
 fmt-ui:
-	cd ui/v2.5 && npm run format
+	cd ui/v2.5 && pnpm run format
 
 # runs all of the frontend PR-acceptance steps
 .PHONY: validate-ui
 validate-ui:
-	cd ui/v2.5 && npm run validate
+	cd ui/v2.5 && pnpm run validate
 
 # these targets run the same steps as fmt-ui and validate-ui, but only on files that have changed
 fmt-ui-quick:
 	cd ui/v2.5 && \
 	files=$$(git diff --name-only --relative --diff-filter d . ../../graphql); \
 	if [ -n "$$files" ]; then \
-	  npm run prettier -- --write $$files; \
+	  pnpm exec biome format --write $$files; \
 	fi
 
 # does not run tsc checks, as they are slow
@@ -411,9 +439,9 @@ validate-ui-quick:
 	tsfiles=$$(git diff --name-only --relative --diff-filter d src | grep -e "\.tsx\?\$$"); \
 	scssfiles=$$(git diff --name-only --relative --diff-filter d src | grep "\.scss"); \
 	prettyfiles=$$(git diff --name-only --relative --diff-filter d . ../../graphql); \
-	if [ -n "$$tsfiles" ]; then npm run eslint -- $$tsfiles; fi && \
-	if [ -n "$$scssfiles" ]; then npm run stylelint -- $$scssfiles; fi && \
-	if [ -n "$$prettyfiles" ]; then npm run prettier -- --check $$prettyfiles; fi
+	if [ -n "$$tsfiles" ]; then pnpm exec biome check $$tsfiles; fi && \
+	if [ -n "$$scssfiles" ]; then pnpm exec stylelint $$scssfiles; fi && \
+	if [ -n "$$prettyfiles" ]; then pnpm exec biome format $$prettyfiles; fi
 
 # runs all of the backend PR-acceptance steps
 .PHONY: validate-backend
@@ -445,3 +473,13 @@ start-compiler-container:
 .PHONY: remove-compiler-container
 remove-compiler-container:
 	docker rm -f -v build
+
+.PHONY: install
+install:
+ifdef IS_WIN_SHELL
+	@if not exist "$(PREFIX)" mkdir $(PREFIX)
+	@copy "$(STASH_BINARY).exe" "$(PREFIX)\\stash.exe"
+else
+	@mkdir -p $(PREFIX)/bin
+	@install -m 755 $(STASH_BINARY) $(PREFIX)/bin/stash
+endif

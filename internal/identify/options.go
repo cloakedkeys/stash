@@ -22,7 +22,9 @@ type Options struct {
 	Options *MetadataOptions `json:"options"`
 	// scene ids to identify
 	SceneIDs []string `json:"sceneIDs"`
-	// paths of scenes to identify - ignored if scene ids are set
+	// gallery ids to identify
+	GalleryIDs []string `json:"galleryIDs"`
+	// paths of scenes/galleries to identify - ignored if scene/gallery ids are set
 	Paths []string `json:"paths"`
 }
 
@@ -33,8 +35,10 @@ type MetadataOptions struct {
 	SetCoverImage *bool `json:"setCoverImage"`
 	SetOrganized  *bool `json:"setOrganized"`
 	// defaults to true if not provided
+
 	// Deprecated: use PerformerGenders instead
 	IncludeMalePerformers *bool `json:"includeMalePerformers"`
+
 	// Filter to only include performers with these genders. If not provided, all genders are included.
 	PerformerGenders []models.GenderEnum `json:"performerGenders"`
 	// defaults to true if not provided

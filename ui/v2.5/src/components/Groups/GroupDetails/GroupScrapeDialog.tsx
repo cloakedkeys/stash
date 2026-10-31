@@ -31,8 +31,8 @@ interface IGroupScrapeDialogProps {
 
 export const GroupScrapeDialog: React.FC<IGroupScrapeDialogProps> = ({
   group,
-  groupStudio: groupStudio,
-  groupTags: groupTags,
+  groupStudio,
+  groupTags,
   scraped,
   onClose,
 }) => {
@@ -41,14 +41,19 @@ export const GroupScrapeDialog: React.FC<IGroupScrapeDialogProps> = ({
   const [name, setName] = useState<ScrapeResult<string>>(
     new ScrapeResult<string>(group.name, scraped.name)
   );
-  const [aliases, setAliases] = useState<ScrapeResult<string>>(
-    new ScrapeResult<string>(group.aliases, scraped.aliases)
+  const [aliases, setAliases] = useState<ScrapeResult<string[]>>(
+    new ScrapeResult<string[]>(
+      group.alias_list,
+      scraped.alias_list
+        ? uniq((group.alias_list ?? []).concat(scraped.alias_list))
+        : group.alias_list
+    )
   );
   const [duration, setDuration] = useState<ScrapeResult<string>>(
     new ScrapeResult<string>(
       TextUtils.secondsToTimestamp(group.duration || 0),
       // convert seconds to string if it's a number
-      scraped.duration && !isNaN(+scraped.duration)
+      scraped.duration && !Number.isNaN(Number(scraped.duration))
         ? TextUtils.secondsToTimestamp(parseInt(scraped.duration, 10))
         : scraped.duration
     )
@@ -123,7 +128,7 @@ export const GroupScrapeDialog: React.FC<IGroupScrapeDialogProps> = ({
     newTags.length === 0
   ) {
     onClose();
-    return <></>;
+    return null;
   }
 
   function makeNewScrapedItem(): GQL.ScrapedGroup {
@@ -132,7 +137,7 @@ export const GroupScrapeDialog: React.FC<IGroupScrapeDialogProps> = ({
 
     return {
       name: name.getNewValue() ?? "",
-      aliases: aliases.getNewValue(),
+      alias_list: aliases.getNewValue(),
       duration: durationString,
       date: date.getNewValue(),
       director: director.getNewValue(),
@@ -154,7 +159,7 @@ export const GroupScrapeDialog: React.FC<IGroupScrapeDialogProps> = ({
           result={name}
           onChange={(value) => setName(value)}
         />
-        <ScrapedInputGroupRow
+        <ScrapedStringListRow
           field="aliases"
           title={intl.formatMessage({ id: "aliases" })}
           result={aliases}

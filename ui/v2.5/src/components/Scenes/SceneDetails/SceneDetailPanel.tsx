@@ -1,7 +1,9 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { FormattedMessage, useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import TextUtils from "src/utils/text";
+import { sceneAgeFromDate } from "src/utils/scene";
 import { TagLink } from "src/components/Shared/TagLink";
 import { PerformerCard } from "src/components/Performers/PerformerCard";
 import { sortPerformers } from "src/core/performers";
@@ -48,11 +50,17 @@ export const SceneDetailPanel: React.FC<ISceneDetailProps> = (props) => {
   function renderPerformers() {
     if (props.scene.performers.length === 0) return;
     const performers = sortPerformers(props.scene.performers);
+
+    const ageFromDate = sceneAgeFromDate(
+      props.scene.production_date,
+      props.scene.date
+    );
+
     const cards = performers.map((performer) => (
       <PerformerCard
         key={performer.id}
         performer={performer}
-        ageFromDate={props.scene.date ?? undefined}
+        ageFromDate={ageFromDate}
       />
     ));
 
@@ -86,6 +94,14 @@ export const SceneDetailPanel: React.FC<ISceneDetailProps> = (props) => {
             <FormattedMessage id="updated_at" />:{" "}
             {TextUtils.formatDateTime(intl, props.scene.updated_at)}{" "}
           </h6>
+          {props.scene.production_date && (
+            <h6>
+              <FormattedMessage id="production_date" />:{" "}
+              {/* fuzzy, so that a year- or month-only production date isn't
+                  rendered as the first of the month */}
+              {TextUtils.formatFuzzyDate(intl, props.scene.production_date)}
+            </h6>
+          )}
           {props.scene.code && (
             <h6>
               <FormattedMessage id="scene_code" />: {props.scene.code}{" "}
@@ -104,6 +120,27 @@ export const SceneDetailPanel: React.FC<ISceneDetailProps> = (props) => {
           {renderDetails()}
           {renderTags()}
           {renderPerformers()}
+          {props.scene.voice_actors.length > 0 && (
+            <section className="my-3">
+              <h6>
+                <FormattedMessage
+                  id="voice_actors"
+                  defaultMessage="Voice actors"
+                />
+              </h6>
+              <div className="d-flex flex-wrap">
+                {props.scene.voice_actors.map((actor) => (
+                  <Link
+                    className="btn btn-secondary mr-2 mb-2"
+                    to={`/voice-actors/${actor.id}`}
+                    key={actor.id}
+                  >
+                    {actor.name}
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
           <CustomFields values={props.scene.custom_fields} fullWidth />
         </div>
       </div>

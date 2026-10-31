@@ -2,6 +2,7 @@ package jsonschema
 
 import (
 	"bytes"
+	gojson "encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -71,8 +72,10 @@ func (f *BaseFile) IsFile() bool {
 }
 
 type Fingerprint struct {
-	Type        string      `json:"type,omitempty"`
-	Fingerprint interface{} `json:"fingerprint,omitempty"`
+	Type string `json:"type,omitempty"`
+	// Fingerprint can be string or number, so use RawMessage and unmarshal manually
+	// #6894: if this is interface{}, it is unmarshalled into a float64 which causes precision loss for phash values.
+	Fingerprint gojson.RawMessage `json:"fingerprint,omitempty"`
 }
 
 type VideoFile struct {
@@ -88,6 +91,33 @@ type VideoFile struct {
 
 	Interactive      bool `json:"interactive,omitempty"`
 	InteractiveSpeed *int `json:"interactive_speed,omitempty"`
+
+	Projection    *string        `json:"projection,omitempty"`
+	StereoMode    *string        `json:"stereo_mode,omitempty"`
+	VRCorrections *VRCorrections `json:"vr_corrections,omitempty"`
+	VRPassthrough *VRPassthrough `json:"vr_passthrough,omitempty"`
+}
+
+// VRCorrections mirrors models.VRCorrections for JSON import/export.
+type VRCorrections struct {
+	HorizontalOffset *float64 `json:"horizontal_offset,omitempty"`
+	VerticalOffset   *float64 `json:"vertical_offset,omitempty"`
+	Brightness       *float64 `json:"brightness,omitempty"`
+	Contrast         *float64 `json:"contrast,omitempty"`
+	Saturation       *float64 `json:"saturation,omitempty"`
+}
+
+type VRPassthrough struct {
+	ChromaKeys  []VRChromaKey `json:"chroma_keys,omitempty"`
+	AlphaPacked *bool         `json:"alpha_packed,omitempty"`
+}
+
+type VRChromaKey struct {
+	Hue        *float64 `json:"hue,omitempty"`
+	Saturation *float64 `json:"saturation,omitempty"`
+	Value      *float64 `json:"value,omitempty"`
+	Threshold  *float64 `json:"threshold,omitempty"`
+	Opacity    *float64 `json:"opacity,omitempty"`
 }
 
 type ImageFile struct {

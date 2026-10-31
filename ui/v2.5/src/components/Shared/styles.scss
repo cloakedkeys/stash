@@ -214,6 +214,12 @@
       top: 0;
     }
   }
+
+  .studio-image {
+    max-height: 200px;
+    max-width: 100%;
+    object-fit: contain;
+  }
 }
 
 button.collapse-button.btn-primary:not(:disabled):not(.disabled):hover,
@@ -237,6 +243,7 @@ button.collapse-button {
 .hover-popover-content {
   max-width: 32rem;
   text-align: center;
+  z-index: 2000;
 
   .popover-card {
     padding: 0.5rem;
@@ -1006,9 +1013,11 @@ button.btn.favorite-button {
   border-bottom: 1px solid $secondary;
 
   .collapse-header {
-    // background-color: $secondary;
-
+    background-color: $body-bg;
     padding: 0.25rem;
+    position: sticky;
+    top: -0.5rem;
+    z-index: 1;
 
     .collapse-button {
       font-weight: bold;

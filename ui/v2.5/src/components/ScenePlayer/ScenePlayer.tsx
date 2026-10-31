@@ -7,7 +7,6 @@ import React, {
   useState,
 } from "react";
 import videojs, { VideoJsPlayer, VideoJsPlayerOptions } from "video.js";
-import useScript from "src/hooks/useScript";
 import "videojs-contrib-dash";
 import "videojs-mobile-ui";
 import "videojs-seek-buttons";
@@ -20,7 +19,10 @@ import "./autostart-button";
 import MarkersPlugin, { type IMarker } from "./markers";
 void MarkersPlugin;
 import "./vtt-thumbnails";
+import "./deferred-touch-seek";
 import "./big-buttons";
+import "./ab-loop-toggle";
+import "./ab-loop-range";
 import "./track-activity";
 import "./vrmode";
 import "./media-session";
@@ -30,6 +32,7 @@ import {
   useSceneSaveActivity,
   useSceneIncrementPlayCount,
   useConfigureInterface,
+  useSystemStatus,
 } from "src/core/StashService";
 
 import * as GQL from "src/core/generated-graphql";
@@ -42,11 +45,18 @@ import {
 import { SceneInteractiveStatus } from "src/hooks/Interactive/status";
 import { languageMap } from "src/utils/caption";
 import { VIDEO_PLAYER_ID } from "./util";
+import { objectTitle } from "src/core/files";
+import {
+  pickCastSource,
+  pickLanIPv4,
+  rewriteCastUrl,
+} from "src/utils/castMedia";
 
-// @ts-ignore
+// @ts-expect-error
 import airplay from "@silvermine/videojs-airplay";
-// @ts-ignore
+// @ts-expect-error
 import chromecast from "@silvermine/videojs-chromecast";
+import { registerStashChromecastTech } from "./chromecast-tech";
 import abLoopPlugin from "videojs-abloop";
 import ScreenUtils from "src/utils/screen";
 import { PatchComponent } from "src/patch";
@@ -54,7 +64,24 @@ import { PatchComponent } from "src/patch";
 // register videojs plugins
 airplay(videojs);
 chromecast(videojs);
+registerStashChromecastTech();
 abLoopPlugin(window, videojs);
+
+interface ICastLoadRequest {
+  media: { contentId: string; contentType: string };
+}
+
+const castSdkUrl =
+  "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
+
+// Added once and never removed, so a cast keeps going when the player is rebuilt.
+function loadCastSdk() {
+  if (document.querySelector(`script[src="${castSdkUrl}"]`)) return;
+
+  const script = document.createElement("script");
+  script.src = castSdkUrl;
+  document.head.appendChild(script);
+}
 
 function handleHotkeys(player: VideoJsPlayer, event: videojs.KeyboardEvent) {
   function seekStep(step: number) {
@@ -125,15 +152,17 @@ function handleHotkeys(player: VideoJsPlayer, event: videojs.KeyboardEvent) {
 
   const skipButtons = player.skipButtons();
   if (skipButtons) {
-    // handle multimedia keys
+    // handle multimedia keys - routed through handleForward/handleBackward
+    // (rather than calling onNext/onPrevious directly) so this also resets
+    // an active AB loop, same as clicking the skip buttons does
     switch (event.key) {
       case "MediaTrackNext":
         if (!skipButtons.onNext) return;
-        skipButtons.onNext();
+        skipButtons.handleForward();
         break;
       case "MediaTrackPrevious":
         if (!skipButtons.onPrevious) return;
-        skipButtons.onPrevious();
+        skipButtons.handleBackward();
         break;
       // MediaPlayPause handled by videojs
     }
@@ -205,6 +234,27 @@ type MarkerFragment = Pick<GQL.SceneMarker, "title" | "seconds"> & {
   tags: Array<Pick<GQL.Tag, "name">>;
 };
 
+type FileFingerprint = Pick<GQL.Fingerprint, "type" | "value">;
+
+// True if every fingerprint type present in both matches. Comparing only
+// shared types avoids false positives from a type added later (e.g.
+// phash) or mtime/size drifting without content changing. Two empty
+// sets count as matching too, so an unfingerprinted file doesn't
+// re-trigger on every re-render.
+function fingerprintsMatch(a: FileFingerprint[], b: FileFingerprint[]) {
+  if (a.length === 0 && b.length === 0) {
+    return true;
+  }
+  let sawCommonType = false;
+  for (const fp of a) {
+    const match = b.find((other) => other.type === fp.type);
+    if (!match) continue;
+    if (match.value !== fp.value) return false;
+    sawCommonType = true;
+  }
+  return sawCommonType;
+}
+
 function getMarkerTitle(marker: MarkerFragment) {
   if (marker.title) {
     return marker.title;
@@ -224,6 +274,8 @@ interface IScenePlayerProps {
   autoplay?: boolean;
   permitLoop?: boolean;
   initialTimestamp: number;
+  forceLoop?: boolean;
+  endTime?: number | null;
   sendSetTimestamp: (setTimestamp: (value: number) => void) => void;
   onComplete: () => void;
   onNext: () => void;
@@ -238,6 +290,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     autoplay,
     permitLoop = true,
     initialTimestamp: _initialTimestamp,
+    forceLoop,
+    endTime,
     sendSetTimestamp,
     onComplete,
     onNext,
@@ -246,9 +300,14 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     const { configuration } = useConfigurationContext();
     const interfaceConfig = configuration?.interface;
     const uiConfig = configuration?.ui;
+    const { data: systemStatus } = useSystemStatus();
+    const lanIp = pickLanIPv4(systemStatus?.systemStatus.localIPs);
     const videoRef = useRef<HTMLDivElement>(null);
     const [_player, setPlayer] = useState<VideoJsPlayer>();
-    const sceneId = useRef<string>();
+    const loadedSource = useRef<{
+      sceneId: string;
+      fingerprints: FileFingerprint[];
+    }>();
     const [sceneSaveActivity] = useSceneSaveActivity();
     const [sceneIncrementPlayCount] = useSceneIncrementPlayCount();
     const [updateInterfaceConfig] = useConfigureInterface();
@@ -269,29 +328,36 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
     const started = useRef(false);
     const auto = useRef(false);
+    // durable autostart intent: unlike `auto`, this is not consumed by the
+    // one-shot play effect, so it survives source failover (e.g. transcode fallback)
+    const autostartIntent = useRef(false);
     const interactiveReady = useRef(false);
     const minimumPlayPercent = uiConfig?.minimumPlayPercent ?? 0;
     const trackActivity = uiConfig?.trackActivity ?? true;
     const vrTag = uiConfig?.vrTag ?? undefined;
 
-    useScript(
-      "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1",
-      uiConfig?.enableChromecast
-    );
+    useEffect(() => {
+      if (uiConfig?.enableChromecast) loadCastSdk();
+    }, [uiConfig?.enableChromecast]);
 
     const file = useMemo(
       () => (scene.files.length > 0 ? scene.files[0] : undefined),
       [scene]
     );
 
+    // Read by the Chromecast tech when it loads media, long after the player was created.
+    const castScene = useRef({ scene, file, lanIp });
+    castScene.current = { scene, file, lanIp };
+
     const maxLoopDuration = interfaceConfig?.maximumLoopDuration ?? 0;
     const looping = useMemo(
       () =>
-        !!file?.duration &&
-        permitLoop &&
-        maxLoopDuration !== 0 &&
-        file.duration < maxLoopDuration,
-      [file, permitLoop, maxLoopDuration]
+        !!forceLoop ||
+        (!!file?.duration &&
+          permitLoop &&
+          maxLoopDuration !== 0 &&
+          file.duration < maxLoopDuration),
+      [file, permitLoop, maxLoopDuration, forceLoop]
     );
 
     const getPlayer = useCallback(() => {
@@ -330,11 +396,13 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           }
         }
       });
+
+      return () => sendSetTimestamp(() => {});
     }, [sendSetTimestamp, getPlayer]);
 
     // Initialize VideoJS player
     useEffect(() => {
-      const options: VideoJsPlayerOptions = {
+      const options: VideoJsPlayerOptions & { chromecast: object } = {
         id: VIDEO_PLAYER_ID,
         controls: true,
         controlBar: {
@@ -343,6 +411,11 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
             inline: false,
           },
           chaptersButton: false,
+          // current/total time show inline ("0:03 / 0:11") in the button
+          // row on desktop as normal; on mobile styles.scss repositions
+          // them to float either side of the progress bar instead, where
+          // remaining-time/divider aren't needed
+          remainingTimeDisplay: false,
         },
         html5: {
           dash: {
@@ -368,6 +441,19 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         preload: "none",
         playsinline: true,
         techOrder: ["chromecast", "html5"],
+        chromecast: {
+          requestTitleFn: () => objectTitle(castScene.current.scene),
+          // The tech sends the stream the browser is playing, at an address only this machine can resolve.
+          modifyLoadRequestFn: (request: ICastLoadRequest) => {
+            const cast = castScene.current;
+            const source = pickCastSource(cast.scene.sceneStreams, cast.file);
+            if (source) {
+              request.media.contentId = rewriteCastUrl(source.url, cast.lanIp);
+              request.media.contentType = source.contentType;
+            }
+            return request;
+          },
+        },
         userActions: {
           hotkeys: function (this: VideoJsPlayer, event) {
             handleHotkeys(this, event);
@@ -384,7 +470,13 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           markers: {},
           sourceSelector: {},
           persistVolume: {},
-          bigButtons: {},
+          // bigButtons is the floating play/pause + jog (+ AB-loop
+          // start/end, when enabled) overlay, shown only on mobile widths
+          // in styles.scss; on desktop these stay as regular control-bar
+          // buttons instead
+          bigButtons: {
+            showAbLoop: uiConfig?.showAbLoopControls ?? false,
+          },
           seekButtons: {
             forward: 10,
             back: 10,
@@ -405,6 +497,17 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
             pauseBeforeLooping: false,
             createButtons: uiConfig?.showAbLoopControls ?? false,
           },
+          // icon-only enable/disable toggle, shown on mobile in place of
+          // the vendor plugin's own "LOOP ON"/"Loop off" text button above
+          // (hidden there via styles.scss) - see ab-loop-toggle.ts for why
+          // that button can't just be re-skinned in place
+          abLoopToggle: {
+            enabled: uiConfig?.showAbLoopControls ?? false,
+          },
+          // highlights the active AB-loop range on the progress bar
+          abLoopRange: {
+            enabled: uiConfig?.showAbLoopControls ?? false,
+          },
           mediaSession: {},
           wakeSentinel: {},
         },
@@ -418,7 +521,67 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       const vjs = videojs(videoEl, options);
 
-      /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+      // bridge AB-loop option changes (from any source: this menu, the "L"
+      // hotkey, marker clicks elsewhere) onto a player event, since the
+      // vendor plugin has no other change-notification hook. ab-loop-toggle.ts
+      // and ab-loop-range.ts listen for this to keep their state in sync.
+      // Also mirror "enabled" onto a player-level class: styles.scss uses it
+      // to keep the mobile start/end buttons hidden until looping is
+      // actually on (see big-buttons.ts's AbBoundButton).
+      vjs.abLoopPlugin.onOptionsChange = (_details, api, player) => {
+        player.toggleClass("vjs-ab-loop-enabled", api.getOptions().enabled);
+        player.trigger("abloopchange");
+      };
+
+      // swap the fullscreen toggle and the AB-loop enable/disable button:
+      // the vendor plugin just appends its buttons at the end of the
+      // control bar (after fullscreen), unlike every other custom button
+      // here which inserts itself before fullscreen - so fullscreen ends
+      // up stranded in the middle. Queued via ready() so it runs after the
+      // vendor plugin's own (also ready()-deferred) button creation.
+      vjs.ready(() => {
+        const controlBarEl = vjs.controlBar.el();
+        const fullscreenEl = vjs.controlBar.getChild("fullscreenToggle")?.el();
+        const toggleEl = controlBarEl.querySelector(".abLoopButton.enabled");
+        if (!fullscreenEl || !toggleEl) return;
+
+        const marker = document.createComment("");
+        controlBarEl.insertBefore(marker, toggleEl);
+        controlBarEl.insertBefore(toggleEl, fullscreenEl);
+        controlBarEl.insertBefore(fullscreenEl, marker);
+        marker.remove();
+
+        // the vendor plugin's own Start/End/Loop buttons bind their click
+        // handler with a plain .on('click', ...) and never stop propagation,
+        // unlike every custom button in this file (see AbBoundButton,
+        // AbLoopToggleButton) - so a tap on them also reaches whatever's
+        // listening underneath (videojs-mobile-ui's tap-to-toggle-controls/
+        // play-pause handling). On touch this compounds with the browser's
+        // own delayed touch->click compatibility event, which can fire a
+        // second, separate click after ours - together producing the
+        // toggles-twice/also-pauses-the-video behavior these buttons are
+        // known for on touch. Intercept touchend directly (stopping that
+        // delayed click from ever happening, and stopping propagation
+        // before it reaches anything else) and fire exactly one clean click.
+        const vendorAbLoopButtonEls =
+          controlBarEl.querySelectorAll<HTMLElement>(
+            ".abLoopButton.enabled, .abLoopButton.start, .abLoopButton.end"
+          );
+        vendorAbLoopButtonEls.forEach((btnEl) => {
+          btnEl.addEventListener("click", (e) => e.stopPropagation());
+          btnEl.addEventListener(
+            "touchend",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              btnEl.click();
+            },
+            { passive: false }
+          );
+        });
+      });
+
+      /* biome-ignore lint/suspicious/noExplicitAny: intentional */
       const settings = (vjs as any).textTrackSettings;
       settings.setValues({
         backgroundColor: "#000",
@@ -435,15 +598,19 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         videoEl.remove();
         setPlayer(undefined);
 
-        // reset sceneId to force reload sources
-        sceneId.current = undefined;
+        // reset to force reload sources
+        loadedSource.current = undefined;
       };
       // empty deps - only init once
       // showAbLoopControls is necessary to re-init the player when the config changes
       // Note: interfaceConfig?.autostartVideo is intentionally excluded to prevent
       // player re-initialization when toggling autostart (which would interrupt playback)
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [uiConfig?.showAbLoopControls, uiConfig?.enableChromecast]);
+      // XXbiome-ignore lint/correctness/useExhaustiveDependencies: intentional
+    }, [
+      uiConfig?.showAbLoopControls,
+      uiConfig?.enableChromecast,
+      interfaceConfig?.autostartVideo,
+    ]);
 
     useEffect(() => {
       const player = getPlayer();
@@ -456,7 +623,10 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     useEffect(() => {
       if (scene.interactive && interactiveInitialised) {
         interactiveReady.current = false;
-        uploadScript(scene.paths.funscript || "").then(() => {
+        uploadScript(
+          scene.paths.funscript || "",
+          scene.paths.interactive_csv || undefined
+        ).then(() => {
           interactiveReady.current = true;
         });
       }
@@ -465,6 +635,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       interactiveInitialised,
       scene.interactive,
       scene.paths.funscript,
+      scene.paths.interactive_csv,
     ]);
 
     // play the script if video started before script upload finished
@@ -545,8 +716,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         if (scene.interactive && interactiveReady.current) {
           interactiveClient.play(this.currentTime());
           // trigger a second script play event to adjust for video player issues
-          clearTimeout(playingTimer.current);
-          playingTimer.current = setTimeout(() => {
+          window.clearTimeout(playingTimer.current);
+          playingTimer.current = window.setTimeout(() => {
             if (this.paused()) return;
             interactiveClient.play(this.currentTime());
           }, DELAY_FOR_SECOND_PLAY_MS);
@@ -570,7 +741,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         player.off("playing", playing);
         player.off("pause", pause);
         player.off("timeupdate", timeupdate);
-        clearTimeout(playingTimer.current);
+        window.clearTimeout(playingTimer.current);
       };
     }, [getPlayer, interactiveClient, scene]);
 
@@ -578,10 +749,19 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       const player = getPlayer();
       if (!player) return;
 
-      // don't re-initialise the player unless the scene has changed
-      if (!file || scene.id === sceneId.current) return;
+      // don't re-initialise unless the scene changed, or the file was
+      // edited in place under the same scene id (fingerprints differ)
+      if (!file) return;
+      if (
+        loadedSource.current?.sceneId === scene.id &&
+        fingerprintsMatch(file.fingerprints, loadedSource.current.fingerprints)
+      )
+        return;
 
-      sceneId.current = scene.id;
+      loadedSource.current = {
+        sceneId: scene.id,
+        fingerprints: file.fingerprints,
+      };
 
       setReady(false);
 
@@ -635,10 +815,15 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
               src: stream.url,
               type: stream.mime_type ?? undefined,
               label: stream.label ?? undefined,
+              streamType: stream.stream_type ?? undefined,
+              resolution: stream.resolution ?? undefined,
               offset: !isDirect(src),
               duration,
             };
-          })
+          }),
+        uiConfig?.defaultStreamType,
+        uiConfig?.defaultStreamingResolution,
+        scene.paths.stream
       );
 
       function getDefaultLanguageCode() {
@@ -655,11 +840,11 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         return languageCode;
       }
 
-      if (scene.captions && scene.captions.length > 0) {
+      if (scene.paths.caption && scene.captions && scene.captions.length > 0) {
         const languageCode = getDefaultLanguageCode();
         let hasDefault = false;
 
-        for (let caption of scene.captions) {
+        for (const caption of scene.captions) {
           const lang = caption.language_code;
           let label = lang;
           if (languageMap.has(lang)) {
@@ -667,13 +852,17 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           }
 
           label = label + " (" + caption.caption_type + ")";
-          const setAsDefault = !hasDefault && languageCode == lang;
+          const setAsDefault = !hasDefault && languageCode === lang;
           if (setAsDefault) {
             hasDefault = true;
           }
+          const captionURL = new URL(scene.paths.caption, window.location.href);
+          captionURL.searchParams.set("lang", lang);
+          captionURL.searchParams.set("type", caption.caption_type);
+
           sourceSelector.addTextTrack(
             {
-              src: `${scene.paths.caption}?lang=${lang}&type=${caption.caption_type}`,
+              src: captionURL.toString(),
               kind: "captions",
               srclang: lang,
               label: label,
@@ -710,11 +899,22 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         buttonEnabled ||
         (interfaceConfig?.autostartVideo ?? false) ||
         _initialTimestamp > 0;
+      autostartIntent.current = auto.current;
+
+      // let the source selector know whether playback is intended, so it doesn't
+      // auto-start during source failover/preload (e.g. transcode fallback in Safari).
+      // uses autostartIntent (not auto) because auto is cleared by the one-shot play
+      // effect before failover occurs; started covers mid-playback source swaps.
+      sourceSelector.setShouldAutoplay(
+        () => autostartIntent.current || started.current
+      );
 
       player.ready(() => {
         player.vttThumbnails().src(scene.paths.vtt ?? null);
 
-        if (startPosition) {
+        // the browser keeps a pending start position from a previous source
+        // that never loaded, so reset it when this scene starts from 0
+        if (startPosition || player.currentTime() !== 0) {
           player.currentTime(startPosition);
         }
       });
@@ -729,6 +929,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       interfaceConfig?.autostartVideo,
       uiConfig?.alwaysStartFromBeginning,
       uiConfig?.disableMobileMediaAutoRotateEnabled,
+      uiConfig?.defaultStreamType,
+      uiConfig?.defaultStreamingResolution,
       _initialTimestamp,
     ]);
 
@@ -847,7 +1049,6 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     }, [
       getPlayer,
       scene,
-      vrTag,
       trackActivity,
       minimumPlayPercent,
       sceneIncrementPlayCount,
@@ -910,10 +1111,54 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       const player = getPlayer();
       if (!player) return;
 
-      player.on("ended", onComplete);
+      function ended(this: VideoJsPlayer) {
+        // the vendor plugin loops by watching timeupdate for currentTime
+        // getting within ~1s of the end and seeking back before playback
+        // actually completes - a margin that a full-video loop (nothing
+        // set, so the loop point *is* the true end) can lose the race
+        // against, letting "ended" fire and advance the queue instead of
+        // looping. Enforce the loop directly here as a backstop.
+        const opts = this.abLoopPlugin.getOptions();
+        if (opts.enabled) {
+          this.currentTime(typeof opts.start === "number" ? opts.start : 0);
+          this.play();
+          return;
+        }
 
-      return () => player.off("ended");
+        onComplete();
+      }
+
+      player.on("ended", ended);
+
+      return () => player.off("ended", ended);
     }, [getPlayer, onComplete]);
+
+    // Try to detect that the player has passed the end point of a Marker.
+    // Only playing through the end point counts: seeking more than a second
+    // past it does not.
+    useEffect(() => {
+      const player = getPlayer();
+      if (!player || !endTime) return;
+      const end = endTime;
+      // timeupdate fires several times a second, so only report the end once
+      // until playback goes back before the end point
+      let completed = false;
+      function markerComplete(this: VideoJsPlayer) {
+        const t = this.currentTime();
+        if (t < end) {
+          completed = false;
+          return;
+        }
+        if (!completed && !this.paused() && t <= end + 1) {
+          completed = true;
+          onComplete();
+        }
+      }
+      player.on("timeupdate", markerComplete);
+      return () => {
+        player.off("timeupdate", markerComplete);
+      };
+    }, [getPlayer, onComplete, endTime]);
 
     // set up mediaSession plugin
     useEffect(() => {
@@ -962,7 +1207,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
         return;
       }
-      if (event.key == " ") {
+      if (event.key === " ") {
         event.preventDefault();
         event.stopPropagation();
         if (player.paused()) {
@@ -973,8 +1218,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       }
     }
 
-    const isPortrait =
-      file && file.height && file.width && file.height > file.width;
+    const isPortrait = file?.height && file?.width && file.height > file.width;
 
     return (
       <div

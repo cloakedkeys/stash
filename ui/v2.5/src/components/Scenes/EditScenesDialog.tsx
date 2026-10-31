@@ -7,6 +7,7 @@ import { StudioSelect } from "../Shared/Select";
 import { ModalComponent } from "../Shared/Modal";
 import { MultiSet } from "../Shared/MultiSet";
 import { useToast } from "src/hooks/Toast";
+import { useIsAdmin } from "src/hooks/CurrentUser";
 import { RatingSystem } from "../Shared/Rating/RatingSystem";
 import {
   getAggregateInputValue,
@@ -34,12 +35,14 @@ const sceneFields = [
   "organized",
   "director",
   "date",
+  "production_date",
 ];
 
 export const EditScenesDialog: React.FC<IListOperationProps> = (
   props: IListOperationProps
 ) => {
   const intl = useIntl();
+  const isAdmin = useIsAdmin();
   const Toast = useToast();
 
   const [updateInput, setUpdateInput] = useState<GQL.BulkSceneUpdateInput>({
@@ -49,6 +52,9 @@ export const EditScenesDialog: React.FC<IListOperationProps> = (
   });
 
   const [dateError, setDateError] = useState<string | undefined>();
+  const [productionDateError, setProductionDateError] = useState<
+    string | undefined
+  >();
 
   const [performerIds, setPerformerIds] = useState<GQL.BulkUpdateIds>({
     mode: GQL.BulkUpdateIdMode.Add,
@@ -98,6 +104,12 @@ export const EditScenesDialog: React.FC<IListOperationProps> = (
     setDateError(getDateError(updateInput.date ?? "", intl));
   }, [updateInput.date, intl]);
 
+  useEffect(() => {
+    setProductionDateError(
+      getDateError(updateInput.production_date ?? "", intl)
+    );
+  }, [updateInput.production_date, intl]);
+
   function setUpdateField(input: Partial<GQL.BulkSceneUpdateInput>) {
     setUpdateInput((current) => ({ ...current, ...input }));
   }
@@ -116,6 +128,11 @@ export const EditScenesDialog: React.FC<IListOperationProps> = (
       updateInput.rating100,
       aggregateState.state.rating100
     );
+
+    // organized may only be changed by administrators
+    if (!isAdmin) {
+      sceneInput.organized = undefined;
+    }
 
     return sceneInput;
   }
@@ -154,7 +171,7 @@ export const EditScenesDialog: React.FC<IListOperationProps> = (
           onClick: onSave,
           text: intl.formatMessage({ id: "actions.apply" }),
         }}
-        disabled={isUpdating || !!dateError}
+        disabled={isUpdating || !!dateError || !!productionDateError}
         cancel={{
           onClick: () => props.onClose(false),
           text: intl.formatMessage({ id: "actions.cancel" }),
@@ -187,6 +204,17 @@ export const EditScenesDialog: React.FC<IListOperationProps> = (
               valueChanged={(newValue) => setUpdateField({ date: newValue })}
               unsetDisabled={unsetDisabled}
               error={dateError}
+            />
+          </BulkUpdateFormGroup>
+
+          <BulkUpdateFormGroup name="production_date">
+            <BulkUpdateDateInput
+              value={updateInput.production_date}
+              valueChanged={(newValue) =>
+                setUpdateField({ production_date: newValue })
+              }
+              unsetDisabled={unsetDisabled}
+              error={productionDateError}
             />
           </BulkUpdateFormGroup>
 
@@ -273,13 +301,15 @@ export const EditScenesDialog: React.FC<IListOperationProps> = (
             />
           </BulkUpdateFormGroup>
 
-          <Form.Group controlId="organized">
-            <IndeterminateCheckbox
-              label={intl.formatMessage({ id: "organized" })}
-              setChecked={(checked) => setUpdateField({ organized: checked })}
-              checked={updateInput.organized ?? undefined}
-            />
-          </Form.Group>
+          {isAdmin && (
+            <Form.Group controlId="organized">
+              <IndeterminateCheckbox
+                label={intl.formatMessage({ id: "organized" })}
+                setChecked={(checked) => setUpdateField({ organized: checked })}
+                checked={updateInput.organized ?? undefined}
+              />
+            </Form.Group>
+          )}
         </Form>
       </ModalComponent>
     );

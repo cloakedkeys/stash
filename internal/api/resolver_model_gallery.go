@@ -101,7 +101,21 @@ func (r *galleryResolver) Scenes(ctx context.Context, obj *models.Gallery) (ret 
 
 	var errs []error
 	ret, errs = loaders.From(ctx).SceneByID.LoadAll(obj.SceneIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
+}
+
+func (r *galleryResolver) Audios(ctx context.Context, obj *models.Gallery) (ret []*models.Audio, err error) {
+	if !obj.AudioIDs.Loaded() {
+		if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+			return obj.LoadAudioIDs(ctx, r.repository.Gallery)
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	var errs []error
+	ret, errs = loaders.From(ctx).AudioByID.LoadAll(obj.AudioIDs.List())
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *galleryResolver) Studio(ctx context.Context, obj *models.Gallery) (ret *models.Studio, err error) {
@@ -123,7 +137,7 @@ func (r *galleryResolver) Tags(ctx context.Context, obj *models.Gallery) (ret []
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.TagIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *galleryResolver) Performers(ctx context.Context, obj *models.Gallery) (ret []*models.Performer, err error) {
@@ -137,13 +151,13 @@ func (r *galleryResolver) Performers(ctx context.Context, obj *models.Gallery) (
 
 	var errs []error
 	ret, errs = loaders.From(ctx).PerformerByID.LoadAll(obj.PerformerIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r *galleryResolver) ImageCount(ctx context.Context, obj *models.Gallery) (ret int, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		var err error
-		ret, err = r.repository.Image.CountByGalleryID(ctx, obj.ID)
+		ret, err = r.galleryImageCount(ctx, obj.ID)
 		return err
 	}); err != nil {
 		return 0, err

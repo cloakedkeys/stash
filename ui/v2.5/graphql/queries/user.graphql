@@ -1,0 +1,23 @@
+query Me {
+  me {
+    name
+    roles
+    library_limit {
+      folder_ids
+      tag_ids
+      studio_ids
+    }
+  }
+}
+
+query FindUsersForLibraryLimits {
+  users {
+    name
+    roles
+    library_limit {
+      folder_ids
+      tag_ids
+      studio_ids
+    }
+  }
+}

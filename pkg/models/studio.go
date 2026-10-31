@@ -24,12 +24,16 @@ type StudioFilterType struct {
 	Favorite *bool `json:"favorite"`
 	// Filter by scene count
 	SceneCount *IntCriterionInput `json:"scene_count"`
+	// Filter by audio count
+	AudioCount *IntCriterionInput `json:"audio_count"`
 	// Filter by image count
 	ImageCount *IntCriterionInput `json:"image_count"`
 	// Filter by gallery count
 	GalleryCount *IntCriterionInput `json:"gallery_count"`
 	// Filter by group count
 	GroupCount *IntCriterionInput `json:"group_count"`
+	// Filter by number of distinct performers in the studio's scenes, images and galleries
+	PerformerCount *IntCriterionInput `json:"performer_count"`
 	// Filter by url
 	URL *StringCriterionInput `json:"url"`
 	// Filter by studio aliases
@@ -42,6 +46,8 @@ type StudioFilterType struct {
 	Organized *bool `json:"organized"`
 	// Filter by related scenes that meet this criteria
 	ScenesFilter *SceneFilterType `json:"scenes_filter"`
+	// Filter by related audios that meet this criteria
+	AudiosFilter *AudioFilterType `json:"audios_filter"`
 	// Filter by related images that meet this criteria
 	ImagesFilter *ImageFilterType `json:"images_filter"`
 	// Filter by related galleries that meet this criteria
@@ -62,6 +68,7 @@ type StudioCreateInput struct {
 	URL      *string  `json:"url"` // deprecated
 	Urls     []string `json:"urls"`
 	ParentID *string  `json:"parent_id"`
+	ChildIds []string `json:"child_ids"`
 	// This should be a URL or a base64 encoded data URL
 	Image         *string        `json:"image"`
 	StashIds      []StashIDInput `json:"stash_ids"`
@@ -82,6 +89,7 @@ type StudioUpdateInput struct {
 	URL      *string  `json:"url"` // deprecated
 	Urls     []string `json:"urls"`
 	ParentID *string  `json:"parent_id"`
+	ChildIds []string `json:"child_ids"`
 	// This should be a URL or a base64 encoded data URL
 	Image         *string        `json:"image"`
 	StashIds      []StashIDInput `json:"stash_ids"`

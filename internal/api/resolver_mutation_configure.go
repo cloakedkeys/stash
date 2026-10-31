@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
@@ -100,6 +101,7 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 				}
 			}
 			if isNew {
+				s.Path = strings.Trim(s.Path, "\"")
 				s.Path = filepath.Clean(s.Path)
 
 				// if it exists, it must be directory
@@ -289,6 +291,17 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 	r.setConfigBool(config.PreviewAudio, input.PreviewAudio)
 	r.setConfigInt(config.PreviewSegments, input.PreviewSegments)
 	r.setConfigFloat(config.PreviewSegmentDuration, input.PreviewSegmentDuration)
+	// Validate both marker-preview durations before applying either: 0 disables
+	// the ceiling, so a negative max is rejected rather than silently treated as
+	// disabled; the default is a fallback length and must be positive.
+	if input.MaxMarkerPreviewDuration != nil && *input.MaxMarkerPreviewDuration < 0 {
+		return makeConfigGeneralResult(), errors.New("maxMarkerPreviewDuration must be 0 (disabled) or a positive value")
+	}
+	if input.DefaultMarkerPreviewDuration != nil && *input.DefaultMarkerPreviewDuration <= 0 {
+		return makeConfigGeneralResult(), errors.New("defaultMarkerPreviewDuration must be a positive value")
+	}
+	r.setConfigInt(config.MaxMarkerPreviewDuration, input.MaxMarkerPreviewDuration)
+	r.setConfigInt(config.DefaultMarkerPreviewDuration, input.DefaultMarkerPreviewDuration)
 	r.setConfigString(config.PreviewExcludeStart, input.PreviewExcludeStart)
 	r.setConfigString(config.PreviewExcludeEnd, input.PreviewExcludeEnd)
 	if input.PreviewPreset != nil {
@@ -301,6 +314,7 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 	r.setConfigInt(config.SpriteScreenshotSize, input.SpriteScreenshotSize)
 
 	r.setConfigBool(config.TranscodeHardwareAcceleration, input.TranscodeHardwareAcceleration)
+	r.setConfigBool(config.GenerationHardwareAcceleration, input.GenerationHardwareAcceleration)
 	if input.MaxTranscodeSize != nil {
 		c.SetString(config.MaxTranscodeSize, input.MaxTranscodeSize.String())
 	}
@@ -320,27 +334,17 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 		c.SetString(config.GalleryCoverRegex, *input.GalleryCoverRegex)
 	}
 
-	if input.Username != nil && *input.Username != c.GetUsername() {
-		c.SetString(config.Username, *input.Username)
-		if *input.Password == "" {
-			logger.Info("Username cleared")
-		} else {
-			logger.Info("Username changed")
-		}
+	if input.Username != nil {
+		return makeConfigGeneralResult(), fmt.Errorf("username not supported")
 	}
 
 	if input.Password != nil {
-		// bit of a hack - check if the passed in password is the same as the stored hash
-		// and only set if they are different
-		currentPWHash := c.GetPasswordHash()
+		return makeConfigGeneralResult(), fmt.Errorf("password not supported")
+	}
 
-		if *input.Password != currentPWHash {
-			if *input.Password == "" {
-				logger.Info("Password cleared")
-			} else {
-				logger.Info("Password changed")
-			}
-			c.SetPassword(*input.Password)
+	if input.GuestAccountEnabled != nil {
+		if err := manager.GetInstance().UserService.SetGuestUserEnabled(*input.GuestAccountEnabled); err != nil {
+			return makeConfigGeneralResult(), fmt.Errorf("error setting guest account enabled: %w", err)
 		}
 	}
 
@@ -381,6 +385,10 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 
 	if input.VideoExtensions != nil {
 		c.SetInterface(config.VideoExtensions, input.VideoExtensions)
+	}
+
+	if input.AudioExtensions != nil {
+		c.SetInterface(config.AudioExtensions, input.AudioExtensions)
 	}
 
 	if input.ImageExtensions != nil {
@@ -491,6 +499,7 @@ func (r *mutationResolver) ConfigureInterface(ctx context.Context, input ConfigI
 	r.setConfigBool(config.ShowStudioAsText, input.ShowStudioAsText)
 	r.setConfigBool(config.AutostartVideoOnPlaySelected, input.AutostartVideoOnPlaySelected)
 	r.setConfigBool(config.ContinuePlaylistDefault, input.ContinuePlaylistDefault)
+	r.setConfigBool(config.LoopPlaylistDefault, input.LoopPlaylistDefault)
 
 	r.setConfigString(config.Language, input.Language)
 
@@ -554,8 +563,10 @@ func (r *mutationResolver) ConfigureDlna(ctx context.Context, input ConfigDLNAIn
 
 	r.setConfigString(config.DLNAServerName, input.ServerName)
 
+	updateDLNAWhitelist := false
 	if input.WhitelistedIPs != nil {
 		c.SetInterface(config.DLNADefaultIPWhitelist, input.WhitelistedIPs)
+		updateDLNAWhitelist = true
 	}
 
 	r.setConfigString(config.DLNAVideoSortOrder, input.VideoSortOrder)
@@ -573,6 +584,11 @@ func (r *mutationResolver) ConfigureDlna(ctx context.Context, input ConfigDLNAIn
 
 	if err := c.Write(); err != nil {
 		return makeConfigDLNAResult(), err
+	}
+
+	// need to update the whitelist manager with the new default whitelist
+	if updateDLNAWhitelist {
+		manager.GetInstance().DLNAService.IPWhitelistMgr.SetDefaultWhitelist(input.WhitelistedIPs)
 	}
 
 	if refresh {
@@ -649,58 +665,41 @@ func (r *mutationResolver) ConfigureDefaults(ctx context.Context, input ConfigDe
 	return makeConfigDefaultsResult(), nil
 }
 
-func (r *mutationResolver) GenerateAPIKey(ctx context.Context, input GenerateAPIKeyInput) (string, error) {
-	c := config.GetInstance()
-
-	var newAPIKey string
-	if input.Clear == nil || !*input.Clear {
-		username := c.GetUsername()
-		if username != "" {
-			var err error
-			newAPIKey, err = manager.GenerateAPIKey(username)
-			if err != nil {
-				return "", err
-			}
-		}
-	}
-
-	c.SetString(config.ApiKey, newAPIKey)
-	if err := c.Write(); err != nil {
-		return newAPIKey, err
-	}
-
-	return newAPIKey, nil
-}
-
 func (r *mutationResolver) ConfigureUI(ctx context.Context, input map[string]interface{}, partial map[string]interface{}) (map[string]interface{}, error) {
-	c := config.GetInstance()
+	uiConfig, err := r.getUIConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	if input != nil {
 		// #5483 - convert JSON numbers to float64 or int64
-		input = convertMapJSONNumbers(input)
-		c.SetUIConfiguration(input)
+		uiConfig = convertMapJSONNumbers(input)
 	}
 
 	if partial != nil {
 		// #5483 - convert JSON numbers to float64 or int64
 		partial = convertMapJSONNumbers(partial)
 		// merge partial into existing config
-		existing := c.GetUIConfiguration()
-		utils.MergeMaps(existing, partial)
-		c.SetUIConfiguration(existing)
+		if uiConfig == nil {
+			uiConfig = make(map[string]interface{})
+		}
+		utils.MergeMaps(uiConfig, partial)
 	}
 
-	if err := c.Write(); err != nil {
-		return c.GetUIConfiguration(), err
+	if err := r.setUIConfig(ctx, uiConfig); err != nil {
+		return nil, err
 	}
 
-	return c.GetUIConfiguration(), nil
+	return r.getUIConfig(ctx)
 }
 
 func (r *mutationResolver) ConfigureUISetting(ctx context.Context, key string, value interface{}) (map[string]interface{}, error) {
-	c := config.GetInstance()
+	uiConfig, err := r.getUIConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-	cfg := utils.NestedMap(c.GetUIConfiguration())
+	cfg := utils.NestedMap(uiConfig)
 
 	// #5483 - convert JSON numbers to float64 or int64
 	if m, ok := value.(map[string]interface{}); ok {

@@ -1,0 +1,1529 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"slices"
+
+	"github.com/doug-martin/goqu/v9"
+	"github.com/doug-martin/goqu/v9/exp"
+	"github.com/jmoiron/sqlx"
+	"gopkg.in/guregu/null.v4"
+	"gopkg.in/guregu/null.v4/zero"
+
+	"github.com/stashapp/stash/pkg/librarylimit"
+	"github.com/stashapp/stash/pkg/models"
+)
+
+const (
+	audioTable            = "audios"
+	audiosFilesTable      = "audios_files"
+	audioIDColumn         = "audio_id"
+	audioDateColumn       = "date"
+	performersAudiosTable = "performers_audios"
+	audiosTagsTable       = "audios_tags"
+	audiosGalleriesTable  = "audios_galleries"
+	groupsAudiosTable     = "groups_audios"
+	audiosURLsTable       = "audio_urls"
+	audioURLColumn        = "url"
+	audiosPlayDatesTable  = "audios_play_dates"
+	audioPlayDateColumn   = "play_date"
+	audiosODatesTable     = "audios_o_dates"
+	audioODateColumn      = "o_date"
+	audiosUserDataTable   = "audios_user_data"
+
+	audioCoverBlobColumn = "cover_blob"
+)
+
+var audioUserData = userDataTable{
+	table:       audiosUserDataTable,
+	idColumn:    audioIDColumn,
+	objectTable: audioTable,
+}
+
+type audioRow struct {
+	ID            int         `db:"id" goqu:"skipinsert"`
+	Title         zero.String `db:"title"`
+	Code          zero.String `db:"code"`
+	Details       zero.String `db:"details"`
+	Date          NullDate    `db:"date"`
+	DatePrecision null.Int    `db:"date_precision"`
+	Organized     bool        `db:"organized"`
+	StudioID      null.Int    `db:"studio_id,omitempty"`
+	CreatedAt     Timestamp   `db:"created_at"`
+	UpdatedAt     Timestamp   `db:"updated_at"`
+
+	// not used in resolutions or updates
+	CoverBlob zero.String `db:"cover_blob" goqu:"skipupdate"`
+}
+
+func (r *audioRow) fromAudio(o models.Audio) {
+	r.ID = o.ID
+	r.Title = zero.StringFrom(o.Title)
+	r.Code = zero.StringFrom(o.Code)
+	r.Details = zero.StringFrom(o.Details)
+	r.Date = NullDateFromDatePtr(o.Date)
+	r.DatePrecision = datePrecisionFromDatePtr(o.Date)
+	r.Organized = o.Organized
+	r.StudioID = intFromPtr(o.StudioID)
+	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
+	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
+}
+
+type audioUserDataRow struct {
+	AudioID      int      `db:"audio_id"`
+	UserID       int      `db:"user_id"`
+	Rating       null.Int `db:"rating"`
+	ResumeTime   float64  `db:"resume_time"`
+	PlayDuration float64  `db:"play_duration"`
+}
+
+func (r audioUserDataRow) apply(a *models.Audio) {
+	a.Rating = nullIntPtr(r.Rating)
+	a.ResumeTime = r.ResumeTime
+	a.PlayDuration = r.PlayDuration
+}
+
+func audioUserDataRecord(a models.Audio) goqu.Record {
+	return goqu.Record{
+		"rating":        intFromPtr(a.Rating),
+		"resume_time":   a.ResumeTime,
+		"play_duration": a.PlayDuration,
+	}
+}
+
+func audioUserDataPartialRecord(a models.AudioPartial) goqu.Record {
+	r := updateRecord{Record: make(exp.Record)}
+	r.setNullInt("rating", a.Rating)
+	r.setFloat64("resume_time", a.ResumeTime)
+	r.setFloat64("play_duration", a.PlayDuration)
+	return goqu.Record(r.Record)
+}
+
+type audioQueryRow struct {
+	audioRow
+	PrimaryFileID         null.Int    `db:"primary_file_id"`
+	PrimaryFileFolderPath zero.String `db:"primary_file_folder_path"`
+	PrimaryFileBasename   zero.String `db:"primary_file_basename"`
+	PrimaryFileOshash     zero.String `db:"primary_file_oshash"`
+	PrimaryFileChecksum   zero.String `db:"primary_file_checksum"`
+}
+
+func (r *audioQueryRow) resolve() *models.Audio {
+	ret := &models.Audio{
+		ID:        r.ID,
+		Title:     r.Title.String,
+		Code:      r.Code.String,
+		Details:   r.Details.String,
+		Date:      r.Date.DatePtr(r.DatePrecision),
+		Organized: r.Organized,
+		StudioID:  nullIntPtr(r.StudioID),
+
+		PrimaryFileID: nullIntFileIDPtr(r.PrimaryFileID),
+		Checksum:      r.PrimaryFileChecksum.String,
+
+		CreatedAt: r.CreatedAt.Timestamp.UTC(),
+		UpdatedAt: r.UpdatedAt.Timestamp.UTC(),
+	}
+
+	if r.PrimaryFileFolderPath.Valid && r.PrimaryFileBasename.Valid {
+		ret.Path = filepath.Join(r.PrimaryFileFolderPath.String, r.PrimaryFileBasename.String)
+	}
+
+	return ret
+}
+
+type audioRowRecord struct {
+	updateRecord
+}
+
+func (r *audioRowRecord) fromPartial(o models.AudioPartial) {
+	r.setNullString("title", o.Title)
+	r.setNullString("code", o.Code)
+	r.setNullString("details", o.Details)
+	r.setNullDate("date", "date_precision", o.Date)
+	r.setBool("organized", o.Organized)
+	r.setNullInt("studio_id", o.StudioID)
+	r.setTimestamp("created_at", o.CreatedAt)
+	r.setTimestamp("updated_at", o.UpdatedAt)
+}
+
+type audioRepositoryType struct {
+	repository
+	galleries  joinRepository
+	tags       joinRepository
+	performers joinRepository
+	groups     repository
+
+	files filesRepository
+}
+
+var (
+	audioRepository = audioRepositoryType{
+		repository: repository{
+			tableName: audioTable,
+			idColumn:  idColumn,
+		},
+		galleries: joinRepository{
+			repository: repository{
+				tableName: audiosGalleriesTable,
+				idColumn:  audioIDColumn,
+			},
+			fkColumn: galleryIDColumn,
+		},
+		tags: joinRepository{
+			repository: repository{
+				tableName: audiosTagsTable,
+				idColumn:  audioIDColumn,
+			},
+			fkColumn:     tagIDColumn,
+			foreignTable: tagTable,
+			orderBy:      tagTableSortSQL,
+		},
+		performers: joinRepository{
+			repository: repository{
+				tableName: performersAudiosTable,
+				idColumn:  audioIDColumn,
+			},
+			fkColumn: performerIDColumn,
+		},
+		groups: repository{
+			tableName: groupsAudiosTable,
+			idColumn:  audioIDColumn,
+		},
+		files: filesRepository{
+			repository: repository{
+				tableName: audiosFilesTable,
+				idColumn:  audioIDColumn,
+			},
+		},
+	}
+)
+
+type AudioStore struct {
+	blobJoinQueryBuilder
+	customFieldsStore
+
+	tableMgr *table
+	oDateManager
+	viewDateManager
+
+	repo *storeRepository
+}
+
+func NewAudioStore(r *storeRepository, blobStore *BlobStore) *AudioStore {
+	return &AudioStore{
+		blobJoinQueryBuilder: blobJoinQueryBuilder{
+			blobStore: blobStore,
+			joinTable: audioTable,
+		},
+		customFieldsStore: customFieldsStore{
+			table: audiosCustomFieldsTable,
+			fk:    audiosCustomFieldsTable.Col(audioIDColumn),
+		},
+
+		tableMgr:        audioTableMgr,
+		viewDateManager: viewDateManager{audiosViewTableMgr},
+		oDateManager:    oDateManager{audiosOTableMgr},
+		repo:            r,
+	}
+}
+
+func (qb *AudioStore) table() exp.IdentifierExpression {
+	return qb.tableMgr.table
+}
+
+func (qb *AudioStore) selectDataset() *goqu.SelectDataset {
+	table := qb.table()
+	files := fileTableMgr.table
+	folders := folderTableMgr.table
+	checksum := fingerprintTableMgr.table.As("fingerprint_md5")
+	oshash := fingerprintTableMgr.table.As("fingerprint_oshash")
+
+	return dialect.From(table).LeftJoin(
+		audiosFilesJoinTable,
+		goqu.On(
+			audiosFilesJoinTable.Col(audioIDColumn).Eq(table.Col(idColumn)),
+			audiosFilesJoinTable.Col("primary").IsTrue(),
+		),
+	).LeftJoin(
+		files,
+		goqu.On(files.Col(idColumn).Eq(audiosFilesJoinTable.Col(fileIDColumn))),
+	).LeftJoin(
+		folders,
+		goqu.On(folders.Col(idColumn).Eq(files.Col("parent_folder_id"))),
+	).LeftJoin(
+		checksum,
+		goqu.On(
+			checksum.Col(fileIDColumn).Eq(audiosFilesJoinTable.Col(fileIDColumn)),
+			checksum.Col("type").Eq(models.FingerprintTypeMD5),
+		),
+	).LeftJoin(
+		oshash,
+		goqu.On(
+			oshash.Col(fileIDColumn).Eq(audiosFilesJoinTable.Col(fileIDColumn)),
+			oshash.Col("type").Eq(models.FingerprintTypeOshash),
+		),
+	).Select(
+		qb.table().All(),
+		audiosFilesJoinTable.Col(fileIDColumn).As("primary_file_id"),
+		folders.Col("path").As("primary_file_folder_path"),
+		files.Col("basename").As("primary_file_basename"),
+		checksum.Col("fingerprint").As("primary_file_checksum"),
+		oshash.Col("fingerprint").As("primary_file_oshash"),
+	)
+}
+
+func (qb *AudioStore) Create(ctx context.Context, newObject *models.Audio, fileIDs []models.FileID) error {
+	var r audioRow
+	r.fromAudio(*newObject)
+
+	id, err := qb.tableMgr.insertID(ctx, r)
+	if err != nil {
+		return err
+	}
+	if err := audioUserData.upsert(ctx, id, audioUserDataRecord(*newObject)); err != nil {
+		return err
+	}
+
+	if len(fileIDs) > 0 {
+		const firstPrimary = true
+		if err := audiosFilesTableMgr.insertJoins(ctx, id, firstPrimary, fileIDs); err != nil {
+			return err
+		}
+	}
+
+	if newObject.URLs.Loaded() {
+		const startPos = 0
+		if err := audiosURLsTableMgr.insertJoins(ctx, id, startPos, newObject.URLs.List()); err != nil {
+			return err
+		}
+	}
+
+	if newObject.GalleryIDs.Loaded() {
+		if err := audiosGalleriesTableMgr.insertJoins(ctx, id, newObject.GalleryIDs.List()); err != nil {
+			return err
+		}
+	}
+
+	if newObject.PerformerIDs.Loaded() {
+		if err := audiosPerformersTableMgr.insertJoins(ctx, id, newObject.PerformerIDs.List()); err != nil {
+			return err
+		}
+	}
+	if newObject.TagIDs.Loaded() {
+		if err := audiosTagsTableMgr.insertJoins(ctx, id, newObject.TagIDs.List()); err != nil {
+			return err
+		}
+	}
+
+	if newObject.Groups.Loaded() {
+		if err := audiosGroupsTableMgr.insertJoins(ctx, id, newObject.Groups.List()); err != nil {
+			return err
+		}
+	}
+
+	updated, err := qb.find(ctx, id)
+	if err != nil {
+		return fmt.Errorf("finding after create: %w", err)
+	}
+
+	*newObject = *updated
+
+	return nil
+}
+
+func (qb *AudioStore) UpdatePartial(ctx context.Context, id int, partial models.AudioPartial) (*models.Audio, error) {
+	r := audioRowRecord{
+		updateRecord{
+			Record: make(exp.Record),
+		},
+	}
+
+	r.fromPartial(partial)
+
+	if len(r.Record) > 0 {
+		if err := qb.tableMgr.updateByID(ctx, id, r.Record); err != nil {
+			return nil, err
+		}
+	}
+	if err := audioUserData.upsert(ctx, id, audioUserDataPartialRecord(partial)); err != nil {
+		return nil, err
+	}
+
+	if partial.URLs != nil {
+		if err := audiosURLsTableMgr.modifyJoins(ctx, id, partial.URLs.Values, partial.URLs.Mode); err != nil {
+			return nil, err
+		}
+	}
+	if partial.GalleryIDs != nil {
+		if err := audiosGalleriesTableMgr.modifyJoins(ctx, id, partial.GalleryIDs.IDs, partial.GalleryIDs.Mode); err != nil {
+			return nil, err
+		}
+	}
+	if partial.PerformerIDs != nil {
+		if err := audiosPerformersTableMgr.modifyJoins(ctx, id, partial.PerformerIDs.IDs, partial.PerformerIDs.Mode); err != nil {
+			return nil, err
+		}
+	}
+	if partial.TagIDs != nil {
+		if err := audiosTagsTableMgr.modifyJoins(ctx, id, partial.TagIDs.IDs, partial.TagIDs.Mode); err != nil {
+			return nil, err
+		}
+	}
+	if partial.GroupIDs != nil {
+		if err := audiosGroupsTableMgr.modifyJoins(ctx, id, partial.GroupIDs.Groups, partial.GroupIDs.Mode); err != nil {
+			return nil, err
+		}
+	}
+	if partial.PrimaryFileID != nil {
+		if err := audiosFilesTableMgr.setPrimary(ctx, id, *partial.PrimaryFileID); err != nil {
+			return nil, err
+		}
+	}
+
+	return qb.find(ctx, id)
+}
+
+func (qb *AudioStore) Update(ctx context.Context, updatedObject *models.Audio) error {
+	var r audioRow
+	r.fromAudio(*updatedObject)
+
+	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
+		return err
+	}
+	if err := audioUserData.upsert(ctx, updatedObject.ID, audioUserDataRecord(*updatedObject)); err != nil {
+		return err
+	}
+
+	if updatedObject.URLs.Loaded() {
+		if err := audiosURLsTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.URLs.List()); err != nil {
+			return err
+		}
+	}
+
+	if updatedObject.GalleryIDs.Loaded() {
+		if err := audiosGalleriesTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.GalleryIDs.List()); err != nil {
+			return err
+		}
+	}
+
+	if updatedObject.PerformerIDs.Loaded() {
+		if err := audiosPerformersTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.PerformerIDs.List()); err != nil {
+			return err
+		}
+	}
+
+	if updatedObject.TagIDs.Loaded() {
+		if err := audiosTagsTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.TagIDs.List()); err != nil {
+			return err
+		}
+	}
+
+	if updatedObject.Groups.Loaded() {
+		if err := audiosGroupsTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.Groups.List()); err != nil {
+			return err
+		}
+	}
+
+	if updatedObject.Files.Loaded() {
+		fileIDs := make([]models.FileID, len(updatedObject.Files.List()))
+		for i, f := range updatedObject.Files.List() {
+			fileIDs[i] = f.ID
+		}
+
+		if err := audiosFilesTableMgr.replaceJoins(ctx, updatedObject.ID, fileIDs); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (qb *AudioStore) Destroy(ctx context.Context, id int) error {
+	// must handle image checksums manually
+	if err := qb.destroyCover(ctx, id); err != nil {
+		return err
+	}
+
+	// audio markers should be handled prior to calling destroy
+	// galleries should be handled prior to calling destroy
+
+	return qb.tableMgr.destroyExisting(ctx, []int{id})
+}
+
+// returns nil, nil if not found
+func (qb *AudioStore) Find(ctx context.Context, id int) (*models.Audio, error) {
+	ret, err := qb.find(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return ret, err
+}
+
+// FindByIDs finds multiple audios by their IDs.
+// No check is made to see if the audios exist, and the order of the returned audios
+// is not guaranteed to be the same as the order of the input IDs.
+func (qb *AudioStore) FindByIDs(ctx context.Context, ids []int) ([]*models.Audio, error) {
+	audios := make([]*models.Audio, 0, len(ids))
+
+	table := qb.table()
+	if err := batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := qb.selectDataset().Prepared(true).Where(table.Col(idColumn).In(batch))
+		unsorted, err := qb.getMany(ctx, q)
+		if err != nil {
+			return err
+		}
+
+		audios = append(audios, unsorted...)
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return audios, nil
+}
+
+func (qb *AudioStore) FindMany(ctx context.Context, ids []int) ([]*models.Audio, error) {
+	ids, limitErr := visibleIDs(ctx, librarylimit.Audios, ids)
+	if limitErr != nil {
+		return nil, limitErr
+	}
+
+	audios := make([]*models.Audio, len(ids))
+
+	unsorted, err := qb.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, s := range unsorted {
+		i := slices.Index(ids, s.ID)
+		audios[i] = s
+	}
+
+	for i := range audios {
+		if audios[i] == nil {
+			return nil, fmt.Errorf("audio with id %d not found", ids[i])
+		}
+	}
+
+	return audios, nil
+}
+
+// returns nil, sql.ErrNoRows if not found
+func (qb *AudioStore) find(ctx context.Context, id int) (*models.Audio, error) {
+	q := qb.selectDataset().Where(qb.tableMgr.byID(id))
+
+	ret, err := qb.get(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) findBySubquery(ctx context.Context, sq *goqu.SelectDataset) ([]*models.Audio, error) {
+	table := qb.table()
+
+	q := qb.selectDataset().Where(
+		table.Col(idColumn).Eq(
+			sq,
+		),
+	)
+
+	return qb.getMany(ctx, q)
+}
+
+// returns nil, sql.ErrNoRows if not found
+func (qb *AudioStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.Audio, error) {
+	ret, err := qb.getMany(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(ret) == 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	return ret[0], nil
+}
+
+func (qb *AudioStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*models.Audio, error) {
+	q = librarylimit.Apply(ctx, q, librarylimit.Audios)
+
+	const single = false
+	var ret []*models.Audio
+	var lastID int
+	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
+		var f audioQueryRow
+		if err := r.StructScan(&f); err != nil {
+			return err
+		}
+
+		s := f.resolve()
+		if s.ID == lastID {
+			return fmt.Errorf("internal error: multiple rows returned for single audio id %d", s.ID)
+		}
+		lastID = s.ID
+
+		ret = append(ret, s)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := qb.loadUserData(ctx, ret); err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+// loadUserData sets the current user's rating and playback activity on audios.
+func (qb *AudioStore) loadUserData(ctx context.Context, audios []*models.Audio) error {
+	if _, ok := models.UserIDFromContext(ctx); !ok || len(audios) == 0 {
+		return nil
+	}
+
+	byID := make(map[int]*models.Audio, len(audios))
+	ids := make([]int, len(audios))
+	for i, a := range audios {
+		byID[a.ID] = a
+		ids[i] = a.ID
+	}
+
+	return batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := audioUserData.selectForUser(ctx, batch)
+		const single = false
+		return queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+			var r audioUserDataRow
+			if err := rows.StructScan(&r); err != nil {
+				return err
+			}
+
+			if a := byID[r.AudioID]; a != nil {
+				r.apply(a)
+			}
+			return nil
+		})
+	})
+}
+
+func (qb *AudioStore) GetFiles(ctx context.Context, id int) ([]*models.AudioFile, error) {
+	fileIDs, err := audioRepository.files.get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// use fileStore to load files
+	files, err := qb.repo.File.Find(ctx, fileIDs...)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]*models.AudioFile, len(files))
+	for i, f := range files {
+		var ok bool
+		ret[i], ok = f.(*models.AudioFile)
+		if !ok {
+			return nil, fmt.Errorf("expected file to be *file.AudioFile not %T", f)
+		}
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) GetManyFileIDs(ctx context.Context, ids []int) ([][]models.FileID, error) {
+	const primaryOnly = false
+	return audioRepository.files.getMany(ctx, ids, primaryOnly)
+}
+
+func (qb *AudioStore) FindByFileID(ctx context.Context, fileID models.FileID) ([]*models.Audio, error) {
+	sq := dialect.From(audiosFilesJoinTable).Select(audiosFilesJoinTable.Col(audioIDColumn)).Where(
+		audiosFilesJoinTable.Col(fileIDColumn).Eq(fileID),
+	)
+
+	ret, err := qb.findBySubquery(ctx, sq)
+	if err != nil {
+		return nil, fmt.Errorf("getting audios by file id %d: %w", fileID, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) GetManyIDsByFileIDs(ctx context.Context, fileIDs []models.FileID) ([][]int, error) {
+	sq := dialect.From(audiosFilesJoinTable).Select(audiosFilesJoinTable.Col(audioIDColumn), audiosFilesJoinTable.Col(fileIDColumn)).Where(
+		audiosFilesJoinTable.Col(fileIDColumn).In(fileIDs),
+	)
+
+	sql, args, err := sq.ToSQL()
+	if err != nil {
+		return nil, fmt.Errorf("building query: %w", err)
+	}
+
+	var results []struct {
+		AudioID int           `db:"audio_id"`
+		FileID  models.FileID `db:"file_id"`
+	}
+
+	if err := querySelect(ctx, sql, args, &results); err != nil {
+		return nil, fmt.Errorf("getting audios by file ids %v: %w", fileIDs, err)
+	}
+
+	retMap := make(map[models.FileID][]int)
+	for _, r := range results {
+		retMap[r.FileID] = append(retMap[r.FileID], r.AudioID)
+	}
+
+	ret := make([][]int, len(fileIDs))
+	for i, id := range fileIDs {
+		ret[i] = retMap[id]
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) FindByPrimaryFileID(ctx context.Context, fileID models.FileID) ([]*models.Audio, error) {
+	sq := dialect.From(audiosFilesJoinTable).Select(audiosFilesJoinTable.Col(audioIDColumn)).Where(
+		audiosFilesJoinTable.Col(fileIDColumn).Eq(fileID),
+		audiosFilesJoinTable.Col("primary").IsTrue(),
+	)
+
+	ret, err := qb.findBySubquery(ctx, sq)
+	if err != nil {
+		return nil, fmt.Errorf("getting audios by primary file id %d: %w", fileID, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) CountByFileID(ctx context.Context, fileID models.FileID) (int, error) {
+	joinTable := audiosFilesJoinTable
+
+	q := dialect.Select(goqu.COUNT("*")).From(joinTable).Where(joinTable.Col(fileIDColumn).Eq(fileID))
+	return count(ctx, q)
+}
+
+func (qb *AudioStore) FindByFingerprints(ctx context.Context, fp []models.Fingerprint) ([]*models.Audio, error) {
+	fingerprintTable := fingerprintTableMgr.table
+
+	var ex []exp.Expression
+
+	for _, v := range fp {
+		ex = append(ex, goqu.And(
+			fingerprintTable.Col("type").Eq(v.Type),
+			fingerprintTable.Col("fingerprint").Eq(v.Fingerprint),
+		))
+	}
+
+	sq := dialect.From(audiosFilesJoinTable).
+		InnerJoin(
+			fingerprintTable,
+			goqu.On(fingerprintTable.Col(fileIDColumn).Eq(audiosFilesJoinTable.Col(fileIDColumn))),
+		).
+		Select(audiosFilesJoinTable.Col(audioIDColumn)).Where(goqu.Or(ex...))
+
+	ret, err := qb.findBySubquery(ctx, sq)
+	if err != nil {
+		return nil, fmt.Errorf("getting audios by fingerprints: %w", err)
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) FindByChecksum(ctx context.Context, checksum string) ([]*models.Audio, error) {
+	return qb.FindByFingerprints(ctx, []models.Fingerprint{
+		{
+			Type:        models.FingerprintTypeMD5,
+			Fingerprint: checksum,
+		},
+	})
+}
+
+func (qb *AudioStore) FindByPath(ctx context.Context, p string) ([]*models.Audio, error) {
+	filesTable := fileTableMgr.table
+	foldersTable := folderTableMgr.table
+	basename := filepath.Base(p)
+	dir := filepath.Dir(p)
+
+	sq := dialect.From(audiosFilesJoinTable).InnerJoin(
+		filesTable,
+		goqu.On(filesTable.Col(idColumn).Eq(audiosFilesJoinTable.Col(fileIDColumn))),
+	).InnerJoin(
+		foldersTable,
+		goqu.On(foldersTable.Col(idColumn).Eq(filesTable.Col("parent_folder_id"))),
+	).Select(audiosFilesJoinTable.Col(audioIDColumn))
+
+	if pathHasWildcard(basename) || pathHasWildcard(dir) {
+		sq = sq.Where(
+			pathLike(foldersTable.Col("path"), dir),
+			pathLike(filesTable.Col("basename"), basename),
+		)
+	} else {
+		sq = sq.Where(
+			pathEqNoCase(foldersTable.Col("path"), dir),
+			pathEqNoCase(filesTable.Col("basename"), basename),
+		)
+	}
+
+	ret, err := qb.findBySubquery(ctx, sq)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("getting scene by path %s: %w", p, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) FindByPerformerID(ctx context.Context, performerID int) ([]*models.Audio, error) {
+	sq := dialect.From(audiosPerformersJoinTable).Select(audiosPerformersJoinTable.Col(audioIDColumn)).Where(
+		audiosPerformersJoinTable.Col(performerIDColumn).Eq(performerID),
+	)
+	ret, err := qb.findBySubquery(ctx, sq)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting audios for performer %d: %w", performerID, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) CountByPerformerID(ctx context.Context, performerID int) (int, error) {
+	joinTable := audiosPerformersJoinTable
+
+	q := dialect.Select(goqu.COUNT("*")).From(joinTable).Where(joinTable.Col(performerIDColumn).Eq(performerID))
+	return count(ctx, q)
+}
+
+func (qb *AudioStore) OCountByPerformerID(ctx context.Context, performerID int) (int, error) {
+	table := qb.table()
+	joinTable := audiosPerformersJoinTable
+	oHistoryTable := goqu.T(audiosODatesTable)
+
+	q := dialect.Select(goqu.COUNT("*")).From(table).InnerJoin(
+		oHistoryTable,
+		goqu.On(
+			table.Col(idColumn).Eq(oHistoryTable.Col(audioIDColumn)),
+			oHistoryTable.Col(userIDColumn).Eq(currentUserID(ctx)),
+		),
+	).InnerJoin(
+		joinTable,
+		goqu.On(
+			table.Col(idColumn).Eq(joinTable.Col(audioIDColumn)),
+		),
+	).Where(joinTable.Col(performerIDColumn).Eq(performerID))
+
+	var ret int
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) OCountByGroupID(ctx context.Context, groupID int) (int, error) {
+	table := qb.table()
+	joinTable := audiosGroupsJoinTable
+	oHistoryTable := goqu.T(audiosODatesTable)
+
+	q := dialect.Select(goqu.COUNT("*")).From(table).InnerJoin(
+		oHistoryTable,
+		goqu.On(
+			table.Col(idColumn).Eq(oHistoryTable.Col(audioIDColumn)),
+			oHistoryTable.Col(userIDColumn).Eq(currentUserID(ctx)),
+		),
+	).InnerJoin(
+		joinTable,
+		goqu.On(
+			table.Col(idColumn).Eq(joinTable.Col(audioIDColumn)),
+		),
+	).Where(joinTable.Col(groupIDColumn).Eq(groupID))
+
+	var ret int
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) OCountByStudioID(ctx context.Context, studioID int, depth int) (int, error) {
+	var ret int
+
+	if depth != 0 {
+		return qb.oCountByStudioIDRecursive(ctx, studioID, depth)
+	}
+
+	table := qb.table()
+	oHistoryTable := goqu.T(audiosODatesTable)
+
+	q := dialect.Select(goqu.COUNT("*")).From(table).InnerJoin(
+		oHistoryTable,
+		goqu.On(
+			table.Col(idColumn).Eq(oHistoryTable.Col(audioIDColumn)),
+			oHistoryTable.Col(userIDColumn).Eq(currentUserID(ctx)),
+		),
+	).Where(table.Col(studioIDColumn).Eq(studioID))
+
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) oCountByStudioIDRecursive(ctx context.Context, studioID int, depth int) (int, error) {
+	q := `
+	WITH RECURSIVE sub_studios AS (
+		SELECT id, 0 AS level FROM studios WHERE id = ?
+		UNION ALL
+		SELECT s.id, ss.level + 1 FROM studios s
+		INNER JOIN sub_studios ss ON s.parent_id = ss.id
+		WHERE ss.level < ? OR ? < 0
+	)
+	SELECT COUNT(*) FROM audios
+	INNER JOIN audios_o_dates ON audios.id = audios_o_dates.audio_id
+	WHERE audios_o_dates.user_id = ?
+	AND audios.studio_id IN (SELECT id FROM sub_studios)`
+
+	rows, err := dbWrapper.QueryxContext(ctx, q, studioID, depth, depth, currentUserID(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("querying audio o_count by studio: %w", err)
+	}
+	defer rows.Close()
+
+	var ret int
+	for rows.Next() {
+		if err := rows.Scan(&ret); err != nil {
+			return 0, fmt.Errorf("scanning audio o_count: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterating audio o_count rows: %w", err)
+	}
+	return ret, nil
+}
+
+func (qb *AudioStore) FindByGroupID(ctx context.Context, groupID int) ([]*models.Audio, error) {
+	sq := dialect.From(audiosGroupsJoinTable).Select(audiosGroupsJoinTable.Col(audioIDColumn)).Where(
+		audiosGroupsJoinTable.Col(groupIDColumn).Eq(groupID),
+	)
+	ret, err := qb.findBySubquery(ctx, sq)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting audios for group %d: %w", groupID, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) Count(ctx context.Context) (int, error) {
+	q := dialect.Select(goqu.COUNT("*")).From(qb.table())
+	return count(ctx, q)
+}
+
+func (qb *AudioStore) Size(ctx context.Context) (float64, error) {
+	table := qb.table()
+	fileTable := fileTableMgr.table
+	q := dialect.Select(
+		goqu.COALESCE(goqu.SUM(fileTableMgr.table.Col("size")), 0),
+	).From(table).InnerJoin(
+		audiosFilesJoinTable,
+		goqu.On(table.Col(idColumn).Eq(audiosFilesJoinTable.Col(audioIDColumn))),
+	).InnerJoin(
+		fileTable,
+		goqu.On(audiosFilesJoinTable.Col(fileIDColumn).Eq(fileTable.Col(idColumn))),
+	)
+	var ret float64
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) Duration(ctx context.Context) (float64, error) {
+	table := qb.table()
+	AudioFileTable := audioFileTableMgr.table
+
+	q := dialect.Select(
+		goqu.COALESCE(goqu.SUM(AudioFileTable.Col("duration")), 0),
+	).From(table).InnerJoin(
+		audiosFilesJoinTable,
+		goqu.On(audiosFilesJoinTable.Col("audio_id").Eq(table.Col(idColumn))),
+	).InnerJoin(
+		AudioFileTable,
+		goqu.On(AudioFileTable.Col("file_id").Eq(audiosFilesJoinTable.Col("file_id"))),
+	)
+
+	var ret float64
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) PlayDuration(ctx context.Context) (float64, error) {
+	table := audioUserData.goquTable()
+	q := dialect.Select(goqu.COALESCE(goqu.SUM("play_duration"), 0)).From(table).Where(
+		table.Col(userIDColumn).Eq(currentUserID(ctx)),
+	)
+
+	var ret float64
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
+// TODO - currently only used by unit test
+func (qb *AudioStore) CountByStudioID(ctx context.Context, studioID int) (int, error) {
+	table := qb.table()
+
+	q := dialect.Select(goqu.COUNT("*")).From(table).Where(table.Col(studioIDColumn).Eq(studioID))
+	return count(ctx, q)
+}
+
+func (qb *AudioStore) All(ctx context.Context) ([]*models.Audio, error) {
+	table := qb.table()
+	fileTable := fileTableMgr.table
+	folderTable := folderTableMgr.table
+
+	return qb.getMany(ctx, qb.selectDataset().Order(
+		folderTable.Col("path").Asc(),
+		fileTable.Col("basename").Asc(),
+		table.Col("date").Asc(),
+	))
+}
+
+func (qb *AudioStore) makeQuery(ctx context.Context, audioFilter *models.AudioFilterType, findFilter *models.FindFilterType) (*queryBuilder, error) {
+	if audioFilter == nil {
+		audioFilter = &models.AudioFilterType{}
+	}
+	if findFilter == nil {
+		findFilter = &models.FindFilterType{}
+	}
+
+	query := audioRepository.newQuery()
+	if where, ok := librarylimit.Where(ctx, librarylimit.Audios); ok {
+		query.addWhere(where)
+	}
+	distinctIDs(&query, audioTable)
+
+	if q := findFilter.Q; q != nil && *q != "" {
+		query.addJoins(
+			join{
+				table:    audiosFilesTable,
+				onClause: "audios_files.audio_id = audios.id",
+			},
+			join{
+				table:    fileTable,
+				onClause: "audios_files.file_id = files.id",
+			},
+			join{
+				table:    folderTable,
+				onClause: "files.parent_folder_id = folders.id",
+			},
+			join{
+				table:    fingerprintTable,
+				onClause: "files_fingerprints.file_id = audios_files.file_id",
+			},
+		)
+
+		filepathColumn := "folders.path || '" + string(filepath.Separator) + "' || files.basename"
+		searchColumns := []string{"audios.title", "audios.details", filepathColumn, "files_fingerprints.fingerprint"}
+		query.parseQueryString(searchColumns, *q)
+	}
+
+	filter := filterBuilderFromHandler(ctx, &audioFilterHandler{
+		audioFilter: audioFilter,
+	})
+
+	if err := query.addFilter(filter); err != nil {
+		return nil, err
+	}
+
+	if err := qb.setAudioSort(ctx, &query, findFilter); err != nil {
+		return nil, err
+	}
+	query.pagination = getPagination(findFilter)
+
+	return &query, nil
+}
+
+func (qb *AudioStore) Query(ctx context.Context, options models.AudioQueryOptions) (*models.AudioQueryResult, error) {
+	query, err := qb.makeQuery(ctx, options.AudioFilter, options.FindFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := qb.queryGroupedFields(ctx, options, *query)
+	if err != nil {
+		return nil, fmt.Errorf("error querying aggregate fields: %w", err)
+	}
+
+	idsResult, err := query.findIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error finding IDs: %w", err)
+	}
+
+	result.IDs = idsResult
+	return result, nil
+}
+
+func (qb *AudioStore) queryGroupedFields(ctx context.Context, options models.AudioQueryOptions, query queryBuilder) (*models.AudioQueryResult, error) {
+	if !options.Count && !options.TotalDuration && !options.TotalSize {
+		// nothing to do - return empty result
+		return models.NewAudioQueryResult(qb), nil
+	}
+
+	aggregateQuery := audioRepository.newQuery()
+
+	if options.Count {
+		aggregateQuery.addColumn("COUNT(DISTINCT temp.id) as total")
+	}
+
+	if options.TotalDuration {
+		query.addJoins(
+			join{
+				table:    audiosFilesTable,
+				onClause: "audios_files.audio_id = audios.id",
+			},
+			join{
+				table:    audioFileTable,
+				onClause: "audios_files.file_id = audio_files.file_id",
+			},
+		)
+		query.addColumn("COALESCE(audio_files.duration, 0) as duration")
+		aggregateQuery.addColumn("SUM(temp.duration) as duration")
+	}
+
+	if options.TotalSize {
+		query.addJoins(
+			join{
+				table:    audiosFilesTable,
+				onClause: "audios_files.audio_id = audios.id",
+			},
+			join{
+				table:    fileTable,
+				onClause: "audios_files.file_id = files.id",
+			},
+		)
+		query.addColumn("COALESCE(files.size, 0) as size")
+		aggregateQuery.addColumn("SUM(temp.size) as size")
+	}
+
+	// #5503 - select the file id so equal-sized/duration files aren't collapsed by DISTINCT
+	if options.TotalDuration || options.TotalSize {
+		query.addColumn(audiosFilesTable + ".file_id")
+	}
+
+	const includeSortPagination = false
+	if options.TotalDuration {
+		query.addGroupBy("audio_files.duration")
+	}
+	if options.TotalSize {
+		query.addGroupBy("files.size")
+	}
+	if options.TotalDuration || options.TotalSize {
+		query.addGroupBy("audios_files.file_id")
+	}
+	aggregateQuery.from = fmt.Sprintf("(%s) as temp", query.toSQL(includeSortPagination))
+
+	out := struct {
+		Total    int
+		Duration null.Float
+		Size     null.Float
+	}{}
+	if err := audioRepository.queryStruct(ctx, aggregateQuery.toSQL(includeSortPagination), query.allArgs(), &out); err != nil {
+		return nil, err
+	}
+
+	ret := models.NewAudioQueryResult(qb)
+	ret.Count = out.Total
+	ret.TotalDuration = out.Duration.Float64
+	ret.TotalSize = out.Size.Float64
+	return ret, nil
+}
+
+func (qb *AudioStore) QueryCount(ctx context.Context, audioFilter *models.AudioFilterType, findFilter *models.FindFilterType) (int, error) {
+	query, err := qb.makeQuery(ctx, audioFilter, findFilter)
+	if err != nil {
+		return 0, err
+	}
+
+	return query.executeCount(ctx)
+}
+
+var audioSortOptions = sortOptions{
+	"bitrate",
+	"created_at",
+	"code",
+	"date",
+	"file_count",
+	"filesize",
+	"duration",
+	"file_mod_time",
+	"sample_rate",
+	"group_audio_number",
+	"id",
+	"last_o_at",
+	"last_played_at",
+	"o_counter",
+	"organized",
+	"performer_count",
+	"play_count",
+	"play_duration",
+	"resume_time",
+	"path",
+	"random",
+	"rating",
+	"studio",
+	"tag_count",
+	"title",
+	"updated_at",
+	"performer_age",
+}
+
+func (qb *AudioStore) setAudioSort(ctx context.Context, query *queryBuilder, findFilter *models.FindFilterType) error {
+	if findFilter == nil || findFilter.Sort == nil || *findFilter.Sort == "" {
+		return nil
+	}
+	sort := findFilter.GetSort("title")
+
+	// CVE-2024-32231 - ensure sort is in the list of allowed sorts
+	if err := audioSortOptions.validateSort(sort); err != nil {
+		return err
+	}
+
+	addFileTable := func() {
+		query.addJoins(
+			join{
+				sort:     true,
+				table:    audiosFilesTable,
+				onClause: "audios_files.audio_id = audios.id",
+			},
+			join{
+				sort:     true,
+				table:    fileTable,
+				onClause: "audios_files.file_id = files.id",
+			},
+		)
+	}
+
+	addAudioFileTable := func() {
+		addFileTable()
+		query.addJoins(
+			join{
+				sort:     true,
+				table:    audioFileTable,
+				onClause: "audio_files.file_id = audios_files.file_id",
+			},
+		)
+	}
+
+	addFolderTable := func() {
+		query.addJoins(
+			join{
+				sort:     true,
+				table:    folderTable,
+				onClause: "files.parent_folder_id = folders.id",
+			},
+		)
+	}
+
+	direction := findFilter.GetDirection()
+	switch sort {
+	case "group_audio_number":
+		query.joinSort(groupsAudiosTable, "audio_group", "audios.id = audio_group.audio_id")
+		add, agg := getSort("audio_index", direction, "audio_group")
+		query.sort += add
+		query.addGroupBy(agg...)
+	case "tag_count":
+		query.sort += getCountSort(audioTable, audiosTagsTable, audioIDColumn, direction)
+	case "performer_count":
+		query.sort += getCountSort(audioTable, performersAudiosTable, audioIDColumn, direction)
+	case "file_count":
+		query.sort += getCountSort(audioTable, audiosFilesTable, audioIDColumn, direction)
+	case "path":
+		// special handling for path
+		addFileTable()
+		addFolderTable()
+		query.addGroupBy("folders.path", "files.basename")
+		query.sort += fmt.Sprintf(" ORDER BY COALESCE(folders.path, '') || COALESCE(files.basename, '') COLLATE \"natural_ci\" %s", direction)
+	case "bitrate":
+		sort = "bit_rate"
+		addAudioFileTable()
+		add, agg := getSort(sort, direction, audioFileTable)
+		query.sort += add
+		query.addGroupBy(agg...)
+	case "file_mod_time":
+		sort = "mod_time"
+		addFileTable()
+		add, agg := getSort(sort, direction, fileTable)
+		query.sort += add
+		query.addGroupBy(agg...)
+	case "sample_rate":
+		sort = "sample_rate"
+		addAudioFileTable()
+		add, agg := getSort(sort, direction, audioFileTable)
+		query.sort += add
+		query.addGroupBy(agg...)
+	case "filesize":
+		sort = "size"
+		addFileTable()
+		add, agg := getSort(sort, direction, fileTable)
+		query.sort += add
+		query.addGroupBy(agg...)
+	case "duration":
+		addAudioFileTable()
+		add, agg := getSort(sort, direction, audioFileTable)
+		query.sort += add
+		query.addGroupBy(agg...)
+	case "title":
+		addFileTable()
+		addFolderTable()
+		query.addGroupBy("folders.path", "files.basename")
+		query.sort += " ORDER BY COALESCE(audios.title, files.basename) COLLATE \"natural_ci\" " + direction + ", folders.path COLLATE \"natural_ci\" " + direction
+	case "play_count":
+		query.sort += getUserCountSort(audioTable, audiosPlayDatesTable, audioIDColumn, currentUserID(ctx), direction)
+	case "last_played_at":
+		query.sort += fmt.Sprintf(" ORDER BY (SELECT MAX(play_date) FROM %s AS sort WHERE sort.%s = %s.id AND sort.%s = %d) %s", audiosPlayDatesTable, audioIDColumn, audioTable, userIDColumn, currentUserID(ctx), getSortDirection(direction))
+	case "last_o_at":
+		query.sort += fmt.Sprintf(" ORDER BY (SELECT MAX(o_date) FROM %s AS sort WHERE sort.%s = %s.id AND sort.%s = %d) %s", audiosODatesTable, audioIDColumn, audioTable, userIDColumn, currentUserID(ctx), getSortDirection(direction))
+	case "o_counter":
+		query.sort += getUserCountSort(audioTable, audiosODatesTable, audioIDColumn, currentUserID(ctx), direction)
+	case "rating":
+		audioUserData.joinSort(ctx, query)
+		add, agg := getSort(sort, direction, audiosUserDataTable)
+		query.sort += add
+		query.addGroupBy(agg...)
+	case "resume_time", "play_duration":
+		audioUserData.joinSort(ctx, query)
+		query.sort += " ORDER BY " + audioUserData.columnOrDefault(sort, "0") + " " + getSortDirection(direction)
+	case "performer_age":
+		// Looking at the youngest performer by default
+		aggregation := "MIN"
+		if direction == "DESC" {
+			// When sorting by performer_'s age DESC, I should consider the oldest performer instead
+			aggregation = "MAX"
+		}
+		fallback := "NULL"
+		if direction == "ASC" {
+			// When sorting ascending, NULLs are first by default. Coalescing to the MAX int value supported by sqlite
+			fallback = "9223372036854775807"
+		}
+		query.sort += fmt.Sprintf(
+			" ORDER BY (SELECT COALESCE(%s(audios.date - performers.birthdate), %s) FROM %s as performers INNER JOIN %s AS aggregation ON performers.id = aggregation.%s AND aggregation.%s = %s.id) %s",
+			aggregation,
+			fallback,
+			performerTable,
+			performersAudiosTable,
+			performerIDColumn,
+			audioIDColumn,
+			audioTable,
+			getSortDirection(direction),
+		)
+	case "studio":
+		query.joinSort(studioTable, "", "audios.studio_id = studios.id")
+		add, agg := getSort("name", direction, studioTable)
+		query.sort += add
+		query.addGroupBy(agg...)
+	default:
+		add, agg := getSort(sort, direction, "audios")
+		query.sort += add
+		query.addGroupBy(agg...)
+	}
+
+	// Whatever the sorting, always use title/id as a final sort
+	query.sort += ", COALESCE(audios.title, CAST(audios.id AS text)) COLLATE \"natural_ci\" ASC"
+	query.addGroupBy("audios.title", "audios.id")
+
+	return nil
+}
+
+func (qb *AudioStore) SaveActivity(ctx context.Context, id int, resumeTime *float64, playDuration *float64) (bool, error) {
+	if err := qb.tableMgr.checkIDExists(ctx, id); err != nil {
+		return false, err
+	}
+
+	values := goqu.Record{}
+	updates := goqu.Record{}
+
+	if resumeTime != nil {
+		values["resume_time"] = *resumeTime
+		updates["resume_time"] = goqu.I("excluded.resume_time")
+	}
+
+	if playDuration != nil {
+		values["play_duration"] = *playDuration
+		updates["play_duration"] = goqu.L("audios_user_data.play_duration + excluded.play_duration")
+	}
+
+	if err := audioUserData.upsertWith(ctx, id, values, updates); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (qb *AudioStore) ResetActivity(ctx context.Context, id int, resetResume bool, resetDuration bool) (bool, error) {
+	if err := qb.tableMgr.checkIDExists(ctx, id); err != nil {
+		return false, err
+	}
+
+	values := goqu.Record{}
+
+	if resetResume {
+		values["resume_time"] = 0.0
+	}
+
+	if resetDuration {
+		values["play_duration"] = 0.0
+	}
+
+	if err := audioUserData.upsert(ctx, id, values); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// MergeUserData moves per-user playback data from source audios to the destination.
+// User data is always merged; play and O history are moved only when requested.
+func (qb *AudioStore) MergeUserData(ctx context.Context, destinationID int, sourceIDs []int, includePlayHistory bool, includeOHistory bool) error {
+	if len(sourceIDs) == 0 {
+		return nil
+	}
+
+	moveHistory := func(tableName string) error {
+		table := goqu.T(tableName)
+		q := dialect.Update(table).Set(goqu.Record{audioIDColumn: destinationID}).Where(table.Col(audioIDColumn).In(sourceIDs))
+		if _, err := exec(ctx, q); err != nil {
+			return fmt.Errorf("moving %s: %w", tableName, err)
+		}
+		return nil
+	}
+
+	if includePlayHistory {
+		if err := moveHistory(audiosPlayDatesTable); err != nil {
+			return err
+		}
+	}
+	if includeOHistory {
+		if err := moveHistory(audiosODatesTable); err != nil {
+			return err
+		}
+	}
+
+	table := audioUserData.goquTable()
+	for _, sourceID := range sourceIDs {
+		q := dialect.Insert(table).Cols(audioIDColumn, userIDColumn, "rating", "resume_time", "play_duration").FromQuery(
+			dialect.From(table).Select(
+				goqu.V(destinationID), table.Col(userIDColumn), table.Col("rating"), table.Col("resume_time"), table.Col("play_duration"),
+			).Where(table.Col(audioIDColumn).Eq(sourceID)),
+		).OnConflict(goqu.DoUpdate(audioIDColumn+", "+userIDColumn, goqu.Record{
+			"rating":        goqu.L("COALESCE(audios_user_data.rating, excluded.rating)"),
+			"resume_time":   goqu.L("CASE WHEN audios_user_data.resume_time = 0 THEN excluded.resume_time ELSE audios_user_data.resume_time END"),
+			"play_duration": goqu.L("audios_user_data.play_duration + excluded.play_duration"),
+		}))
+		if _, err := exec(ctx, q); err != nil {
+			return fmt.Errorf("merging %s: %w", audiosUserDataTable, err)
+		}
+	}
+
+	return nil
+}
+
+func (qb *AudioStore) GetURLs(ctx context.Context, audioID int) ([]string, error) {
+	return audiosURLsTableMgr.get(ctx, audioID)
+}
+
+func (qb *AudioStore) GetCover(ctx context.Context, audioID int) ([]byte, error) {
+	return qb.GetImage(ctx, audioID, audioCoverBlobColumn)
+}
+
+func (qb *AudioStore) HasCover(ctx context.Context, audioID int) (bool, error) {
+	return qb.HasImage(ctx, audioID, audioCoverBlobColumn)
+}
+
+func (qb *AudioStore) UpdateCover(ctx context.Context, audioID int, image []byte) error {
+	return qb.UpdateImage(ctx, audioID, audioCoverBlobColumn, image)
+}
+
+func (qb *AudioStore) destroyCover(ctx context.Context, audioID int) error {
+	return qb.DestroyImage(ctx, audioID, audioCoverBlobColumn)
+}
+
+func (qb *AudioStore) AssignFiles(ctx context.Context, audioID int, fileIDs []models.FileID) error {
+	// assuming a file can only be assigned to a single audio
+	if err := audiosFilesTableMgr.destroyJoins(ctx, fileIDs); err != nil {
+		return err
+	}
+
+	// assign primary only if destination has no files
+	existingFileIDs, err := audioRepository.files.get(ctx, audioID)
+	if err != nil {
+		return err
+	}
+
+	firstPrimary := len(existingFileIDs) == 0
+	return audiosFilesTableMgr.insertJoins(ctx, audioID, firstPrimary, fileIDs)
+}
+
+func (qb *AudioStore) GetGroups(ctx context.Context, id int) (ret []models.GroupsAudios, err error) {
+	ret = []models.GroupsAudios{}
+
+	if err := audioRepository.groups.getAll(ctx, id, func(rows *sqlx.Rows) error {
+		var ms groupsAudiosRow
+		if err := rows.StructScan(&ms); err != nil {
+			return err
+		}
+
+		ret = append(ret, ms.resolve(id))
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) AddFileID(ctx context.Context, id int, fileID models.FileID) error {
+	const firstPrimary = false
+	return audiosFilesTableMgr.insertJoins(ctx, id, firstPrimary, []models.FileID{fileID})
+}
+
+func (qb *AudioStore) GetGalleryIDs(ctx context.Context, id int) ([]int, error) {
+	return audioRepository.galleries.getIDs(ctx, id)
+}
+
+func (qb *AudioStore) AddGalleryIDs(ctx context.Context, audioID int, galleryIDs []int) error {
+	return audiosGalleriesTableMgr.addJoins(ctx, audioID, galleryIDs)
+}
+
+func (qb *AudioStore) FindByGalleryID(ctx context.Context, galleryID int) ([]*models.Audio, error) {
+	sq := dialect.From(audiosGalleriesJoinTable).Select(audiosGalleriesJoinTable.Col(audioIDColumn)).Where(
+		audiosGalleriesJoinTable.Col(galleryIDColumn).Eq(galleryID),
+	)
+	ret, err := qb.findBySubquery(ctx, sq)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting audios for gallery %d: %w", galleryID, err)
+	}
+
+	return ret, nil
+}
+
+func (qb *AudioStore) GetPerformerIDs(ctx context.Context, id int) ([]int, error) {
+	return audioRepository.performers.getIDs(ctx, id)
+}
+
+func (qb *AudioStore) GetTagIDs(ctx context.Context, id int) ([]int, error) {
+	return audioRepository.tags.getIDs(ctx, id)
+}

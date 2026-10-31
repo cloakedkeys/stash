@@ -57,6 +57,10 @@ func (r *mutationResolver) SceneCreate(ctx context.Context, input models.SceneCr
 	if err != nil {
 		return nil, fmt.Errorf("converting date: %w", err)
 	}
+	newScene.ProductionDate, err = translator.datePtr(input.ProductionDate)
+	if err != nil {
+		return nil, fmt.Errorf("converting production date: %w", err)
+	}
 	newScene.StudioID, err = translator.intPtrFromString(input.StudioID)
 	if err != nil {
 		return nil, fmt.Errorf("converting studio id: %w", err)
@@ -112,7 +116,17 @@ func (r *mutationResolver) SceneCreate(ctx context.Context, input models.SceneCr
 			CoverImage:   coverImageData,
 			CustomFields: customFields,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		ids, err := handleIDList(input.VoiceActorIds, "voice_actor_ids")
+		if err != nil {
+			return err
+		}
+		if len(ids) > 0 {
+			return r.repository.VoiceActor.SetScene(ctx, ret.ID, ids)
+		}
+		return nil
 	}); err != nil {
 		return nil, err
 	}
@@ -206,6 +220,10 @@ func scenePartialFromInput(input models.SceneUpdateInput, translator changesetTr
 	updatedScene.Date, err = translator.optionalDate(input.Date, "date")
 	if err != nil {
 		return nil, fmt.Errorf("converting date: %w", err)
+	}
+	updatedScene.ProductionDate, err = translator.optionalDate(input.ProductionDate, "production_date")
+	if err != nil {
+		return nil, fmt.Errorf("converting production date: %w", err)
 	}
 	updatedScene.StudioID, err = translator.optionalIntFromString(input.StudioID, "studio_id")
 	if err != nil {
@@ -327,6 +345,16 @@ func (r *mutationResolver) sceneUpdate(ctx context.Context, input models.SceneUp
 		return nil, err
 	}
 
+	if translator.hasField("voice_actor_ids") {
+		ids, err := handleIDList(input.VoiceActorIds, "voice_actor_ids")
+		if err != nil {
+			return nil, err
+		}
+		if err := r.repository.VoiceActor.SetScene(ctx, scene.ID, ids); err != nil {
+			return nil, err
+		}
+	}
+
 	if coverImageIncluded {
 		if err := r.sceneUpdateCoverImage(ctx, scene, coverImageData); err != nil {
 			return nil, err
@@ -376,6 +404,10 @@ func (r *mutationResolver) BulkSceneUpdate(ctx context.Context, input BulkSceneU
 	updatedScene.Date, err = translator.optionalDate(input.Date, "date")
 	if err != nil {
 		return nil, fmt.Errorf("converting date: %w", err)
+	}
+	updatedScene.ProductionDate, err = translator.optionalDate(input.ProductionDate, "production_date")
+	if err != nil {
+		return nil, fmt.Errorf("converting production date: %w", err)
 	}
 	updatedScene.StudioID, err = translator.optionalIntFromString(input.StudioID, "studio_id")
 	if err != nil {
@@ -608,6 +640,7 @@ func (r *mutationResolver) SceneMerge(ctx context.Context, input SceneMergeInput
 	}
 
 	var values *models.ScenePartial
+	var voiceActorIDs *[]int
 	var coverImageData []byte
 	var customFields *models.CustomFieldsInput
 
@@ -619,6 +652,13 @@ func (r *mutationResolver) SceneMerge(ctx context.Context, input SceneMergeInput
 		values, err = scenePartialFromInput(*input.Values, translator)
 		if err != nil {
 			return nil, err
+		}
+		if translator.hasField("voice_actor_ids") {
+			ids, err := handleIDList(input.Values.VoiceActorIds, "voice_actor_ids")
+			if err != nil {
+				return nil, err
+			}
+			voiceActorIDs = &ids
 		}
 
 		if input.Values.CoverImage != nil {
@@ -648,6 +688,13 @@ func (r *mutationResolver) SceneMerge(ctx context.Context, input SceneMergeInput
 
 	var ret *models.Scene
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if voiceActorIDs != nil {
+			if err := r.repository.VoiceActor.SetScene(ctx, destID, *voiceActorIDs); err != nil {
+				return err
+			}
+		} else if err := r.repository.VoiceActor.MergeScenes(ctx, destID, srcIDs); err != nil {
+			return err
+		}
 		if err := r.Resolver.sceneService.Merge(ctx, srcIDs, destID, fileDeleter, scene.MergeOptions{
 			ScenePartial:       *values,
 			IncludePlayHistory: utils.IsTrue(input.PlayHistory),
@@ -1319,11 +1366,12 @@ func (r *mutationResolver) SceneDeleteO(ctx context.Context, id string, t []*tim
 }
 
 func (r *mutationResolver) SceneGenerateScreenshot(ctx context.Context, id string, at *float64) (string, error) {
+	var jobID int
 	if at != nil {
-		manager.GetInstance().GenerateScreenshot(ctx, id, *at)
+		jobID = manager.GetInstance().GenerateScreenshot(ctx, id, *at)
 	} else {
-		manager.GetInstance().GenerateDefaultScreenshot(ctx, id)
+		jobID = manager.GetInstance().GenerateDefaultScreenshot(ctx, id)
 	}
 
-	return "todo", nil
+	return strconv.Itoa(jobID), nil
 }

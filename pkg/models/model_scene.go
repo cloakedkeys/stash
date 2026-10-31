@@ -10,16 +10,20 @@ import (
 
 // Scene stores the metadata for a single video scene.
 type Scene struct {
-	ID       int    `json:"id"`
-	Title    string `json:"title"`
-	Code     string `json:"code"`
-	Details  string `json:"details"`
-	Director string `json:"director"`
-	Date     *Date  `json:"date"`
+	ID             int    `json:"id"`
+	Title          string `json:"title"`
+	Code           string `json:"code"`
+	Details        string `json:"details"`
+	Director       string `json:"director"`
+	Date           *Date  `json:"date"`
+	ProductionDate *Date  `json:"production_date"`
 	// Rating expressed in 1-100 scale
-	Rating    *int `json:"rating"`
-	Organized bool `json:"organized"`
-	StudioID  *int `json:"studio_id"`
+	Rating         *int `json:"rating"`
+	Organized      bool `json:"organized"`
+	CoverGenerated bool `json:"cover_generated"`
+	// RefreshCover is set by scanning when a generated cover becomes stale.
+	RefreshCover bool `json:"-"`
+	StudioID     *int `json:"studio_id"`
 
 	// transient - not persisted
 	Files         RelatedVideoFiles
@@ -70,19 +74,21 @@ type UpdateSceneInput struct {
 // ScenePartial represents part of a Scene object. It is used to update
 // the database entry.
 type ScenePartial struct {
-	Title    OptionalString
-	Code     OptionalString
-	Details  OptionalString
-	Director OptionalString
-	Date     OptionalDate
+	Title          OptionalString
+	Code           OptionalString
+	Details        OptionalString
+	Director       OptionalString
+	Date           OptionalDate
+	ProductionDate OptionalDate
 	// Rating expressed in 1-100 scale
-	Rating       OptionalInt
-	Organized    OptionalBool
-	StudioID     OptionalInt
-	CreatedAt    OptionalTime
-	UpdatedAt    OptionalTime
-	ResumeTime   OptionalFloat64
-	PlayDuration OptionalFloat64
+	Rating         OptionalInt
+	Organized      OptionalBool
+	CoverGenerated OptionalBool
+	StudioID       OptionalInt
+	CreatedAt      OptionalTime
+	UpdatedAt      OptionalTime
+	ResumeTime     OptionalFloat64
+	PlayDuration   OptionalFloat64
 
 	URLs          *UpdateStrings
 	GalleryIDs    *UpdateIDs
@@ -206,27 +212,35 @@ func (s ScenePartial) UpdateInput(id int) SceneUpdateInput {
 		dateStr = &v
 	}
 
+	var productionDateStr *string
+	if s.ProductionDate.Set {
+		d := s.ProductionDate.Value
+		v := d.String()
+		productionDateStr = &v
+	}
+
 	var stashIDs StashIDs
 	if s.StashIDs != nil {
 		stashIDs = StashIDs(s.StashIDs.StashIDs)
 	}
 
 	ret := SceneUpdateInput{
-		ID:           strconv.Itoa(id),
-		Title:        s.Title.Ptr(),
-		Code:         s.Code.Ptr(),
-		Details:      s.Details.Ptr(),
-		Director:     s.Director.Ptr(),
-		Urls:         s.URLs.Strings(),
-		Date:         dateStr,
-		Rating100:    s.Rating.Ptr(),
-		Organized:    s.Organized.Ptr(),
-		StudioID:     s.StudioID.StringPtr(),
-		GalleryIds:   s.GalleryIDs.IDStrings(),
-		PerformerIds: s.PerformerIDs.IDStrings(),
-		Movies:       s.GroupIDs.SceneMovieInputs(),
-		TagIds:       s.TagIDs.IDStrings(),
-		StashIds:     stashIDs.ToStashIDInputs(),
+		ID:             strconv.Itoa(id),
+		Title:          s.Title.Ptr(),
+		Code:           s.Code.Ptr(),
+		Details:        s.Details.Ptr(),
+		Director:       s.Director.Ptr(),
+		Urls:           s.URLs.Strings(),
+		Date:           dateStr,
+		ProductionDate: productionDateStr,
+		Rating100:      s.Rating.Ptr(),
+		Organized:      s.Organized.Ptr(),
+		StudioID:       s.StudioID.StringPtr(),
+		GalleryIds:     s.GalleryIDs.IDStrings(),
+		PerformerIds:   s.PerformerIDs.IDStrings(),
+		Movies:         s.GroupIDs.SceneMovieInputs(),
+		TagIds:         s.TagIDs.IDStrings(),
+		StashIds:       stashIDs.ToStashIDInputs(),
 	}
 
 	return ret

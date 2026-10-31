@@ -204,7 +204,15 @@ func (r *repository) newQuery() queryBuilder {
 	}
 }
 
-func (r *repository) join(j joiner, as string, parentIDCol string) {
+func (r *repository) join(j joiner, t joinType, as string, parentIDCol string) {
+	fn := r.innerJoin
+	if t == joinTypeLeft {
+		fn = r.leftJoin
+	}
+	fn(j, as, parentIDCol)
+}
+
+func (r *repository) leftJoin(j joiner, as string, parentIDCol string) {
 	t := r.tableName
 	if as != "" {
 		t = as
@@ -373,6 +381,23 @@ func (r *stringRepository) get(ctx context.Context, id int) ([]string, error) {
 		}
 
 		ret = append(ret, out)
+		return nil
+	})
+	return ret, err
+}
+
+// getAll returns every (id, value) pair in the join table, grouped by id.
+// Used to avoid N+1 lookups when callers need values for many ids at once.
+func (r *stringRepository) getAll(ctx context.Context) (map[int][]string, error) {
+	query := fmt.Sprintf("SELECT %s, %s from %s", r.idColumn, r.stringColumn, r.tableName)
+	ret := make(map[int][]string)
+	err := r.queryFunc(ctx, query, nil, false, func(rows *sqlx.Rows) error {
+		var id int
+		var out string
+		if err := rows.Scan(&id, &out); err != nil {
+			return err
+		}
+		ret[id] = append(ret[id], out)
 		return nil
 	})
 	return ret, err

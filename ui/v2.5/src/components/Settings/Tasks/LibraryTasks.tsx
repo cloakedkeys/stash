@@ -8,6 +8,7 @@ import {
 } from "src/core/StashService";
 import { withoutTypename } from "src/utils/data";
 import { useConfigurationContext } from "src/hooks/Config";
+import { useAutoTagTrigger } from "src/hooks/useAutoTagTrigger";
 import { IdentifyDialog } from "../../Dialogs/IdentifyDialog/IdentifyDialog";
 import * as GQL from "src/core/generated-graphql";
 import { DirectorySelectionDialog } from "./DirectorySelectionDialog";
@@ -96,6 +97,7 @@ export const LibraryTasks: React.FC = () => {
       scanGeneratePhashes: false,
       scanGenerateThumbnails: false,
       scanGenerateClipPreviews: false,
+      inferVRMetadata: false,
     };
   }
 
@@ -170,8 +172,8 @@ export const LibraryTasks: React.FC = () => {
     }
   }, [configuration, configRead, taskDefaults, loading]);
 
-  function configureDefaults(partial: Record<string, {}>) {
-    saveUI({ taskDefaults: { ...partial } });
+  function configureDefaults(partial: Record<string, object>) {
+    saveUI({ taskDefaults: { ...taskDefaults, ...partial } });
   }
 
   function onSetScanOptions(s: GQL.ScanMetadataInput) {
@@ -194,6 +196,12 @@ export const LibraryTasks: React.FC = () => {
       return { ...v, ...s };
     });
   }
+
+  const onAutoTagClick = useAutoTagTrigger(
+    () => runAutoTag(),
+    () => setDialogOpen({ autoTagAlert: true }),
+    ui.disableAutoTagWarning
+  );
 
   function renderScanDialog() {
     if (!dialogOpen.scan) {
@@ -304,32 +312,13 @@ export const LibraryTasks: React.FC = () => {
     setDialogOpen({ generate: false });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function runGenerate(paths?: string[]) {
+    const general = configuration?.general;
+
     try {
       await mutateMetadataGenerate({
         ...generateOptions,
         paths,
-      });
-
-      Toast.success(
-        intl.formatMessage(
-          { id: "config.tasks.added_job_to_queue" },
-          { operation_name: intl.formatMessage({ id: "actions.generate" }) }
-        )
-      );
-    } catch (e) {
-      Toast.error(e);
-    }
-  }
-
-  async function onGenerateClicked() {
-    try {
-      // insert preview options here instead of loading them
-      const general = configuration?.general;
-
-      await mutateMetadataGenerate({
-        ...generateOptions,
         previewOptions: {
           ...generateOptions.previewOptions,
           previewSegments:
@@ -349,6 +338,7 @@ export const LibraryTasks: React.FC = () => {
             generateOptions.previewOptions?.previewPreset,
         },
       });
+
       Toast.success(
         intl.formatMessage(
           { id: "config.tasks.added_job_to_queue" },
@@ -449,7 +439,7 @@ export const LibraryTasks: React.FC = () => {
                 variant="secondary"
                 type="submit"
                 className="mr-2"
-                onClick={() => setDialogOpen({ autoTagAlert: true })}
+                onClick={onAutoTagClick}
               >
                 <FormattedMessage id="actions.auto_tag" />…
               </Button>
@@ -467,6 +457,13 @@ export const LibraryTasks: React.FC = () => {
           <AutoTagOptions
             options={autoTagOptions}
             setOptions={onSetAutoTagOptions}
+          />
+          <BooleanSetting
+            id="disable_auto_tag_warning"
+            headingID="config.tasks.auto_tag.disable_warning.heading"
+            subHeadingID="config.tasks.auto_tag.disable_warning.description"
+            checked={ui.disableAutoTagWarning ?? undefined}
+            onChange={(v) => saveUI({ disableAutoTagWarning: v })}
           />
         </SettingGroup>
       </SettingSection>
@@ -489,7 +486,7 @@ export const LibraryTasks: React.FC = () => {
               <Button
                 variant="secondary"
                 type="submit"
-                onClick={() => onGenerateClicked()}
+                onClick={() => runGenerate()}
               >
                 <FormattedMessage id="actions.generate" />
               </Button>

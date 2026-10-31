@@ -1,5 +1,6 @@
 import React from "react";
 import { Route, Switch } from "react-router-dom";
+import { ModifyRoute } from "src/components/Shared/ModifyRoute";
 import { Helmet } from "react-helmet";
 import { useTitleProps } from "src/hooks/title";
 import Group from "./GroupDetails/Group";
@@ -18,7 +19,7 @@ const GroupRoutes: React.FC = () => {
       <Helmet {...titleProps} />
       <Switch>
         <Route exact path="/groups" component={Groups} />
-        <Route exact path="/groups/new" component={GroupCreate} />
+        <ModifyRoute exact path="/groups/new" component={GroupCreate} />
         <Route path="/groups/:id/:tab?" component={Group} />
       </Switch>
     </>

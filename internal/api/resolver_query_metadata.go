@@ -7,5 +7,17 @@ import (
 )
 
 func (r *queryResolver) SystemStatus(ctx context.Context) (*manager.SystemStatus, error) {
-	return manager.GetInstance().GetSystemStatus(), nil
+	status := manager.GetInstance().GetSystemStatus()
+
+	if !currentUserIsAdmin(ctx) {
+		status.DatabasePath = nil
+		status.ConfigPath = nil
+		status.WorkingDir = ""
+		status.HomeDir = ""
+		status.FfmpegPath = nil
+		status.FfprobePath = nil
+		status.LocalIPs = nil
+	}
+
+	return status, nil
 }

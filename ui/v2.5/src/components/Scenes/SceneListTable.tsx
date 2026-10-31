@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import * as GQL from "src/core/generated-graphql";
+import { SortDirectionEnum } from "src/core/generated-graphql";
 import NavUtils from "src/utils/navigation";
 import TextUtils from "src/utils/text";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -8,7 +9,7 @@ import { objectTitle } from "src/core/files";
 import { galleryTitle } from "src/core/galleries";
 import SceneQueue from "src/models/sceneQueue";
 import { RatingSystem } from "../Shared/Rating/RatingSystem";
-import { useSceneUpdate } from "src/core/StashService";
+import { useSceneUserDataUpdate } from "src/core/StashService";
 import { IColumn, ListTable } from "../List/ListTable";
 import { useTableColumns } from "src/hooks/useTableColumns";
 import { FileSize } from "../Shared/FileSize";
@@ -18,6 +19,9 @@ interface ISceneListTableProps {
   queue?: SceneQueue;
   selectedIds: Set<string>;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
+  onSort?: (value: string) => void;
+  sortBy?: string;
+  sortDirection?: SortDirectionEnum;
 }
 
 const TABLE_NAME = "scenes";
@@ -27,11 +31,11 @@ export const SceneListTable: React.FC<ISceneListTableProps> = (
 ) => {
   const intl = useIntl();
 
-  const [updateScene] = useSceneUpdate();
+  const [setSceneUserData] = useSceneUserDataUpdate();
 
   function setRating(v: number | null, sceneId: string) {
     if (sceneId) {
-      updateScene({
+      setSceneUserData({
         variables: {
           input: {
             id: sceneId,
@@ -249,6 +253,7 @@ export const SceneListTable: React.FC<ISceneListTableProps> = (
     label: string;
     defaultShow?: boolean;
     mandatory?: boolean;
+    sortable?: boolean;
     render?: (
       scene: GQL.SlimSceneDataFragment,
       index: number
@@ -260,6 +265,7 @@ export const SceneListTable: React.FC<ISceneListTableProps> = (
       value: "cover_image",
       label: intl.formatMessage({ id: "cover_image" }),
       defaultShow: true,
+      sortable: false,
       render: CoverImageCell,
     },
     {
@@ -302,24 +308,28 @@ export const SceneListTable: React.FC<ISceneListTableProps> = (
       value: "performers",
       label: intl.formatMessage({ id: "performers" }),
       defaultShow: true,
+      sortable: false,
       render: PerformersCell,
     },
     {
       value: "tags",
       label: intl.formatMessage({ id: "tags" }),
       defaultShow: true,
+      sortable: false,
       render: TagCell,
     },
     {
       value: "groups",
       label: intl.formatMessage({ id: "groups" }),
       defaultShow: true,
+      sortable: false,
       render: GroupCell,
     },
     {
       value: "galleries",
       label: intl.formatMessage({ id: "galleries" }),
       defaultShow: true,
+      sortable: false,
       render: GalleriesCell,
     },
     {
@@ -365,11 +375,13 @@ export const SceneListTable: React.FC<ISceneListTableProps> = (
     {
       value: "video_codec",
       label: intl.formatMessage({ id: "video_codec" }),
+      sortable: false,
       render: VideoCodecCell,
     },
     {
       value: "audio_codec",
       label: intl.formatMessage({ id: "audio_codec" }),
+      sortable: false,
       render: AudioCodecCell,
     },
   ];
@@ -413,6 +425,9 @@ export const SceneListTable: React.FC<ISceneListTableProps> = (
       selectedIds={props.selectedIds}
       onSelectChange={props.onSelectChange}
       renderCell={renderCell}
+      onSort={props.onSort}
+      sortBy={props.sortBy}
+      sortDirection={props.sortDirection}
     />
   );
 };

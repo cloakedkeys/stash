@@ -1,8 +1,8 @@
 # This dockerfile should be built with `make docker-cuda-build` from the stash root.
-ARG CUDA_VERSION=12.8.0
+ARG CUDA_VERSION=13.2.1
 
 # Build Frontend
-FROM node:20-alpine AS frontend
+FROM node:24-alpine AS frontend
 RUN apk add --no-cache make git
 ## cache node_modules separately
 COPY ./ui/v2.5/package.json ./ui/v2.5/pnpm-lock.yaml /stash/ui/v2.5/
@@ -19,7 +19,7 @@ ARG STASH_VERSION
 RUN BUILD_DATE=$(date +"%Y-%m-%d %H:%M:%S") make ui-only
 
 # Build Backend
-FROM golang:1.24.3-bullseye AS backend
+FROM golang:1.25.9-bullseye AS backend
 RUN apt update && apt install -y build-essential golang
 WORKDIR /stash
 COPY ./go* ./*.go Makefile gqlgen.yml .gqlgenc.yml /stash/
@@ -44,7 +44,11 @@ RUN apt update && apt upgrade -y && apt install -y \
     # intel dependencies
     intel-media-va-driver-non-free vainfo \
     # python tools
-    python3 python3-pip && \
+    python3 python3-pip \
+    # postgresql backups, from PostgreSQL's own repository because Ubuntu's client is too old for newer servers
+    postgresql-common && \
+  /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y && \
+  apt install -y postgresql-client-18 && \
   # cleanup
   apt autoremove -y && apt clean && \
   rm -rf /var/lib/apt/lists/*
@@ -53,13 +57,14 @@ COPY --from=backend --chmod=555 /stash/stash /usr/bin/
 # NVENC Patch
 RUN mkdir -p /usr/local/bin /patched-lib
 ADD --chmod=555 https://raw.githubusercontent.com/keylase/nvidia-patch/master/patch.sh /usr/local/bin/patch.sh
-ADD --chmod=555 https://raw.githubusercontent.com/keylase/nvidia-patch/master/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+ADD --chmod=555 https://raw.githubusercontent.com/keylase/nvidia-patch/master/docker-entrypoint.sh /usr/local/bin/nvidia-patch-entrypoint.sh
+COPY --chmod=555 ./docker/build/x86_64/cuda-entrypoint.sh /usr/local/bin/cuda-entrypoint.sh
 
 ENV LANG=C.UTF-8
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=video,utility
 ENV STASH_CONFIG_FILE=/root/.stash/config.yml
 EXPOSE 9999
-ENTRYPOINT ["docker-entrypoint.sh", "stash"]
+ENTRYPOINT ["/usr/local/bin/cuda-entrypoint.sh", "stash"]
 
 # vim: ft=dockerfile

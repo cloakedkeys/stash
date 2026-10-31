@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import { Form, Row, Col } from "react-bootstrap";
@@ -24,6 +24,19 @@ export const SceneGroupTable: React.FC<IProps> = (props) => {
   const intl = useIntl();
 
   const groupIDs = useMemo(() => value.map((m) => m.group.id), [value]);
+
+  // The add picker below is remounted after each add so it excludes the
+  // added group. That drops focus without a blur event, so put focus back:
+  // the user can keep typing, and leaving the field is still noticed.
+  const newGroupRow = useRef<HTMLDivElement>(null);
+  const refocusNewGroup = useRef(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs after the picker is remounted for a new list
+  useEffect(() => {
+    if (!refocusNewGroup.current) return;
+    refocusNewGroup.current = false;
+    newGroupRow.current?.querySelector("input")?.focus();
+  }, [groupIDs]);
 
   const updateFieldChanged = (index: number, sceneIndex: number | null) => {
     const newValues = value.map((existing, i) => {
@@ -77,6 +90,7 @@ export const SceneGroupTable: React.FC<IProps> = (props) => {
       },
     ];
 
+    refocusNewGroup.current = true;
     onUpdate(newValues);
   }
 
@@ -110,11 +124,14 @@ export const SceneGroupTable: React.FC<IProps> = (props) => {
         ))}
         <Row className="group-row">
           <Col xs={12}>
-            <GroupSelect
-              onSelect={(items) => onNewGroupSet(items)}
-              values={[]}
-              excludeIds={groupIDs}
-            />
+            <div ref={newGroupRow}>
+              <GroupSelect
+                key={groupIDs.join(",")}
+                onSelect={(items) => onNewGroupSet(items)}
+                values={[]}
+                excludeIds={groupIDs}
+              />
+            </div>
           </Col>
         </Row>
       </>

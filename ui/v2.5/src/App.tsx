@@ -11,12 +11,14 @@ import { Helmet } from "react-helmet";
 import cloneDeep from "lodash-es/cloneDeep";
 import mergeWith from "lodash-es/mergeWith";
 import { ToastProvider } from "src/hooks/Toast";
+import { CurrentUserProvider } from "src/hooks/CurrentUser";
 import { LightboxProvider } from "src/hooks/Lightbox/context";
 import { initPolyfills } from "src/polyfills";
 
-import locales, { registerCountry } from "src/locales";
+import locales, { NestedMessage, registerCountry } from "src/locales";
 import {
   useConfiguration,
+  useMe,
   useConfigureUI,
   useSystemStatus,
 } from "src/core/StashService";
@@ -27,8 +29,10 @@ import MousetrapPause from "mousetrap-pause";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { MainNavbar } from "./components/MainNavbar";
 import { PageNotFound } from "./components/PageNotFound";
+import { ModifyRoute } from "./components/Shared/ModifyRoute";
 import * as GQL from "./core/generated-graphql";
 import { makeTitleProps } from "./hooks/title";
+import { useScrollRestoration } from "./hooks/scrollRestoration";
 import { LoadingIndicator } from "./components/Shared/LoadingIndicator";
 
 import {
@@ -55,6 +59,11 @@ import { PatchFunction } from "./patch";
 import moment from "moment/min/moment-with-locales";
 import { ErrorMessage } from "./components/Shared/ErrorMessage";
 import cx from "classnames";
+import Welcome from "./components/Setup/Welcome";
+
+const VoiceActors = lazyComponent(
+  () => import("./components/VoiceActors/VoiceActors")
+);
 
 const Performers = lazyComponent(
   () => import("./components/Performers/Performers")
@@ -63,6 +72,8 @@ const FrontPage = lazyComponent(
   () => import("./components/FrontPage/FrontPage")
 );
 const Scenes = lazyComponent(() => import("./components/Scenes/Scenes"));
+const Folders = lazyComponent(() => import("./components/Folders/Folders"));
+const Audios = lazyComponent(() => import("./components/Audios/Audios"));
 const Settings = lazyComponent(() => import("./components/Settings/Settings"));
 const Stats = lazyComponent(() => import("./components/Stats"));
 const Studios = lazyComponent(() => import("./components/Studios/Studios"));
@@ -76,6 +87,9 @@ const Images = lazyComponent(() => import("./components/Images/Images"));
 const Setup = lazyComponent(() => import("./components/Setup/Setup"));
 const Migrate = lazyComponent(() => import("./components/Setup/Migrate"));
 
+const AudioFilenameParser = lazyComponent(
+  () => import("./components/AudioFilenameParser/AudioFilenameParser")
+);
 const SceneFilenameParser = lazyComponent(
   () => import("./components/SceneFilenameParser/SceneFilenameParser")
 );
@@ -101,14 +115,16 @@ function languageMessageString(language: string) {
   return language.replace(/-/, "");
 }
 
-const AppContainer: React.FC<React.PropsWithChildren<{}>> = PatchFunction(
+const AppContainer: React.FC<React.PropsWithChildren<unknown>> = PatchFunction(
   "App",
-  (props: React.PropsWithChildren<{}>) => {
+  (props: React.PropsWithChildren<unknown>) => {
     return <>{props.children}</>;
   }
 ) as React.FC;
 
-const MainContainer: React.FC = ({ children }) => {
+const MainContainer: React.FC<React.PropsWithChildren<unknown>> = ({
+  children,
+}) => {
   // use optional here because the configuration may have be loading or errored
   const { configuration } = useConfigurationContextOptional() || {};
   const { sfwContentMode } = configuration?.interface || {};
@@ -138,6 +154,7 @@ function translateLanguageLocale(l: string) {
 
 export const App: React.FC = () => {
   const config = useConfiguration();
+  const me = useMe();
   const [saveUI] = useConfigureUI();
 
   const { data: systemStatusData } = useSystemStatus();
@@ -147,8 +164,8 @@ export const App: React.FC = () => {
   const intlLanguage = translateLanguageLocale(language);
 
   // use en-GB as default messages if any messages aren't found in the chosen language
-  const [messages, setMessages] = useState<{}>();
-  const [customMessages, setCustomMessages] = useState<{}>();
+  const [messages, setMessages] = useState<Record<string, string>>();
+  const [customMessages, setCustomMessages] = useState<NestedMessage>();
 
   useEffect(() => {
     (async () => {
@@ -203,7 +220,9 @@ export const App: React.FC = () => {
 
   const location = useLocation();
   const history = useHistory();
-  const setupMatch = useRouteMatch(["/setup", "/migrate"]);
+  const setupMatch = useRouteMatch(["/setup", "/migrate", "/welcome"]);
+
+  useScrollRestoration();
 
   // dispatch event when location changes
   useEffect(() => {
@@ -233,7 +252,7 @@ export const App: React.FC = () => {
       // redirect to migrate page
       history.replace("/migrate");
     }
-  }, [systemStatusData, setupMatch, history, location]);
+  }, [systemStatusData, history, location.pathname]);
 
   function maybeRenderNavbar() {
     // don't render navbar for setup views
@@ -253,23 +272,31 @@ export const App: React.FC = () => {
           <Switch>
             <Route exact path="/" component={FrontPage} />
             <Route path="/scenes" component={Scenes} />
+            <Route path="/folders" component={Folders} />
+            <Route path="/audios" component={Audios} />
             <Route path="/images" component={Images} />
             <Route path="/galleries" component={Galleries} />
             <Route path="/performers" component={Performers} />
+            <Route path="/voice-actors" component={VoiceActors} />
             <Route path="/tags" component={Tags} />
             <Route path="/studios" component={Studios} />
             <Route path="/groups" component={Groups} />
             <Route path="/stats" component={Stats} />
             <Route path="/settings" component={Settings} />
-            <Route
+            <ModifyRoute
               path="/sceneFilenameParser"
               component={SceneFilenameParser}
             />
-            <Route
+            <ModifyRoute
+              path="/audioFilenameParser"
+              component={AudioFilenameParser}
+            />
+            <ModifyRoute
               path="/sceneDuplicateChecker"
               component={SceneDuplicateChecker}
             />
             <Route path="/setup" component={Setup} />
+            <Route path="/welcome" component={Welcome} />
             <Route path="/migrate" component={Migrate} />
             <PluginRoutes />
             <Route component={PageNotFound} />
@@ -310,6 +337,7 @@ export const App: React.FC = () => {
 
   const title = config.data?.configuration.ui.title || "Stash";
   const titleProps = makeTitleProps(title);
+  const htmlAttributes = { lang: language };
 
   if (!messages) {
     return null;
@@ -322,12 +350,13 @@ export const App: React.FC = () => {
         messages={messages}
         formats={intlFormats}
       >
+        <Helmet htmlAttributes={htmlAttributes} />
         <MainContainer>{content}</MainContainer>
       </IntlProvider>
     );
   }
 
-  if (config.loading) {
+  if (config.loading || me.loading) {
     return renderSimple(<LoadingIndicator />);
   }
 
@@ -361,20 +390,25 @@ export const App: React.FC = () => {
           >
             <AppContainer>
               <ConfigurationProvider configuration={config.data!.configuration}>
-                {maybeRenderReleaseNotes()}
-                <ConnectionMonitor />
-                <TroubleshootingModeOverlay />
-                <Suspense fallback={<LoadingIndicator />}>
-                  <LightboxProvider>
-                    <ManualProvider>
-                      <InteractiveProvider>
-                        <Helmet {...titleProps} />
-                        {maybeRenderNavbar()}
-                        <MainContainer>{renderContent()}</MainContainer>
-                      </InteractiveProvider>
-                    </ManualProvider>
-                  </LightboxProvider>
-                </Suspense>
+                <CurrentUserProvider user={me.data?.me ?? null}>
+                  {maybeRenderReleaseNotes()}
+                  <ConnectionMonitor />
+                  <TroubleshootingModeOverlay />
+                  <Suspense fallback={<LoadingIndicator />}>
+                    <LightboxProvider>
+                      <ManualProvider>
+                        <InteractiveProvider>
+                          <Helmet
+                            {...titleProps}
+                            htmlAttributes={htmlAttributes}
+                          />
+                          {maybeRenderNavbar()}
+                          <MainContainer>{renderContent()}</MainContainer>
+                        </InteractiveProvider>
+                      </ManualProvider>
+                    </LightboxProvider>
+                  </Suspense>
+                </CurrentUserProvider>
               </ConfigurationProvider>
             </AppContainer>
           </PluginsLoader>

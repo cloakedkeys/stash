@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"strings"
 
 	"github.com/stashapp/stash/internal/api/loaders"
 	"github.com/stashapp/stash/internal/api/urlbuilders"
+	"github.com/stashapp/stash/pkg/audio"
 	"github.com/stashapp/stash/pkg/group"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/performer"
@@ -71,7 +73,7 @@ func (r groupResolver) Tags(ctx context.Context, obj *models.Group) (ret []*mode
 
 	var errs []error
 	ret, errs = loaders.From(ctx).TagByID.LoadAll(obj.TagIDs.List())
-	return ret, firstError(errs)
+	return withoutNil(ret), firstError(errs)
 }
 
 func (r groupResolver) relatedGroups(ctx context.Context, rgd models.RelatedGroupDescriptions) (ret []*GroupDescription, err error) {
@@ -89,13 +91,19 @@ func (r groupResolver) relatedGroups(ctx context.Context, rgd models.RelatedGrou
 		return
 	}
 
-	ret = make([]*GroupDescription, len(groups))
+	ret = make([]*GroupDescription, 0, len(groups))
 	for i, group := range groups {
-		ret[i] = &GroupDescription{Group: group}
+		// a library limit can leave out groups
+		if group == nil {
+			continue
+		}
+
+		desc := &GroupDescription{Group: group}
 		d := gds[i].Description
 		if d != "" {
-			ret[i].Description = &d
+			desc.Description = &d
 		}
+		ret = append(ret, desc)
 	}
 
 	return ret, firstError(errs)
@@ -182,6 +190,17 @@ func (r *groupResolver) SceneCount(ctx context.Context, obj *models.Group, depth
 	return ret, nil
 }
 
+func (r *groupResolver) AudioCount(ctx context.Context, obj *models.Group, depth *int) (ret int, err error) {
+	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+		ret, err = audio.CountByGroupID(ctx, r.repository.Audio, obj.ID, depth)
+		return err
+	}); err != nil {
+		return 0, err
+	}
+
+	return ret, nil
+}
+
 func (r *groupResolver) PerformerCount(ctx context.Context, obj *models.Group, depth *int) (ret int, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		ret, err = performer.CountByGroupID(ctx, r.repository.Performer, obj.ID, depth)
@@ -205,15 +224,39 @@ func (r *groupResolver) Scenes(ctx context.Context, obj *models.Group) (ret []*m
 	return ret, nil
 }
 
-func (r *groupResolver) OCounter(ctx context.Context, obj *models.Group) (ret *int, err error) {
-	var count int
+func (r *groupResolver) Audios(ctx context.Context, obj *models.Group) (ret []*models.Audio, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		count, err = r.repository.Scene.OCountByGroupID(ctx, obj.ID)
+		var err error
+		ret, err = r.repository.Audio.FindByGroupID(ctx, obj.ID)
 		return err
 	}); err != nil {
 		return nil, err
 	}
-	return &count, nil
+
+	return ret, nil
+}
+
+func (r *groupResolver) OCounter(ctx context.Context, obj *models.Group) (ret *int, err error) {
+	// this adds up everything in the group
+	if models.LibraryLimitFromContext(ctx) != nil {
+		return nil, nil
+	}
+
+	var res_scene int
+	var res_audio int
+	var res int
+	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+		res_scene, err = r.repository.Scene.OCountByGroupID(ctx, obj.ID)
+		if err != nil {
+			return err
+		}
+		res_audio, err = r.repository.Audio.OCountByGroupID(ctx, obj.ID)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	res = res_scene + res_audio
+	return &res, nil
 }
 
 func (r *groupResolver) CustomFields(ctx context.Context, obj *models.Group) (map[string]interface{}, error) {
@@ -227,4 +270,29 @@ func (r *groupResolver) CustomFields(ctx context.Context, obj *models.Group) (ma
 	}
 
 	return m, nil
+}
+
+func (r *groupResolver) AliasList(ctx context.Context, obj *models.Group) ([]string, error) {
+	if !obj.Aliases.Loaded() {
+		if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+			return obj.LoadAliases(ctx, r.repository.Group)
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	return obj.Aliases.List(), nil
+}
+
+// Aliases is deprecated in favour of alias_list. It returns the aliases joined
+// into a single string, for backward compatibility with the deprecated aliases
+// field on the Group and Movie types.
+func (r *groupResolver) Aliases(ctx context.Context, obj *models.Group) (*string, error) {
+	aliases, err := r.AliasList(ctx, obj)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := strings.Join(aliases, ", ")
+	return &ret, nil
 }

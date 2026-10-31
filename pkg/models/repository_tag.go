@@ -9,22 +9,28 @@ type TagGetter interface {
 	Find(ctx context.Context, id int) (*Tag, error)
 }
 
+type TagNameFinder interface {
+	FindByName(ctx context.Context, name string, nocase bool) (*Tag, error)
+	FindByNames(ctx context.Context, names []string, nocase bool) ([]*Tag, error)
+	FindByAlias(ctx context.Context, alias string, nocase bool) (*Tag, error)
+}
+
 // TagFinder provides methods to find tags.
 type TagFinder interface {
 	TagGetter
+	TagNameFinder
 	FindAllAncestors(ctx context.Context, tagID int, excludeIDs []int) ([]*TagPath, error)
 	FindAllDescendants(ctx context.Context, tagID int, excludeIDs []int) ([]*TagPath, error)
 	FindByParentTagID(ctx context.Context, parentID int) ([]*Tag, error)
 	FindByChildTagID(ctx context.Context, childID int) ([]*Tag, error)
 	FindBySceneID(ctx context.Context, sceneID int) ([]*Tag, error)
+	FindByAudioID(ctx context.Context, audioID int) ([]*Tag, error)
 	FindByImageID(ctx context.Context, imageID int) ([]*Tag, error)
 	FindByGalleryID(ctx context.Context, galleryID int) ([]*Tag, error)
 	FindByPerformerID(ctx context.Context, performerID int) ([]*Tag, error)
 	FindByGroupID(ctx context.Context, groupID int) ([]*Tag, error)
 	FindBySceneMarkerID(ctx context.Context, sceneMarkerID int) ([]*Tag, error)
 	FindByStudioID(ctx context.Context, studioID int) ([]*Tag, error)
-	FindByName(ctx context.Context, name string, nocase bool) (*Tag, error)
-	FindByNames(ctx context.Context, names []string, nocase bool) ([]*Tag, error)
 	FindByStashID(ctx context.Context, stashID StashID) ([]*Tag, error)
 	FindByStashIDStatus(ctx context.Context, hasStashID bool, stashboxEndpoint string) ([]*Tag, error)
 }

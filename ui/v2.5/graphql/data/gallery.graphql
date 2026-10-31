@@ -10,6 +10,7 @@ fragment GalleryData on Gallery {
   photographer
   rating100
   organized
+  o_counter
 
   paths {
     cover
@@ -38,6 +39,9 @@ fragment GalleryData on Gallery {
   }
   scenes {
     ...SlimSceneData
+  }
+  audios {
+    ...SlimAudioData
   }
 
   custom_fields

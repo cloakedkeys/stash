@@ -32,8 +32,9 @@ import { TruncatedText } from "../Shared/TruncatedText";
 
 export type Group = Pick<
   GQL.Group,
-  "id" | "name" | "date" | "front_image_path" | "aliases"
+  "id" | "name" | "date" | "front_image_path"
 > & {
+  alias_list?: string[] | null;
   studio?: Pick<GQL.Studio, "name"> | null;
 };
 type Option = SelectOption<Group>;
@@ -47,7 +48,7 @@ function sortGroupsByRelevance(input: string, groups: FindGroupsResult) {
     input,
     groups,
     (m) => m.name,
-    (m) => (m.aliases ? [m.aliases] : [])
+    (m) => m.alias_list ?? []
   );
 }
 
@@ -88,7 +89,7 @@ export const GroupSelect: React.FC<
     }
 
     const query = await queryFindGroupsForSelect(filter);
-    let ret = query.data.findGroups.groups.filter((group) => {
+    const ret = query.data.findGroups.groups.filter((group) => {
       // HACK - we should probably exclude these in the backend query, but
       // this will do in the short-term
       return !exclude.includes(group.id.toString());
@@ -111,7 +112,9 @@ export const GroupSelect: React.FC<
     const { inputValue } = optionProps.selectProps;
     let alias: string | undefined = "";
     if (!title.toLowerCase().includes(inputValue.toLowerCase())) {
-      alias = object.aliases || undefined;
+      alias = object.alias_list?.find((a) =>
+        a.toLowerCase().includes(inputValue.toLowerCase())
+      );
     }
 
     thisOptionProps = {
@@ -204,6 +207,7 @@ export const GroupSelect: React.FC<
     return {
       id,
       name,
+      alias_list: [],
     };
   };
 
@@ -216,7 +220,9 @@ export const GroupSelect: React.FC<
       options.some((o) => {
         return (
           o.name.toLowerCase() === inputValue.toLowerCase() ||
-          o.aliases?.toLowerCase() === inputValue.toLowerCase()
+          o.alias_list?.some(
+            (a) => a.toLowerCase() === inputValue.toLowerCase()
+          )
         );
       })
     ) {
@@ -276,14 +282,14 @@ const _GroupIDSelect: React.FC<IFilterProps & IFilterIDProps<Group>> = (
     onSelectValues?.(items);
   }
 
-  async function loadObjectsByID(idsToLoad: string[]): Promise<Group[]> {
-    const query = await queryFindGroupsByIDForSelect(idsToLoad);
-    const { groups: loadedGroups } = query.data.findGroups;
-
-    return loadedGroups;
-  }
-
   useEffect(() => {
+    async function loadObjectsByID(idsToLoad: string[]): Promise<Group[]> {
+      const query = await queryFindGroupsByIDForSelect(idsToLoad);
+      const { groups: loadedGroups } = query.data.findGroups;
+
+      return loadedGroups;
+    }
+
     if (!idsChanged) {
       return;
     }

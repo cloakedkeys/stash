@@ -1,0 +1,9 @@
+mutation UserSetLibraryLimit($input: UserSetLibraryLimitInput!) {
+  userSetLibraryLimit(input: $input) {
+    name
+  }
+}
+
+mutation ChangePassword($input: UserChangePasswordInput!) {
+  changePassword(input: $input)
+}

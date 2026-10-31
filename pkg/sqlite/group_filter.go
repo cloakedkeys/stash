@@ -43,13 +43,13 @@ func (qb *groupFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		return
 	}
 
+	f.handleCriterion(ctx, qb.criterionHandler())
+
 	sf := groupFilter.SubFilter()
 	if sf != nil {
 		sub := &groupFilterHandler{sf}
 		handleSubFilter(ctx, sub, f, groupFilter.OperatorFilter)
 	}
-
-	f.handleCriterion(ctx, qb.criterionHandler())
 }
 
 var groupHierarchyHandler = hierarchicalRelationshipHandler{
@@ -64,14 +64,16 @@ func (qb *groupFilterHandler) criterionHandler() criterionHandler {
 	groupFilter := qb.groupFilter
 	return compoundHandler{
 		stringCriterionHandler(groupFilter.Name, "groups.name"),
+		qb.aliasCriterionHandler(groupFilter.Aliases),
 		stringCriterionHandler(groupFilter.Director, "groups.director"),
 		stringCriterionHandler(groupFilter.Synopsis, "groups.description"),
-		intCriterionHandler(groupFilter.Rating100, "groups.rating", nil),
+		groupUserData.intCriterionHandler(groupFilter.Rating100, groupUserData.column("rating")),
 		floatIntCriterionHandler(groupFilter.Duration, "groups.duration", nil),
 		qb.missingCriterionHandler(groupFilter.IsMissing),
 		qb.urlsCriterionHandler(groupFilter.URL),
 		studioCriterionHandler(groupTable, groupFilter.Studios),
 		qb.performersCriterionHandler(groupFilter.Performers),
+		qb.performerCountCriterionHandler(groupFilter.PerformerCount),
 		qb.tagsCriterionHandler(groupFilter.Tags),
 		qb.tagCountCriterionHandler(groupFilter.TagCount),
 		qb.groupOCounterCriterionHandler(groupFilter.OCounter),
@@ -120,7 +122,7 @@ func (qb *groupFilterHandler) missingCriterionHandler(isMissing *string) criteri
 				f.addLeftJoin("groups_scenes", "", "groups_scenes.group_id = groups.id")
 				f.addWhere("groups_scenes.scene_id IS NULL")
 			case "url":
-				groupsURLsTableMgr.join(f, "", "groups.id")
+				groupsURLsTableMgr.leftJoin(f, "", "groups.id")
 				f.addWhere("group_urls.url IS NULL")
 			case "studio":
 				f.addWhere("groups.studio_id IS NULL")
@@ -129,11 +131,17 @@ func (qb *groupFilterHandler) missingCriterionHandler(isMissing *string) criteri
 				f.addLeftJoin("performers_scenes", "ps_perf", "gs_perf.scene_id = ps_perf.scene_id")
 				f.addWhere("ps_perf.performer_id IS NULL")
 			case "tags":
-				groupRepository.tags.join(f, "tags_join", "groups.id")
+				groupRepository.tags.leftJoin(f, "tags_join", "groups.id")
 				f.addWhere("tags_join.group_id IS NULL")
+			case "aliases":
+				groupAliasesTableMgr.leftJoin(f, "", "groups.id")
+				f.addWhere("group_aliases.alias IS NULL")
+			case "rating":
+				groupUserData.join(ctx, f)
+				f.addWhere(groupUserData.column("rating") + " IS NULL")
 			default:
 				if err := validateIsMissing(*isMissing, []string{
-					"aliases", "description", "director", "date", "rating",
+					"description", "director", "date",
 				}); err != nil {
 					f.setError(err)
 					return
@@ -150,12 +158,26 @@ func (qb *groupFilterHandler) urlsCriterionHandler(url *models.StringCriterionIn
 		primaryFK:    groupIDColumn,
 		joinTable:    groupURLsTable,
 		stringColumn: groupURLColumn,
-		addJoinTable: func(f *filterBuilder) {
-			groupsURLsTableMgr.join(f, "", "groups.id")
+		addJoinTable: func(f *filterBuilder, joinType joinType) {
+			groupsURLsTableMgr.join(f, joinType, "", "groups.id")
 		},
 	}
 
 	return h.handler(url)
+}
+
+func (qb *groupFilterHandler) aliasCriterionHandler(alias *models.StringCriterionInput) criterionHandlerFunc {
+	h := stringListCriterionHandlerBuilder{
+		primaryTable: groupTable,
+		primaryFK:    groupIDColumn,
+		joinTable:    groupAliasesTable,
+		stringColumn: groupAliasColumn,
+		addJoinTable: func(f *filterBuilder, joinType joinType) {
+			groupAliasesTableMgr.join(f, joinType, "", "groups.id")
+		},
+	}
+
+	return h.handler(alias)
 }
 
 func (qb *groupFilterHandler) performersCriterionHandler(performers *models.MultiCriterionInput) criterionHandlerFunc {
@@ -240,14 +262,20 @@ func (qb *groupFilterHandler) sceneCountCriterionHandler(count *models.IntCriter
 	return h.handler(count)
 }
 
-// used for sorting and filtering on group o-count
+// used for sorting and filtering on group o-count.
+// Must be formatted with the current user ID.
 var selectGroupOCountSQL = utils.StrFormat(
 	"SELECT SUM(o_counter) "+
 		"FROM ("+
 		"SELECT COUNT({scenes_o_dates}.{o_date}) as o_counter from {groups_scenes} s "+
 		"LEFT JOIN {scenes} ON {scenes}.id = s.{scene_id} "+
-		"LEFT JOIN {scenes_o_dates} ON {scenes_o_dates}.{scene_id} = {scenes}.id "+
+		"LEFT JOIN {scenes_o_dates} ON {scenes_o_dates}.{scene_id} = {scenes}.id AND {scenes_o_dates}.user_id = %[1]d "+
 		"WHERE s.{group_id} = {group}.id "+
+		"UNION ALL "+
+		"SELECT COUNT({audios_o_dates}.{audio_o_date}) as o_counter from {groups_audios} a "+
+		"LEFT JOIN {audios} ON {audios}.id = a.{audio_id} "+
+		"LEFT JOIN {audios_o_dates} ON {audios_o_dates}.{audio_id} = {audios}.id AND {audios_o_dates}.user_id = %[1]d "+
+		"WHERE a.{group_id} = {group}.id "+
 		")",
 	map[string]interface{}{
 		"group":          groupTable,
@@ -257,8 +285,44 @@ var selectGroupOCountSQL = utils.StrFormat(
 		"scene_id":       sceneIDColumn,
 		"scenes_o_dates": scenesODatesTable,
 		"o_date":         sceneODateColumn,
+		"groups_audios":  groupsAudiosTable,
+		"audios":         audioTable,
+		"audio_id":       audioIDColumn,
+		"audios_o_dates": audiosODatesTable,
+		"audio_o_date":   audioODateColumn,
 	},
 )
+
+// used for sorting and filtering on group performer count.
+// Counts the distinct performers in the group's scenes, matching the
+// group's performer_count field.
+var selectGroupPerformerCountSQL = utils.StrFormat(
+	"SELECT COUNT(DISTINCT {performers_scenes}.{performer_id}) "+
+		"FROM {groups_scenes} s "+
+		"INNER JOIN {performers_scenes} ON {performers_scenes}.{scene_id} = s.{scene_id} "+
+		"WHERE s.{group_id} = {group}.id",
+	map[string]interface{}{
+		"group":             groupTable,
+		"group_id":          groupIDColumn,
+		"groups_scenes":     groupsScenesTable,
+		"performers_scenes": performersScenesTable,
+		"performer_id":      performerIDColumn,
+		"scene_id":          sceneIDColumn,
+	},
+)
+
+func (qb *groupFilterHandler) performerCountCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		if count == nil {
+			return
+		}
+
+		lhs := "(" + selectGroupPerformerCountSQL + ")"
+		clause, args := getIntCriterionWhereClause(lhs, *count)
+
+		f.addWhere(clause, args...)
+	}
+}
 
 func (qb *groupFilterHandler) groupOCounterCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
@@ -266,7 +330,7 @@ func (qb *groupFilterHandler) groupOCounterCriterionHandler(count *models.IntCri
 			return
 		}
 
-		lhs := "(" + selectGroupOCountSQL + ")"
+		lhs := "(" + fmt.Sprintf(selectGroupOCountSQL, currentUserID(ctx)) + ")"
 		clause, args := getIntCriterionWhereClause(lhs, *count)
 
 		f.addWhere(clause, args...)

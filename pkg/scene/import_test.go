@@ -42,6 +42,11 @@ var (
 
 var testCtx = context.Background()
 
+func getUUID(_ string) string {
+	// TODO: Encode input string
+	return "00000000-0000-0000-0000-000000000000"
+}
+
 func TestImporterPreImport(t *testing.T) {
 	var (
 		title     = "title"
@@ -49,7 +54,7 @@ func TestImporterPreImport(t *testing.T) {
 		details   = "details"
 		director  = "director"
 		endpoint1 = "endpoint1"
-		stashID1  = "stashID1"
+		stashID1  = getUUID("stashID1")
 		endpoint2 = "endpoint2"
 		stashID2  = "stashID2"
 		url1      = "url1"
@@ -646,6 +651,54 @@ func TestImporterPostImport(t *testing.T) {
 			} else {
 				assert.Nil(t, err, "unexpected error: %v", err)
 			}
+		})
+	}
+}
+
+func TestImporterPreImportDates(t *testing.T) {
+	tests := []struct {
+		name               string
+		date               string
+		productionDate     string
+		wantDate           string
+		wantProductionDate string
+	}{
+		{"full dates", "2001-02-03", "2000-06-07", "2001-02-03", "2000-06-07"},
+		{"month precision is preserved", "2001-02-03", "2000-06", "2001-02-03", "2000-06"},
+		{"year precision is preserved", "2001-02-03", "2000", "2001-02-03", "2000"},
+		{"no production date", "2001-02-03", "", "2001-02-03", ""},
+		// an unparseable date is logged and skipped, leaving the rest of the
+		// scene importable
+		{"unparseable production date is skipped", "2001-02-03", "banana", "2001-02-03", ""},
+		{"unparseable date is skipped", "banana", "2000-06", "", "2000-06"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			i := Importer{
+				Input: jsonschema.Scene{
+					Title:          "title",
+					Date:           tt.date,
+					ProductionDate: tt.productionDate,
+				},
+			}
+
+			if err := i.PreImport(testCtx); err != nil {
+				t.Fatalf("PreImport() error = %v", err)
+			}
+
+			dateStr := ""
+			if i.scene.Date != nil {
+				dateStr = i.scene.Date.String()
+			}
+
+			productionDateStr := ""
+			if i.scene.ProductionDate != nil {
+				productionDateStr = i.scene.ProductionDate.String()
+			}
+
+			assert.Equal(t, tt.wantDate, dateStr)
+			assert.Equal(t, tt.wantProductionDate, productionDateStr)
 		})
 	}
 }
