@@ -130,6 +130,10 @@ class SourceSelectorPlugin extends videojs.getPlugin("plugin") {
   // don't auto play next source if user manually selected a source
   private manuallySelected = false;
 
+  private sourceCheckURL: string | null | undefined;
+  private availabilityCheck: Promise<boolean> | undefined;
+  private sourceGeneration = 0;
+
   // returns whether playback is currently intended (autostart or already playing).
   // used to avoid auto-starting playback during source resolution/failover.
   private shouldAutoplay: () => boolean = () => false;
@@ -188,7 +192,7 @@ class SourceSelectorPlugin extends videojs.getPlugin("plugin") {
       }
     });
 
-    player.on("error", () => {
+    player.on("error", async () => {
       const error = player.error();
       if (!error) return;
 
@@ -196,6 +200,28 @@ class SourceSelectorPlugin extends videojs.getPlugin("plugin") {
       if (
         error.code !== MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED &&
         error.code !== MediaError.MEDIA_ERR_DECODE
+      )
+        return;
+
+      // MediaError does not distinguish a missing file from an unsupported
+      // codec. Check the direct stream before starting more encoders.
+      const generation = this.sourceGeneration;
+      const selectedIndex = this.selectedIndex;
+      if (this.sourceCheckURL && !this.availabilityCheck) {
+        this.availabilityCheck = fetch(this.sourceCheckURL, {
+          method: "HEAD",
+          cache: "no-store",
+        })
+          .then((response) => response.status !== 404)
+          .catch(() => true);
+      }
+      if (this.availabilityCheck && !(await this.availabilityCheck)) return;
+      // Multiple error events can share the pending check. Only the current
+      // scene and source may advance once it finishes.
+      if (
+        player.isDisposed() ||
+        generation !== this.sourceGeneration ||
+        selectedIndex !== this.selectedIndex
       )
         return;
 
@@ -240,8 +266,13 @@ class SourceSelectorPlugin extends videojs.getPlugin("plugin") {
   setSources(
     sources: ISource[],
     preferredType: string | undefined,
-    preferredResolution: string | undefined
+    preferredResolution: string | undefined,
+    sourceCheckURL?: string | null
   ) {
+    this.sourceGeneration++;
+    this.sourceCheckURL = sourceCheckURL;
+    this.availabilityCheck = undefined;
+
     const cleanupTracks = this.cleanupTextTracks.splice(0);
     for (const track of cleanupTracks) {
       this.player.removeRemoteTextTrack(track);

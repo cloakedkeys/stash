@@ -61,6 +61,7 @@ func (rs sceneRoutes) Routes() chi.Router {
 
 		// streaming endpoints
 		r.Get("/stream", rs.StreamDirect)
+		r.Head("/stream", rs.StreamDirect)
 		r.Get("/stream.mp4", rs.StreamMp4)
 		r.Get("/stream.webm", rs.StreamWebM)
 		r.Get("/stream.mkv", rs.StreamMKV)

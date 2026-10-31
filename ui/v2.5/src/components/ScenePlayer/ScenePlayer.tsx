@@ -822,7 +822,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
             };
           }),
         uiConfig?.defaultStreamType,
-        uiConfig?.defaultStreamingResolution
+        uiConfig?.defaultStreamingResolution,
+        scene.paths.stream
       );
 
       function getDefaultLanguageCode() {
