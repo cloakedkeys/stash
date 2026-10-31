@@ -206,6 +206,7 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		repo := r.repository
 		sceneQB := repo.Scene
+		audioQB := repo.Audio
 		imageQB := repo.Image
 		galleryQB := repo.Gallery
 		studioQB := repo.Studio
@@ -226,6 +227,21 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 		}
 
 		scenesDuration, err := sceneQB.Duration(ctx)
+		if err != nil {
+			return err
+		}
+
+		audiosCount, err := audioQB.Count(ctx)
+		if err != nil {
+			return err
+		}
+
+		audiosSize, err := audioQB.Size(ctx)
+		if err != nil {
+			return err
+		}
+
+		audiosDuration, err := audioQB.Duration(ctx)
 		if err != nil {
 			return err
 		}
@@ -277,19 +293,40 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 		if err != nil {
 			return err
 		}
-		totalOCount := scenesTotalOCount + imagesTotalOCount + galleriesTotalOCount
+		audiosTotalOCount, err := audioQB.GetAllOCount(ctx)
+		if err != nil {
+			return err
+		}
+		totalOCount := scenesTotalOCount + imagesTotalOCount + galleriesTotalOCount + audiosTotalOCount
 
-		totalPlayDuration, err := sceneQB.PlayDuration(ctx)
+		scenesPlayDuration, err := sceneQB.PlayDuration(ctx)
 		if err != nil {
 			return err
 		}
 
-		totalPlayCount, err := sceneQB.CountAllViews(ctx)
+		audiosPlayDuration, err := audioQB.PlayDuration(ctx)
 		if err != nil {
 			return err
 		}
+		totalPlayDuration := scenesPlayDuration + audiosPlayDuration
+
+		scenesPlayCount, err := sceneQB.CountAllViews(ctx)
+		if err != nil {
+			return err
+		}
+
+		audiosPlayCount, err := audioQB.CountAllViews(ctx)
+		if err != nil {
+			return err
+		}
+		totalPlayCount := scenesPlayCount + audiosPlayCount
 
 		uniqueScenePlayCount, err := sceneQB.CountUniqueViews(ctx)
+		if err != nil {
+			return err
+		}
+
+		uniqueAudioPlayCount, err := audioQB.CountUniqueViews(ctx)
 		if err != nil {
 			return err
 		}
@@ -298,6 +335,9 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 			SceneCount:        scenesCount,
 			ScenesSize:        scenesSize,
 			ScenesDuration:    scenesDuration,
+			AudioCount:        audiosCount,
+			AudiosSize:        audiosSize,
+			AudiosDuration:    audiosDuration,
 			ImageCount:        imageCount,
 			ImagesSize:        imageSize,
 			GalleryCount:      galleryCount,
@@ -310,6 +350,7 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 			TotalPlayDuration: totalPlayDuration,
 			TotalPlayCount:    totalPlayCount,
 			ScenesPlayed:      uniqueScenePlayCount,
+			AudiosPlayed:      uniqueAudioPlayCount,
 		}
 
 		return nil

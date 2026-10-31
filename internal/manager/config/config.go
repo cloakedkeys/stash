@@ -332,7 +332,7 @@ var (
 	defaultAudioExtensions   = []string{"mp3", "mpa"}
 	defaultImageExtensions   = []string{"png", "jpg", "jpeg", "gif", "webp", "avif", "jxl"}
 	defaultGalleryExtensions = []string{"zip", "cbz"}
-	defaultMenuItems         = []string{"scenes", "images", "groups", "markers", "galleries", "folders", "performers", "voice-actors", "studios", "tags"}
+	defaultMenuItems         = []string{"scenes", "audios", "images", "groups", "markers", "galleries", "folders", "performers", "voice-actors", "studios", "tags"}
 )
 
 type MissingConfigError struct {
