@@ -1719,6 +1719,42 @@ func TestPerformerUpdatePerformerImage(t *testing.T) {
 	}
 }
 
+// "Excludes" and "is not" keep items where the field is empty, as "doesn't match
+// regex" already does. #1612: only performers with a disambiguation came back.
+func TestPerformerQueryStringExcludesKeepsEmpty(t *testing.T) {
+	if err := withRollbackTxn(func(ctx context.Context) error {
+		qb := db.Performer()
+		const prefix = "TestPerformerQueryStringExcludesKeepsEmpty"
+		with := models.Performer{Name: prefix + " with", Disambiguation: "match"}
+		without := models.Performer{Name: prefix + " without"}
+		for _, p := range []*models.Performer{&with, &without} {
+			if err := qb.Create(ctx, &models.CreatePerformerInput{Performer: p}); err != nil {
+				return fmt.Errorf("creating performer: %w", err)
+			}
+		}
+
+		names := func(modifier models.CriterionModifier, value string) []string {
+			performers := queryPerformers(ctx, t, &models.PerformerFilterType{
+				Name:           &models.StringCriterionInput{Value: prefix, Modifier: models.CriterionModifierIncludes},
+				Disambiguation: &models.StringCriterionInput{Value: value, Modifier: modifier},
+			}, nil)
+			var ret []string
+			for _, p := range performers {
+				ret = append(ret, p.Name)
+			}
+			return ret
+		}
+
+		assert.ElementsMatch(t, []string{without.Name}, names(models.CriterionModifierExcludes, "match"), "excludes")
+		assert.ElementsMatch(t, []string{without.Name}, names(models.CriterionModifierNotEquals, "match"), "is not")
+		assert.ElementsMatch(t, []string{with.Name, without.Name}, names(models.CriterionModifierExcludes, "other"), "excludes another value")
+		assert.ElementsMatch(t, []string{with.Name}, names(models.CriterionModifierIncludes, "match"), "includes")
+		assert.ElementsMatch(t, []string{with.Name}, names(models.CriterionModifierEquals, "match"), "equals")
+		return nil
+	}); err != nil {
+		t.Error(err.Error())
+	}
+}
 func TestPerformerQueryAge(t *testing.T) {
 	const age = 19
 	ageCriterion := models.IntCriterionInput{

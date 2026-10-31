@@ -41,11 +41,13 @@ func stringCriterionHandler(c *models.StringCriterionInput, column string) crite
 				case models.CriterionModifierIncludes:
 					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{column}, c.Value, false))
 				case models.CriterionModifierExcludes:
-					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{column}, c.Value, true))
+					// an empty field doesn't contain the value, so it's kept, as with not-matches-regex
+					clause := getStringSearchClause([]string{column}, c.Value, true)
+					f.whereClauses = append(f.whereClauses, makeClause("("+column+" IS NULL OR ("+clause.sql+"))", clause.args...))
 				case models.CriterionModifierEquals:
 					f.addWhere(column+" LIKE ?", c.Value)
 				case models.CriterionModifierNotEquals:
-					f.addWhere(column+" NOT LIKE ?", c.Value)
+					f.addWhere("("+column+" IS NULL OR "+column+" NOT LIKE ?)", c.Value)
 				case models.CriterionModifierMatchesRegex:
 					if _, err := regexp.Compile(c.Value); err != nil {
 						f.setError(err)
