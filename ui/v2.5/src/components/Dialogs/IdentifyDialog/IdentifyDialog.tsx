@@ -135,16 +135,6 @@ export const IdentifyDialog: React.FC<IIdentifyDialogProps> = ({
       s.spec?.supported_scrapes.includes(GQL.ScrapeType.Fragment)
     );
 
-    if (
-      fragmentScrapers.length === 0 &&
-      isScene === false &&
-      scrapers.length > 0
-    ) {
-      console.warn(
-        "No gallery-capable scrapers found. Ensure useListGalleryScrapers returns gallery-capable scrapers."
-      );
-    }
-
     ret.push(
       ...fragmentScrapers.map((s) => {
         return {

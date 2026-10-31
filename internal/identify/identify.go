@@ -63,7 +63,13 @@ type SceneIdentifier struct {
 }
 
 func (t *SceneIdentifier) Identify(ctx context.Context, scene *models.Scene) error {
-	result, multipleMatchErr := t.scrapeScene(ctx, scene)
+	result, err := t.scrapeScene(ctx, scene)
+	var multipleMatchErr *MultipleMatchesFoundError
+	if err != nil {
+		if !errors.As(err, &multipleMatchErr) {
+			return err
+		}
+	}
 
 	if result == nil {
 		if multipleMatchErr != nil {
@@ -98,7 +104,7 @@ type scrapeResult struct {
 	source ScraperSource
 }
 
-func (t *SceneIdentifier) scrapeScene(ctx context.Context, scene *models.Scene) (*scrapeResult, *MultipleMatchesFoundError) {
+func (t *SceneIdentifier) scrapeScene(ctx context.Context, scene *models.Scene) (*scrapeResult, error) {
 	// iterate through the input sources
 	for _, source := range t.Sources {
 		// scrape using the source
@@ -325,7 +331,10 @@ func (t *SceneIdentifier) getSceneUpdater(ctx context.Context, s *models.Scene, 
 	// if anything changed, also update the updated at time on the applicable stash id
 	changed := !ret.IsEmpty()
 
-	stashIDs := rel.stashIDs(ctx, changed)
+	stashIDs, err := rel.stashIDs(ctx, changed)
+	if err != nil {
+		return nil, err
+	}
 	if stashIDs != nil {
 		ret.Partial.StashIDs = &models.UpdateStashIDs{
 			StashIDs: stashIDs,
