@@ -8,16 +8,18 @@ import { Badge, Button } from "react-bootstrap";
 import { Icon } from "src/components/Shared/Icon";
 import { faPlus } from "@fortawesome/free-solid-svg-icons";
 import { CollapseButton } from "src/components/Shared/CollapseButton";
+import { useInitialState } from "src/hooks/state";
 
 export function useTagsEdit(
   srcTags: Tag[] | undefined,
-  setFieldValue: (ids: string[]) => void
+  setFieldValue: (ids: string[]) => void,
+  preserveUnsavedSelectionOnSourceUpdate = false
 ) {
   const intl = useIntl();
   const Toast = useToast();
   const [createTag] = useTagCreate();
 
-  const [tags, setTags] = useState<Tag[]>([]);
+  const [tags, setTags, setInitialTags] = useInitialState(srcTags ?? []);
   const [newTags, setNewTags] = useState<GQL.ScrapedTag[]>();
 
   function onSetTags(items: Tag[]) {
@@ -26,13 +28,29 @@ export function useTagsEdit(
   }
 
   function resetTagsState() {
-    setTags(srcTags ?? []);
+    const initialTags = srcTags ?? [];
+    setTags(initialTags);
+    setInitialTags(initialTags);
     setNewTags(undefined);
   }
 
   useEffect(() => {
-    setTags(srcTags ?? []);
-  }, [srcTags]);
+    // A cache refresh may replace this array while the user's selection is dirty.
+    const nextTags = srcTags ?? [];
+    if (!preserveUnsavedSelectionOnSourceUpdate) {
+      setTags(nextTags);
+    }
+    setInitialTags(nextTags);
+  }, [
+    preserveUnsavedSelectionOnSourceUpdate,
+    setInitialTags,
+    setTags,
+    srcTags,
+  ]);
+
+  function markTagsStateSaved() {
+    setInitialTags(tags);
+  }
 
   async function createNewTag(toCreate: GQL.ScrapedTag) {
     const tagInput: GQL.TagCreateInput = { name: toCreate.name ?? "" };
@@ -158,5 +176,6 @@ export function useTagsEdit(
     resetTagsState,
     tagsControl,
     updateTagsStateFromScraper,
+    markTagsStateSaved,
   };
 }

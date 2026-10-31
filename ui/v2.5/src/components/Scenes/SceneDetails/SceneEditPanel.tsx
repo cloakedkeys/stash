@@ -56,6 +56,7 @@ import { Studio, StudioSelect } from "src/components/Studios/StudioSelect";
 import { Gallery, GallerySelect } from "src/components/Galleries/GallerySelect";
 import { Group } from "src/components/Groups/GroupSelect";
 import { useTagsEdit } from "src/hooks/tagsEdit";
+import { useInitialState } from "src/hooks/state";
 import { ScraperMenu } from "src/components/Shared/ScraperMenu";
 import StashBoxIDSearchModal from "src/components/Shared/StashBoxIDSearchModal";
 import {
@@ -92,7 +93,9 @@ export const SceneEditPanel: React.FC<IProps> = ({
   const Toast = useToast();
 
   const [galleries, setGalleries] = useState<Gallery[]>([]);
-  const [performers, setPerformers] = useState<Performer[]>([]);
+  const [performers, setPerformers, setInitialPerformers] = useInitialState<
+    Performer[]
+  >(scene.performers ?? []);
   const [groups, setGroups] = useState<Group[]>([]);
   const [studio, setStudio] = useState<Studio | null>(null);
 
@@ -134,8 +137,9 @@ export const SceneEditPanel: React.FC<IProps> = ({
   }, [scene.galleries]);
 
   useEffect(() => {
-    setPerformers(scene.performers ?? []);
-  }, [scene.performers]);
+    // Scene cache updates must not replace an unsaved performer selection.
+    setInitialPerformers(scene.performers ?? []);
+  }, [scene.performers, setInitialPerformers]);
 
   useEffect(() => {
     setGroups(scene.groups?.map((m) => m.group) ?? []);
@@ -219,8 +223,17 @@ export const SceneEditPanel: React.FC<IProps> = ({
     onSubmit: submit,
   });
 
-  const { tags, updateTagsStateFromScraper, resetTagsState, tagsControl } =
-    useTagsEdit(scene.tags, (ids) => formik.setFieldValue("tag_ids", ids));
+  const {
+    tags,
+    updateTagsStateFromScraper,
+    resetTagsState,
+    tagsControl,
+    markTagsStateSaved,
+  } = useTagsEdit(
+    scene.tags,
+    (ids) => formik.setFieldValue("tag_ids", ids),
+    true
+  );
 
   // auto-save only covers explicit selections, never a new scene
   const autoSaveEnabled =
@@ -363,6 +376,8 @@ export const SceneEditPanel: React.FC<IProps> = ({
     }
     try {
       await onSubmit(input, andNew);
+      markTagsStateSaved();
+      setInitialPerformers(performers);
       if (!autoSaveEnabled) {
         formik.resetForm();
       }
@@ -375,7 +390,9 @@ export const SceneEditPanel: React.FC<IProps> = ({
             folder: g.folder,
           })) ?? []
         );
-        setPerformers(scene.performers ?? []);
+        const initialPerformers = scene.performers ?? [];
+        setPerformers(initialPerformers);
+        setInitialPerformers(initialPerformers);
         setGroups(scene.groups?.map((m) => m.group) ?? []);
         setStudio(scene.studio ?? null);
         resetTagsState();

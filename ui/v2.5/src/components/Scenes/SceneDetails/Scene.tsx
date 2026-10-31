@@ -679,7 +679,9 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
             <SceneFileInfoPanel scene={scene} />
           </Tab.Pane>
           <Tab.Pane eventKey="scene-edit-panel" mountOnEnter>
+            {/* Changing scenes discards the previous scene's local edit state. */}
             <SceneEditPanel
+              key={scene.id}
               isVisible={activeTabKey === "scene-edit-panel"}
               scene={scene}
               onGenerateThumbFromCurrent={() =>
