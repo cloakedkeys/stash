@@ -3,6 +3,8 @@ package config
 type ScanMetadataOptions struct {
 	// Forces a rescan on files even if they have not changed
 	Rescan bool `json:"rescan"`
+	// Infer unset VR metadata from explicit tags in video filenames
+	InferVRMetadata bool `json:"inferVRMetadata"`
 	// Generate scene covers during scan
 	ScanGenerateCovers bool `json:"scanGenerateCovers"`
 	// Generate previews during scan

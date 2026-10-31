@@ -595,6 +595,8 @@
       "generate_video_covers_during_scan": "Generate scene covers",
       "generate_video_previews_during_scan": "Generate previews",
       "generate_video_previews_during_scan_tooltip": "Generate video previews which play when hovering over a scene",
+      "infer_vr_metadata": "Infer VR metadata from filenames",
+      "infer_vr_metadata_tooltip": "Fill unset VR metadata from explicit tags such as 180, 360, sbs2l, or mkx200 in video filenames.",
       "generated_content": "Generated Content",
       "identify": {
         "and_create_missing": "and create missing",
@@ -1371,6 +1373,12 @@
     "play_count": "Play Count",
     "play_duration": "Play Duration",
     "projection": "Projection",
+    "edit_vr_metadata": "Edit VR metadata",
+    "vr_corrections": "Image corrections",
+    "passthrough": "Passthrough",
+    "alpha_packed": "Alpha packed",
+    "chroma_key_number": "Chroma key {number}",
+    "add_chroma_key": "Add chroma key",
     "stream": "Stream",
     "stereo_mode": "Stereo Mode",
     "video_codec": "Video Codec"

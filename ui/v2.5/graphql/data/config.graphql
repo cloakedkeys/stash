@@ -175,6 +175,7 @@ fragment ConfigDefaultSettingsData on ConfigDefaultSettingsResult {
     scanGeneratePhashes
     scanGenerateThumbnails
     scanGenerateClipPreviews
+    inferVRMetadata
   }
 
   identify {

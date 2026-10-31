@@ -465,6 +465,7 @@ func fileToJSON(f models.File) jsonschema.DirEntry {
 			Projection:       (*string)(ff.Projection),
 			StereoMode:       (*string)(ff.StereoMode),
 			VRCorrections:    vrCorrectionsToJSON(ff.VRCorrections),
+			VRPassthrough:    vrPassthroughToJSON(ff.VRPassthrough),
 		}
 	case *models.ImageFile:
 		base.Type = jsonschema.DirEntryTypeImage
@@ -496,7 +497,24 @@ func vrCorrectionsToJSON(c *models.VRCorrections) *jsonschema.VRCorrections {
 	return &jsonschema.VRCorrections{
 		HorizontalOffset: c.HorizontalOffset,
 		VerticalOffset:   c.VerticalOffset,
+		Brightness:       c.Brightness,
+		Contrast:         c.Contrast,
+		Saturation:       c.Saturation,
 	}
+}
+
+func vrPassthroughToJSON(p *models.VRPassthrough) *jsonschema.VRPassthrough {
+	if p == nil {
+		return nil
+	}
+	ret := &jsonschema.VRPassthrough{AlphaPacked: p.AlphaPacked}
+	for _, key := range p.ChromaKeys {
+		ret.ChromaKeys = append(ret.ChromaKeys, jsonschema.VRChromaKey{
+			Hue: key.Hue, Saturation: key.Saturation, Value: key.Value,
+			Threshold: key.Threshold, Opacity: key.Opacity,
+		})
+	}
+	return ret
 }
 
 func folderToJSON(f models.Folder) jsonschema.DirEntry {

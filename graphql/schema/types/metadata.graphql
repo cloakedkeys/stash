@@ -86,6 +86,8 @@ input ScanMetadataInput {
 
   "Forces a rescan on files even if modification time is unchanged"
   rescan: Boolean
+  "Infer unset VR metadata from explicit filename tags"
+  inferVRMetadata: Boolean
   "Generate covers during scan"
   scanGenerateCovers: Boolean
   "Generate previews during scan"
@@ -149,6 +151,8 @@ input ScanFileInput {
 type ScanMetadataOptions {
   "Forces a rescan on files even if modification time is unchanged"
   rescan: Boolean!
+  "Infer unset VR metadata from explicit filename tags"
+  inferVRMetadata: Boolean!
   "Generate covers during scan"
   scanGenerateCovers: Boolean!
   "Generate previews during scan"

@@ -68,6 +68,7 @@ type videoFileRow struct {
 	Projection       null.String   `db:"projection"`
 	StereoMode       null.String   `db:"stereo_mode"`
 	VRCorrections    null.String   `db:"vr_corrections"`
+	VRPassthrough    null.String   `db:"vr_passthrough"`
 }
 
 func (f *videoFileRow) fromVideoFile(ff models.VideoFile) {
@@ -85,6 +86,7 @@ func (f *videoFileRow) fromVideoFile(ff models.VideoFile) {
 	f.Projection = null.StringFromPtr(projectionEnumPtr(ff.Projection))
 	f.StereoMode = null.StringFromPtr(stereoModeEnumPtr(ff.StereoMode))
 	f.VRCorrections = vrCorrectionsToNullString(ff.VRCorrections)
+	f.VRPassthrough = vrPassthroughToNullString(ff.VRPassthrough)
 }
 
 type imageFileRow struct {
@@ -118,6 +120,7 @@ type videoFileQueryRow struct {
 	Projection       null.String `db:"projection"`
 	StereoMode       null.String `db:"stereo_mode"`
 	VRCorrections    null.String `db:"vr_corrections"`
+	VRPassthrough    null.String `db:"vr_passthrough"`
 }
 
 func (f *videoFileQueryRow) resolve() *models.VideoFile {
@@ -135,6 +138,7 @@ func (f *videoFileQueryRow) resolve() *models.VideoFile {
 		Projection:       projectionEnumFromNullString(f.Projection),
 		StereoMode:       stereoModeEnumFromNullString(f.StereoMode),
 		VRCorrections:    vrCorrectionsFromNullString(f.VRCorrections),
+		VRPassthrough:    vrPassthroughFromNullString(f.VRPassthrough),
 	}
 }
 
@@ -155,6 +159,7 @@ func videoFileQueryColumns() []interface{} {
 		table.Col("projection"),
 		table.Col("stereo_mode"),
 		table.Col("vr_corrections"),
+		table.Col("vr_passthrough"),
 	}
 }
 
@@ -535,13 +540,36 @@ func vrCorrectionsFromNullString(s null.String) *models.VRCorrections {
 	return &vc
 }
 
+func vrPassthroughToNullString(vp *models.VRPassthrough) null.String {
+	if vp == nil {
+		return null.String{}
+	}
+	b, err := json.Marshal(vp)
+	if err != nil {
+		return null.String{}
+	}
+	return null.StringFrom(string(b))
+}
+
+func vrPassthroughFromNullString(s null.String) *models.VRPassthrough {
+	if !s.Valid || s.String == "" {
+		return nil
+	}
+	var vp models.VRPassthrough
+	if err := json.Unmarshal([]byte(s.String), &vp); err != nil {
+		return nil
+	}
+	return &vp
+}
+
 // ModifyVideoFileMetadata sets the VR metadata fields; nil clears a field.
 // Only the VR columns are written, the rest of the video file is left alone.
-func (qb *FileStore) ModifyVideoFileMetadata(ctx context.Context, fileID models.FileID, projection *models.ProjectionEnum, stereoMode *models.StereoModeEnum, vrCorrections *models.VRCorrections) error {
+func (qb *FileStore) ModifyVideoFileMetadata(ctx context.Context, fileID models.FileID, projection *models.ProjectionEnum, stereoMode *models.StereoModeEnum, vrCorrections *models.VRCorrections, vrPassthrough *models.VRPassthrough) error {
 	record := goqu.Record{
 		"projection":     null.StringFromPtr(projectionEnumPtr(projection)),
 		"stereo_mode":    null.StringFromPtr(stereoModeEnumPtr(stereoMode)),
 		"vr_corrections": vrCorrectionsToNullString(vrCorrections),
+		"vr_passthrough": vrPassthroughToNullString(vrPassthrough),
 	}
 	if err := videoFileTableMgr.updateByID(ctx, fileID, record); err != nil {
 		return fmt.Errorf("updating vr metadata: %w", err)

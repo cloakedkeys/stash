@@ -12,7 +12,8 @@ import (
 
 // Decorator adds video specific fields to a File.
 type Decorator struct {
-	FFProbe *ffmpeg.FFProbe
+	FFProbe         *ffmpeg.FFProbe
+	InferVRMetadata bool
 }
 
 func (d *Decorator) Decorate(ctx context.Context, fs models.FS, f models.File) (models.File, error) {
@@ -43,7 +44,7 @@ func (d *Decorator) Decorate(ctx context.Context, fs models.FS, f models.File) (
 		interactive = true
 	}
 
-	return &models.VideoFile{
+	decorated := &models.VideoFile{
 		BaseFile:    base,
 		Format:      string(container),
 		VideoCodec:  videoFile.VideoCodec,
@@ -54,7 +55,21 @@ func (d *Decorator) Decorate(ctx context.Context, fs models.FS, f models.File) (
 		FrameRate:   videoFile.FrameRate,
 		BitRate:     videoFile.Bitrate,
 		Interactive: interactive,
-	}, nil
+	}
+	if old, ok := f.(*models.VideoFile); ok {
+		preserveVRMetadata(decorated, old)
+	}
+	if d.InferVRMetadata {
+		applyFilenameVRMetadata(decorated, inferVRMetadataFromFilename(base.Basename))
+	}
+	return decorated, nil
+}
+
+func preserveVRMetadata(dst, src *models.VideoFile) {
+	dst.Projection = src.Projection
+	dst.StereoMode = src.StereoMode
+	dst.VRCorrections = src.VRCorrections
+	dst.VRPassthrough = src.VRPassthrough
 }
 
 func (d *Decorator) IsMissingMetadata(ctx context.Context, fs models.FS, f models.File) bool {
@@ -73,9 +88,19 @@ func (d *Decorator) IsMissingMetadata(ctx context.Context, fs models.FS, f model
 		interactive = true
 	}
 
-	return vf.VideoCodec == unsetString || vf.AudioCodec == unsetString ||
+	mediaMetadataMissing := vf.VideoCodec == unsetString || vf.AudioCodec == unsetString ||
 		vf.Format == unsetString || vf.Width == unsetNumber ||
 		vf.Height == unsetNumber || vf.FrameRate == unsetNumber ||
 		vf.Duration == unsetNumber ||
 		vf.BitRate == unsetNumber || interactive != vf.Interactive
+	if mediaMetadataMissing {
+		return true
+	}
+	if d.InferVRMetadata {
+		inferred := inferVRMetadataFromFilename(vf.Basename)
+		return (vf.Projection == nil && inferred.projection != nil) ||
+			(vf.StereoMode == nil && inferred.stereoMode != nil) ||
+			(inferred.alphaPacked != nil && (vf.VRPassthrough == nil || vf.VRPassthrough.AlphaPacked == nil))
+	}
+	return false
 }

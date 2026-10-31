@@ -294,6 +294,7 @@ type VideoFile struct {
 	Projection    *ProjectionEnum `json:"projection"`
 	StereoMode    *StereoModeEnum `json:"stereo_mode"`
 	VRCorrections *VRCorrections  `json:"vr_corrections"`
+	VRPassthrough *VRPassthrough  `json:"vr_passthrough"`
 }
 
 func (f VideoFile) GetWidth() int {

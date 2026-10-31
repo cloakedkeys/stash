@@ -108,6 +108,7 @@ type VideoFile implements BaseFile {
   projection: VideoProjection
   stereo_mode: StereoMode
   vr_corrections: VRCorrections
+  vr_passthrough: VRPassthrough
 
   scenes: [Scene!]!
 
@@ -201,15 +202,26 @@ input FileSetFingerprintsInput {
 enum VideoProjection {
   "flat 2D video"
   FLAT
-  "equirectangular mesh, 180 or 360 degrees"
+  "equirectangular projection with unspecified field of view"
   EQUIRECTANGULAR
   "180 degree fisheye mesh"
   FISHEYE
+  "190 degree fisheye lens"
+  FISHEYE_190
   "200 degree fisheye mesh for the iZugar MKX200 lens"
   MKX200
+  "raw MKX200 lens projection"
+  MKX200_RAW
+  "220 degree fisheye mesh for the iZugar MKX220 lens"
+  MKX220
+  "220 degree fisheye mesh for the VRCA220 lens"
+  VRCA220
   "190 degree fisheye mesh for the Canon RF52 lens"
   RF52
+  "180 degree dome projection"
   DOME
+  "360 degree spherical projection"
+  SPHERE
   CUBEMAP
   RECTILINEAR
 }
@@ -222,18 +234,54 @@ enum StereoMode {
   SBS
   "top and bottom, left eye on top"
   TB
+  "side by side, right eye on the left"
+  SBS_RIGHT
+  "squeezed side by side, left eye on the left"
+  SBS_SQUEEZED_LEFT
+  "squeezed side by side, right eye on the left"
+  SBS_SQUEEZED_RIGHT
+  "top and bottom, right eye on top"
+  TB_RIGHT
+  "squeezed top and bottom, left eye on top"
+  TB_SQUEEZED_LEFT
+  "squeezed top and bottom, right eye on top"
+  TB_SQUEEZED_RIGHT
   "custom UV mapping"
   CUV
   "alternating frames, left eye first"
   AF
+  "alternating frames, right eye first"
+  AF_RIGHT
   "interleaved rows, left eye first"
   INTERLEAVED_ROWS
+  "interleaved rows, right eye first"
+  INTERLEAVED_ROWS_RIGHT
+  "interleaved columns, left eye first"
+  INTERLEAVED_COLUMNS
+  "interleaved columns, right eye first"
+  INTERLEAVED_COLUMNS_RIGHT
 }
 
-"Small per-video adjustments to the image position, as offered by VR players"
+"Per-video image position and color adjustments"
 type VRCorrections {
   horizontal_offset: Float
   vertical_offset: Float
+  brightness: Float
+  contrast: Float
+  saturation: Float
+}
+
+type VRChromaKey {
+  hue: Float
+  saturation: Float
+  value: Float
+  threshold: Float
+  opacity: Float
+}
+
+type VRPassthrough {
+  chroma_keys: [VRChromaKey!]
+  alpha_packed: Boolean
 }
 
 input FileSetVRMetadataInput {
@@ -241,11 +289,28 @@ input FileSetVRMetadataInput {
   projection: VideoProjection
   stereo_mode: StereoMode
   vr_corrections: VRCorrectionsInput
+  vr_passthrough: VRPassthroughInput
 }
 
 input VRCorrectionsInput {
   horizontal_offset: Float
   vertical_offset: Float
+  brightness: Float
+  contrast: Float
+  saturation: Float
+}
+
+input VRPassthroughInput {
+  chroma_keys: [VRChromaKeyInput!]
+  alpha_packed: Boolean
+}
+
+input VRChromaKeyInput {
+  hue: Float
+  saturation: Float
+  value: Float
+  threshold: Float
+  opacity: Float
 }
 
 type FindFilesResultType {

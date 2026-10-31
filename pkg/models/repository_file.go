@@ -83,7 +83,7 @@ type FileFingerprintWriter interface {
 }
 
 // FileVRMetadataWriter provides methods to set the VR-related
-// metadata fields (projection, stereo_mode, vr_corrections)
+// metadata fields (projection, stereo_mode, vr_corrections, vr_passthrough)
 // of a video file. A nil argument clears that field.
 type FileVRMetadataWriter interface {
 	ModifyVideoFileMetadata(
@@ -92,6 +92,7 @@ type FileVRMetadataWriter interface {
 		projection *ProjectionEnum,
 		stereoMode *StereoModeEnum,
 		vrCorrections *VRCorrections,
+		vrPassthrough *VRPassthrough,
 	) error
 }
 

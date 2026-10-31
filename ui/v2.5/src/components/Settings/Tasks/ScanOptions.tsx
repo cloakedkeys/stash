@@ -21,6 +21,7 @@ export const ScanOptions: React.FC<IScanOptions> = ({
     scanGenerateImagePhashes,
     scanGenerateClipPreviews,
     rescan,
+    inferVRMetadata,
   } = options;
 
   function setOptions(input: Partial<GQL.ScanMetadataInput>) {
@@ -85,6 +86,13 @@ export const ScanOptions: React.FC<IScanOptions> = ({
         checked={scanGenerateClipPreviews ?? false}
         headingID="config.tasks.generate_clip_previews_during_scan"
         onChange={(v) => setOptions({ scanGenerateClipPreviews: v })}
+      />
+      <BooleanSetting
+        id="infer-vr-metadata"
+        headingID="config.tasks.infer_vr_metadata"
+        tooltipID="config.tasks.infer_vr_metadata_tooltip"
+        checked={inferVRMetadata ?? false}
+        onChange={(v) => setOptions({ inferVRMetadata: v })}
       />
       <BooleanSetting
         id="force-rescan"

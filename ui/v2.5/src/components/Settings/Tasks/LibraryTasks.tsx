@@ -97,6 +97,7 @@ export const LibraryTasks: React.FC = () => {
       scanGeneratePhashes: false,
       scanGenerateThumbnails: false,
       scanGenerateClipPreviews: false,
+      inferVRMetadata: false,
     };
   }
 
