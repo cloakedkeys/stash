@@ -1040,6 +1040,10 @@ export const LightboxImage: React.FC<IProps> = ({
           <ImageView
             loop={isVideo}
             src={src}
+            // Chrome may decode a large JPEG at reduced intrinsic dimensions.
+            // Keep layout and the metadata-based pan/zoom geometry in agreement.
+            width={imageWidth}
+            height={imageHeight}
             alt=""
             draggable={false}
             style={{ touchAction: "none" }}
