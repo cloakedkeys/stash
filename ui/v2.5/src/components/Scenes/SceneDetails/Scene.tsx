@@ -954,12 +954,13 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       return;
     }
 
+    // replace the loaded scenes with the first page
     const filterCopy = sceneQueue.query.clone();
-    const newStart = 1;
-    filterCopy.currentPage = newStart;
+    filterCopy.currentPage = 1;
     const query = await queryFindScenes(filterCopy);
     const { scenes } = query.data.findScenes;
     setQueueScenes(scenes);
+    setQueueStart(1);
 
     return scenes;
   }
@@ -969,12 +970,13 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
       return;
     }
 
+    // replace the loaded scenes with the last page
     const filterCopy = sceneQueue.query.clone();
-    const newStart = queueTotal;
-    filterCopy.currentPage = Math.ceil(newStart / filterCopy.itemsPerPage);
+    filterCopy.currentPage = Math.ceil(queueTotal / filterCopy.itemsPerPage);
     const query = await queryFindScenes(filterCopy);
     const { scenes } = query.data.findScenes;
     setQueueScenes(scenes);
+    setQueueStart((filterCopy.currentPage - 1) * filterCopy.itemsPerPage + 1);
 
     return scenes;
   }
@@ -1054,7 +1056,7 @@ const SceneLoader: React.FC<RouteComponentProps<ISceneParams>> = ({
         const loadedScenes = await onQueueLastScenes();
         if (loadedScenes && loadedScenes.length > 0) {
           const newPage = Math.ceil(
-            queueTotal / (sceneQueue.query?.itemsPerPage ?? 0)
+            queueTotal / (sceneQueue.query?.itemsPerPage ?? 1)
           );
           loadScene(
             loadedScenes[loadedScenes.length - 1].id,

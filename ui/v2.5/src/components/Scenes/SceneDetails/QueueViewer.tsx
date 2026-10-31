@@ -152,6 +152,13 @@ export const QueueViewer: React.FC<IPlaylistViewer> = ({
             variant="secondary"
             disabled={!continuePlaylist}
             active={loopScene || loopQueue}
+            title={intl.formatMessage({
+              id: loopScene
+                ? "actions.loop_scene"
+                : loopQueue
+                  ? "actions.loop_queue"
+                  : "actions.loop_off",
+            })}
             onClick={() => handleLoopClick()}
           >
             <Icon icon={faRepeat} />
