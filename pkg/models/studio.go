@@ -30,6 +30,8 @@ type StudioFilterType struct {
 	GalleryCount *IntCriterionInput `json:"gallery_count"`
 	// Filter by group count
 	GroupCount *IntCriterionInput `json:"group_count"`
+	// Filter by number of distinct performers in the studio's scenes, images and galleries
+	PerformerCount *IntCriterionInput `json:"performer_count"`
 	// Filter by url
 	URL *StringCriterionInput `json:"url"`
 	// Filter by studio aliases

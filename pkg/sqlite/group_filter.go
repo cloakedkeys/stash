@@ -73,6 +73,7 @@ func (qb *groupFilterHandler) criterionHandler() criterionHandler {
 		qb.urlsCriterionHandler(groupFilter.URL),
 		studioCriterionHandler(groupTable, groupFilter.Studios),
 		qb.performersCriterionHandler(groupFilter.Performers),
+		qb.performerCountCriterionHandler(groupFilter.PerformerCount),
 		qb.tagsCriterionHandler(groupFilter.Tags),
 		qb.tagCountCriterionHandler(groupFilter.TagCount),
 		qb.groupOCounterCriterionHandler(groupFilter.OCounter),
@@ -277,6 +278,37 @@ var selectGroupOCountSQL = utils.StrFormat(
 		"o_date":         sceneODateColumn,
 	},
 )
+
+// used for sorting and filtering on group performer count.
+// Counts the distinct performers in the group's scenes, matching the
+// group's performer_count field.
+var selectGroupPerformerCountSQL = utils.StrFormat(
+	"SELECT COUNT(DISTINCT {performers_scenes}.{performer_id}) "+
+		"FROM {groups_scenes} s "+
+		"INNER JOIN {performers_scenes} ON {performers_scenes}.{scene_id} = s.{scene_id} "+
+		"WHERE s.{group_id} = {group}.id",
+	map[string]interface{}{
+		"group":             groupTable,
+		"group_id":          groupIDColumn,
+		"groups_scenes":     groupsScenesTable,
+		"performers_scenes": performersScenesTable,
+		"performer_id":      performerIDColumn,
+		"scene_id":          sceneIDColumn,
+	},
+)
+
+func (qb *groupFilterHandler) performerCountCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		if count == nil {
+			return
+		}
+
+		lhs := "(" + selectGroupPerformerCountSQL + ")"
+		clause, args := getIntCriterionWhereClause(lhs, *count)
+
+		f.addWhere(clause, args...)
+	}
+}
 
 func (qb *groupFilterHandler) groupOCounterCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {

@@ -84,6 +84,7 @@ const criterionOptions = [
   createMandatoryNumberCriterionOption("scene_count"),
   createMandatoryNumberCriterionOption("image_count"),
   createMandatoryNumberCriterionOption("gallery_count"),
+  createMandatoryNumberCriterionOption("performer_count"),
   createStringCriterionOption("url"),
   StashIDCriterionOption,
   createStringCriterionOption("aliases"),

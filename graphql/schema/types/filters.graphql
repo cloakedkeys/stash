@@ -442,6 +442,8 @@ input GroupFilterType {
   url: StringCriterionInput
   "Filter to only include groups where performer appears in a scene"
   performers: MultiCriterionInput
+  "Filter by number of distinct performers in the group's scenes"
+  performer_count: IntCriterionInput
   "Filter to only include groups with these tags"
   tags: HierarchicalMultiCriterionInput
   "Filter by tag count"
@@ -505,6 +507,8 @@ input StudioFilterType {
   gallery_count: IntCriterionInput
   "Filter by group count"
   group_count: IntCriterionInput
+  "Filter by number of distinct performers in the studio's scenes, images and galleries"
+  performer_count: IntCriterionInput
   "Filter by tag count"
   tag_count: IntCriterionInput
   "Filter by url"

@@ -28,6 +28,7 @@ const sortByOptions = [
   "duration",
   "rating",
   "tag_count",
+  "performer_count",
   "sub_group_description",
   "sub_group_order",
 ]
@@ -56,6 +57,7 @@ const criterionOptions = [
   createDurationCriterionOption("duration"),
   RatingCriterionOption,
   PerformersCriterionOption,
+  createMandatoryNumberCriterionOption("performer_count"),
   createDateCriterionOption("date"),
   createMandatoryNumberCriterionOption("o_counter", "o_count", {
     sfwMessageID: "o_count_sfw",

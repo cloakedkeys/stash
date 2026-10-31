@@ -2091,6 +2091,119 @@ func TestStudioQuerySortPerformerCount(t *testing.T) {
 	})
 }
 
+// createStudioWithPerformers creates a studio with a scene, an image and a
+// gallery. The scene and image share a performer, so the studio has three
+// distinct performers in total.
+func createStudioWithPerformers(ctx context.Context, t *testing.T) *models.Studio {
+	t.Helper()
+
+	studio := models.NewStudio()
+	studio.Name = "TestStudioPerformerCount"
+	if err := db.Studio.Create(ctx, &models.CreateStudioInput{Studio: &studio}); err != nil {
+		t.Fatalf("creating studio: %v", err)
+	}
+
+	scene := models.Scene{
+		Title:        "TestStudioPerformerCount",
+		StudioID:     &studio.ID,
+		PerformerIDs: models.NewRelatedIDs([]int{performerIDs[performerIdx1WithScene]}),
+	}
+	if err := db.Scene.Create(ctx, &scene, nil); err != nil {
+		t.Fatalf("creating scene: %v", err)
+	}
+
+	image := models.Image{
+		Title:    "TestStudioPerformerCount",
+		StudioID: &studio.ID,
+		PerformerIDs: models.NewRelatedIDs([]int{
+			performerIDs[performerIdx1WithScene],
+			performerIDs[performerIdx1WithImage],
+		}),
+	}
+	if err := db.Image.Create(ctx, &models.CreateImageInput{Image: &image}); err != nil {
+		t.Fatalf("creating image: %v", err)
+	}
+
+	gallery := models.Gallery{
+		Title:        "TestStudioPerformerCount",
+		StudioID:     &studio.ID,
+		PerformerIDs: models.NewRelatedIDs([]int{performerIDs[performerIdx1WithGallery]}),
+	}
+	if err := db.Gallery.Create(ctx, &models.CreateGalleryInput{Gallery: &gallery}); err != nil {
+		t.Fatalf("creating gallery: %v", err)
+	}
+
+	return &studio
+}
+
+func verifyStudiosPerformerCount(ctx context.Context, t *testing.T, performerCountCriterion models.IntCriterionInput) []int {
+	t.Helper()
+
+	studioFilter := models.StudioFilterType{
+		PerformerCount: &performerCountCriterion,
+	}
+
+	studios := queryStudios(ctx, t, &studioFilter, nil)
+	assert.Greater(t, len(studios), 0)
+
+	var ids []int
+	for _, studio := range studios {
+		ids = append(ids, studio.ID)
+
+		// count the same way as the studio's performer_count field
+		count, err := db.Performer.QueryCount(ctx, &models.PerformerFilterType{
+			Studios: &models.HierarchicalMultiCriterionInput{
+				Value:    []string{strconv.Itoa(studio.ID)},
+				Modifier: models.CriterionModifierIncludes,
+			},
+		}, nil)
+		if err != nil {
+			t.Errorf("counting performers for studio %d: %v", studio.ID, err)
+			continue
+		}
+		verifyInt(t, count, performerCountCriterion)
+	}
+
+	return ids
+}
+
+func TestStudioQueryPerformerCount(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		studio := createStudioWithPerformers(ctx, t)
+
+		criterion := models.IntCriterionInput{
+			Value:    3,
+			Modifier: models.CriterionModifierEquals,
+		}
+		ids := verifyStudiosPerformerCount(ctx, t, criterion)
+		assert.Contains(t, ids, studio.ID)
+
+		// fixture studios with one performer in a scene, image or gallery
+		criterion.Value = 1
+		ids = verifyStudiosPerformerCount(ctx, t, criterion)
+		assert.Contains(t, ids, studioIDs[studioIdxWithScenePerformer])
+		assert.Contains(t, ids, studioIDs[studioIdxWithImagePerformer])
+		assert.Contains(t, ids, studioIDs[studioIdxWithGalleryPerformer])
+		assert.NotContains(t, ids, studio.ID)
+
+		criterion.Modifier = models.CriterionModifierNotEquals
+		ids = verifyStudiosPerformerCount(ctx, t, criterion)
+		assert.Contains(t, ids, studioIDs[studioIdxWithNothing])
+		assert.Contains(t, ids, studio.ID)
+
+		criterion.Modifier = models.CriterionModifierGreaterThan
+		ids = verifyStudiosPerformerCount(ctx, t, criterion)
+		assert.Contains(t, ids, studio.ID)
+
+		criterion.Modifier = models.CriterionModifierLessThan
+		ids = verifyStudiosPerformerCount(ctx, t, criterion)
+		assert.Contains(t, ids, studioIDs[studioIdxWithNothing])
+		assert.NotContains(t, ids, studio.ID)
+
+		return nil
+	})
+}
+
 func TestStudioQuerySortPerformerCountAll(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
 		sortBy := "performer_count_all"
