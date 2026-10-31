@@ -64,7 +64,7 @@ func (r *repository) exists(ctx context.Context, id int) (bool, error) {
 }
 
 func (r *repository) buildCountQuery(query string) string {
-	return "SELECT COUNT(DISTINCT temp.id) as count FROM (" + query + ") as temp"
+	return "SELECT COUNT(*) as count FROM (" + query + ") as temp"
 }
 
 func (r *repository) runCountQuery(ctx context.Context, query string, args []interface{}) (int, error) {
@@ -89,13 +89,9 @@ func (r *repository) runIdsQuery(ctx context.Context, query string, args []inter
 		return []int{}, fmt.Errorf("running query: %s [%v]: %w", query, args, err)
 	}
 
-	seen := make(map[int]bool, len(result))
-	vsm := make([]int, 0, len(result))
-	for _, v := range result {
-		if !seen[v.Int] {
-			seen[v.Int] = true
-			vsm = append(vsm, v.Int)
-		}
+	vsm := make([]int, len(result))
+	for i, v := range result {
+		vsm[i] = v.Int
 	}
 	return vsm, nil
 }
@@ -126,13 +122,9 @@ func (r *repository) runIdsWithCount(ctx context.Context, query string, args []i
 		return &rows, nil
 	}
 
-	seen := make(map[int]bool, len(result))
-	rows.IDs = make([]int, 0, len(result))
-	for _, row := range result {
-		if !seen[row.ID] {
-			seen[row.ID] = true
-			rows.IDs = append(rows.IDs, row.ID)
-		}
+	rows.IDs = make([]int, len(result))
+	for i, row := range result {
+		rows.IDs[i] = row.ID
 	}
 
 	rows.TotalCount = result[0].TotalCount
@@ -216,21 +208,27 @@ func (r *repository) buildQueryBody(body string, whereClauses []string, havingCl
 	return body
 }
 
-func (r *repository) buildCombinedQuery(body, sort, pagination string) string {
+// buildCombinedQuery pages the rows of body, which must have id and sort_order
+// columns. A sort or filter on files gives one row per file, so each item is
+// kept once, at its first position.
+func (r *repository) buildCombinedQuery(body, pagination string) string {
 	return `
 		WITH base_query AS (
 			` + body + `
-			` + sort + `
+		),
+		items AS (
+			SELECT id, MIN(sort_order) AS sort_order FROM base_query GROUP BY id
 		),
 		total AS (
-			SELECT COUNT(DISTINCT id) AS total_count FROM base_query
+			SELECT COUNT(*) AS total_count FROM items
 		)
-		SELECT base_query.id, total.total_count
-		FROM base_query, total
+		SELECT items.id, total.total_count
+		FROM items, total
+		ORDER BY items.sort_order
 		` + pagination
 }
 
-func (r *repository) executeFindQuery(ctx context.Context, body string, args []interface{}, sort string, pagination string, whereClauses []string, havingClauses []string, withClauses []string, groupByClauses []string, recursiveWith bool) ([]int, int, error) {
+func (r *repository) executeFindQuery(ctx context.Context, body string, args []interface{}, pagination string, whereClauses []string, havingClauses []string, withClauses []string, groupByClauses []string, recursiveWith bool) ([]int, int, error) {
 	body = r.buildQueryBody(body, whereClauses, havingClauses, groupByClauses)
 
 	withClause := ""
@@ -243,7 +241,7 @@ func (r *repository) executeFindQuery(ctx context.Context, body string, args []i
 	}
 
 	// Perform query and fetch result
-	combinedQuery := r.buildCombinedQuery(withClause+body, sort, pagination)
+	combinedQuery := r.buildCombinedQuery(withClause+body, pagination)
 
 	var obj *RowsWithCounts
 	var err error

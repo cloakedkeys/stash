@@ -298,6 +298,15 @@ func (h *customFieldsFilterHandler) leftJoin(f *filterBuilder, as string, field 
 	f.addLeftJoin(h.table, as, joinOn, field)
 }
 
+// customFieldStrings gives values as text, to compare with a stored value as text.
+func customFieldStrings(values []interface{}) []interface{} {
+	ret := make([]interface{}, len(values))
+	for i, v := range values {
+		ret[i] = fmt.Sprint(v)
+	}
+	return ret
+}
+
 func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs string, cc models.CustomFieldCriterionInput) {
 	// convert values
 	cv := append([]interface{}{}, cc.Value...)
@@ -309,18 +318,10 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 	switch cc.Modifier {
 	case models.CriterionModifierEquals:
 		h.innerJoin(f, joinAs, cc.Field)
-		clauses := make([]sqlClause, len(cv))
-		for i, v := range cv {
-			clauses[i] = makeClause(fmt.Sprintf("%s ILIKE ?", valueAsString), fmt.Sprint(v))
-		}
-		f.whereClauses = append(f.whereClauses, orClauses(clauses...))
+		f.addWhere(fmt.Sprintf("%s IN %s", valueAsString, getInBinding(len(cv))), customFieldStrings(cv)...)
 	case models.CriterionModifierNotEquals:
 		h.leftJoin(f, joinAs, cc.Field)
-		args := make([]interface{}, len(cv))
-		for i, v := range cv {
-			args[i] = fmt.Sprint(v)
-		}
-		f.addWhere(fmt.Sprintf("(%s NOT IN %s OR %s.value IS NULL)", valueAsString, getInBinding(len(cv)), joinAs), args...)
+		f.addWhere(fmt.Sprintf("(%s NOT IN %s OR %s.value IS NULL)", valueAsString, getInBinding(len(cv)), joinAs), customFieldStrings(cv)...)
 	case models.CriterionModifierIncludes:
 		clauses := make([]sqlClause, len(cv))
 		for i, v := range cv {

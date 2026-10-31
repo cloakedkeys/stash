@@ -95,15 +95,26 @@ func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 		withClause = "WITH " + recursive + strings.Join(qb.withClauses, ", ") + " "
 	}
 
-	body = withClause + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupBy(includeSortPagination))
 	if includeSortPagination {
-		body += qb.sort
+		// a sort or filter on files gives one row per file, so each item is
+		// kept once, at its first position
+		sorted := qb.withSortOrder()
+		body = sorted.body(includeSortPagination)
+		body = withClause + "SELECT sorted.id FROM (" + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupBy(includeSortPagination)) + ") AS sorted GROUP BY sorted.id ORDER BY MIN(sorted.sort_order)"
 		if qb.pagination != nil {
 			body += getPaginationSQL(qb.pagination)
 		}
+		return body
 	}
 
-	return body
+	return withClause + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupBy(includeSortPagination))
+}
+
+// withSortOrder returns a copy of the query with a sort_order column, the
+// row's position in the query's sort.
+func (qb queryBuilder) withSortOrder() queryBuilder {
+	qb.columns = append(append([]string{}, qb.columns...), "row_number() OVER ("+qb.sort+") AS sort_order")
+	return qb
 }
 
 func (qb queryBuilder) findIDs(ctx context.Context) ([]int, error) {
@@ -114,7 +125,7 @@ func (qb queryBuilder) findIDs(ctx context.Context) ([]int, error) {
 
 func (qb queryBuilder) executeFind(ctx context.Context) ([]int, int, error) {
 	const includeSortPagination = true
-	body := qb.body(includeSortPagination)
+	body := qb.withSortOrder().body(includeSortPagination)
 
 	// Redirect
 	if qb.pagination != nil && qb.pagination.perPage == 0 {
@@ -123,7 +134,7 @@ func (qb queryBuilder) executeFind(ctx context.Context) ([]int, int, error) {
 	}
 
 	pagination := getPaginationSQL(qb.pagination)
-	return qb.repository.executeFindQuery(ctx, body, qb.allArgs(), qb.sort, pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
+	return qb.repository.executeFindQuery(ctx, body, qb.allArgs(), pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
 }
 
 func (qb queryBuilder) executeCount(ctx context.Context) (int, error) {
@@ -140,7 +151,7 @@ func (qb queryBuilder) executeCount(ctx context.Context) (int, error) {
 	}
 
 	body = qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupBy(includeSortPagination))
-	countQuery := withClause + qb.repository.buildCountQuery(body)
+	countQuery := withClause + "SELECT COUNT(DISTINCT temp.id) as count FROM (" + body + ") as temp"
 	return qb.repository.runCountQuery(ctx, countQuery, qb.allArgs())
 }
 

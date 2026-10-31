@@ -248,3 +248,81 @@ func TestQueryAllSortOptionsSeveralFiles(t *testing.T) {
 			return ids
 		})
 }
+
+// With an item that has several files, paging through a list sorted by a file's
+// details must give every item once, the count must match, and the totals must
+// not depend on the sort.
+func TestQueryPagesSeveralFiles(t *testing.T) {
+	pathFilter := &models.StringCriterionInput{Value: "e", Modifier: models.CriterionModifierIncludes}
+
+	sceneQuery := func(ctx context.Context, t *testing.T, sort string, page, perPage int, filtered bool) *models.SceneQueryResult {
+		f := &models.SceneFilterType{}
+		if filtered {
+			f.Path = pathFilter
+		}
+		r, err := db.Scene().Query(ctx, models.SceneQueryOptions{
+			QueryOptions:  models.QueryOptions{FindFilter: &models.FindFilterType{Sort: &sort, Page: &page, PerPage: &perPage}, Count: true},
+			SceneFilter:   f,
+			TotalDuration: true,
+			TotalSize:     true,
+		})
+		require.NoError(t, err)
+		return r
+	}
+
+	for _, sort := range []string{"path", "title", "duration", "filesize", "date"} {
+		for _, filtered := range []bool{false, true} {
+			runWithRollbackTxn(t, fmt.Sprintf("scene %s filtered %v", sort, filtered), func(t *testing.T, ctx context.Context) {
+				require.NoError(t, db.Scene().AssignFiles(ctx, sceneIDs[sceneIdxWithGroup], []models.FileID{sceneFileIDs[sceneIdxWithGallery]}))
+
+				all := sceneQuery(ctx, t, sort, 1, -1, filtered)
+				assert.Equal(t, len(all.IDs), all.Count, "count")
+
+				var paged []int
+				for page := 1; page <= all.Count; page++ {
+					r := sceneQuery(ctx, t, sort, page, 1, filtered)
+					assert.Len(t, r.IDs, 1, "page %d", page)
+					paged = append(paged, r.IDs...)
+				}
+				assert.Equal(t, all.IDs, paged, "paging gives the same list")
+
+				// the totals of a sort that doesn't look at files
+				byDate := sceneQuery(ctx, t, "date", 1, -1, filtered)
+				assert.Equal(t, byDate.TotalSize, all.TotalSize, "total size")
+				assert.Equal(t, byDate.TotalDuration, all.TotalDuration, "total duration")
+			})
+		}
+	}
+
+	// galleries page in a different query
+	runWithRollbackTxn(t, "gallery path", func(t *testing.T, ctx context.Context) {
+		var withFiles []int
+		for i, id := range galleryFileIDs {
+			if id != 0 {
+				withFiles = append(withFiles, i)
+			}
+		}
+		require.NoError(t, db.Gallery().AddFileID(ctx, galleryIDs[withFiles[0]], galleryFileIDs[withFiles[1]]))
+
+		query := func(page, perPage int) ([]int, int) {
+			sort := "path"
+			galleries, count, err := db.Gallery().Query(ctx, &models.GalleryFilterType{Path: pathFilter}, &models.FindFilterType{Sort: &sort, Page: &page, PerPage: &perPage})
+			require.NoError(t, err)
+			ids := make([]int, len(galleries))
+			for i, g := range galleries {
+				ids[i] = g.ID
+			}
+			return ids, count
+		}
+
+		all, count := query(1, -1)
+		assert.Equal(t, len(all), count, "count")
+		var paged []int
+		for page := 1; page <= count; page++ {
+			ids, _ := query(page, 1)
+			assert.Len(t, ids, 1, "page %d", page)
+			paged = append(paged, ids...)
+		}
+		assert.Equal(t, all, paged, "paging gives the same list")
+	})
+}

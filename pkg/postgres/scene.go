@@ -1336,13 +1336,12 @@ func (qb *SceneStore) setSceneSort(ctx context.Context, query *queryBuilder, fin
 		return err
 	}
 
-	// sort by the primary file, so that an item with several files is listed once
 	addFileTable := func() {
 		query.addJoins(
 			join{
 				sort:     true,
 				table:    scenesFilesTable,
-				onClause: "scenes_files.scene_id = scenes.id AND scenes_files.\"primary\" = true",
+				onClause: "scenes_files.scene_id = scenes.id",
 			},
 			join{
 				sort:     true,
@@ -1409,8 +1408,8 @@ func (qb *SceneStore) setSceneSort(ctx context.Context, query *queryBuilder, fin
 			},
 		)
 
-		query.sort += " ORDER BY CAST(fingerprints_phash.fingerprint AS bigint) " + direction + ", files.size DESC"
-		query.addGroupBy("fingerprints_phash.fingerprint", "files.size")
+		query.sort += " ORDER BY " + phashColumn("fingerprints_phash") + " " + direction + ", files.size DESC"
+		query.addGroupBy("fingerprints_phash.type", "fingerprints_phash.fingerprint", "files.size")
 	case "bitrate":
 		sort = "bit_rate"
 		addVideoFileTable()

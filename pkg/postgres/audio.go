@@ -1201,13 +1201,12 @@ func (qb *AudioStore) setAudioSort(ctx context.Context, query *queryBuilder, fin
 		return err
 	}
 
-	// sort by the primary file, so that an item with several files is listed once
 	addFileTable := func() {
 		query.addJoins(
 			join{
 				sort:     true,
 				table:    audiosFilesTable,
-				onClause: "audios_files.audio_id = audios.id AND audios_files.\"primary\" = true",
+				onClause: "audios_files.audio_id = audios.id",
 			},
 			join{
 				sort:     true,
