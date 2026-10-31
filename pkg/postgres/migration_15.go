@@ -13,7 +13,9 @@ import (
 )
 
 // The SQL migration reserves a locked admin so foreign keys can be populated
-// before legacy credentials are read. A failed post-migration leaves it locked.
+// before legacy credentials are read. If this fails it is retried by pre16,
+// since the SQL migration is already recorded, and until then the admin stays
+// locked.
 func post15(ctx context.Context, db *sqlx.DB) (retErr error) {
 	if models.IsSetupContext(ctx) {
 		result, err := db.ExecContext(ctx, `DELETE FROM users WHERE id=1 AND locked
@@ -80,6 +82,11 @@ AND NOT EXISTS (SELECT 1 FROM scenes_view_dates)`)
 	if _, err := tx.ExecContext(ctx, `UPDATE users SET username=$1,password_hash=NULLIF($2,''),api_key=NULLIF($3,''),locked=false,updated_at=CURRENT_TIMESTAMP WHERE id=1`, username, password, apiKey); err != nil {
 		return err
 	}
+	// commit first: the credentials must not leave the config file while the
+	// account that replaces them could still be rolled back
+	if err := tx.Commit(); err != nil {
+		return err
+	}
 	if legacy {
 		cfg.SetPublicAccess(true)
 	}
@@ -99,7 +106,26 @@ AND NOT EXISTS (SELECT 1 FROM scenes_view_dates)`)
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
-func init() { RegisterPostMigration(15, post15) }
+// pre16 finishes post15 if it failed last time, as it never runs again by itself.
+func pre16(ctx context.Context, db *sqlx.DB) error {
+	if models.IsSetupContext(ctx) {
+		return nil
+	}
+	var incomplete bool
+	if err := db.GetContext(ctx, &incomplete, `SELECT EXISTS (SELECT 1 FROM users WHERE id=1 AND password_hash='!migration-incomplete')`); err != nil {
+		return err
+	}
+	cfg := config.GetInstance()
+	if !incomplete && cfg.GetLegacyUsername() == "" && cfg.GetLegacyPasswordHash() == "" && cfg.GetLegacyAPIKey() == "" {
+		return nil
+	}
+	return post15(ctx, db)
+}
+
+func init() {
+	RegisterPostMigration(15, post15)
+	RegisterPreMigration(16, pre16)
+}

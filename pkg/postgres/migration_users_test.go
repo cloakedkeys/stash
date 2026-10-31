@@ -169,7 +169,7 @@ INSERT INTO galleries(id,title,created_at,updated_at,rating) VALUES(1,'gallery',
 	}
 }
 
-func TestNativeUserMigrationFailsClosed(t *testing.T) {
+func TestNativeUserMigrationConfigFailureKeepsCredentials(t *testing.T) {
 	ctx := context.Background()
 	cfg := config.InitializeEmpty()
 	// The backup can be written next to this directory, but replacing the
@@ -190,18 +190,56 @@ func TestNativeUserMigrationFailsClosed(t *testing.T) {
 		require.NoError(t, m.RunMigration(ctx, version))
 	}
 	require.Error(t, m.RunMigration(ctx, 15))
+	// the account is usable and the credentials are still in the config
 	var locked bool
-	var password string
 	require.NoError(t, m.conn.Get(&locked, "SELECT locked FROM users WHERE id=1"))
-	require.True(t, locked, "failed migration must not expose a passwordless administrator")
-	require.NoError(t, m.conn.Get(&password, "SELECT password_hash FROM users WHERE id=1"))
-	require.Equal(t, "!migration-incomplete", password, "credential update must roll back with config failure")
+	require.False(t, locked)
 	require.Equal(t, "legacy-admin", cfg.GetLegacyUsername())
 	require.Equal(t, string(hash), cfg.GetLegacyPasswordHash())
 	require.False(t, cfg.GetPublicAccess())
-	// The SQL migration is already recorded; a later startup can advance to
-	// schema 16. The incomplete account must still never become a default admin.
+	// while the config still can't be written the next version doesn't proceed
+	require.Error(t, m.RunMigration(ctx, 16))
+	// and once it can, the cleanup finishes
+	require.NoError(t, os.Remove(cfg.GetConfigFile()))
 	require.NoError(t, m.RunMigration(ctx, 16))
+	require.Empty(t, cfg.GetLegacyUsername())
+	require.Empty(t, cfg.GetLegacyPasswordHash())
+	require.True(t, cfg.GetPublicAccess())
+	require.NoError(t, db.ReInitialise())
+	service := &user.Service{Store: db.User(), Config: cfg}
+	require.NoError(t, txn.WithReadTxn(ctx, db, service.Init))
+	require.False(t, service.IsSingleUserMode())
+	require.NoError(t, txn.WithReadTxn(ctx, db, func(ctx context.Context) error {
+		require.NoError(t, service.ValidateCredentials(ctx, "legacy-admin", "legacy-password"))
+		return nil
+	}))
+}
+
+func TestNativeUserMigrationDatabaseFailureRetried(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.InitializeEmpty()
+	cfg.SetConfigFile(filepath.Join(t.TempDir(), "config.yml"))
+	cfg.SetString(config.LegacyUsername, "legacy-admin")
+	hash, err := bcrypt.GenerateFromPassword([]byte("legacy-password"), bcrypt.MinCost)
+	require.NoError(t, err)
+	cfg.SetString(config.LegacyPassword, string(hash))
+	db := NewDatabase()
+	db.dbPath = migrationFixture(t)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	m, err := NewMigrator(db)
+	require.NoError(t, err)
+	t.Cleanup(m.Close)
+	for version := uint(1); version <= 15; version++ {
+		require.NoError(t, m.RunMigration(ctx, version))
+	}
+	// as left by the SQL migration when the rest failed
+	_, err = m.conn.Exec(`UPDATE users SET username='admin',locked=true,password_hash='!migration-incomplete' WHERE id=1`)
+	require.NoError(t, err)
+	cfg.SetString(config.LegacyUsername, "legacy-admin")
+	cfg.SetString(config.LegacyPassword, string(hash))
+	db.dbPath = m.db.dbPath
+
+	// the incomplete account can't be used before the retry
 	require.NoError(t, db.ReInitialise())
 	service := &user.Service{Store: db.User(), Config: cfg}
 	require.NoError(t, txn.WithReadTxn(ctx, db, service.Init))
@@ -213,6 +251,13 @@ func TestNativeUserMigrationFailsClosed(t *testing.T) {
 		require.Error(t, service.ValidateCredentials(ctx, "admin", ""))
 		return nil
 	}))
+
+	require.NoError(t, m.RunMigration(ctx, 16))
+	require.NoError(t, txn.WithReadTxn(ctx, db, func(ctx context.Context) error {
+		require.NoError(t, service.ValidateCredentials(ctx, "legacy-admin", "legacy-password"))
+		return nil
+	}))
+	require.Empty(t, cfg.GetLegacyUsername())
 }
 
 func TestResetKeepsAccounts(t *testing.T) {
