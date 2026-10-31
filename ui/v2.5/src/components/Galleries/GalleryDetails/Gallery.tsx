@@ -9,6 +9,9 @@ import {
   mutateResetGalleryCover,
   useFindGallery,
   useGalleryUpdate,
+  useGalleryIncrementO,
+  useGalleryDecrementO,
+  useGalleryResetO,
 } from "src/core/StashService";
 import { lazyComponent } from "src/utils/lazyComponent";
 
@@ -23,6 +26,7 @@ import Mousetrap from "mousetrap";
 import { useGalleryLightbox } from "src/hooks/Lightbox/hooks";
 import { useToast } from "src/hooks/Toast";
 import { OrganizedButton } from "src/components/Scenes/SceneDetails/OrganizedButton";
+import { OCounterButton } from "src/components/Scenes/SceneDetails/OCounterButton";
 import { GalleryEditPanel } from "./GalleryEditPanel";
 import { GalleryDetailPanel } from "./GalleryDetailPanel";
 import { DeleteGalleriesDialog } from "../DeleteGalleriesDialog";
@@ -83,6 +87,10 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
 
   const [organizedLoading, setOrganizedLoading] = useState(false);
 
+  const [incrementO] = useGalleryIncrementO(gallery.id);
+  const [decrementO] = useGalleryDecrementO(gallery.id);
+  const [resetO] = useGalleryResetO(gallery.id);
+
   async function onSave(input: GQL.GalleryCreateInput) {
     await updateGallery({
       variables: {
@@ -115,6 +123,30 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
       Toast.error(e);
     } finally {
       setOrganizedLoading(false);
+    }
+  };
+
+  const onIncrementClick = async () => {
+    try {
+      await incrementO();
+    } catch (e) {
+      Toast.error(e);
+    }
+  };
+
+  const onDecrementClick = async () => {
+    try {
+      await decrementO();
+    } catch (e) {
+      Toast.error(e);
+    }
+  };
+
+  const onResetClick = async () => {
+    try {
+      await resetO();
+    } catch (e) {
+      Toast.error(e);
     }
   };
 
@@ -438,6 +470,14 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
               />
             </span>
             <span className="gallery-toolbar-group">
+              <span>
+                <OCounterButton
+                  value={gallery.o_counter || 0}
+                  onIncrement={onIncrementClick}
+                  onDecrement={onDecrementClick}
+                  onReset={onResetClick}
+                />
+              </span>
               <span>
                 <OrganizedButton
                   loading={organizedLoading}

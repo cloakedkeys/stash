@@ -1653,6 +1653,42 @@ export const useGalleryUpdate = () =>
     },
   });
 
+// gallery o-counts are not added to performer, studio or stats totals,
+// so only the gallery itself and gallery queries need refreshing
+function updateGalleryO(
+  cache: ApolloCache<unknown>,
+  id: string,
+  updatedOCount: number | undefined
+) {
+  if (updatedOCount === undefined) return;
+
+  updateO(cache, "Gallery", id, updatedOCount);
+  evictQueries(cache, [
+    GQL.FindGalleriesDocument, // filter and sort by o_counter
+  ]);
+}
+
+export const useGalleryIncrementO = (id: string) =>
+  GQL.useGalleryIncrementOMutation({
+    variables: { id },
+    update: (cache, result) =>
+      updateGalleryO(cache, id, result.data?.galleryIncrementO),
+  });
+
+export const useGalleryDecrementO = (id: string) =>
+  GQL.useGalleryDecrementOMutation({
+    variables: { id },
+    update: (cache, result) =>
+      updateGalleryO(cache, id, result.data?.galleryDecrementO),
+  });
+
+export const useGalleryResetO = (id: string) =>
+  GQL.useGalleryResetOMutation({
+    variables: { id },
+    update: (cache, result) =>
+      updateGalleryO(cache, id, result.data?.galleryResetO),
+  });
+
 export const useBulkGalleryUpdate = () =>
   GQL.useBulkGalleryUpdateMutation({
     update(cache, result) {

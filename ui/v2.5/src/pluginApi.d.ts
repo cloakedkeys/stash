@@ -74,8 +74,11 @@ declare namespace PluginApi {
     const GalleryChapterUpdateDocument: { [key: string]: any };
     const GalleryCreateDocument: { [key: string]: any };
     const GalleryDataFragmentDoc: { [key: string]: any };
+    const GalleryDecrementODocument: { [key: string]: any };
     const GalleryDestroyDocument: { [key: string]: any };
     const GalleryFileDataFragmentDoc: { [key: string]: any };
+    const GalleryIncrementODocument: { [key: string]: any };
+    const GalleryResetODocument: { [key: string]: any };
     const GalleryUpdateDocument: { [key: string]: any };
     const GenderEnum: { [key: string]: any };
     const GenerateApiKeyDocument: { [key: string]: any };
@@ -430,7 +433,10 @@ declare namespace PluginApi {
     function useGalleryChapterDestroyMutation(...args: any[]): any;
     function useGalleryChapterUpdateMutation(...args: any[]): any;
     function useGalleryCreateMutation(...args: any[]): any;
+    function useGalleryDecrementOMutation(...args: any[]): any;
     function useGalleryDestroyMutation(...args: any[]): any;
+    function useGalleryIncrementOMutation(...args: any[]): any;
+    function useGalleryResetOMutation(...args: any[]): any;
     function useGalleryUpdateMutation(...args: any[]): any;
     function useGenerateApiKeyMutation(...args: any[]): any;
     function useImageDecrementOMutation(...args: any[]): any;
@@ -947,7 +953,10 @@ declare namespace PluginApi {
       function useGalleryChapterDestroy(...args: any[]): any;
       function useGalleryChapterUpdate(...args: any[]): any;
       function useGalleryCreate(...args: any[]): any;
+      function useGalleryDecrementO(...args: any[]): any;
       function useGalleryDestroy(...args: any[]): any;
+      function useGalleryIncrementO(...args: any[]): any;
+      function useGalleryResetO(...args: any[]): any;
       function useGalleryUpdate(...args: any[]): any;
       function useGenerateAPIKey(...args: any[]): any;
       function useImageDecrementO(...args: any[]): any;

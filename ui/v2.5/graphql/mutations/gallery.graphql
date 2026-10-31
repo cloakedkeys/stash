@@ -22,6 +22,18 @@ mutation GalleriesUpdate($input: [GalleryUpdateInput!]!) {
   }
 }
 
+mutation GalleryIncrementO($id: ID!) {
+  galleryIncrementO(id: $id)
+}
+
+mutation GalleryDecrementO($id: ID!) {
+  galleryDecrementO(id: $id)
+}
+
+mutation GalleryResetO($id: ID!) {
+  galleryResetO(id: $id)
+}
+
 mutation GalleryDestroy(
   $ids: [ID!]!
   $delete_file: Boolean
