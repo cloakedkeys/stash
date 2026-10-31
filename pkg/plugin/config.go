@@ -166,6 +166,10 @@ type SettingConfig struct {
 	// defaults to key name
 	DisplayName string `yaml:"displayName"`
 	Description string `yaml:"description"`
+	// Public settings can be read by accounts that aren't administrators, so
+	// interface plugins work for them. Settings can hold credentials, so they
+	// are private unless the plugin says otherwise.
+	Public bool `yaml:"public"`
 }
 
 func (c Config) getPluginTasks(includePlugin bool) []*PluginTask {
@@ -236,6 +240,7 @@ func (c Config) getPluginSettings() []PluginSetting {
 			DisplayName: o.DisplayName,
 			Description: o.Description,
 			Type:        t,
+			Public:      o.Public,
 		}
 
 		ret = append(ret, s)

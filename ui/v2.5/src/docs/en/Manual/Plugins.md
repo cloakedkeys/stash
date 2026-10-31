@@ -118,6 +118,9 @@ settings:
   # type of the attribute to show in the UI
   # can be BOOLEAN, NUMBER, or STRING
   type: BOOLEAN
+  # whether accounts that aren't administrators can read the setting
+  # leave this off for anything secret, such as passwords and API keys
+  public: true
 
 # the following are used for plugin tasks only
 exec:

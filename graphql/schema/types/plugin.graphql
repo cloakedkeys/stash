@@ -70,4 +70,6 @@ type PluginSetting {
   display_name: String
   description: String
   type: PluginSettingTypeEnum!
+  "Whether accounts that aren't administrators can read this setting"
+  public: Boolean!
 }

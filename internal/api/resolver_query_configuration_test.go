@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/plugin"
 	"github.com/stashapp/stash/pkg/session"
 	"github.com/stretchr/testify/assert"
 )
@@ -21,6 +22,25 @@ func TestCurrentUserIsAdmin(t *testing.T) {
 
 	read := session.SetCurrentUser(ctx, models.User{Roles: models.Roles{models.RoleEnumRead}})
 	assert.False(t, currentUserIsAdmin(read))
+}
+
+func TestPublicPluginSettings(t *testing.T) {
+	settings := map[string]map[string]interface{}{
+		"shared": {"theme": "dark", "apiKey": "secret-key", "undeclared": "secret"},
+		"hidden": {"token": "secret-token"},
+	}
+	plugins := []*plugin.Plugin{
+		{ID: "shared", Settings: []plugin.PluginSetting{
+			{Name: "theme", Public: true},
+			{Name: "unset", Public: true},
+			{Name: "apiKey"},
+		}},
+		{ID: "hidden", Settings: []plugin.PluginSetting{{Name: "token"}}},
+	}
+
+	assert.Equal(t, map[string]map[string]interface{}{
+		"shared": {"theme": "dark"},
+	}, publicPluginSettings(settings, plugins))
 }
 
 func TestRedactConfig(t *testing.T) {

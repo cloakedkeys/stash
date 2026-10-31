@@ -92,6 +92,8 @@ type PluginSetting struct {
 	// defaults to key name
 	DisplayName string `json:"displayName"`
 	Description string `json:"description"`
+	// readable by accounts that aren't administrators
+	Public bool `json:"public"`
 }
 
 type ServerConfig interface {
