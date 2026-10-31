@@ -86,11 +86,14 @@ func (j *Job) statusCopy() Job {
 
 // TimeElapsed returns the total time elapsed for the job.
 // If the EndTime is set, then it uses this to calculate the elapsed time, otherwise it uses time.Now.
+// A job that hasn't started has no elapsed time.
 func (j *Job) TimeElapsed() time.Duration {
-	var end time.Time
+	if j.StartTime == nil {
+		return 0
+	}
+
+	end := time.Now()
 	if j.EndTime != nil {
-		end = time.Now()
-	} else {
 		end = *j.EndTime
 	}
 
