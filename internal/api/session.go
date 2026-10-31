@@ -130,7 +130,7 @@ func handleLogin() http.HandlerFunc {
 
 func handleLoginPost(s *session.Store, cfg authenticationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// perform IP rate limiting before attempting to log in to prevent brute force attacks
+		// perform rate limiting before attempting to log in to prevent brute force attacks
 
 		limitKey, err := keyByIP(r)
 		if err != nil {
@@ -139,14 +139,8 @@ func handleLoginPost(s *session.Store, cfg authenticationConfig) http.HandlerFun
 			return
 		}
 
-		if loginRateLimiter.OnLimit(w, r, limitKey) {
-			http.Error(w, "Too many login attempts. Please try again later.", http.StatusTooManyRequests)
-			return
-		}
-
-		username := session.GetUsernameFromForm(r)
-
-		if userLoginRateLimiter.OnLimit(w, r, username) {
+		finishAttempt, ok := reserveLoginAttempt(limitKey, session.GetUsernameFromForm(r))
+		if !ok {
 			http.Error(w, "Too many login attempts. Please try again later.", http.StatusTooManyRequests)
 			return
 		}
@@ -165,8 +159,11 @@ func handleLoginPost(s *session.Store, cfg authenticationConfig) http.HandlerFun
 		}
 
 		var invalidCredentialsError *session.InvalidCredentialsError
+		invalidCredentials := errors.As(err, &invalidCredentialsError)
 
-		if errors.As(err, &invalidCredentialsError) {
+		finishAttempt(invalidCredentials)
+
+		if invalidCredentials {
 			http.Error(w, "Username or password is invalid", http.StatusUnauthorized)
 			return
 		}

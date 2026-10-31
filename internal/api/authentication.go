@@ -228,9 +228,7 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 						return
 					}
 
-					canIncr, err := loginRateLimiter.canIncrement(requestIP)
-					if !canIncr {
-						loginRateLimiter.OnLimit(w, r, requestIP)
+					if loginFailureLimiter.isLimited(requestIP) {
 						httpError(w, r, "Too many attempts using bad API key. Please try again later.", http.StatusTooManyRequests)
 						return
 					}
@@ -247,7 +245,7 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 
 						// must be authentication failure
 						// rate limit failed API key attempts to prevent brute forcing
-						_ = loginRateLimiter.Increment(requestIP)
+						loginFailureLimiter.recordFailure(requestIP)
 
 						// don't forward to login page if api key auth fails
 						httpError(w, r, "Invalid API key", http.StatusUnauthorized)
