@@ -120,8 +120,11 @@ jobs:
   # Each build-cc-* make target is self-contained (sets its own GOOS/GOARCH/CC),
   # so running them in separate containers is functionally identical to one container.
   # Runs in parallel with the test job.
+  # Not run for pull requests or develop: it takes most of the free monthly
+  # minutes on a private repository, and the test job covers those.
   build:
     needs: generate
+    if: ${{ github.event_name != 'pull_request' && github.ref != 'refs/heads/develop' }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
