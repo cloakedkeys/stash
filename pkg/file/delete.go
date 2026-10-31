@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"slices"
 
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
@@ -13,7 +14,10 @@ import (
 	"github.com/stashapp/stash/pkg/txn"
 )
 
-const deleteFileSuffix = ".delete"
+const (
+	deleteFileSuffix   = ".delete"
+	rewrittenZipSuffix = ".rewritten"
+)
 
 // RenamerRemover provides access to the Rename and Remove functions.
 type RenamerRemover interface {
@@ -68,9 +72,23 @@ type Deleter struct {
 	RenamerRemover RenamerRemover
 	files          []string
 	dirs           []string
-	TrashPath      string            // if set, files will be moved to this directory instead of being permanently deleted
-	trashedPaths   map[string]string // map of original path -> trash path (only used when TrashPath is set)
-	zipEntries     map[string][]string // zipPath -> entries to remove; rewrites happen at Commit
+	TrashPath      string                 // if set, files will be moved to this directory instead of being permanently deleted
+	trashedPaths   map[string]string      // map of original path -> trash path (only used when TrashPath is set)
+	zips           map[string]*zipRewrite // zipPath -> entries to remove from that zip
+}
+
+type zipRewrite struct {
+	id      models.FileID
+	pending []string // entries not yet removed
+	// rewritten in place in this transaction; the original was set aside with
+	// renameForDelete and is in files
+	replaced bool
+}
+
+// ZipFileStore finds and updates the zip's own file record.
+type ZipFileStore interface {
+	Find(ctx context.Context, id ...models.FileID) ([]models.File, error)
+	Update(ctx context.Context, f models.File) error
 }
 
 func NewDeleter() *Deleter {
@@ -174,30 +192,159 @@ func (d *Deleter) dirsInternal(paths []string, bypassTrash bool) error {
 	return nil
 }
 
-// ZipEntry marks a single entry within a zip for removal.
-// On Commit, each zip with pending entries is rewritten exactly once without those entries.
+// ZipEntry marks a single entry within a zip for removal. PrepareZipRewrites must be
+// called before the transaction commits.
 // entryRelPath must be the relative path of the entry within the zip using forward slashes.
-func (d *Deleter) ZipEntry(zipPath, entryRelPath string) {
-	if d.zipEntries == nil {
-		d.zipEntries = make(map[string][]string)
+func (d *Deleter) ZipEntry(zipID models.FileID, zipPath, entryRelPath string) {
+	if d.zips == nil {
+		d.zips = make(map[string]*zipRewrite)
 	}
-	d.zipEntries[zipPath] = append(d.zipEntries[zipPath], entryRelPath)
+	z := d.zips[zipPath]
+	if z == nil {
+		z = &zipRewrite{id: zipID}
+		d.zips[zipPath] = z
+	}
+	z.pending = append(z.pending, entryRelPath)
+}
+
+// PrepareZipRewrites removes the marked entries from their zips, once per zip, and
+// stores each zip's new size. Call it inside the transaction, after all entries are
+// marked. The original zip is set aside like any other deleted file: moved to the
+// trash, or renamed with a .delete suffix. The rewritten zip takes its place right
+// away, so the library and the archive match as soon as the transaction commits. If
+// anything fails, the error rolls the whole deletion back, and Rollback puts the
+// original zip back. The stored modification time is left as it was, so the next scan
+// sees the zip changed and refreshes its fingerprints.
+func (d *Deleter) PrepareZipRewrites(ctx context.Context, files ZipFileStore) error {
+	for zipPath, z := range d.zips {
+		if len(z.pending) == 0 {
+			continue
+		}
+		// a zip deleted whole in this transaction has nothing left to rewrite
+		if !z.replaced && slices.Contains(d.files, zipPath) {
+			z.pending = nil
+			continue
+		}
+		if err := d.rewriteZip(ctx, files, zipPath, z); err != nil {
+			return err
+		}
+		z.pending = nil
+	}
+
+	return nil
+}
+
+func (d *Deleter) rewriteZip(ctx context.Context, files ZipFileStore, zipPath string, z *zipRewrite) error {
+	entries := z.pending
+	found, err := files.Find(ctx, z.id)
+	if err != nil {
+		return fmt.Errorf("finding zip %q: %w", zipPath, err)
+	}
+	if len(found) == 0 {
+		return fmt.Errorf("zip %q is not in the database", zipPath)
+	}
+	zf := found[0]
+
+	tmpPath, err := RemoveEntriesFromZip(zipPath, entries)
+	if errors.Is(err, errNothingToRemove) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if z.replaced {
+		// already rewritten in this transaction: the original is set aside, so the
+		// earlier rewrite can simply go
+		err = d.RenamerRemover.Remove(zipPath)
+	} else {
+		err = d.renameForDelete(zipPath, false)
+		if err == nil {
+			d.files = append(d.files, zipPath)
+			z.replaced = true
+		}
+	}
+	if err != nil {
+		_ = d.RenamerRemover.Remove(tmpPath)
+		return fmt.Errorf("setting aside %q: %w", zipPath, err)
+	}
+
+	if err := d.RenamerRemover.Rename(tmpPath, zipPath); err != nil {
+		_ = d.RenamerRemover.Remove(tmpPath)
+		return fmt.Errorf("replacing %q: %w", zipPath, err)
+	}
+
+	info, err := d.RenamerRemover.Stat(zipPath)
+	if err != nil {
+		return fmt.Errorf("reading rewritten zip %q: %w", zipPath, err)
+	}
+
+	// the zip is opened with its stored size, so it must match the new file
+	zf.Base().Size = info.Size()
+	if err := files.Update(ctx, zf); err != nil {
+		return fmt.Errorf("updating zip %q: %w", zipPath, err)
+	}
+
+	logger.Infof("Removed %d entries from %q", len(entries), zipPath)
+	return nil
 }
 
 // Rollback tries to rename all marked files and directories back to their
 // original names and clears the marked list. Any errors encountered are
 // logged. All files will be attempted regardless of any errors occurred.
 func (d *Deleter) Rollback() {
+	// a rewritten zip is moved out of the way so its original can come back to the
+	// same path, and only removed once the original is back
+	rewritten := make(map[string]string)
+	for zipPath, z := range d.zips {
+		if !z.replaced {
+			continue
+		}
+		aside := zipPath + rewrittenZipSuffix
+		if err := d.RenamerRemover.Rename(zipPath, aside); err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				logger.Warnf("Error moving rewritten zip %q aside: %v", zipPath, err)
+			}
+			continue
+		}
+		rewritten[zipPath] = aside
+	}
+
 	for _, f := range append(d.files, d.dirs...) {
 		if err := d.renameForRestore(f); err != nil {
 			logger.Warnf("Error restoring %q: %v", f, err)
+			if aside, ok := rewritten[f]; ok {
+				// better the rewritten zip than none at all
+				if err := d.RenamerRemover.Rename(aside, f); err != nil {
+					logger.Errorf("Error putting back %q: %v. The original zip is at %q.", f, err, d.setAsidePath(f))
+				}
+				delete(rewritten, f)
+			}
+			continue
+		}
+		if aside, ok := rewritten[f]; ok {
+			if err := d.RenamerRemover.Remove(aside); err != nil {
+				logger.Warnf("Error removing rewritten zip %q: %v", aside, err)
+			}
 		}
 	}
 
 	d.files = nil
 	d.dirs = nil
 	d.trashedPaths = make(map[string]string)
-	d.zipEntries = nil
+	d.clearZips()
+}
+
+func (d *Deleter) clearZips() {
+	d.zips = nil
+}
+
+// setAsidePath is where renameForDelete put path.
+func (d *Deleter) setAsidePath(path string) string {
+	if p, ok := d.trashedPaths[path]; ok {
+		return p
+	}
+	return path + deleteFileSuffix
 }
 
 // Commit deletes all files marked for deletion and clears the marked list.
@@ -224,23 +371,17 @@ func (d *Deleter) Commit() {
 		}
 	}
 
-	// Rewrite each zip that has pending entry removals.
-	for zipPath, entries := range d.zipEntries {
-		tmpPath, err := RemoveEntriesFromZip(zipPath, entries)
-		if err != nil {
-			logger.Warnf("Error rewriting zip %q: %v", zipPath, err)
-			continue
-		}
-		if err := d.RenamerRemover.Rename(tmpPath, zipPath); err != nil {
-			_ = d.RenamerRemover.Remove(tmpPath)
-			logger.Warnf("Error applying zip rewrite for %q: %v", zipPath, err)
+	// rewritten zips are already in place, and their originals were handled above
+	for zipPath, z := range d.zips {
+		if len(z.pending) > 0 {
+			logger.Warnf("Images in %q were removed from the library but not from the zip, so a scan will add them back", zipPath)
 		}
 	}
 
 	d.files = nil
 	d.dirs = nil
 	d.trashedPaths = make(map[string]string)
-	d.zipEntries = nil
+	d.clearZips()
 }
 
 func (d *Deleter) renameForDelete(path string, bypassTrash bool) error {

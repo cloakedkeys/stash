@@ -2,9 +2,11 @@ package file
 
 import (
 	"archive/zip"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -130,16 +132,75 @@ func TestRemoveEntriesFromZip_EntryNotPresent(t *testing.T) {
 		"b.jpg": "b",
 	})
 
-	// "ghost.jpg" does not exist in the zip — should not cause an error
-	tmpPath, err := RemoveEntriesFromZip(zipPath, []string{"ghost.jpg"})
+	// "ghost.jpg" is already gone, for example after the zip was edited outside stash
+	tmpPath, err := RemoveEntriesFromZip(zipPath, []string{"a.jpg", "ghost.jpg"})
+	if err != nil {
+		t.Fatalf("RemoveEntriesFromZip: %v", err)
+	}
+	defer os.Remove(tmpPath)
+	if got := readZipEntries(t, tmpPath); len(got) != 1 || got["b.jpg"] != "b" {
+		t.Errorf("expected only b.jpg, got %v", got)
+	}
+
+	// with nothing to remove, no copy is written
+	if _, err := RemoveEntriesFromZip(zipPath, []string{"ghost.jpg"}); !errors.Is(err, errNothingToRemove) {
+		t.Fatalf("err = %v, want errNothingToRemove", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Errorf("expected only the zip and the first copy, got %d files", len(entries))
+	}
+}
+
+// entries are matched by the names the scanner sees, which zip.Reader.Open cleans
+func TestRemoveEntriesFromZip_MatchesScannerNames(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "gallery.zip")
+	makeTestZip(t, zipPath, "", map[string]string{
+		`sub\windows.jpg`: "w",
+		"./dot.jpg":       "d",
+		"/root.jpg":       "r",
+		"keep.jpg":        "k",
+	})
+
+	tmpPath, err := RemoveEntriesFromZip(zipPath, []string{"sub/windows.jpg", "dot.jpg", "root.jpg"})
 	if err != nil {
 		t.Fatalf("RemoveEntriesFromZip: %v", err)
 	}
 	defer os.Remove(tmpPath)
 
 	got := readZipEntries(t, tmpPath)
-	if len(got) != 2 {
-		t.Errorf("expected 2 entries, got %d: %v", len(got), got)
+	if len(got) != 1 || got["keep.jpg"] != "k" {
+		t.Errorf("expected only keep.jpg, got %v", got)
+	}
+}
+
+func TestRemoveEntriesFromZip_KeepsPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix permissions")
+	}
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "gallery.zip")
+	makeTestZip(t, zipPath, "", map[string]string{"a.jpg": "a", "b.jpg": "b"})
+	if err := os.Chmod(zipPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tmpPath, err := RemoveEntriesFromZip(zipPath, []string{"a.jpg"})
+	if err != nil {
+		t.Fatalf("RemoveEntriesFromZip: %v", err)
+	}
+	defer os.Remove(tmpPath)
+
+	info, err := os.Stat(tmpPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Errorf("mode = %v, want 0644", info.Mode().Perm())
 	}
 }
 
@@ -240,7 +301,7 @@ func TestDecodeZipEntryNames_UTF8(t *testing.T) {
 		{FileHeader: zip.FileHeader{Name: "world.jpg"}},
 	}
 
-	got := decodeZipEntryNames(files, "")
+	got := decodeZipEntryNames(files, "", "test.zip")
 	want := []string{"hello.jpg", "world.jpg"}
 
 	if len(got) != len(want) {
@@ -254,7 +315,7 @@ func TestDecodeZipEntryNames_UTF8(t *testing.T) {
 }
 
 func TestDecodeZipEntryNames_Empty(t *testing.T) {
-	got := decodeZipEntryNames(nil, "")
+	got := decodeZipEntryNames(nil, "", "test.zip")
 	if len(got) != 0 {
 		t.Errorf("expected empty slice, got %v", got)
 	}
@@ -267,7 +328,7 @@ func TestDecodeZipEntryNames_NonUTF8ShiftJIS(t *testing.T) {
 		{FileHeader: zip.FileHeader{Name: shiftJISName}},
 	}
 
-	got := decodeZipEntryNames(files, "")
+	got := decodeZipEntryNames(files, "", "test.zip")
 
 	if len(got) != 1 {
 		t.Fatalf("len = %d, want 1", len(got))
@@ -285,7 +346,7 @@ func TestDecodeZipEntryNames_LengthMatchesInput(t *testing.T) {
 		{FileHeader: zip.FileHeader{Name: "c.jpg"}},
 	}
 
-	got := decodeZipEntryNames(files, "")
+	got := decodeZipEntryNames(files, "", "test.zip")
 	if len(got) != len(files) {
 		t.Errorf("len = %d, want %d", len(got), len(files))
 	}
