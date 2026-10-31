@@ -100,10 +100,12 @@ export const SceneEditPanel: React.FC<IProps> = ({
   const [performers, setPerformers, setInitialPerformers] = useInitialState<
     Performer[]
   >(scene.performers ?? []);
-  const [voiceActors, setVoiceActors] = useState<VoiceActorOption[]>([]);
+  const [voiceActors, setVoiceActors, setInitialVoiceActors] = useInitialState<
+    VoiceActorOption[]
+  >(scene.voice_actors ?? []);
   useEffect(() => {
-    setVoiceActors(scene.voice_actors ?? []);
-  }, [scene.voice_actors]);
+    setInitialVoiceActors(scene.voice_actors ?? []);
+  }, [scene.voice_actors, setInitialVoiceActors]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [studio, setStudio] = useState<Studio | null>(null);
 
@@ -388,6 +390,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
       await onSubmit(input, andNew);
       markTagsStateSaved();
       setInitialPerformers(performers);
+      setInitialVoiceActors(voiceActors);
       if (!autoSaveEnabled) {
         formik.resetForm();
       }
@@ -404,6 +407,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
         setPerformers(initialPerformers);
         setInitialPerformers(initialPerformers);
         setVoiceActors(scene.voice_actors ?? []);
+        setInitialVoiceActors(scene.voice_actors ?? []);
         setGroups(scene.groups?.map((m) => m.group) ?? []);
         setStudio(scene.studio ?? null);
         resetTagsState();
