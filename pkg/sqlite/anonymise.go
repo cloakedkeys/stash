@@ -77,6 +77,7 @@ func (db *Anonymiser) Anonymise(ctx context.Context) error {
 			func() error { return db.anonymiseFingerprints(ctx) },
 			func() error { return db.anonymiseScenes(ctx) },
 			func() error { return db.anonymiseAudios(ctx) },
+			func() error { return db.anonymiseStories(ctx) },
 			func() error { return db.anonymiseVoiceActors(ctx) },
 			func() error { return db.anonymiseUsers(ctx) },
 			func() error { return db.anonymiseMarkers(ctx) },

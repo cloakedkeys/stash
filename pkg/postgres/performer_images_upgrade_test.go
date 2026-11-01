@@ -19,7 +19,7 @@ func TestPerformerImagesUpgradePreservesPrimary(t *testing.T) {
 	m, err := NewMigrator(db)
 	require.NoError(t, err)
 	defer m.Close()
-	for version := uint(1); version < appSchemaVersion; version++ {
+	for version := uint(1); version < 21; version++ {
 		require.NoErrorf(t, m.RunMigration(ctx, version), "schema %d", version)
 	}
 	_, err = m.conn.Exec("INSERT INTO blobs (checksum, blob) VALUES ('portrait', $1)", []byte("existing portrait"))
@@ -28,7 +28,7 @@ func TestPerformerImagesUpgradePreservesPrimary(t *testing.T) {
 	require.NoError(t, err)
 	var before, after performerRow
 	require.NoError(t, m.conn.Get(&before, "SELECT * FROM performers WHERE id = 7"))
-	require.NoError(t, m.RunMigration(ctx, appSchemaVersion))
+	require.NoError(t, m.RunMigration(ctx, 21))
 	require.NoError(t, m.conn.Get(&after, "SELECT * FROM performers WHERE id = 7"))
 	assert.Equal(t, before, after)
 	var data []byte
