@@ -125,6 +125,9 @@ func TestParseYearRangeString(t *testing.T) {
 		{"dash year", "- 2010", nil, intPtr(2010), false},
 		{"year present", "2005-present", intPtr(2005), nil, false},
 		{"year Present caps", "2005 - Present", intPtr(2005), nil, false},
+		{"year now", "2016-now", intPtr(2016), nil, false},
+		{"year now with spaces", "2016 - now", intPtr(2016), nil, false},
+		{"year Now caps and padding", "  2016 - Now  ", intPtr(2016), nil, false},
 		{"whitespace padding", "  2005 - 2010  ", intPtr(2005), intPtr(2010), false},
 		{"empty string", "", nil, nil, true},
 		{"garbage", "not a year", nil, nil, true},
@@ -140,7 +143,9 @@ func TestParseYearRangeString(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			if !assert.NoError(t, err) {
+				return
+			}
 			if tt.wantStart != nil {
 				assert.NotNil(t, start)
 				assert.Equal(t, *tt.wantStart, start.Time.Year())
