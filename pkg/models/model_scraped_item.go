@@ -75,15 +75,16 @@ func (s *ScrapedStudio) ToStudio(endpoint string, excluded map[string]bool) *Cre
 }
 
 func (s *ScrapedStudio) GetImage(ctx context.Context, excluded map[string]bool) ([]byte, error) {
-	// Process the base 64 encoded image string
-	if len(s.Images) > 0 && !excluded["image"] {
-		var err error
-		img, err := utils.ProcessImageInput(ctx, *s.Image)
-		if err != nil {
-			return nil, err
-		}
+	if excluded["image"] {
+		return nil, nil
+	}
 
-		return img, nil
+	// Prefer Images, retaining support for legacy scrapers.
+	if len(s.Images) > 0 {
+		return utils.ProcessImageInput(ctx, s.Images[0])
+	}
+	if s.Image != nil {
+		return utils.ProcessImageInput(ctx, *s.Image)
 	}
 
 	return nil, nil
@@ -342,15 +343,16 @@ func (p *ScrapedPerformer) ToPerformer(endpoint string, excluded map[string]bool
 }
 
 func (p *ScrapedPerformer) GetImage(ctx context.Context, excluded map[string]bool) ([]byte, error) {
-	// Process the base 64 encoded image string
-	if len(p.Images) > 0 && !excluded["image"] {
-		var err error
-		img, err := utils.ProcessImageInput(ctx, p.Images[0])
-		if err != nil {
-			return nil, err
-		}
+	if excluded["image"] {
+		return nil, nil
+	}
 
-		return img, nil
+	// Prefer Images, retaining support for legacy scrapers.
+	if len(p.Images) > 0 {
+		return utils.ProcessImageInput(ctx, p.Images[0])
+	}
+	if p.Image != nil {
+		return utils.ProcessImageInput(ctx, *p.Image)
 	}
 
 	return nil, nil

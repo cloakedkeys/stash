@@ -228,6 +228,7 @@ export const LightboxComponent: React.FC<IProps> = ({
 
   const [resetPosition, setResetPosition] = useState(false);
 
+  const suppressMouseClick = useRef(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const overlayTarget = useRef<HTMLButtonElement | null>(null);
   const carouselRef = useRef<HTMLDivElement | null>(null);
@@ -1090,6 +1091,9 @@ export const LightboxComponent: React.FC<IProps> = ({
                     onResetPosition={() => setResetPosition((r) => !r)}
                     navigationEnabled={!!allowNavigation}
                     isVideo={isVideo(image.visual_files?.[0] ?? {})}
+                    onMouseDrag={() => {
+                      suppressMouseClick.current = true;
+                    }}
                   />
                 ) : undefined}
               </div>
@@ -1200,6 +1204,17 @@ export const LightboxComponent: React.FC<IProps> = ({
       className={CLASSNAME}
       role="presentation"
       ref={containerRef}
+      onMouseDownCapture={(e) => {
+        if (e.button === 0) suppressMouseClick.current = false;
+      }}
+      onClickCapture={(e) => {
+        // Mouseup may target the background, making the browser click target
+        // a common ancestor. Consume it before handleClose or any controls.
+        if (e.detail > 0 && suppressMouseClick.current) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }}
       onClick={handleClose}
     >
       {renderBody()}

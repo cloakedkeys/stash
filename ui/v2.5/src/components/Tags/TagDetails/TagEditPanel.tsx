@@ -7,7 +7,7 @@ import { Button, Form } from "react-bootstrap";
 import { faPlus } from "@fortawesome/free-solid-svg-icons";
 import ImageUtils from "src/utils/image";
 import { useFormik } from "formik";
-import { Prompt } from "react-router-dom";
+import { Prompt, useLocation } from "react-router-dom";
 import Mousetrap from "mousetrap";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import isEqual from "lodash-es/isEqual";
@@ -45,6 +45,7 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
   setEncodingImage,
 }) => {
   const intl = useIntl();
+  const { pathname } = useLocation();
   const isAdmin = useIsAdmin();
   const Toast = useToast();
   const { configuration: stashConfig } = useConfigurationContext();
@@ -273,7 +274,12 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
               return true;
             }
 
-            return handleUnsavedChanges(intl, "tags", tag.id)(location);
+            return handleUnsavedChanges(
+              intl,
+              "tags",
+              tag.id,
+              pathname
+            )(location);
           }}
         />
 
