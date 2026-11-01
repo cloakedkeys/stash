@@ -573,7 +573,16 @@ func (qb *StoryStore) GetFiles(ctx context.Context, id int) ([]models.File, erro
 	if err != nil {
 		return nil, err
 	}
-	return qb.repo.File.Find(ctx, ids...)
+	files, err := qb.repo.File.Find(ctx, ids...)
+	if err != nil {
+		return nil, err
+	}
+
+	// never nil, so a story with no files still counts as loaded
+	ret := make([]models.File, len(files))
+	copy(ret, files)
+
+	return ret, nil
 }
 
 func (qb *StoryStore) makeQuery(ctx context.Context, filter *models.StoryFilterType, find *models.FindFilterType) (*queryBuilder, error) {

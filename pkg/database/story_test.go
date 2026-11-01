@@ -312,3 +312,27 @@ func TestStorySharedFileLookup(t *testing.T) {
 		assert.ElementsMatch(t, ids, got)
 	})
 }
+
+func TestStoryWithoutFiles(t *testing.T) {
+	runWithRollbackTxn(t, "a story with only a title has no files", func(t *testing.T, ctx context.Context) {
+		store := db.Story()
+		s := models.NewStory()
+		s.Title = "No file"
+		require.NoError(t, store.Create(ctx, &s, nil))
+
+		files, err := store.GetFiles(ctx, s.ID)
+		require.NoError(t, err)
+		assert.NotNil(t, files)
+		assert.Empty(t, files)
+
+		require.NoError(t, s.LoadFiles(ctx, store))
+		assert.True(t, s.Files.Loaded())
+		assert.Empty(t, s.Files.List())
+		assert.Nil(t, s.Files.Primary())
+
+		got, err := store.Find(ctx, s.ID)
+		require.NoError(t, err)
+		require.NoError(t, got.LoadRelationships(ctx, store))
+		assert.Empty(t, got.Files.List())
+	})
+}
