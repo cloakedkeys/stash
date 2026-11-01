@@ -50,6 +50,7 @@ type Database interface {
 	UserUIConfig() models.UserUIConfigReaderWriter
 	UserSchemaVersion() uint
 	Audio() AudioStore
+	Story() StoryStore
 	VoiceActor() models.VoiceActorReaderWriter
 	Blobs() BlobStore
 	File() FileStore
