@@ -3,6 +3,7 @@ package match
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/performer"
@@ -77,14 +78,33 @@ func ScrapedPerformer(ctx context.Context, qb PerformerFinder, p *models.Scraped
 		}
 	}
 
-	performers, err := qb.FindByNames(ctx, []string{*p.Name}, true)
+	// Match the name that ToPerformer will use when creating the performer.
+	name := strings.TrimSpace(*p.Name)
+	performers, err := qb.FindByNames(ctx, []string{name}, true)
 	if err != nil {
 		return err
 	}
 
+	if len(performers) > 1 {
+		// Names can differ only in case, or be shared by performers with
+		// different disambiguations. Prefer the exact pair creation would
+		// otherwise insert rather than treating that existing pair as missing.
+		disambiguation := ""
+		if p.Disambiguation != nil {
+			disambiguation = *p.Disambiguation
+		}
+		for _, candidate := range performers {
+			if candidate.Name == name && candidate.Disambiguation == disambiguation {
+				id := strconv.Itoa(candidate.ID)
+				p.StoredID = &id
+				return nil
+			}
+		}
+	}
+
 	if len(performers) == 0 {
 		// if no names matched, try match an exact alias
-		performers, err = performer.ByAlias(ctx, qb, *p.Name)
+		performers, err = performer.ByAlias(ctx, qb, name)
 		if err != nil {
 			return err
 		}
@@ -108,6 +128,12 @@ type StudioFinder interface {
 // ScrapedStudio matches the provided studio with the studios
 // in the database and sets the ID field if one is found.
 func ScrapedStudio(ctx context.Context, qb StudioFinder, s *models.ScrapedStudio, stashBoxEndpoint string) error {
+	if s.Parent != nil {
+		if err := ScrapedStudio(ctx, qb, s.Parent, stashBoxEndpoint); err != nil {
+			return err
+		}
+	}
+
 	if s.StoredID != nil {
 		return nil
 	}
@@ -128,7 +154,9 @@ func ScrapedStudio(ctx context.Context, qb StudioFinder, s *models.ScrapedStudio
 		}
 	}
 
-	st, err := studio.ByName(ctx, qb, s.Name)
+	// Match the name that ToStudio will use when creating the studio.
+	name := strings.TrimSpace(s.Name)
+	st, err := studio.ByName(ctx, qb, name)
 
 	if err != nil {
 		return err
@@ -136,7 +164,7 @@ func ScrapedStudio(ctx context.Context, qb StudioFinder, s *models.ScrapedStudio
 
 	if st == nil {
 		// try matching by alias
-		st, err = studio.ByAlias(ctx, qb, s.Name)
+		st, err = studio.ByAlias(ctx, qb, name)
 		if err != nil {
 			return err
 		}

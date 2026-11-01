@@ -75,6 +75,24 @@ type zipHierarchyMover struct {
 	rootPaths   []string
 }
 
+// zipRelativePath handles stored paths from another OS. File paths are rebuilt
+// from stored folder paths using the current OS's separator, so they can contain
+// both separator styles after a migration.
+func zipRelativePath(zipPath, entryPath string) (string, bool) {
+	windowsPath := (len(zipPath) >= 3 && zipPath[1] == ':') || strings.HasPrefix(zipPath, `\\`)
+	zipPath = filepath.ToSlash(zipPath)
+	entryPath = filepath.ToSlash(entryPath)
+	if windowsPath {
+		zipPath = strings.ReplaceAll(zipPath, `\`, "/")
+		entryPath = strings.ReplaceAll(entryPath, `\`, "/")
+	}
+	if entryPath == zipPath {
+		return ".", true
+	}
+	rel, ok := strings.CutPrefix(entryPath, zipPath+"/")
+	return filepath.FromSlash(rel), ok
+}
+
 func (m zipHierarchyMover) transferZipHierarchy(ctx context.Context, zipFileID models.FileID, oldPath string, newPath string) error {
 	if err := m.transferZipFolderHierarchy(ctx, zipFileID, oldPath, newPath); err != nil {
 		return fmt.Errorf("moving folder hierarchy for file %s: %w", oldPath, err)
@@ -99,14 +117,11 @@ func (m zipHierarchyMover) transferZipFolderHierarchy(ctx context.Context, zipFi
 		oldZfPath := oldFolder.Path
 
 		// sanity check - ignore folders which aren't under oldPath
-		if !strings.HasPrefix(oldZfPath, oldPath) {
+		relZfPath, ok := zipRelativePath(oldPath, oldZfPath)
+		if !ok {
 			continue
 		}
 
-		relZfPath, err := filepath.Rel(oldPath, oldZfPath)
-		if err != nil {
-			return err
-		}
 		newZfPath := filepath.Join(newPath, relZfPath)
 
 		newFolder, err := GetOrCreateFolderHierarchy(ctx, m.folderStore, newZfPath, m.rootPaths)
@@ -141,18 +156,14 @@ func (m zipHierarchyMover) transferZipFileEntries(ctx context.Context, zipFileID
 	for _, zf := range zipFiles {
 		zfBase := zf.Base()
 		oldZfPath := zfBase.Path
-		oldZfDir := filepath.Dir(oldZfPath)
 
 		// sanity check - ignore files which aren't under oldPath
-		if !strings.HasPrefix(oldZfPath, oldPath) {
+		relZfPath, ok := zipRelativePath(oldPath, oldZfPath)
+		if !ok {
 			continue
 		}
 
-		relZfDir, err := filepath.Rel(oldPath, oldZfDir)
-		if err != nil {
-			return fmt.Errorf("moving contained file %s: %w", zfBase.ID, err)
-		}
-		newZfDir := filepath.Join(newPath, relZfDir)
+		newZfDir := filepath.Join(newPath, filepath.Dir(relZfPath))
 
 		// folder should have been created by transferZipFolderHierarchy
 		newZfFolder, err := GetOrCreateFolderHierarchy(ctx, m.folderStore, newZfDir, m.rootPaths)

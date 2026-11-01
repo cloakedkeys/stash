@@ -6,7 +6,36 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestScrapedPerformerAliases(t *testing.T) {
+	name := "Jane"
+	legacy := "Alice, Alina"
+	for _, tt := range []struct {
+		name string
+		list []string
+		want []string
+	}{
+		{"legacy", nil, []string{"Alice", "Alina"}},
+		{"list takes precedence", []string{"Alice", "Alice, Alina"}, []string{"Alice", "Alice, Alina"}},
+		{"empty list takes precedence", []string{}, []string{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := ScrapedPerformer{Name: &name, Aliases: &legacy, AliasList: tt.list}
+			assert.Equal(t, tt.want, p.ToPerformer("", nil).Aliases.List())
+			for _, mode := range []RelationshipUpdateMode{RelationshipUpdateModeSet, RelationshipUpdateModeAdd} {
+				partial := p.ToPartial("", nil, map[string]bool{"aliases": mode == RelationshipUpdateModeAdd}, nil)
+				require.NotNil(t, partial.Aliases)
+				assert.Equal(t, tt.want, partial.Aliases.Values)
+				assert.Equal(t, mode, partial.Aliases.Mode)
+			}
+			excluded := map[string]bool{"aliases": true}
+			assert.False(t, p.ToPerformer("", excluded).Aliases.Loaded())
+			assert.Nil(t, p.ToPartial("", excluded, nil, nil).Aliases)
+		})
+	}
+}
 
 func Test_scrapedToStudioInput(t *testing.T) {
 	const name = "name"

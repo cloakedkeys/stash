@@ -25,6 +25,7 @@ type ScrapedPerformerInput struct {
 	Tattoos        *string  `json:"tattoos"`
 	Piercings      *string  `json:"piercings"`
 	Aliases        *string  `json:"aliases"`
+	AliasList      []string `json:"alias_list"`
 	Details        *string  `json:"details"`
 	DeathDate      *string  `json:"death_date"`
 	HairColor      *string  `json:"hair_color"`

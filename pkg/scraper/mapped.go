@@ -9,6 +9,7 @@ import (
 
 type mappedQuery interface {
 	runQuery(selector string) ([]string, error)
+	runQueryWithPositions(selector string) ([]string, error)
 	getType() QueryType
 	setType(QueryType)
 	subScrape(ctx context.Context, value string) mappedQuery
@@ -43,7 +44,9 @@ func (s mappedScraper) scrapePerformer(ctx context.Context, q mappedQuery) (*mod
 
 	performerTagsMap := performerMap.Tags
 
-	results := performerMap.process(ctx, q, s.Common, urlsIsMulti)
+	results := performerMap.process(ctx, q, s.Common, func(key string) bool {
+		return urlsIsMulti(key) || key == "AliasList"
+	})
 
 	// now apply the tags
 	var tagResults mappedResults
@@ -107,12 +110,12 @@ func (s mappedScraper) processSceneRelationships(ctx context.Context, q mappedQu
 
 	if sceneMoviesMap != nil {
 		logger.Debug(`Processing scene movies:`)
-		ret.Movies = sceneMoviesMap.process(ctx, q, s.Common, nil).scrapedMovies()
+		ret.Movies = sceneMoviesMap.processObjects(ctx, q, s.Common).scrapedMovies()
 	}
 
 	if sceneGroupsMap != nil {
 		logger.Debug(`Processing scene groups:`)
-		ret.Groups = sceneGroupsMap.process(ctx, q, s.Common, nil).scrapedGroups()
+		ret.Groups = sceneGroupsMap.processObjects(ctx, q, s.Common).scrapedGroups()
 	}
 
 	return len(ret.Performers) > 0 || len(ret.Tags) > 0 || ret.Studio != nil || len(ret.Movies) > 0 || len(ret.Groups) > 0
@@ -124,8 +127,7 @@ func (s mappedScraper) processPerformers(ctx context.Context, performersMap mapp
 	// now apply the performers and tags
 	if performersMap.mappedConfig != nil {
 		logger.Debug(`Processing performers:`)
-		// isMulti is nil because it will behave incorrect when scraping multiple performers
-		performerResults := performersMap.process(ctx, q, s.Common, nil)
+		performerResults := performersMap.processObjects(ctx, q, s.Common)
 
 		scenePerformerTagsMap := performersMap.Tags
 
@@ -227,7 +229,7 @@ func (s mappedScraper) scrapeImage(ctx context.Context, q mappedQuery) (*models.
 	// now apply the performers and tags
 	if imagePerformersMap != nil {
 		logger.Debug(`Processing image performers:`)
-		ret.Performers = imagePerformersMap.process(ctx, q, s.Common, nil).scrapedPerformers()
+		ret.Performers = imagePerformersMap.processObjects(ctx, q, s.Common).scrapedPerformers()
 	}
 
 	if imageTagsMap != nil {
@@ -276,7 +278,7 @@ func (s mappedScraper) scrapeGallery(ctx context.Context, q mappedQuery) (*model
 	// now apply the performers and tags
 	if galleryPerformersMap != nil {
 		logger.Debug(`Processing gallery performers:`)
-		performerResults := galleryPerformersMap.process(ctx, q, s.Common, urlsIsMulti)
+		performerResults := galleryPerformersMap.processObjects(ctx, q, s.Common)
 
 		ret.Performers = performerResults.scrapedPerformers()
 	}

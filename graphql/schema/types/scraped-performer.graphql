@@ -24,7 +24,8 @@ type ScrapedPerformer {
   tattoos: String
   piercings: String
   # aliases must be comma-delimited to be parsed correctly
-  aliases: String
+  aliases: String @deprecated(reason: "Use alias_list")
+  alias_list: [String!]
   tags: [ScrapedTag!]
 
   "This should be a base64 encoded data URL"
@@ -61,7 +62,8 @@ input ScrapedPerformerInput {
   career_end: String
   tattoos: String
   piercings: String
-  aliases: String
+  aliases: String @deprecated(reason: "Use alias_list")
+  alias_list: [String!]
 
   # not including tags for the input
   # not including image for the input

@@ -964,6 +964,7 @@ URLs
 
 ```
 Aliases
+AliasList
 Birthdate
 CareerEnd
 CareerStart
@@ -989,6 +990,8 @@ Weight
 ```
 
 > **⚠️ Important:** `Name` field is required. 
+
+> **⚠️ Note:** `AliasList` (`alias_list` for script scrapers) is a list of aliases and takes priority over `Aliases`. `Aliases` is still supported.
 
 > **⚠️ Note:** `Gender` must be one of `male`, `female`, `transgender_male`, `transgender_female`, `intersex`, `non_binary` (case insensitive).
 
