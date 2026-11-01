@@ -61,6 +61,7 @@ services:
       - "9999:9999"
     environment:
       - STASH_DATABASE=postgresql://stash:change-me@db:5432/stash?sslmode=disable
+      - STASH_STASH=/data/
       - STASH_GENERATED=/generated/
       - STASH_METADATA=/metadata/
       - STASH_CACHE=/cache/
@@ -82,7 +83,7 @@ The Stash image is built from this repository with `docker build -t stash-local/
 With `STASH_DATABASE` set, Stash skips the setup wizard. After the first start:
 
 1. Set a password for the `admin` account under Settings > Security. Until then, anyone who can reach the port can use Stash.
-2. Add your library folder, `/data` in this example, under Settings > Library, then scan.
+2. Run a scan. Your library folder comes from `STASH_STASH`, `/data/` in this example. Once you save folders under Settings > Library, those are used instead.
 
 Keep `STASH_DATABASE` set. The `database` line Stash writes to `config.yml` is the SQLite default, so without the variable Stash would start on an empty SQLite library.
 
