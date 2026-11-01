@@ -31,6 +31,9 @@ func (t *GeneratePreviewTask) GetDescription() string {
 }
 
 func (t *GeneratePreviewTask) Start(ctx context.Context) {
+	generator := *t.generator
+	t.generator = &generator
+
 	videoChecksum := t.Scene.GetHash(t.fileNamingAlgorithm)
 
 	if t.videoPreviewRequired() {
@@ -40,6 +43,8 @@ func (t *GeneratePreviewTask) Start(ctx context.Context) {
 			logger.Errorf("error reading video file: %v", err)
 			return
 		}
+
+		t.generator.SampleAspectRatio = videoFile.SampleAspectRatio()
 
 		if err := t.generateVideo(videoChecksum, videoFile.Path, videoFile.Width, videoFile.Height, videoFile.VideoStreamDuration, videoFile.FrameRate); err != nil {
 			logger.Errorf("error generating preview: %v", err)
@@ -75,6 +80,12 @@ func (t *GeneratePreviewTask) generateVideo(videoChecksum string, path string, w
 }
 
 func (t *GeneratePreviewTask) generateWebp(videoChecksum string) error {
+	previewPath := instance.Paths.Scene.GetVideoPreviewPath(videoChecksum)
+	preview, err := instance.FFProbe.NewVideoFile(previewPath)
+	if err != nil {
+		return err
+	}
+	t.generator.SampleAspectRatio = preview.SampleAspectRatio()
 	videoFilename := t.Scene.Path
 	return t.generator.PreviewWebp(context.TODO(), videoFilename, videoChecksum)
 }
