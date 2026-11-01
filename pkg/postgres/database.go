@@ -181,7 +181,7 @@ func (db *Database) Open(ctx context.Context, dbPath string) error {
 // checkEncoding refuses a database that isn't UTF8. Translated regular expressions name characters
 // by their Unicode values, so on another encoding they could match the wrong rows with no error.
 func (db *Database) checkEncoding(ctx context.Context) error {
-	conn, err := db.open(false, false)
+	conn, err := db.open(false)
 	if err != nil {
 		return err
 	}
@@ -235,7 +235,7 @@ func (db *Database) Close() error {
 	return nil
 }
 
-func (db *Database) open(disableForeignKeys bool, writable bool) (conn *sqlx.DB, err error) {
+func (db *Database) open(writable bool) (conn *sqlx.DB, err error) {
 	cfg, err := pgx.ParseConfig(db.dbPath)
 
 	if err != nil {
@@ -244,9 +244,6 @@ func (db *Database) open(disableForeignKeys bool, writable bool) (conn *sqlx.DB,
 
 	// these only apply to one session, so every connection in the pool needs them
 	var settings []string
-	if disableForeignKeys {
-		settings = append(settings, "SET session_replication_role = replica;")
-	}
 	if !writable {
 		settings = append(settings, "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;")
 	}
@@ -275,12 +272,9 @@ func (db *Database) initialise() error {
 }
 
 func (db *Database) openReadDB() error {
-	const (
-		disableForeignKeys = false
-		writable           = false
-	)
+	const writable = false
 	var err error
-	db.readDB, err = db.open(disableForeignKeys, writable)
+	db.readDB, err = db.open(writable)
 	if err != nil {
 		return err
 	}
@@ -291,12 +285,9 @@ func (db *Database) openReadDB() error {
 }
 
 func (db *Database) openWriteDB() error {
-	const (
-		disableForeignKeys = false
-		writable           = true
-	)
+	const writable = true
 	var err error
-	db.writeDB, err = db.open(disableForeignKeys, writable)
+	db.writeDB, err = db.open(writable)
 	if err != nil {
 		return err
 	}
