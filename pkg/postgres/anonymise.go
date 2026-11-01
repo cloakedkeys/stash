@@ -100,6 +100,7 @@ func (db *Anonymiser) FetchAll(ctx context.Context) error {
 		goqu.I("performer_stash_ids"),
 		goqu.I(performerURLsTable),
 		goqu.I(performerTable),
+		goqu.I("performer_images"),
 		goqu.I(performersGalleriesTable),
 		goqu.I(performersImagesTable),
 		goqu.I(performersScenesTable),

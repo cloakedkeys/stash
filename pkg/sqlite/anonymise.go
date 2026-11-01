@@ -119,6 +119,7 @@ func (db *Anonymiser) deleteBlobs() error {
 		func() error { return db.truncateColumn(groupTable, groupFrontImageBlobColumn) },
 		func() error { return db.truncateColumn(groupTable, groupBackImageBlobColumn) },
 
+		func() error { return db.truncateTable("performer_images") },
 		func() error { return db.truncateTable(blobTable) },
 	})
 }
