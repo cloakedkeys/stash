@@ -519,6 +519,14 @@ func (rs sceneRoutes) Caption(w http.ResponseWriter, r *http.Request, lang strin
 }
 
 func (rs sceneRoutes) CaptionLang(w http.ResponseWriter, r *http.Request) {
+	if values, ok := r.URL.Query()["stream"]; ok {
+		if len(values) != 1 {
+			http.Error(w, "invalid stream index", http.StatusBadRequest)
+			return
+		}
+		rs.EmbeddedCaption(w, r, values[0])
+		return
+	}
 	// serve caption based on lang query param, if provided
 	if err := r.ParseForm(); err != nil {
 		logger.Warnf("[caption] error parsing query form: %v", err)
