@@ -69,6 +69,7 @@ func TestLibraryLimitRefusesWhatItDoesNotKnow(t *testing.T) {
 		{"Query", "findFolder"},
 		{"Query", "findFolders"},
 		{"Query", "findDuplicateScenes"},
+		{"Query", "findDuplicateImages"},
 		{"Query", "markerStrings"},
 		{"Query", "pluginTasks"},
 		{"Query", "directory"},

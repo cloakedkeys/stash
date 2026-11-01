@@ -56,6 +56,9 @@ type Query {
     scene_filter: SceneFilterType
   ): [[Scene!]!]!
 
+  "Groups of images with generated perceptual hashes within the given distance (default 0), comparing all attached files including ZIP entries. MD5 and oshash are not compared."
+  findDuplicateImages(distance: Int, image_filter: ImageFilterType): [[Image!]!]!
+
   "Return valid stream paths"
   sceneStreams(id: ID): [SceneStreamEndpoint!]!
 
