@@ -191,66 +191,21 @@ func Test_createMissingStudio_parentAndImagePaths(t *testing.T) {
 			name:   "existing parent and child",
 			studio: &models.ScrapedStudio{Name: childName, Parent: &models.ScrapedStudio{Name: parentName, StoredID: &storedParentID}},
 			setup: func(db *mocks.Database) {
-				db.Studio.On("GetStashIDs", testCtx, parentID).Return(nil, nil)
-				db.Studio.On("Find", testCtx, parentID).Return(&models.Studio{ID: parentID, Name: parentName}, nil)
-				db.Studio.On("UpdatePartial", testCtx, mock.AnythingOfType("models.StudioPartial")).Return(&models.Studio{ID: parentID}, nil)
 				mockCreateStudio(db, childName, childID, nil)
 			},
 			want: &childID,
 		},
 		{
-			name:   "existing parent stash IDs error",
-			studio: &models.ScrapedStudio{Name: childName, Parent: &models.ScrapedStudio{Name: parentName, StoredID: &storedParentID}},
-			setup: func(db *mocks.Database) {
-				db.Studio.On("GetStashIDs", testCtx, parentID).Return(nil, errors.New("error getting stash IDs"))
-			},
-			wantErr: true,
-		},
-		{
-			name: "existing parent image error",
+			name: "existing parent ignores invalid scraped image",
 			studio: func() *models.ScrapedStudio {
 				parent := scrapedStudioWithImage(parentName, invalidImage)
 				parent.StoredID = &storedParentID
 				return &models.ScrapedStudio{Name: childName, Parent: parent}
 			}(),
 			setup: func(db *mocks.Database) {
-				db.Studio.On("GetStashIDs", testCtx, parentID).Return(nil, nil)
+				mockCreateStudio(db, childName, childID, nil)
 			},
-			wantErr: true,
-		},
-		{
-			name:   "existing parent validate error",
-			studio: &models.ScrapedStudio{Name: childName, Parent: &models.ScrapedStudio{Name: parentName, StoredID: &storedParentID}},
-			setup: func(db *mocks.Database) {
-				db.Studio.On("GetStashIDs", testCtx, parentID).Return(nil, nil)
-				db.Studio.On("Find", testCtx, parentID).Return(nil, nil)
-			},
-			wantErr: true,
-		},
-		{
-			name:   "existing parent update partial error",
-			studio: &models.ScrapedStudio{Name: childName, Parent: &models.ScrapedStudio{Name: parentName, StoredID: &storedParentID}},
-			setup: func(db *mocks.Database) {
-				db.Studio.On("GetStashIDs", testCtx, parentID).Return(nil, nil)
-				db.Studio.On("Find", testCtx, parentID).Return(&models.Studio{ID: parentID, Name: parentName}, nil)
-				db.Studio.On("UpdatePartial", testCtx, mock.AnythingOfType("models.StudioPartial")).Return(nil, errors.New("error updating parent"))
-			},
-			wantErr: true,
-		},
-		{
-			name: "existing parent update image error",
-			studio: func() *models.ScrapedStudio {
-				parent := scrapedStudioWithImage(parentName, validImage)
-				parent.StoredID = &storedParentID
-				return &models.ScrapedStudio{Name: childName, Parent: parent}
-			}(),
-			setup: func(db *mocks.Database) {
-				db.Studio.On("GetStashIDs", testCtx, parentID).Return(nil, nil)
-				db.Studio.On("Find", testCtx, parentID).Return(&models.Studio{ID: parentID, Name: parentName}, nil)
-				db.Studio.On("UpdatePartial", testCtx, mock.AnythingOfType("models.StudioPartial")).Return(&models.Studio{ID: parentID}, nil)
-				db.Studio.On("UpdateImage", testCtx, parentID, mock.AnythingOfType("[]uint8")).Return(errors.New("error updating parent image"))
-			},
-			wantErr: true,
+			want: &childID,
 		},
 		{
 			name:    "main image error",
@@ -285,4 +240,41 @@ func Test_createMissingStudio_parentAndImagePaths(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func Test_createMissingStudio_existingParentIsNotUpdated(t *testing.T) {
+	childID := 1
+	parentID := 2
+	storedParentID := strconv.Itoa(parentID)
+	parent := &models.Studio{ID: parentID, Name: "Parent", Details: "Existing details", Aliases: models.NewRelatedStrings([]string{"Parent alias"})}
+	details := "Scraped details"
+	aliases := "Scraped alias"
+	scrapedParent := scrapedStudioWithImage("Parent alias", "data:image/png;base64,AAAA")
+	scrapedParent.StoredID = &storedParentID
+	scrapedParent.Details = &details
+	scrapedParent.Aliases = &aliases
+	scrapedParent.URLs = []string{"https://example.com/scraped"}
+
+	db := mocks.NewDatabase()
+	db.Studio.On("GetStashIDs", testCtx, parentID).Return(nil, nil).Maybe()
+	db.Studio.On("Find", testCtx, parentID).Return(parent, nil).Maybe()
+	db.Studio.On("Query", testCtx, mock.Anything, mock.Anything).Return([]*models.Studio{}, 0, nil).Maybe()
+	db.Studio.On("UpdatePartial", testCtx, mock.Anything).Return(parent, nil).Maybe()
+	db.Studio.On("UpdateImage", testCtx, parentID, mock.Anything).Return(nil).Maybe()
+	db.Studio.On("Create", testCtx, mock.MatchedBy(func(input *models.CreateStudioInput) bool {
+		return input.Name == "Child" && input.ParentID != nil && *input.ParentID == parentID
+	})).Run(func(args mock.Arguments) {
+		args.Get(1).(*models.CreateStudioInput).ID = childID
+	}).Return(nil).Once()
+
+	id, err := createMissingStudio(testCtx, "endpoint", db.Studio, &models.ScrapedStudio{
+		Name: "Child", Parent: scrapedParent,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, &childID, id)
+	// No partial update preserves all existing metadata; no image update
+	// preserves the stored image, including when the match used an alias.
+	db.Studio.AssertNotCalled(t, "UpdatePartial", mock.Anything, mock.Anything)
+	db.Studio.AssertNotCalled(t, "UpdateImage", mock.Anything, mock.Anything, mock.Anything)
+	db.Studio.AssertExpectations(t)
 }
