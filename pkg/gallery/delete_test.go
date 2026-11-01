@@ -65,7 +65,7 @@ func TestPrepareZipRewrites(t *testing.T) {
 			var folderGalleries []*models.Gallery
 			if tc.folderGallery {
 				folderGalleries = []*models.Gallery{{ID: 4, FolderID: &folderID}}
-	folderFiles := []models.File{}
+				folderFiles := []models.File{}
 				if tc.otherGalleryFile {
 					folderFiles = []models.File{&models.BaseFile{ID: 10}}
 				} else {
