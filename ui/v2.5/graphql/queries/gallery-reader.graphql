@@ -8,6 +8,7 @@ query GalleryReaderImages(
       id
       paths {
         image
+        thumbnail
       }
       visual_files {
         __typename
