@@ -2,7 +2,7 @@
 
 Stash keeps its library in an SQLite file by default. It can use a PostgreSQL server instead.
 
-> **⚠️ Note:** PostgreSQL support is new and experimental. SQLite is the better tested choice. There is no way yet to move an existing SQLite library to PostgreSQL, so choose before building a library.
+> **⚠️ Note:** PostgreSQL support is new and experimental. SQLite is the better tested choice. An existing SQLite library can be moved to PostgreSQL, as explained below, but there's no way to move back.
 
 ## What the server needs
 
@@ -85,6 +85,32 @@ With `STASH_DATABASE` set, Stash skips the setup wizard. After the first start:
 2. Add your library folder, `/data` in this example, under Settings > Library, then scan.
 
 Keep `STASH_DATABASE` set. The `database` line Stash writes to `config.yml` is the SQLite default, so without the variable Stash would start on an empty SQLite library.
+
+## Moving a SQLite library to PostgreSQL
+
+Stash can copy a SQLite library into an empty PostgreSQL database. Everything in the database comes across, including accounts and their ratings and play history, with the same IDs. Your SQLite file isn't changed, so you can go back to it, but changes made after the copy stay in PostgreSQL. There's no way to copy from PostgreSQL to SQLite.
+
+1. Start this version of Stash on SQLite once, so the library is upgraded if it needs to be, then stop Stash. Changes made while the copy runs wouldn't be included.
+2. Set up the PostgreSQL server as described in "What the server needs". If Stash has already started on that database, it's fine as long as there's no library in it yet.
+3. Set `STASH_DATABASE` to the address of the PostgreSQL database and run the copy, giving it the SQLite file:
+
+   ```shell
+   stash --migrate-sqlite-to-postgres /path/to/stash-go.sqlite
+   ```
+
+   With the Docker example above, once the `stash` service has `STASH_DATABASE` set:
+
+   ```shell
+   docker compose run --rm stash --migrate-sqlite-to-postgres /root/.stash/stash-go.sqlite
+   ```
+
+4. Keep `STASH_DATABASE` set, and start Stash as usual.
+
+The copy happens all at once. If it fails, the PostgreSQL database stays empty, and it can run again. It only copies into an empty database, so it can't overwrite a library.
+
+- **Values PostgreSQL can't store:** SQLite accepts things PostgreSQL won't, such as a file path that isn't valid UTF-8 or an impossible date. The copy stops and lists each one by table and row, with nothing copied, so they can be fixed first.
+- **Files outside the database:** generated files, and images if blobs are kept on the filesystem, stay where they are. Stash finds them the same way, as long as the settings still point to them.
+- **Regex filters and raw SQL:** plugins that use raw SQL may need changes, because SQLite and PostgreSQL differ. Tables a plugin added to the SQLite database aren't copied, and the copy names them.
 
 ## Regular expressions
 

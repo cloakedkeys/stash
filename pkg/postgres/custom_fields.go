@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/doug-martin/goqu/v9"
@@ -132,6 +133,10 @@ func (s *customFieldsStore) sqlValueToValue(value interface{}, gotype string) (i
 		}
 		return str, nil
 	case "int64":
+		// the exact digits, because a float64 rounds numbers above 2^53
+		if i, err := strconv.ParseInt(string(val), 10, 64); err == nil {
+			return i, nil
+		}
 		f, ok := res.(float64)
 		if !ok {
 			return nil, fmt.Errorf("expected float64 for int64 conversion, got %T", res)

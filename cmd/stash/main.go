@@ -23,7 +23,9 @@ import (
 	"github.com/stashapp/stash/internal/log"
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/logger"
+	"github.com/stashapp/stash/pkg/postgres"
 	"github.com/stashapp/stash/ui"
 
 	_ "github.com/golang-migrate/migrate/v4/database/sqlite3"
@@ -58,6 +60,9 @@ func main() {
 	resetPasswordFlag := ""
 	pflag.StringVar(&resetPasswordFlag, "reset-password", "", "reset the password for the specified user and exit")
 
+	migrateSQLiteFlag := ""
+	pflag.StringVar(&migrateSQLiteFlag, "migrate-sqlite-to-postgres", "", "copy this SQLite file into the empty PostgreSQL database set in STASH_DATABASE and exit")
+
 	pflag.Parse()
 
 	if helpFlag {
@@ -86,6 +91,14 @@ func main() {
 		}
 		defer f.Close()
 		defer pprof.StopCPUProfile()
+	}
+
+	if migrateSQLiteFlag != "" {
+		// before the manager, which would open the database
+		if err := migrateSQLiteToPostgres(cfg, migrateSQLiteFlag); err != nil {
+			exitError(fmt.Errorf("error migrating to PostgreSQL: %w", err))
+		}
+		return
 	}
 
 	// initialise desktop.IsDesktop here so that it doesn't get affected by
@@ -134,6 +147,14 @@ func main() {
 	desktop.Start(exit, &ui.FaviconProvider)
 
 	exitCode = <-exit
+}
+
+func migrateSQLiteToPostgres(cfg *config.Config, sqlitePath string) error {
+	target := cfg.GetDatabasePath()
+	if !database.IsPostgresPath(target) {
+		return errors.New("set the STASH_DATABASE environment variable to the address of the PostgreSQL database to copy into")
+	}
+	return postgres.MigrateFromSQLite(context.Background(), sqlitePath, target, os.Stdout)
 }
 
 // initLogTemp initializes a temporary logger for use before the config is loaded.
