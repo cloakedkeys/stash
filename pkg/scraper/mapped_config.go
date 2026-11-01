@@ -65,13 +65,21 @@ func (s mappedConfig) process(ctx context.Context, q mappedQuery, common commonM
 			selector = strings.ReplaceAll(selector, "{inputURL}", q.getURL())
 			selector = strings.ReplaceAll(selector, "{inputHostname}", extractHostname(q.getURL()))
 
-			found, err := q.runQuery(selector)
+			fieldQuery := q
+			if xpath, ok := q.(*xpathQuery); ok {
+				// Keep multiline Details without changing normalization for other fields.
+				copy := *xpath
+				copy.preserveNewlines = k == "Details"
+				fieldQuery = &copy
+			}
+
+			found, err := fieldQuery.runQuery(selector)
 			if err != nil {
 				logger.Warnf("key '%v': %v", k, err)
 			}
 
 			if len(found) > 0 {
-				result := s.postProcess(ctx, q, attrConfig, found)
+				result := s.postProcess(ctx, fieldQuery, attrConfig, found)
 
 				// HACK - if the key is URLs, then we need to set the value as a multi-value
 				isMulti := isMulti != nil && isMulti(k)

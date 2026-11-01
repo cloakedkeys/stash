@@ -282,10 +282,11 @@ var (
 )
 
 type xpathQuery struct {
-	doc       *html.Node
-	scraper   *xpathScraper
-	queryType QueryType
-	url       string
+	doc              *html.Node
+	scraper          *xpathScraper
+	queryType        QueryType
+	url              string
+	preserveNewlines bool
 }
 
 func (q *xpathQuery) getType() QueryType {
@@ -332,8 +333,9 @@ func (q *xpathQuery) nodeText(n *html.Node) string {
 	// remove multiple whitespace
 	ret = multiSpaceRE.ReplaceAllString(ret, " ")
 
-	// TODO - make this optional
-	ret = newlineRE.ReplaceAllString(ret, "")
+	if !q.preserveNewlines {
+		ret = newlineRE.ReplaceAllString(ret, "")
+	}
 
 	return ret
 }
@@ -346,5 +348,7 @@ func (q *xpathQuery) subScrape(ctx context.Context, value string) mappedQuery {
 		return nil
 	}
 
-	return q.scraper.getXPathQuery(doc, value)
+	ret := q.scraper.getXPathQuery(doc, value)
+	ret.preserveNewlines = q.preserveNewlines
+	return ret
 }
