@@ -18,6 +18,9 @@ env:
   COMPILER_IMAGE: ghcr.io/stashapp/compiler:14
 
 jobs:
+  changes:
+    uses: ./.github/workflows/docs-only.yml
+
   # Job 1: Generate code and build UI
   # Runs natively (no Docker) — go generate/gqlgen and node don't need cross-compilers.
   # Produces artifacts (generated Go files + UI build) consumed by test and build jobs.
@@ -29,9 +32,10 @@ jobs:
         fetch-depth: 0
         fetch-tags: true
     - name: Setup Go
-      uses: actions/setup-go@v6
+      id: go
+      uses: ./.github/actions/setup-go-cached
       with:
-        go-version-file: 'go.mod'
+        cache-name: generate
 
     # pnpm version is read from the packageManager field in package.json
     # very broken (4.3, 4.4)
@@ -92,19 +96,32 @@ jobs:
           ui/v2.5/build/
           ui/login/locales/
 
+    - name: Save Go cache
+      if: ${{ github.event_name == 'push' && steps.go.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ steps.go.outputs.key }}
+
   # Job 2: Integration tests
   # Runs natively (no Docker) — only needs Go + GCC (for CGO/SQLite), both on ubuntu-22.04.
   # Runs in parallel with the build matrix jobs.
+  # A pull request that only changes documentation skips this. It still needs generate, which
+  # builds the documentation into the UI.
   test:
-    needs: generate
+    needs: [changes, generate]
+    if: ${{ !cancelled() && needs.generate.result == 'success' && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6
 
     - name: Setup Go
-      uses: actions/setup-go@v6
+      id: go
+      uses: ./.github/actions/setup-go-cached
       with:
-        go-version-file: 'go.mod'
+        cache-name: test
 
     # Places generated Go files + UI build into the working tree so the build compiles
     - name: Download generated artifacts
@@ -112,8 +129,20 @@ jobs:
       with:
         name: generated
 
+    # -count=1 so the cache only saves compiling, and every test really runs
     - name: Test Backend
+      env:
+        GOFLAGS: -count=1
       run: make it
+
+    - name: Save Go cache
+      if: ${{ github.event_name == 'push' && steps.go.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ steps.go.outputs.key }}
 
   # Job 3: Cross-compile for all platforms
   # Each platform gets its own runner and Docker container (ghcr.io/stashapp/compiler:13).

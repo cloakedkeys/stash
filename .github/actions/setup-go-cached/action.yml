@@ -1,0 +1,44 @@
+name: Set up Go with its own build cache
+description: >-
+  Each job compiles different things, so each keeps its own cache. A cache can't
+  change once saved, and setup-go's shared one only holds what the first job
+  to finish compiled. Pushes save a new one each week, and pull requests only read.
+
+inputs:
+  cache-name:
+    description: Which job this cache is for
+    required: true
+
+outputs:
+  key:
+    description: The key to save this job's cache under
+    value: ${{ steps.key.outputs.value }}
+  cache-hit:
+    description: Whether this week's cache already exists
+    value: ${{ steps.restore.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache: false
+
+    - id: key
+      shell: bash
+      run: |
+        prefix="go-${{ inputs.cache-name }}-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}-"
+        echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+        echo "value=$prefix$(date +%G-%V)" >> "$GITHUB_OUTPUT"
+
+    - id: restore
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ steps.key.outputs.value }}
+        restore-keys: |
+          ${{ steps.key.outputs.prefix }}
+          go-${{ inputs.cache-name }}-${{ runner.os }}-

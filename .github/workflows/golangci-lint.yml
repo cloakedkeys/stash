@@ -9,16 +9,26 @@ on:
       - 'releases/**'
   pull_request:
 
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  changes:
+    uses: ./.github/workflows/docs-only.yml
+
   golangci:
     name: lint
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       # no tags or depth needed for lint
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - id: go
+        uses: ./.github/actions/setup-go-cached
         with:
-          go-version-file: 'go.mod'
+          cache-name: lint
 
       # generate-backend runs natively (just go generate + touch-ui) — no Docker needed
       - name: Generate Backend
@@ -30,3 +40,12 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.11.4
+
+      - name: Save Go cache
+        if: ${{ github.event_name == 'push' && steps.go.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ steps.go.outputs.key }}

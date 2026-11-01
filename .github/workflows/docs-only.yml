@@ -1,0 +1,35 @@
+name: Docs only
+
+# Says whether a pull request only changes documentation, so that the Go checks can skip it.
+# Anything else, including this check failing, means the Go checks run. Jobs using this must
+# compare with != 'true', so that an empty answer runs them too.
+on:
+  workflow_call:
+    outputs:
+      docs_only:
+        value: ${{ jobs.changes.outputs.docs_only }}
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      docs_only: ${{ steps.check.outputs.docs_only }}
+    steps:
+    # a pull request's commit here is a merge, and its first parent is the branch it merges into
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 2
+
+    - id: check
+      run: |
+        docs_only=false
+        if [ "$GITHUB_EVENT_NAME" = pull_request ] \
+          && git rev-parse --verify --quiet HEAD^2 > /dev/null \
+          && files=$(git diff --no-renames --name-only HEAD^1 HEAD) \
+          && [ -n "$files" ] \
+          && ! printf '%s\n' "$files" | grep -qvE '^(ui/v2\.5/src/docs/.*\.md|[^/]+\.md)$'; then
+          docs_only=true
+        fi
+        printf '%s\n' "$files"
+        echo "docs only: $docs_only"
+        echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"

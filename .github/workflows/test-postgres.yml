@@ -13,7 +13,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    uses: ./.github/workflows/docs-only.yml
+
+  # A required check: a skipped job counts as passed.
   test-postgres:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -34,9 +40,10 @@ jobs:
     - uses: actions/checkout@v6
 
     - name: Setup Go
-      uses: actions/setup-go@v6
+      id: go
+      uses: ./.github/actions/setup-go-cached
       with:
-        go-version-file: 'go.mod'
+        cache-name: postgres
 
     - name: Generate Backend
       run: make generate-backend
@@ -53,3 +60,12 @@ jobs:
       env:
         PGSQL_TEST: 'postgresql://username:password@localhost:5432/testdb?sslmode=disable'
       run: go test -count=1 -p 1 -tags "sqlite_stat4 sqlite_math_functions integration" ./pkg/database ./pkg/postgres
+
+    - name: Save Go cache
+      if: ${{ github.event_name == 'push' && steps.go.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ steps.go.outputs.key }}
