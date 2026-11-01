@@ -677,6 +677,23 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       vrMenu.setShowButton(showButton);
     }, [getPlayer, scene, vrTag]);
 
+    // These controls belong to the scene, not to a source or queue entry.
+    // biome-ignore lint/correctness/useExhaustiveDependencies: explicitly want to reset these whenever the scene changes
+    useEffect(() => {
+      const player = getPlayer();
+      if (!player) return;
+
+      player.defaultPlaybackRate(1);
+      player.playbackRate(1);
+      const options = player.abLoopPlugin.getOptions();
+      player.abLoopPlugin.setOptions({
+        ...options,
+        start: 0,
+        end: false,
+        enabled: false,
+      });
+    }, [getPlayer, scene.id]);
+
     // Player event handlers
     useEffect(() => {
       const player = getPlayer();
@@ -1152,13 +1169,14 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       }
     }, [getPlayer, updateInterfaceConfig, interfaceConfig?.autostartVideo]);
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: explicitly want to apply looping again whenever the scene changes
     useEffect(() => {
       const player = getPlayer();
       if (!player) return;
 
       player.loop(looping);
       interactiveClient.setLooping(looping);
-    }, [getPlayer, interactiveClient, looping]);
+    }, [getPlayer, interactiveClient, looping, scene.id]);
 
     useEffect(() => {
       const player = getPlayer();
