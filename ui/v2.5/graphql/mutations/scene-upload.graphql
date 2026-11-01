@@ -1,0 +1,9 @@
+mutation SceneUpload($file: Upload!, $library_path: String!) {
+  sceneUpload(file: $file, library_path: $library_path) {
+    id
+    path
+    scenes {
+      id
+    }
+  }
+}
