@@ -114,6 +114,7 @@ fragment ConfigInterfaceData on ConfigInterfaceResult {
     scaleUp
     resetZoomOnNav
     scrollMode
+    scrollToChangeImage
     scrollAttemptsBeforeChange
     disableAnimation
   }
