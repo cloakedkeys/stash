@@ -211,7 +211,7 @@ These options are typically not exposed in the UI and must be changed manually i
 | `no_proxy` | A list of domains for which the proxy must not be used. Default is all local LAN: localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12 |
 | `sequential_scanning` | Modifies behaviour of the scanning functionality to generate support files (previews/sprites/phash) at the same time as fingerprinting/screenshotting. Useful when scanning cached remote files. |
 | `trusted_proxies` | A list of trusted proxy IPs or CIDR ranges. If a request comes from a trusted proxy or if the request IP address is a local address, the `X-FORWARDED-FOR` header will be used to determine the client's real IP address. Default is empty (no trusted proxies). |
-| `trusted_origins` | A list of browser origins allowed to make changes and open GraphQL websockets from another site. Default is empty. Use exact origins, including scheme and port, without a path or trailing slash. Restart Stash after editing. Invalid entries prevent startup. See below. |
+| `trusted_origins` | A list of browser origins allowed to read responses, make changes, and open GraphQL websockets from another site. Default is empty. Use exact origins, including scheme and port, without a path or trailing slash. Restart Stash after editing. Invalid entries prevent startup. See below. |
 | `public_access` | By default, stash rejects any request from a public IP address. Setting this to true will allow requests from public IP addresses. Cannot be enabled when running in single-user mode. |
 | `public_whitelist` | A list of public IP addresses or subnets (in CIDR range format eg: `192.168.1.0/24`) that are allowed to access the system when `public_access` is disabled. |
 | `signed_url_expiry` | The expiry time for signed URLs, in seconds. Signed URLs are used when authentication is required. Defaults to 4 hours to accommodate long video playback sessions. |
@@ -228,7 +228,7 @@ The following environment variables are also supported:
 
 ### Trusted origins
 
-Stash refuses requests that change data when the browser identifies them as coming from another origin. Requests authenticated with a valid API key and tools that send neither `Origin` nor `Sec-Fetch-Site` remain allowed. Trusted origins do not bypass login or user permissions.
+Stash refuses requests that change data when the browser identifies them as coming from another origin. It also withholds CORS permission to read responses from other origins, even without a password. Requests authenticated with a valid API key and tools that send neither `Origin` nor `Sec-Fetch-Site` remain allowed. Trusted origins do not bypass login or user permissions.
 
 To allow an embedded page, plugin, or UI development server you trust, add its origin to `config.yml` and restart Stash:
 
@@ -239,6 +239,10 @@ trusted_origins:
 ```
 
 `pnpm start` serves the development UI on port 3000 and calls the backend directly (port 9999 by default). Add the actual development UI origin, including its port; another hostname or a port selected by Vite needs its own entry.
+
+If a site stops working because its browser requests cannot read Stash responses, add its exact origin here only if you trust it with access to your library. Alternatively, the integration can send a valid `ApiKey` header, including from a browser extension or userscript. Stash allows the preflight to ask to send this header, but the actual key must be valid before the response can be read.
+
+Stash's own pages, plugin pages, and JavaScript plugins served by Stash use the same origin and continue to work. Ordinary `<img>` and `<video>` embeds on other sites can still load without CORS. Reading those images or video frames through a canvas, or fetching them with cross-origin JavaScript, requires a trusted origin or a valid API key. An untrusted image drawn without CORS makes the canvas unreadable; an image or video explicitly loaded in CORS mode needs permission to load at all.
 
 Behind a reverse proxy, browsers sending `Sec-Fetch-Site: same-origin` work even if the proxy changes `Host`. Preserve this header. For older clients without it, preserve the original `Host` or add the public browser origin to `trusted_origins`. Stash does not infer trusted origins from forwarded headers.
 
