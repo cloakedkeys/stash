@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"strconv"
 	"testing"
 	"time"
@@ -436,6 +437,46 @@ func TestScrapedStudio_ToPartial(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestScrapedGetImage(t *testing.T) {
+	legacy := "data:image/png;base64,bGVnYWN5"
+	images := []string{"data:image/png;base64,Zmlyc3Q=", "data:image/png;base64,c2Vjb25k"}
+
+	for _, tt := range []struct {
+		name     string
+		image    *string
+		images   []string
+		excluded map[string]bool
+		want     []byte
+	}{
+		{name: "only Images", images: images, want: []byte("first")},
+		{name: "only Image", image: &legacy, want: []byte("legacy")},
+		{name: "both", image: &legacy, images: images, want: []byte("first")},
+		{name: "neither"},
+		{name: "empty Images", image: &legacy, images: []string{}, want: []byte("legacy")},
+		{name: "excluded Images", images: images, excluded: map[string]bool{"image": true}},
+		{name: "excluded Image", image: &legacy, excluded: map[string]bool{"image": true}},
+		{name: "excluded both", image: &legacy, images: images, excluded: map[string]bool{"image": true}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			studio := ScrapedStudio{Image: tt.image, Images: tt.images}
+			performer := ScrapedPerformer{Image: tt.image, Images: tt.images}
+			for _, subject := range []struct {
+				name     string
+				getImage func(context.Context, map[string]bool) ([]byte, error)
+			}{
+				{name: "studio", getImage: studio.GetImage},
+				{name: "performer", getImage: performer.GetImage},
+			} {
+				t.Run(subject.name, func(t *testing.T) {
+					got, err := subject.getImage(context.Background(), tt.excluded)
+					require.NoError(t, err)
+					assert.Equal(t, tt.want, got)
+				})
+			}
 		})
 	}
 }
