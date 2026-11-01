@@ -56,7 +56,7 @@ func TestRunScraperScriptReapsProcess(t *testing.T) {
 				// Windows cannot open an exited process once its handles are closed.
 				return
 			}
-			defer process.Release()
+			defer func() { _ = process.Release() }()
 			// On Unix, waiting again must fail because the scraper already reaped
 			// the child. On Windows, an unreleased handle lets this wait succeed.
 			if state, err := process.Wait(); err == nil {
