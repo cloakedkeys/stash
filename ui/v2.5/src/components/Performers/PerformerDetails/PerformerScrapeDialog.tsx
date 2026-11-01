@@ -215,10 +215,11 @@ export const PerformerScrapeDialog: React.FC<IPerformerScrapeDialogProps> = (
       props.scraped.disambiguation
     )
   );
-  const [aliases, setAliases] = useState<ScrapeResult<string>>(
-    new ScrapeResult<string>(
-      props.performer.alias_list?.join(", "),
-      props.scraped.aliases
+  const [aliases, setAliases] = useState<ScrapeResult<string[]>>(
+    new ScrapeResult<string[]>(
+      props.performer.alias_list,
+      props.scraped.alias_list ??
+        props.scraped.aliases?.split(",").map((a) => a.trim())
     )
   );
   const [birthdate, setBirthdate] = useState<ScrapeResult<string>>(
@@ -378,7 +379,7 @@ export const PerformerScrapeDialog: React.FC<IPerformerScrapeDialogProps> = (
     return {
       name: name.getNewValue() ?? "",
       disambiguation: disambiguation.getNewValue(),
-      aliases: aliases.getNewValue(),
+      alias_list: aliases.getNewValue(),
       birthdate: birthdate.getNewValue(),
       ethnicity: ethnicity.getNewValue(),
       country: country.getNewValue(),
@@ -419,7 +420,7 @@ export const PerformerScrapeDialog: React.FC<IPerformerScrapeDialogProps> = (
           result={disambiguation}
           onChange={(value) => setDisambiguation(value)}
         />
-        <ScrapedTextAreaRow
+        <ScrapedStringListRow
           field="aliases"
           title={intl.formatMessage({ id: "aliases" })}
           result={aliases}

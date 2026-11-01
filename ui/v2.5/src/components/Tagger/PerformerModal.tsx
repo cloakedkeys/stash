@@ -227,6 +227,7 @@ const PerformerModal: React.FC<IPerformerModalProps> = ({
       name: performer.name ?? "",
       disambiguation: performer.disambiguation ?? "",
       alias_list:
+        performer.alias_list ??
         performer.aliases?.split(",").map((a) => a.trim()) ?? undefined,
       gender: stringToGender(performer.gender ?? undefined, true),
       birthdate: performer.birthdate,
@@ -305,7 +306,10 @@ const PerformerModal: React.FC<IPerformerModalProps> = ({
         <div className="col-7">
           {maybeRenderField("name", performer.name)}
           {maybeRenderField("disambiguation", performer.disambiguation)}
-          {maybeRenderField("aliases", performer.aliases)}
+          {maybeRenderField(
+            "aliases",
+            performer.alias_list?.join(", ") ?? performer.aliases
+          )}
           {maybeRenderField(
             "gender",
             performer.gender

@@ -5,7 +5,35 @@ import (
 	"testing"
 
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestPostScrapePerformerAliases(t *testing.T) {
+	legacy := "Alice, Alina"
+	for _, tt := range []struct {
+		name       string
+		list       []string
+		wantList   []string
+		wantLegacy string
+	}{
+		{"legacy", nil, []string{"Alice", "Alina"}, legacy},
+		{"list", []string{"Alice", "Alice, Alina"}, []string{"Alice", "Alice, Alina"}, "Alice, Alice, Alina"},
+		{"empty list", []string{}, []string{}, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &postScraper{}
+			got, err := c.postScrapePerformer(context.Background(), models.ScrapedPerformer{
+				Aliases: &legacy, AliasList: tt.list,
+			}, true)
+			require.NoError(t, err)
+			p := got.(models.ScrapedPerformer)
+			assert.Equal(t, tt.wantList, p.AliasList)
+			require.NotNil(t, p.Aliases)
+			assert.Equal(t, tt.wantLegacy, *p.Aliases)
+		})
+	}
+}
 
 func TestPostScrapePerformerCareerLength(t *testing.T) {
 	ctx := context.Background()
