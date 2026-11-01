@@ -62,7 +62,7 @@ jobs:
       run: go test -count=1 -p 1 -tags "sqlite_stat4 sqlite_math_functions integration" ./pkg/database ./pkg/postgres
 
     - name: Save Go cache
-      if: ${{ github.event_name != 'never' && steps.go.outputs.cache-hit != 'true' }}
+      if: ${{ github.event_name == 'push' && steps.go.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v5
       with:
         path: |

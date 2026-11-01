@@ -97,7 +97,7 @@ jobs:
           ui/login/locales/
 
     - name: Save Go cache
-      if: ${{ github.event_name != 'never' && steps.go.outputs.cache-hit != 'true' }}
+      if: ${{ github.event_name == 'push' && steps.go.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v5
       with:
         path: |
@@ -136,7 +136,7 @@ jobs:
       run: make it
 
     - name: Save Go cache
-      if: ${{ github.event_name != 'never' && steps.go.outputs.cache-hit != 'true' }}
+      if: ${{ github.event_name == 'push' && steps.go.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v5
       with:
         path: |
