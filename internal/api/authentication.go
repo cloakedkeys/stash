@@ -217,6 +217,20 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 				u.Roles = models.Roles{models.RoleEnumAdmin}
 			}
 
+			if singleUserMode {
+				if apiKey := session.GetRequestApiKey(r); apiKey != "" {
+					// Check only for the origin exemption; keep using the default user.
+					if err := txn.WithReadTxn(ctx, txnMgr, func(ctx context.Context) error {
+						_, err := g.AuthenticateByAPIKey(ctx, apiKey)
+						return err
+					}); err != nil {
+						logger.Errorf("error checking API key for origin exemption: %v", err)
+					} else {
+						ctx = context.WithValue(ctx, authenticatedAPIKeyCtxKey, true)
+					}
+				}
+			}
+
 			if !singleUserMode {
 				// try to authenticate using api key first
 				apiKey := session.GetRequestApiKey(r)
@@ -251,6 +265,9 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 						httpError(w, r, "Invalid API key", http.StatusUnauthorized)
 						return
 					}
+
+					// Only a successfully checked key exempts a request from origin checks.
+					ctx = context.WithValue(ctx, authenticatedAPIKeyCtxKey, true)
 				} else if signedUser, signedErr := authenticateSignedRequest(ctx, r, txnMgr, g); signedErr != nil {
 					logger.Errorf("error authenticating signed request: %v", signedErr)
 					httpError(w, r, "internal server error", http.StatusInternalServerError)
