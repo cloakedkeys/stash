@@ -131,10 +131,12 @@ func requireThumbnailAlpha(t *testing.T, data []byte, alpha uint32) {
 	decoded, _, err := image.Decode(bytes.NewReader(data))
 	require.NoError(t, err)
 	require.Equal(t, image.Rect(0, 0, 16, 8), decoded.Bounds())
-	_, _, _, got := decoded.At(15, 4).RGBA()
-	require.Equal(t, alpha, got)
-	_, _, _, got = decoded.At(0, 4).RGBA()
-	require.Equal(t, uint32(65535), got, "black line stays opaque")
+	require.Equal(t, alpha, thumbnailAlphaAt(decoded, 15, 4))
+	require.Equal(t, uint32(65535), thumbnailAlphaAt(decoded, 0, 4), "black line stays opaque")
+}
+
+func thumbnailAlphaAt(img image.Image, x, y int) uint32 {
+	return uint32(color.Alpha16Model.Convert(img.At(x, y)).(color.Alpha16).A)
 }
 
 // This exercises GetThumbnail without requiring an installed ffmpeg. Any WebP
