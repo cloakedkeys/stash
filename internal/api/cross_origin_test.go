@@ -16,6 +16,7 @@ import (
 
 	gqlTransport "github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/websocket"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/models"
@@ -86,7 +87,8 @@ func originTestRouter(t *testing.T, single, setup bool) (http.Handler, *apiVoice
 	r.Use(authenticateHandlerWithServices(tx, cfg, func() UserAuthenticator { return users }, sessions))
 	r.Use(p.corsMiddleware)
 	r.Use(p.middleware)
-	r.Handle(gqlEndpoint, gql)
+	r.Use(middleware.StripSlashes)
+	r.With(p.getAsUnsafe).Handle(gqlEndpoint, gql)
 	r.HandleFunc("/scene/*", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -303,11 +305,13 @@ func TestCrossOriginGraphQLGET(t *testing.T) {
 			wrongKeyStatus = http.StatusForbidden
 		}
 		for _, tc := range []struct {
-			name, origin, fetchSite, key string
-			want                         int
+			name, path, origin, fetchSite, key string
+			want                               int
 		}{
 			{name: "cross-site", origin: "https://evil.example", fetchSite: "cross-site", want: 403},
 			{name: "same-site", origin: "https://sub.stash.test", fetchSite: "same-site", want: 403},
+			{name: "trailing slash", path: "/graphql/", origin: "https://evil.example", fetchSite: "cross-site", want: 403},
+			{name: "trailing slash, same-origin", path: "/graphql/", origin: "http://stash.test", fetchSite: "same-origin", want: 200},
 			{name: "fetch metadata only", fetchSite: "cross-site", want: 403},
 			{name: "origin fallback", origin: "https://evil.example", want: 403},
 			{name: "trusted", origin: "https://trusted.example", fetchSite: "cross-site", want: 200},
@@ -319,7 +323,11 @@ func TestCrossOriginGraphQLGET(t *testing.T) {
 			t.Run(tc.name+"/single="+strconv.FormatBool(single), func(t *testing.T) {
 				isolateOriginTestLimiters(t)
 				router, _, cookie := originTestRouter(t, single, false)
-				req := httptest.NewRequest(http.MethodGet, "http://stash.test/graphql?query="+url.QueryEscape(`{ __typename }`), nil)
+				path := tc.path
+				if path == "" {
+					path = gqlEndpoint
+				}
+				req := httptest.NewRequest(http.MethodGet, "http://stash.test"+path+"?query="+url.QueryEscape(`{ __typename }`), nil)
 				req.RemoteAddr = "127.0.0.1:12345"
 				req.Header.Set("Origin", tc.origin)
 				req.Header.Set("Sec-Fetch-Site", tc.fetchSite)

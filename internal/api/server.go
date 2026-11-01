@@ -232,7 +232,7 @@ func Initialize() (*Server, error) {
 	gqlHandler := visitedPluginHandler(dataloaders.Middleware(http.HandlerFunc(gqlHandlerFunc)))
 	pluginCache.RegisterGQLHandler(gqlHandler)
 
-	r.HandleFunc(gqlEndpoint, gqlHandlerFunc)
+	r.With(originProtection.getAsUnsafe).HandleFunc(gqlEndpoint, gqlHandlerFunc)
 	r.HandleFunc(playgroundEndpoint, func(w http.ResponseWriter, r *http.Request) {
 		setPageSecurityHeaders(w, r, pluginCache.ListPlugins())
 		endpoint := getProxyPrefix(r) + gqlEndpoint
