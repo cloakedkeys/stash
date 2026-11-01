@@ -305,6 +305,7 @@ export const ImageEditPanel: React.FC<IProps> = ({
     try {
       const result = await queryScrapeImageURL(url);
       if (!result.data?.scrapeImageURL) {
+        Toast.success("No images found");
         return;
       }
       setScrapedImage(result.data.scrapeImageURL);
