@@ -11,8 +11,8 @@ import { SettingSection } from "./SettingSection";
 
 interface IStashProps {
   index: number;
-  stash: GQL.StashConfig;
-  onSave: (instance: GQL.StashConfig) => void;
+  stash: GQL.StashConfigInput;
+  onSave: (instance: GQL.StashConfigInput) => void;
   onEdit: () => void;
   onDelete: () => void;
 }
@@ -37,7 +37,7 @@ const Stash: React.FC<IStashProps> = ({
 
   return (
     <Row className={`stash-row align-items-center ${classAdd}`}>
-      <Form.Label column md={5}>
+      <Form.Label column md={3}>
         {stash.path}
       </Form.Label>
       <Col md={2} xs={3} className="col form-label">
@@ -80,7 +80,20 @@ const Stash: React.FC<IStashProps> = ({
           />
         </div>
       </Col>
-      <Col className="justify-content-end" xs={3} md={1}>
+
+      <Col md={2} xs={3} className="col-form-label">
+        <div>
+          <h6 className="d-md-none">
+            <FormattedMessage id="stories" />
+          </h6>
+          <BooleanSetting
+            id={`stash-include-story-${index}`}
+            checked={stash.includeStory ?? false}
+            onChange={(v) => handleInput("includeStory", v)}
+          />
+        </div>
+      </Col>
+      <Col className="justify-content-end" xs={12} md={1}>
         <Dropdown className="text-right">
           <Dropdown.Toggle
             variant="minimal"
@@ -104,8 +117,8 @@ const Stash: React.FC<IStashProps> = ({
 };
 
 interface IStashConfigurationProps {
-  stashes: GQL.StashConfig[];
-  setStashes: (v: GQL.StashConfig[]) => void;
+  stashes: GQL.StashConfigInput[];
+  setStashes: (v: GQL.StashConfigInput[]) => void;
 }
 
 const StashConfiguration: React.FC<IStashConfigurationProps> = ({
@@ -127,7 +140,7 @@ const StashConfiguration: React.FC<IStashConfigurationProps> = ({
     setIsCreating(true);
   }
 
-  const handleSave = (index: number, stash: GQL.StashConfig) =>
+  const handleSave = (index: number, stash: GQL.StashConfigInput) =>
     setStashes(stashes.map((s, i) => (i === index ? stash : s)));
 
   return (
@@ -145,6 +158,7 @@ const StashConfiguration: React.FC<IStashConfigurationProps> = ({
                   excludeVideo: false,
                   excludeAudio: false,
                   excludeImage: false,
+                  includeStory: false,
                 },
               ]);
             setIsCreating(false);
@@ -178,7 +192,7 @@ const StashConfiguration: React.FC<IStashConfigurationProps> = ({
       <div className="content" id="stash-table">
         {stashes.length > 0 && (
           <Row className="d-none d-md-flex">
-            <h6 className="col-md-5">
+            <h6 className="col-md-3">
               <FormattedMessage id="path" />
             </h6>
             <h6 className="col-md-2 col-3">
@@ -189,6 +203,9 @@ const StashConfiguration: React.FC<IStashConfigurationProps> = ({
             </h6>
             <h6 className="col-md-2 col-3">
               <FormattedMessage id="images" />
+            </h6>
+            <h6 className="col-md-2 col-3">
+              <FormattedMessage id="stories" />
             </h6>
           </Row>
         )}

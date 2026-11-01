@@ -12,6 +12,28 @@ type StashConfigInput struct {
 	ExcludeVideo bool   `json:"excludeVideo"`
 	ExcludeAudio bool   `json:"excludeAudio"`
 	ExcludeImage bool   `json:"excludeImage"`
+	// nil when left out, as by a client from before stories; see KeepIncludeStory
+	IncludeStory *bool `json:"includeStory"`
+}
+
+// KeepIncludeStory fills in IncludeStory where the input leaves it out: a library keeps
+// its current value, and a new library leaves stories out. Otherwise saving the library
+// list from an older client or script would switch stories off, and the next clean
+// would remove them.
+func KeepIncludeStory(inputs []*StashConfigInput, current StashConfigs) {
+	for _, in := range inputs {
+		if in == nil || in.IncludeStory != nil {
+			continue
+		}
+		v := false
+		for _, s := range current {
+			if s != nil && s.Path == in.Path {
+				v = s.IncludeStory
+				break
+			}
+		}
+		in.IncludeStory = &v
+	}
 }
 
 type StashConfig struct {
@@ -19,6 +41,9 @@ type StashConfig struct {
 	ExcludeVideo bool   `json:"excludeVideo"`
 	ExcludeAudio bool   `json:"excludeAudio"`
 	ExcludeImage bool   `json:"excludeImage"`
+	// stories are left out unless a library includes them, since libraries often hold
+	// text files, such as readmes, that aren't stories
+	IncludeStory bool `json:"includeStory"`
 }
 
 type StashConfigs []*StashConfig

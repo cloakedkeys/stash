@@ -16,6 +16,7 @@ import (
 
 	gqlTransport "github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/websocket"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/models"
@@ -86,11 +87,13 @@ func originTestRouter(t *testing.T, single, setup bool) (http.Handler, *apiVoice
 	r.Use(authenticateHandlerWithServices(tx, cfg, func() UserAuthenticator { return users }, sessions))
 	r.Use(p.corsMiddleware)
 	r.Use(p.middleware)
-	r.Handle(gqlEndpoint, gql)
+	r.Use(middleware.StripSlashes)
+	r.With(p.getAsUnsafe).Handle(gqlEndpoint, gql)
 	r.HandleFunc("/scene/*", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	r.Post(loginEndpoint, handleLoginPost(sessions, cfg))
+	r.HandleFunc(logoutEndpoint, handleLogout(sessions, func(context.Context) (bool, error) { return !single, nil }))
 	login := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("username=reader&password=reader-password"))
 	login.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -261,8 +264,10 @@ func TestCrossOriginSetupLoginAndGET(t *testing.T) {
 			{"API same-origin", "POST", "/graphql", "http://stash.test", "same-origin", 200},
 			{"API cross-site", "POST", "/graphql", "https://evil.example", "cross-site", 403},
 			{"preflight", "OPTIONS", "/graphql", "https://evil.example", "cross-site", 200},
-			{"query GET", "GET", "/graphql?query=" + url.QueryEscape(`{ __typename }`), "https://evil.example", "cross-site", 200},
-			{"mutation GET", "GET", "/graphql?query=" + url.QueryEscape(originTestMutation), "https://evil.example", "cross-site", 406},
+			{"query GET", "GET", "/graphql?query=" + url.QueryEscape(`{ __typename }`), "https://evil.example", "cross-site", 403},
+			{"mutation GET", "GET", "/graphql?query=" + url.QueryEscape(originTestMutation), "https://evil.example", "cross-site", 403},
+			{"same-origin query GET", "GET", "/graphql?query=" + url.QueryEscape(`{ __typename }`), "http://stash.test", "same-origin", 200},
+			{"same-origin mutation GET", "GET", "/graphql?query=" + url.QueryEscape(originTestMutation), "http://stash.test", "same-origin", 406},
 		} {
 			t.Run(tc.name+"/setup="+strconv.FormatBool(setup), func(t *testing.T) {
 				router, store, _ := originTestRouter(t, true, setup)
@@ -291,6 +296,98 @@ func TestCrossOriginSetupLoginAndGET(t *testing.T) {
 	}
 }
 
+// A query can run a scraper, and any website can make a browser send a GET.
+func TestCrossOriginGraphQLGET(t *testing.T) {
+	isolateOriginTestLimiters(t)
+	for _, single := range []bool{true, false} {
+		wrongKeyStatus := http.StatusUnauthorized
+		if single {
+			wrongKeyStatus = http.StatusForbidden
+		}
+		for _, tc := range []struct {
+			name, path, origin, fetchSite, key string
+			want                               int
+		}{
+			{name: "cross-site", origin: "https://evil.example", fetchSite: "cross-site", want: 403},
+			{name: "same-site", origin: "https://sub.stash.test", fetchSite: "same-site", want: 403},
+			{name: "trailing slash", path: "/graphql/", origin: "https://evil.example", fetchSite: "cross-site", want: 403},
+			{name: "trailing slash, same-origin", path: "/graphql/", origin: "http://stash.test", fetchSite: "same-origin", want: 200},
+			{name: "fetch metadata only", fetchSite: "cross-site", want: 403},
+			{name: "origin fallback", origin: "https://evil.example", want: 403},
+			{name: "trusted", origin: "https://trusted.example", fetchSite: "cross-site", want: 200},
+			{name: "valid key", origin: "https://evil.example", fetchSite: "cross-site", key: "admin-key", want: 200},
+			{name: "wrong key", origin: "https://evil.example", fetchSite: "cross-site", key: "wrong-key", want: wrongKeyStatus},
+			{name: "same-origin", origin: "http://stash.test", fetchSite: "same-origin", want: 200},
+			{name: "no browser headers", want: 200},
+		} {
+			t.Run(tc.name+"/single="+strconv.FormatBool(single), func(t *testing.T) {
+				isolateOriginTestLimiters(t)
+				router, _, cookie := originTestRouter(t, single, false)
+				path := tc.path
+				if path == "" {
+					path = gqlEndpoint
+				}
+				req := httptest.NewRequest(http.MethodGet, "http://stash.test"+path+"?query="+url.QueryEscape(`{ __typename }`), nil)
+				req.RemoteAddr = "127.0.0.1:12345"
+				req.Header.Set("Origin", tc.origin)
+				req.Header.Set("Sec-Fetch-Site", tc.fetchSite)
+				req.Header.Set(session.ApiKeyHeader, tc.key)
+				if !single && tc.key == "" {
+					// A valid session must not exempt cross-site requests.
+					req.AddCookie(cookie)
+				}
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, req)
+				require.Equal(t, tc.want, w.Code, w.Body.String())
+				if tc.want == http.StatusOK {
+					require.Contains(t, w.Body.String(), "__typename")
+				}
+			})
+		}
+	}
+}
+
+func TestLogoutMethods(t *testing.T) {
+	isolateOriginTestLimiters(t)
+	for _, tc := range []struct {
+		name, method, origin, fetchSite string
+		single                          bool
+		want                            int
+		location                        string
+	}{
+		{name: "GET from another site", method: "GET", origin: "https://evil.example", fetchSite: "cross-site", want: 405},
+		{name: "GET from the same site", method: "GET", origin: "http://stash.test", fetchSite: "same-origin", want: 405},
+		{name: "GET with no browser headers", method: "GET", want: 405},
+		{name: "POST from another site", method: "POST", origin: "https://evil.example", fetchSite: "cross-site", want: 403},
+		{name: "POST", method: "POST", origin: "http://stash.test", fetchSite: "same-origin", want: 303, location: "/login"},
+		{name: "POST with no password", method: "POST", origin: "http://stash.test", fetchSite: "same-origin", single: true, want: 303, location: "/"},
+		{name: "POST with no browser headers", method: "POST", want: 303, location: "/login"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isolateOriginTestLimiters(t)
+			router, _, cookie := originTestRouter(t, tc.single, false)
+			req := httptest.NewRequest(tc.method, "http://stash.test/logout", nil)
+			req.RemoteAddr = "127.0.0.1:12345"
+			req.Header.Set("Origin", tc.origin)
+			req.Header.Set("Sec-Fetch-Site", tc.fetchSite)
+			req.AddCookie(cookie)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			require.Equal(t, tc.want, w.Code, w.Body.String())
+			require.Equal(t, tc.location, w.Header().Get("Location"))
+			// Only a successful logout may end the session.
+			ended := false
+			for _, c := range w.Result().Cookies() {
+				ended = ended || c.MaxAge < 0
+			}
+			require.Equal(t, tc.want == http.StatusSeeOther, ended)
+			if tc.want == http.StatusMethodNotAllowed {
+				require.Equal(t, http.MethodPost, w.Header().Get("Allow"))
+			}
+		})
+	}
+}
+
 func TestCrossOriginInvalidTrustedOrigins(t *testing.T) {
 	for _, origin := range []string{"example.com", "https://example.com/", "https://example.com/path", "https://example.com?query", "https://example.com#fragment"} {
 		t.Run(origin, func(t *testing.T) {
@@ -305,17 +402,17 @@ func TestCrossOriginResponseAccess(t *testing.T) {
 	for _, single := range []bool{true, false} {
 		for _, tc := range []struct {
 			name, origin, fetchSite, key, preflightHeaders string
-			post, queryKey                                 bool
+			post, queryKey, refused                        bool
 			wantOrigin                                     string
 		}{
-			{name: "untrusted", origin: "https://evil.example", fetchSite: "cross-site"},
-			{name: "null origin", origin: "null", fetchSite: "cross-site"},
+			{name: "untrusted", origin: "https://evil.example", fetchSite: "cross-site", refused: true},
+			{name: "null origin", origin: "null", fetchSite: "cross-site", refused: true},
 			{name: "trusted", origin: "https://trusted.example", fetchSite: "cross-site", wantOrigin: "https://trusted.example"},
 			{name: "development UI", origin: "http://localhost:3000", fetchSite: "same-site", post: true, wantOrigin: "http://localhost:3000"},
 			{name: "valid key", origin: "https://evil.example", fetchSite: "cross-site", key: "admin-key", wantOrigin: "https://evil.example"},
 			{name: "extension key", origin: "chrome-extension://test-extension", key: "admin-key", wantOrigin: "chrome-extension://test-extension"},
 			{name: "valid query key", origin: "https://evil.example", fetchSite: "cross-site", key: "admin-key", queryKey: true, wantOrigin: "https://evil.example"},
-			{name: "wrong key", origin: "https://evil.example", fetchSite: "cross-site", key: "wrong-key"},
+			{name: "wrong key", origin: "https://evil.example", fetchSite: "cross-site", key: "wrong-key", refused: true},
 			{name: "key preflight", origin: "https://evil.example", preflightHeaders: "content-type, aPiKeY", wantOrigin: "https://evil.example"},
 			{name: "untrusted preflight", origin: "https://evil.example", preflightHeaders: "Content-Type"},
 			{name: "similar header preflight", origin: "https://evil.example", preflightHeaders: "X-ApiKey"},
@@ -351,6 +448,9 @@ func TestCrossOriginResponseAccess(t *testing.T) {
 				w := httptest.NewRecorder()
 				router.ServeHTTP(w, req)
 				wantStatus := http.StatusOK
+				if tc.refused {
+					wantStatus = http.StatusForbidden
+				}
 				if !single && tc.key == "wrong-key" {
 					wantStatus = http.StatusUnauthorized
 				}

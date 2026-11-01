@@ -316,13 +316,15 @@ export const MainNavbar: React.FC = () => {
   function maybeRenderLogout() {
     if (SessionUtils.isLoggedIn()) {
       return (
-        <Button
-          className="minimal logout-button d-flex align-items-center"
-          href={`${baseURL}logout`}
-          title={intl.formatMessage({ id: "actions.logout" })}
-        >
-          <Icon icon={faSignOutAlt} />
-        </Button>
+        <form className="d-flex" method="post" action={`${baseURL}logout`}>
+          <Button
+            type="submit"
+            className="minimal logout-button d-flex align-items-center"
+            title={intl.formatMessage({ id: "actions.logout" })}
+          >
+            <Icon icon={faSignOutAlt} />
+          </Button>
+        </form>
       );
     }
   }

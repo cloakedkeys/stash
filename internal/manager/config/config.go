@@ -78,6 +78,7 @@ const (
 	AudioExtensions            = "audio_extensions"
 	ImageExtensions            = "image_extensions"
 	GalleryExtensions          = "gallery_extensions"
+	StoryExtensions            = "story_extensions"
 	CreateGalleriesFromFolders = "create_galleries_from_folders"
 
 	// CalculateMD5 is the config key used to determine if MD5 should be calculated
@@ -258,6 +259,7 @@ const (
 	ImageLightboxScaleUp                    = "image_lightbox.scale_up"
 	ImageLightboxResetZoomOnNav             = "image_lightbox.reset_zoom_on_nav"
 	ImageLightboxScrollModeKey              = "image_lightbox.scroll_mode"
+	ImageLightboxScrollToChangeImage        = "image_lightbox.scroll_to_change_image"
 	ImageLightboxScrollAttemptsBeforeChange = "image_lightbox.scroll_attempts_before_change"
 	ImageLightboxDisableAnimation           = "image_lightbox.disable_animation"
 
@@ -342,6 +344,7 @@ var (
 	defaultAudioExtensions   = []string{"mp3", "mpa", "m4a", "m4b", "aac", "flac", "wav", "aif", "aiff", "ogg", "oga", "opus", "wma", "ape", "mka"}
 	defaultImageExtensions   = []string{"png", "jpg", "jpeg", "gif", "webp", "avif", "jxl"}
 	defaultGalleryExtensions = []string{"zip", "cbz"}
+	defaultStoryExtensions   = []string{"txt", "text", "md", "markdown"}
 	defaultMenuItems         = []string{"scenes", "audios", "images", "groups", "markers", "galleries", "folders", "performers", "voice-actors", "studios", "tags"}
 )
 
@@ -932,6 +935,16 @@ func (i *Config) GetAudioExtensions() []string {
 	ret := i.getStringSlice(AudioExtensions)
 	if len(ret) == 0 {
 		ret = defaultAudioExtensions
+	}
+	return ret
+}
+
+// GetStoryExtensions returns the extensions of the text files that are stories, in the
+// libraries that include stories. The defaults are plain text, which the reader shows as it is.
+func (i *Config) GetStoryExtensions() []string {
+	ret := i.getStringSlice(StoryExtensions)
+	if len(ret) == 0 {
+		ret = defaultStoryExtensions
 	}
 	return ret
 }
@@ -1527,7 +1540,8 @@ func (i *Config) GetImageLightboxOptions() ConfigImageLightboxResult {
 	delay := i.getSlideshowDelay()
 
 	ret := ConfigImageLightboxResult{
-		SlideshowDelay: &delay,
+		SlideshowDelay:      &delay,
+		ScrollToChangeImage: true,
 	}
 
 	if v := i.with(ImageLightboxDisplayModeKey); v != nil {
@@ -1545,6 +1559,9 @@ func (i *Config) GetImageLightboxOptions() ConfigImageLightboxResult {
 	if v := i.with(ImageLightboxScrollModeKey); v != nil {
 		mode := ImageLightboxScrollMode(v.String(ImageLightboxScrollModeKey))
 		ret.ScrollMode = &mode
+	}
+	if v := i.with(ImageLightboxScrollToChangeImage); v != nil {
+		ret.ScrollToChangeImage = v.Bool(ImageLightboxScrollToChangeImage)
 	}
 	if v := i.with(ImageLightboxScrollAttemptsBeforeChange); v != nil {
 		ret.ScrollAttemptsBeforeChange = v.Int(ImageLightboxScrollAttemptsBeforeChange)

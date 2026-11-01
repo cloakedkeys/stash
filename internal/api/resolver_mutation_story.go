@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 )
@@ -33,8 +34,12 @@ func (r *mutationResolver) checkStoryFile(ctx context.Context, fileID models.Fil
 
 	// videos, audio and images have their own objects
 	f := files[0]
-	if _, ok := f.(*models.BaseFile); !ok {
+	if _, ok := f.(*models.BaseFile); !ok || !manager.IsStoryFile(f.Base().Path) {
 		return fmt.Errorf("%s is not a text file", f.Base().Path)
+	}
+	// a clean would remove a story whose file is in a library that doesn't include stories
+	if !manager.UseAsStory(f.Base().Path) {
+		return fmt.Errorf("%s is in a library that doesn't include stories", f.Base().Path)
 	}
 
 	isPrimary, err := r.repository.File.IsPrimary(ctx, fileID)
