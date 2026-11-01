@@ -29,6 +29,7 @@ import (
 	"github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
+	"github.com/stashapp/stash/pkg/story"
 	"github.com/stashapp/stash/pkg/studio"
 	"github.com/stashapp/stash/pkg/tag"
 	"github.com/stashapp/stash/pkg/utils"
@@ -53,6 +54,7 @@ type ExportTask struct {
 	tags             *exportSpec
 	studios          *exportSpec
 	galleries        *exportSpec
+	stories          *exportSpec
 
 	includeDependencies bool
 
@@ -75,6 +77,7 @@ type ExportObjectsInput struct {
 	Groups              *ExportObjectTypeInput `json:"groups"`
 	Movies              *ExportObjectTypeInput `json:"movies"` // deprecated
 	Galleries           *ExportObjectTypeInput `json:"galleries"`
+	Stories             *ExportObjectTypeInput `json:"stories"`
 	IncludeDependencies *bool                  `json:"includeDependencies"`
 }
 
@@ -125,6 +128,7 @@ func CreateExportTask(a models.HashAlgorithm, input ExportObjectsInput) *ExportT
 		tags:                newExportSpec(input.Tags),
 		studios:             newExportSpec(input.Studios),
 		galleries:           newExportSpec(input.Galleries),
+		stories:             newExportSpec(input.Stories),
 		includeDependencies: includeDeps,
 	}
 }
@@ -189,6 +193,7 @@ func (t *ExportTask) Start(ctx context.Context, wg *sync.WaitGroup) {
 		t.ExportAudios(ctx, workerCount)
 		t.ExportImages(ctx, workerCount)
 		t.ExportGalleries(ctx, workerCount)
+		t.ExportStories(ctx)
 		t.ExportGroups(ctx, workerCount)
 		if err := t.exportVoiceActors(ctx); err != nil {
 			return err
@@ -249,6 +254,7 @@ func (t *ExportTask) zipFiles(w io.Writer) error {
 
 	walkWarn(t.json.json.Tags, t.zipWalkFunc(u.json.Tags, z))
 	walkWarn(t.json.json.Galleries, t.zipWalkFunc(u.json.Galleries, z))
+	walkWarn(t.json.json.Stories, t.zipWalkFunc(u.json.Stories, z))
 	walkWarn(filepath.Join(t.baseDir, "voice_actors"), t.zipWalkFunc("voice_actors", z))
 	walkWarn(t.json.json.Performers, t.zipWalkFunc(u.json.Performers, z))
 	walkWarn(t.json.json.Studios, t.zipWalkFunc(u.json.Studios, z))
@@ -1154,6 +1160,80 @@ func (t *ExportTask) exportGallery(ctx context.Context, wg *sync.WaitGroup, jobC
 			logger.Errorf("[galleries] <%s> failed to save json: %v", g.DisplayName(), err)
 		}
 	}
+}
+
+// ExportStories writes each story, its files and, with dependencies, its tags. Stories
+// are small, so one at a time is enough.
+func (t *ExportTask) ExportStories(ctx context.Context) {
+	r := t.repository
+
+	var stories []*models.Story
+	var err error
+	switch {
+	case t.full || (t.stories != nil && t.stories.all):
+		all := -1
+		var result *models.StoryQueryResult
+		result, err = r.Story.Query(ctx, models.StoryQueryOptions{
+			QueryOptions: models.QueryOptions{FindFilter: &models.FindFilterType{PerPage: &all}},
+		})
+		if err == nil {
+			stories, err = result.Resolve(ctx)
+		}
+	case t.stories != nil && len(t.stories.IDs) > 0:
+		stories, err = r.Story.FindMany(ctx, t.stories.IDs)
+	}
+	if err != nil {
+		logger.Errorf("[stories] failed to fetch stories: %v", err)
+		return
+	}
+
+	logger.Info("[stories] exporting")
+	startTime := time.Now()
+
+	for i, s := range stories {
+		if (i % 100) == 0 {
+			logger.Progressf("[stories] %d of %d", i+1, len(stories))
+		}
+		if err := t.exportStory(ctx, s); err != nil {
+			logger.Errorf("[stories] <%d> %v", s.ID, err)
+		}
+	}
+
+	logger.Infof("[stories] export complete in %s.", time.Since(startTime))
+}
+
+func (t *ExportTask) exportStory(ctx context.Context, s *models.Story) error {
+	r := t.repository
+	if err := s.LoadRelationships(ctx, r.Story); err != nil {
+		return fmt.Errorf("loading relationships: %w", err)
+	}
+
+	newStoryJSON := story.ToBasicJSON(s)
+
+	tags, err := r.Tag.FindMany(ctx, s.TagIDs.List())
+	if err != nil {
+		return fmt.Errorf("getting tags: %w", err)
+	}
+	newStoryJSON.Tags = tag.GetNames(tags)
+
+	for _, f := range s.Files.List() {
+		t.exportFile(f)
+	}
+
+	if t.includeDependencies {
+		t.tags.IDs = sliceutil.AppendUniques(t.tags.IDs, s.TagIDs.List())
+	}
+
+	basename := s.Title
+	if len(newStoryJSON.Files) > 0 {
+		basename = filepath.Base(newStoryJSON.Files[0])
+	}
+	// the id keeps stories with the same name apart
+	fn := newStoryJSON.Filename(basename, strconv.Itoa(s.ID))
+	if err := t.json.saveStory(fn, newStoryJSON); err != nil {
+		return fmt.Errorf("saving json: %w", err)
+	}
+	return nil
 }
 
 func (t *ExportTask) ExportPerformers(ctx context.Context, workers int) {

@@ -388,6 +388,7 @@ input ExportObjectsInput {
   groups: ExportObjectTypeInput
   movies: ExportObjectTypeInput @deprecated(reason: "Use groups instead")
   galleries: ExportObjectTypeInput
+  stories: ExportObjectTypeInput
   includeDependencies: Boolean
 }
 
