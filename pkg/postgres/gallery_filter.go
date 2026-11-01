@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"regexp"
 
 	"github.com/stashapp/stash/pkg/models"
 )
@@ -253,22 +252,24 @@ func (qb *galleryFilterHandler) pathCriterionHandler(c *models.StringCriterionIn
 					clause2 := makeClause(folderPathColumn+" NOT ILIKE ? ESCAPE ''", c.Value)
 					f.whereClauses = append(f.whereClauses, orClauses(clause, clause2))
 				case models.CriterionModifierMatchesRegex:
-					if _, err := regexp.Compile(c.Value); err != nil {
+					translated, err := translateRegex(c.Value)
+					if err != nil {
 						f.setError(err)
 						return
 					}
 					filepathColumn := fmt.Sprintf("%s || '%s' || %s", pathColumn, string(filepath.Separator), basenameColumn)
-					clause := makeClause(fmt.Sprintf("%s IS NOT NULL AND %s IS NOT NULL AND regex_match(%s, ?)", pathColumn, basenameColumn, filepathColumn), c.Value)
-					clause2 := makeClause(fmt.Sprintf("%s IS NOT NULL AND regex_match(%[1]s, ?)", folderPathColumn), c.Value)
+					clause := makeClause(fmt.Sprintf("%s IS NOT NULL AND %s IS NOT NULL AND (%s) ~ ?", pathColumn, basenameColumn, filepathColumn), translated)
+					clause2 := makeClause(fmt.Sprintf("%s IS NOT NULL AND %[1]s ~ ?", folderPathColumn), translated)
 					f.whereClauses = append(f.whereClauses, orClauses(clause, clause2))
 				case models.CriterionModifierNotMatchesRegex:
-					if _, err := regexp.Compile(c.Value); err != nil {
+					translated, err := translateRegex(c.Value)
+					if err != nil {
 						f.setError(err)
 						return
 					}
 					filepathColumn := fmt.Sprintf("%s || '%s' || %s", pathColumn, string(filepath.Separator), basenameColumn)
-					f.addWhere(fmt.Sprintf("%s IS NULL OR %s IS NULL OR NOT regex_match(%s, ?)", pathColumn, basenameColumn, filepathColumn), c.Value)
-					f.addWhere(fmt.Sprintf("%s IS NULL OR NOT regex_match(%[1]s, ?)", folderPathColumn), c.Value)
+					f.addWhere(fmt.Sprintf("%s IS NULL OR %s IS NULL OR (%s) !~ ?", pathColumn, basenameColumn, filepathColumn), translated)
+					f.addWhere(fmt.Sprintf("%s IS NULL OR %[1]s !~ ?", folderPathColumn), translated)
 				case models.CriterionModifierIsNull:
 					f.addWhere(fmt.Sprintf("%s IS NULL OR TRIM(%[1]s) = '' OR %s IS NULL OR TRIM(%[2]s) = ''", pathColumn, basenameColumn))
 					f.addWhere(fmt.Sprintf("%s IS NULL OR TRIM(%[1]s) = ''", folderPathColumn))

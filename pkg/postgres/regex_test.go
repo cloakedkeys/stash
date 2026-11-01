@@ -1,0 +1,57 @@
+package postgres
+
+import (
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestTranslateRegex(t *testing.T) {
+	for pattern, want := range map[string]string{
+		"two words":   "two words",
+		`\.mp4$`:      `\u002emp4\Z`,
+		"MKV|MP4":     "M(?:KV|P4)",
+		"(?i)a":       "[Aa]",
+		"a.b":         `a[^\u000a]b`,
+		"(?s)a.b":     "a.b",
+		"(?P<y>a)":    "(?:a)",
+		"a{2,3}":      "(?:a){2,3}",
+		"a{2,}":       "(?:a){2,}",
+		"a{300}":      "(?:a){255}(?:a){45,45}",
+		"a{300,}":     "(?:a){255}(?:a){45,}",
+		"a{0,300}":    "(?:a){0,255}(?:a){0,45}",
+		"a{300,600}":  "(?:a){255}(?:a){45,255}(?:a){0,90}",
+		"a+?":         "(?:a)+",
+		`\x{1F600}`:   `\U0001f600`,
+		`\x00`:        `\Za`,
+		"[\\x00]":     `\Za`,
+		`[^\x00-\n]b`: `[\u000b-\U0010ffff]b`,
+	} {
+		got, err := translateRegex(pattern)
+		require.NoError(t, err, pattern)
+		assert.Equal(t, want, got, pattern)
+	}
+}
+
+func TestTranslateRegexInvalid(t *testing.T) {
+	for _, pattern := range []string{"*two words", "(", "a{1001}", `\p{NoSuchClass}`, `(?=a)`, "\xff"} {
+		_, err := translateRegex(pattern)
+		assert.Error(t, err, pattern)
+
+		// the same patterns as Go's own regular expressions, and with the same message
+		_, goErr := regexp.Compile(pattern)
+		require.Error(t, goErr, pattern)
+		assert.Equal(t, goErr.Error(), err.Error(), pattern)
+	}
+}
+
+func TestTranslateRegexTooComplex(t *testing.T) {
+	// valid in Go, but much too large once written out
+	pattern := strings.Repeat(`\pL`, 10)
+	_, err := translateRegex(pattern)
+	require.ErrorIs(t, err, errRegexTooComplex)
+	assert.Contains(t, err.Error(), pattern, "the error names the pattern")
+}
