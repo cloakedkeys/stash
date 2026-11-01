@@ -85,6 +85,11 @@ func newVerifyFilter(c *config.Config) *verifyFilter {
 }
 
 func (f *verifyFilter) Accept(ctx context.Context, path string, info fs.FileInfo, zipFilePath string) bool {
+	if fsutil.IsSynologyMetadata(path) || (zipFilePath != "" && fsutil.IsSynologyMetadata(zipFilePath)) {
+		logger.Infof("Synology metadata is excluded. Marking as missing: %q", path)
+		return false
+	}
+
 	//  #1102 - clean anything in generated path
 	generatedPath := f.generatedPath
 
