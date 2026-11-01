@@ -1,3 +1,7 @@
+import {
+  PageListShortcutsContext,
+  usePageListShortcuts,
+} from "../../List/keyboardShortcuts";
 import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useEffect, useMemo, useState } from "react";
 import { Button, Tabs, Tab, Col, Row } from "react-bootstrap";
@@ -352,15 +356,16 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
 
     const canModify = useCanModify();
 
+    const pageListShortcuts = usePageListShortcuts({
+      onEdit: canModify ? () => toggleEditing() : undefined,
+      onFavorite: () => setFavorite(!performer.favorite),
+    });
+
     // set up hotkeys
     useEffect(() => {
-      if (canModify) Mousetrap.bind("e", () => toggleEditing());
-      Mousetrap.bind("f", () => setFavorite(!performer.favorite));
       Mousetrap.bind(",", () => setCollapsed(!collapsed));
 
       return () => {
-        Mousetrap.unbind("e");
-        Mousetrap.unbind("f");
         Mousetrap.unbind(",");
       };
     });
@@ -560,11 +565,13 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
           <div className="performer-body">
             <div className="performer-tabs">
               {!isEditing && (
-                <PerformerTabs
-                  tabKey={tabKey}
-                  performer={performer}
-                  abbreviateCounter={abbreviateCounter}
-                />
+                <PageListShortcutsContext.Provider value={pageListShortcuts}>
+                  <PerformerTabs
+                    tabKey={tabKey}
+                    performer={performer}
+                    abbreviateCounter={abbreviateCounter}
+                  />
+                </PageListShortcutsContext.Provider>
               )}
             </div>
           </div>

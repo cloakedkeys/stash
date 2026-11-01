@@ -1162,6 +1162,7 @@
       },
       "options": "Options",
       "reset_zoom_on_nav": "Reset zoom level when changing image",
+      "scroll_to_change_image": "Scroll past image edges to change images (Pan Y)",
       "scale_up": {
         "description": "Scale smaller images up to fill screen.",
         "label": "Scale up to fit"
