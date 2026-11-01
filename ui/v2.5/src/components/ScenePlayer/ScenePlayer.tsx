@@ -842,53 +842,6 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         scene.paths.stream
       );
 
-      function getDefaultLanguageCode() {
-        let languageCode = window.navigator.language;
-
-        if (languageCode.indexOf("-") !== -1) {
-          languageCode = languageCode.split("-")[0];
-        }
-
-        if (languageCode.indexOf("_") !== -1) {
-          languageCode = languageCode.split("_")[0];
-        }
-
-        return languageCode;
-      }
-
-      if (scene.paths.caption && scene.captions && scene.captions.length > 0) {
-        const languageCode = getDefaultLanguageCode();
-        let hasDefault = false;
-
-        for (const caption of scene.captions) {
-          const lang = caption.language_code;
-          let label = lang;
-          if (languageMap.has(lang)) {
-            label = languageMap.get(lang)!;
-          }
-
-          label = label + " (" + caption.caption_type + ")";
-          const setAsDefault = !hasDefault && languageCode === lang;
-          if (setAsDefault) {
-            hasDefault = true;
-          }
-          const captionURL = new URL(scene.paths.caption, window.location.href);
-          captionURL.searchParams.set("lang", lang);
-          captionURL.searchParams.set("type", caption.caption_type);
-
-          sourceSelector.addTextTrack(
-            {
-              src: captionURL.toString(),
-              kind: "captions",
-              srclang: lang,
-              label: label,
-              default: setAsDefault,
-            },
-            false
-          );
-        }
-      }
-
       const alwaysStartFromBeginning =
         uiConfig?.alwaysStartFromBeginning ?? false;
       const resumeTime = scene.resume_time ?? 0;
@@ -954,15 +907,73 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       const player = getPlayer();
       if (
         !player ||
-        embeddedCaptionsError ||
-        embeddedCaptions?.findScene?.id !== scene.id ||
+        (!embeddedCaptionsError &&
+          embeddedCaptions?.findScene?.id !== scene.id) ||
         loadedSource.current?.sceneId !== scene.id ||
         !scene.paths.caption
       )
         return;
 
+      // Wait for the embedded lookup (including failure) before selecting among
+      // all captions, so an early default cannot replace a saved language.
       const sourceSelector = player.sourceSelector();
-      for (const track of embeddedCaptions.findScene.embedded_captions ?? []) {
+      function getDefaultLanguageCode() {
+        let languageCode = window.navigator.language;
+
+        if (languageCode.indexOf("-") !== -1) {
+          languageCode = languageCode.split("-")[0];
+        }
+
+        if (languageCode.indexOf("_") !== -1) {
+          languageCode = languageCode.split("_")[0];
+        }
+
+        return languageCode;
+      }
+
+      if (scene.paths.caption && scene.captions && scene.captions.length > 0) {
+        const languageCode = getDefaultLanguageCode();
+        let hasDefault = false;
+
+        for (const caption of scene.captions) {
+          const lang = caption.language_code;
+          let label = lang;
+          if (languageMap.has(lang)) {
+            label = languageMap.get(lang)!;
+          }
+
+          label = label + " (" + caption.caption_type + ")";
+          const setAsDefault = !hasDefault && languageCode === lang;
+          if (setAsDefault) {
+            hasDefault = true;
+          }
+          const captionURL = new URL(scene.paths.caption, window.location.href);
+          captionURL.searchParams.set("lang", lang);
+          captionURL.searchParams.set("type", caption.caption_type);
+          if (
+            sourceSelector.textTracks.some(
+              (existing) => existing.src === captionURL.toString()
+            )
+          )
+            continue;
+
+          sourceSelector.addTextTrack(
+            {
+              src: captionURL.toString(),
+              kind: "captions",
+              srclang: lang,
+              label: label,
+              default: setAsDefault,
+            },
+            false
+          );
+        }
+      }
+
+      const embeddedTracks = embeddedCaptionsError
+        ? []
+        : (embeddedCaptions?.findScene?.embedded_captions ?? []);
+      for (const track of embeddedTracks) {
         const captionURL = new URL(scene.paths.caption, window.location.href);
         captionURL.searchParams.set("stream", String(track.stream_index));
         if (
@@ -993,6 +1004,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           false
         );
       }
+      sourceSelector.selectTextTrack();
     }, [getPlayer, scene, embeddedCaptions, embeddedCaptionsError]);
 
     useEffect(() => {
