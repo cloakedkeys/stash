@@ -45,6 +45,10 @@ const sortByOptions = [
       value: "scenes_count",
     },
     {
+      messageID: "scene_count_all",
+      value: "scenes_count_all",
+    },
+    {
       messageID: "group_count",
       value: "groups_count",
     },
