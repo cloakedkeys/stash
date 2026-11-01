@@ -64,6 +64,8 @@ ENV LANG=C.UTF-8
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=video,utility
 ENV STASH_CONFIG_FILE=/root/.stash/config.yml
+ENV PYTHONUSERBASE=/root/.stash/python
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 EXPOSE 9999
 ENTRYPOINT ["/usr/local/bin/cuda-entrypoint.sh", "stash"]
 

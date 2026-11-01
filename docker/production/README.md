@@ -40,6 +40,7 @@ services:
       - HOME=/config
       - USER=stash
       - STASH_CONFIG_FILE=/config/config.yml
+      - PYTHONUSERBASE=/config/python
     volumes:
       - ./config:/config
 ```
@@ -51,6 +52,23 @@ The numeric UID does not need an entry in the image's `/etc/passwd`, but `HOME` 
 Using `/config` as `HOME` also gives Python scrapers and plugins a writable location for their cache.
 
 The CUDA image skips the optional NVIDIA driver patch when it is launched as a non-root user because patching the mounted driver libraries requires root. Hardware encoding remains subject to the limits of the host driver in that mode.
+
+### Python packages for scrapers and plugins
+
+The Alpine and CUDA images use `PYTHONUSERBASE=/root/.stash/python` to keep Python user packages in the mounted config directory (`./config/python` on the host). The non-root example uses `PYTHONUSERBASE=/config/python`. The configured user must be able to write there; the image does not change ownership or permissions.
+
+Install a package or a scraper's requirements inside the running container:
+
+```sh
+docker compose exec stash python3 -m pip install --user PACKAGE_NAME
+docker compose exec stash python3 -m pip install --user -r /root/.stash/scrapers/requirements.txt
+```
+
+Replace the package name or requirements path as needed; use `/config/scrapers/requirements.txt` with the non-root example. Add `--upgrade` to update a package. The images set `PIP_BREAK_SYSTEM_PACKAGES=1`, so no extra pip option is needed.
+
+Python automatically loads these packages before the image's packages, so installing a package here overrides the bundled version. Packages survive container replacement when the config directory is mounted. If config is mounted elsewhere, set `PYTHONUSERBASE` to a directory under that mount; changing `STASH_CONFIG_FILE` alone does not move Python packages. Virtual environments use their own packages.
+
+The user site directory includes Python's major/minor version. After a Python version upgrade, old packages are ignored and need installing again. Keep a requirements file for this. Do not share the package folder between Alpine and CUDA images, or between different CPU architectures.
 
 ### Docker
 Docker is effectively a cross-platform software package repository. It allows you to ship an entire environment in what's referred to as a container. Containers are intended to hold everything that is needed to run an application from one place to another, making it easy for everyone along the way to reproduce the environment.
