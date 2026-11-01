@@ -17,6 +17,7 @@ import * as GQL from "./generated-graphql";
 import { createClient } from "./createClient";
 import { Client } from "graphql-ws";
 import { useEffect, useState } from "react";
+import { useConfigurationContext } from "src/hooks/Config";
 
 const { client, wsClient, cache: clientCache } = createClient();
 
@@ -527,15 +528,17 @@ export const useFindTags = (filter?: ListFilterModel) =>
     },
   });
 
-// Optimized query for tag list page - excludes expensive recursive *_count_all fields
-export const useFindTagsForList = (filter?: ListFilterModel) =>
-  GQL.useFindTagsForListQuery({
+export const useFindTagsForList = (filter?: ListFilterModel) => {
+  const { configuration } = useConfigurationContext();
+  return GQL.useFindTagsForListQuery({
     skip: filter === undefined,
     variables: {
       filter: filter?.makeFindFilter(),
       tag_filter: filter?.makeFilter(),
+      sceneCountDepth: configuration?.ui.showChildTagContent ? -1 : 0,
     },
   });
+};
 
 export const queryFindTags = (filter: ListFilterModel) =>
   client.query<GQL.FindTagsQuery>({

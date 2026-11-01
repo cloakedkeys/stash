@@ -37,8 +37,10 @@ RUN make flags-release flags-pie stash
 
 # Final Runnable Image
 FROM alpine:latest
-RUN apk add --no-cache ca-certificates vips-tools ffmpeg postgresql-client
+RUN apk add --no-cache ca-certificates vips-tools ffmpeg postgresql-client python3 py3-pip
 COPY --from=backend /stash/stash /usr/bin/
 ENV STASH_CONFIG_FILE=/root/.stash/config.yml
+ENV PYTHONUSERBASE=/root/.stash/python
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 EXPOSE 9999
 ENTRYPOINT ["stash"]
