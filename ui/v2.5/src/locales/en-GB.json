@@ -1,4 +1,14 @@
 {
+  "gallery_reader": {
+    "read": "Read",
+    "back": "Back to gallery",
+    "loading": "Loading pages…",
+    "retry": "Retry",
+    "batch_error": "Could not load the next pages.",
+    "image_error": "Could not load page {number}.",
+    "page": "Page {number}",
+    "end": "End of gallery"
+  },
   "voice_actors": "Voice actors",
   "actions": {
     "add": "Add",
