@@ -228,7 +228,8 @@ const PerformerModal: React.FC<IPerformerModalProps> = ({
       disambiguation: performer.disambiguation ?? "",
       alias_list:
         performer.alias_list ??
-        performer.aliases?.split(",").map((a) => a.trim()) ?? undefined,
+        performer.aliases?.split(",").map((a) => a.trim()) ??
+        undefined,
       gender: stringToGender(performer.gender ?? undefined, true),
       birthdate: performer.birthdate,
       ethnicity: performer.ethnicity,

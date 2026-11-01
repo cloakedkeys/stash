@@ -92,7 +92,8 @@ export const scrapedPerformerToCreateInput = (
     toCreate.aliases
       ?.split(",")
       .map((a) => a.trim())
-      .filter((a) => a) ?? [];
+      .filter((a) => a) ??
+    [];
 
   const input: GQL.PerformerCreateInput = {
     name: toCreate.name ?? "",
