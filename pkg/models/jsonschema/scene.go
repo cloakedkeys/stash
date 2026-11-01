@@ -40,9 +40,10 @@ type SceneGroup struct {
 }
 
 type Scene struct {
-	Title  string `json:"title,omitempty"`
-	Code   string `json:"code,omitempty"`
-	Studio string `json:"studio,omitempty"`
+	Favorite bool   `json:"favorite,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Code     string `json:"code,omitempty"`
+	Studio   string `json:"studio,omitempty"`
 
 	// deprecated - for import only
 	URL string `json:"url,omitempty"`

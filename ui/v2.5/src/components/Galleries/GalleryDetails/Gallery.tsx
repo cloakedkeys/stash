@@ -1,6 +1,12 @@
+import { FavoriteIcon } from "src/components/Shared/FavoriteIcon";
 import { Button, Tab, Nav, Dropdown } from "react-bootstrap";
 import React, { useEffect, useMemo, useState } from "react";
-import { useHistory, RouteComponentProps, Redirect } from "react-router-dom";
+import {
+  useHistory,
+  RouteComponentProps,
+  Redirect,
+  Link,
+} from "react-router-dom";
 import { FormattedMessage, useIntl } from "react-intl";
 import { Helmet } from "react-helmet";
 import * as GQL from "src/core/generated-graphql";
@@ -53,6 +59,7 @@ import { TruncatedText } from "src/components/Shared/TruncatedText";
 import { goBackOrReplace } from "src/utils/history";
 import { FormattedDate } from "src/components/Shared/Date";
 import { StudioLogo } from "src/components/Shared/StudioLogo";
+import { GalleryReader } from "../GalleryReader";
 
 interface IProps {
   gallery: GQL.GalleryDataFragment;
@@ -495,7 +502,21 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
           </div>
 
           <div className="gallery-toolbar">
+            <Link
+              className="btn btn-secondary"
+              to={`/galleries/${gallery.id}/read`}
+            >
+              <FormattedMessage id="gallery_reader.read" />
+            </Link>
             <span className="gallery-toolbar-group">
+              <FavoriteIcon
+                favorite={gallery.favorite}
+                onToggleFavorite={(favorite) => {
+                  setGalleryUserData({
+                    variables: { input: { id: gallery.id, favorite } },
+                  }).catch(Toast.error);
+                }}
+              />
               <RatingSystem
                 value={gallery.rating100}
                 onSetRating={setRating}
@@ -554,6 +575,10 @@ const GalleryLoader: React.FC<RouteComponentProps<IGalleryParams>> = ({
 
   if (tab === "add" && canModifyGallery) {
     return <GalleryPage add gallery={data.findGallery} />;
+  }
+
+  if (tab === "read") {
+    return <GalleryReader key={id} galleryId={id} />;
   }
 
   if (tab) {

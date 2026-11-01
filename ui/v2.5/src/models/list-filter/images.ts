@@ -1,3 +1,4 @@
+import { FavoriteStudioCriterionOption } from "./criteria/favorite";
 import {
   createMandatoryNumberCriterionOption,
   createMandatoryStringCriterionOption,
@@ -37,6 +38,7 @@ const sortByOptions = [
 ]
   .map(ListFilterOptions.createSortBy)
   .concat([
+    { messageID: "favourite", value: "favorite" },
     {
       messageID: "files_size",
       value: "filesize",
@@ -53,6 +55,7 @@ export const PerformerAgeCriterionOption =
   createMandatoryNumberCriterionOption("performer_age");
 
 const criterionOptions = [
+  FavoriteStudioCriterionOption,
   createStringCriterionOption("title"),
   createStringCriterionOption("code", "scene_code"),
   createStringCriterionOption("details"),

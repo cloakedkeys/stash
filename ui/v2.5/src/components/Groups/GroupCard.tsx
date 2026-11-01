@@ -1,3 +1,5 @@
+import { FavoriteIcon } from "../Shared/FavoriteIcon";
+import { useGroupUserDataUpdate } from "src/core/StashService";
 import React, { useMemo } from "react";
 import { Button, ButtonGroup, OverlayTrigger, Tooltip } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
@@ -61,6 +63,7 @@ export const GroupCard: React.FC<IProps> = PatchComponent(
     fromGroupId,
     onMove,
   }) => {
+    const [setUserData] = useGroupUserDataUpdate();
     const groupDescription = useMemo(() => {
       if (!fromGroupId) {
         return undefined;
@@ -203,6 +206,16 @@ export const GroupCard: React.FC<IProps> = PatchComponent(
         selected={selected}
         selecting={selecting}
         onSelectedChanged={onSelectedChanged}
+        overlays={
+          <FavoriteIcon
+            favorite={group.favorite}
+            onToggleFavorite={(favorite) => {
+              setUserData({ variables: { input: { id: group.id, favorite } } });
+            }}
+            size="2x"
+            className="hide-not-favorite"
+          />
+        }
         popovers={maybeRenderPopoverButtonGroup()}
       />
     );

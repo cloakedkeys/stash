@@ -29,6 +29,7 @@ interface IListOperationProps {
 }
 
 const galleryFields = [
+  "favorite",
   "code",
   "rating100",
   "details",
@@ -172,6 +173,13 @@ export const EditGalleriesDialog: React.FC<IListOperationProps> = (
         isRunning={isUpdating}
       >
         <Form>
+          <Form.Group controlId="favorite">
+            <IndeterminateCheckbox
+              setChecked={(checked) => setUpdateField({ favorite: checked })}
+              checked={updateInput.favorite ?? undefined}
+              label={intl.formatMessage({ id: "favourite" })}
+            />
+          </Form.Group>
           <BulkUpdateFormGroup name="rating">
             <RatingSystem
               value={updateInput.rating100}

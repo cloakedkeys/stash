@@ -120,6 +120,7 @@ func (qb *sceneFilterHandler) criterionHandler() criterionHandler {
 			criterion: sceneFilter.PhashDistance,
 		},
 
+		sceneUserData.boolCriterionHandler(sceneFilter.Favorite, sceneUserData.columnOrDefault("favorite", "false")),
 		sceneUserData.intCriterionHandler(sceneFilter.Rating100, sceneUserData.column("rating")),
 		qb.oCountCriterionHandler(sceneFilter.OCounter),
 		boolCriterionHandler(sceneFilter.Organized, "scenes.organized", nil),

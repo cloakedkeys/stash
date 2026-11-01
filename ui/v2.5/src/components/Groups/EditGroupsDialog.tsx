@@ -69,7 +69,14 @@ function getAggregateContainingGroupInput(
   return undefined;
 }
 
-const groupFields = ["rating100", "synopsis", "director", "date", "organized"];
+const groupFields = [
+  "favorite",
+  "rating100",
+  "synopsis",
+  "director",
+  "date",
+  "organized",
+];
 
 export const EditGroupsDialog: React.FC<IListOperationProps> = (
   props: IListOperationProps
@@ -203,6 +210,13 @@ export const EditGroupsDialog: React.FC<IListOperationProps> = (
         isRunning={isUpdating}
       >
         <Form>
+          <Form.Group controlId="favorite">
+            <IndeterminateCheckbox
+              setChecked={(checked) => setUpdateField({ favorite: checked })}
+              checked={updateInput.favorite ?? undefined}
+              label={intl.formatMessage({ id: "favourite" })}
+            />
+          </Form.Group>
           {isAdmin && (
             <Form.Group controlId="organized">
               <IndeterminateCheckbox

@@ -1,4 +1,6 @@
 type Image {
+  "The current user's favourite"
+  favorite: Boolean!
   id: ID!
   title: String
   code: String
@@ -38,6 +40,7 @@ type ImagePathsType {
 }
 
 input ImageUpdateInput {
+  favorite: Boolean
   clientMutationId: String
   id: ID!
   title: String
@@ -61,6 +64,7 @@ input ImageUpdateInput {
 }
 
 input BulkImageUpdateInput {
+  favorite: Boolean
   clientMutationId: String
   ids: [ID!]
   title: String

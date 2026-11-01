@@ -41,6 +41,8 @@ func ToBasicJSON(ctx context.Context, reader ExportGetter, audio *models.Audio) 
 		newAudioJSON.Date = audio.Date.String()
 	}
 
+	newAudioJSON.Favorite = audio.Favorite
+
 	if audio.Rating != nil {
 		newAudioJSON.Rating = *audio.Rating
 	}

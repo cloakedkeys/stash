@@ -1,4 +1,5 @@
 fragment GalleryData on Gallery {
+  favorite
   id
   created_at
   updated_at

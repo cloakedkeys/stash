@@ -89,6 +89,8 @@ func (i *Importer) imageJSONToImage(imageJSON jsonschema.Image) models.Image {
 	if imageJSON.Photographer != "" {
 		newImage.Photographer = imageJSON.Photographer
 	}
+	newImage.Favorite = imageJSON.Favorite
+
 	if imageJSON.Rating != 0 {
 		newImage.Rating = &imageJSON.Rating
 	}

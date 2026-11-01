@@ -1,4 +1,5 @@
 fragment ImageData on Image {
+  favorite
   id
   title
   code

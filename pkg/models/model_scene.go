@@ -19,6 +19,7 @@ type Scene struct {
 	ProductionDate *Date  `json:"production_date"`
 	// Rating expressed in 1-100 scale
 	Rating         *int `json:"rating"`
+	Favorite       bool `json:"favorite"`
 	Organized      bool `json:"organized"`
 	CoverGenerated bool `json:"cover_generated"`
 	// RefreshCover is set by scanning when a generated cover becomes stale.
@@ -82,6 +83,7 @@ type ScenePartial struct {
 	ProductionDate OptionalDate
 	// Rating expressed in 1-100 scale
 	Rating         OptionalInt
+	Favorite       OptionalBool
 	Organized      OptionalBool
 	CoverGenerated OptionalBool
 	StudioID       OptionalInt
@@ -234,6 +236,7 @@ func (s ScenePartial) UpdateInput(id int) SceneUpdateInput {
 		Date:           dateStr,
 		ProductionDate: productionDateStr,
 		Rating100:      s.Rating.Ptr(),
+		Favorite:       s.Favorite.Ptr(),
 		Organized:      s.Organized.Ptr(),
 		StudioID:       s.StudioID.StringPtr(),
 		GalleryIds:     s.GalleryIDs.IDStrings(),

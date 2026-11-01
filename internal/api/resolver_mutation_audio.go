@@ -49,6 +49,9 @@ func (r *mutationResolver) AudioCreate(ctx context.Context, input models.AudioCr
 	newAudio.Code = translator.string(input.Code)
 	newAudio.Details = translator.string(input.Details)
 	newAudio.Rating = input.Rating100
+	if input.Favorite != nil {
+		newAudio.Favorite = *input.Favorite
+	}
 	newAudio.Organized = translator.bool(input.Organized)
 
 	newAudio.Date, err = translator.datePtr(input.Date)
@@ -179,6 +182,7 @@ func audioPartialFromInput(input models.AudioUpdateInput, translator changesetTr
 	updatedAudio.Code = translator.optionalString(input.Code, "code")
 	updatedAudio.Details = translator.optionalString(input.Details, "details")
 	updatedAudio.Rating = translator.optionalInt(input.Rating100, "rating100")
+	updatedAudio.Favorite = translator.optionalBool(input.Favorite, "favorite")
 
 	if input.OCounter != nil {
 		logger.Warnf("o_counter is deprecated and no longer supported, use audioIncrementO/audioDecrementO instead")
@@ -355,6 +359,7 @@ func (r *mutationResolver) BulkAudioUpdate(ctx context.Context, input BulkAudioU
 	updatedAudio.Code = translator.optionalString(input.Code, "code")
 	updatedAudio.Details = translator.optionalString(input.Details, "details")
 	updatedAudio.Rating = translator.optionalInt(input.Rating100, "rating100")
+	updatedAudio.Favorite = translator.optionalBool(input.Favorite, "favorite")
 	updatedAudio.Organized = translator.optionalBool(input.Organized, "organized")
 
 	updatedAudio.Date, err = translator.optionalDate(input.Date, "date")

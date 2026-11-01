@@ -54,6 +54,9 @@ func (r *mutationResolver) GalleryCreate(ctx context.Context, input GalleryCreat
 	newGallery.Details = translator.string(input.Details)
 	newGallery.Photographer = translator.string(input.Photographer)
 	newGallery.Rating = input.Rating100
+	if input.Favorite != nil {
+		newGallery.Favorite = *input.Favorite
+	}
 	newGallery.Organized = translator.bool(input.Organized)
 
 	var err error
@@ -202,6 +205,7 @@ func (r *mutationResolver) galleryUpdate(ctx context.Context, input models.Galle
 	updatedGallery.Details = translator.optionalString(input.Details, "details")
 	updatedGallery.Photographer = translator.optionalString(input.Photographer, "photographer")
 	updatedGallery.Rating = translator.optionalInt(input.Rating100, "rating100")
+	updatedGallery.Favorite = translator.optionalBool(input.Favorite, "favorite")
 	updatedGallery.Organized = translator.optionalBool(input.Organized, "organized")
 
 	updatedGallery.Date, err = translator.optionalDate(input.Date, "date")
@@ -287,6 +291,7 @@ func (r *mutationResolver) BulkGalleryUpdate(ctx context.Context, input BulkGall
 	updatedGallery.Details = translator.optionalString(input.Details, "details")
 	updatedGallery.Photographer = translator.optionalString(input.Photographer, "photographer")
 	updatedGallery.Rating = translator.optionalInt(input.Rating100, "rating100")
+	updatedGallery.Favorite = translator.optionalBool(input.Favorite, "favorite")
 	updatedGallery.Organized = translator.optionalBool(input.Organized, "organized")
 	updatedGallery.URLs = translator.optionalURLsBulk(input.Urls, input.URL)
 

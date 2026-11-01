@@ -14,6 +14,16 @@
     "too_large": "This file exceeds the upload request limit. It was not uploaded.",
     "limit": "Upload request limit: {limit} MiB, including form overhead. Files must be slightly smaller. To raise it, set max_upload_size in config.yml (MiB) and restart Stash. A proxy may have a lower limit."
   },
+  "gallery_reader": {
+    "read": "Read",
+    "back": "Back to gallery",
+    "loading": "Loading pages…",
+    "retry": "Retry",
+    "batch_error": "Could not load the next pages.",
+    "image_error": "Could not load page {number}.",
+    "page": "Page {number}",
+    "end": "End of gallery"
+  },
   "voice_actors": "Voice actors",
   "actions": {
     "add": "Add",

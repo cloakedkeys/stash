@@ -1,4 +1,5 @@
 fragment SlimSceneData on Scene {
+  favorite
   id
   title
   code
