@@ -15,6 +15,8 @@ COPY --from=binary /stash /usr/bin/
 RUN apk add --no-cache ca-certificates python3 py3-requests py3-requests-toolbelt py3-lxml py3-pip ffmpeg postgresql-client tzdata vips vips-tools vips-heif \
     && pip install --break-system-packages mechanicalsoup cloudscraper stashapp-tools
 ENV STASH_CONFIG_FILE=/root/.stash/config.yml
+ENV PYTHONUSERBASE=/root/.stash/python
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 # Basic build-time metadata as defined at https://github.com/opencontainers/image-spec/blob/main/annotations.md#pre-defined-annotation-keys
 LABEL org.opencontainers.image.title="Stash" \
