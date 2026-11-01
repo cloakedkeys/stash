@@ -55,8 +55,7 @@ function render(location) {
         return { FavoriteIcon: () => null };
       if (name === "../Shared/ModifyRoute")
         return { ModifyRoute: require("react-router-dom").Route };
-      if (name === "src/hooks/CurrentUser")
-        return { useCanModify: () => true };
+      if (name === "src/hooks/CurrentUser") return { useCanModify: () => true };
       return require(name);
     },
   });
