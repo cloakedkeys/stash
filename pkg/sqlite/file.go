@@ -1106,6 +1106,7 @@ func (qb *FileStore) IsPrimary(ctx context.Context, fileID models.FileID) (bool,
 	joinTables := []exp.IdentifierExpression{
 		scenesFilesJoinTable,
 		audiosFilesJoinTable,
+		storiesFilesJoinTable,
 		galleriesFilesJoinTable,
 		imagesFilesJoinTable,
 	}

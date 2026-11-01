@@ -227,6 +227,9 @@ func (h *purgeHandler) HandleFile(ctx context.Context, fileDeleter *file.Deleter
 	if err := h.handleRelatedAudios(ctx, fileDeleter, fileID); err != nil {
 		return err
 	}
+	if err := purgeRelatedStories(ctx, GetInstance().Repository.Story, fileID); err != nil {
+		return err
+	}
 	if err := h.handleRelatedGalleries(ctx, fileID); err != nil {
 		return err
 	}
@@ -234,6 +237,40 @@ func (h *purgeHandler) HandleFile(ctx context.Context, fileDeleter *file.Deleter
 		return err
 	}
 
+	return nil
+}
+
+// Purging an already missing file changes Story rows only.
+func purgeRelatedStories(ctx context.Context, store models.StoryReaderWriter, fileID models.FileID) error {
+	stories, err := store.FindByFileID(ctx, fileID)
+	if err != nil {
+		return err
+	}
+	for _, story := range stories {
+		files, err := store.GetFiles(ctx, story.ID)
+		if err != nil {
+			return err
+		}
+		if len(files) <= 1 {
+			if err := store.Destroy(ctx, story.ID); err != nil {
+				return err
+			}
+			continue
+		}
+		if story.PrimaryFileID == nil || *story.PrimaryFileID == fileID {
+			for _, f := range files {
+				if f.Base().ID == fileID {
+					continue
+				}
+				partial := models.NewStoryPartial()
+				partial.PrimaryFileID = &f.Base().ID
+				if _, err := store.UpdatePartial(ctx, story.ID, partial); err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
 	return nil
 }
 

@@ -70,7 +70,7 @@ var names = []string{
 	"name2",
 }
 
-var imageBytes = []byte("imageBytes")
+var imageBytes = []byte(`<svg><title>imageBytes</title></svg>`)
 
 var stashID = models.StashID{
 	StashID:  getUUID("StashID"),
@@ -79,7 +79,7 @@ var stashID = models.StashID{
 
 const (
 	path        = "path"
-	imageBase64 = "aW1hZ2VCeXRlcw=="
+	imageBase64 = "PHN2Zz48dGl0bGU+aW1hZ2VCeXRlczwvdGl0bGU+PC9zdmc+"
 )
 
 var (

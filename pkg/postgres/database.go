@@ -30,7 +30,7 @@ const (
 	dbConnTimeout = 30 * time.Second
 )
 
-var appSchemaVersion uint = 21
+var appSchemaVersion uint = 22
 
 //go:embed migrations/*.sql
 var migrationsBox embed.FS
@@ -43,6 +43,7 @@ type storeRepository struct {
 	Gallery        *GalleryStore
 	GalleryChapter *GalleryChapterStore
 	Audio          *AudioStore
+	Story          *StoryStore
 	Scene          *SceneStore
 	SceneMarker    *SceneMarkerStore
 	VoiceActor     *VoiceActorStore
@@ -83,6 +84,7 @@ func NewDatabase() *Database {
 		Folder:         folderStore,
 		Scene:          NewSceneStore(r, blobStore),
 		Audio:          NewAudioStore(r, blobStore),
+		Story:          NewStoryStore(r),
 		User:           NewUserStore(),
 		UserUIConfig:   NewUserUIConfigStore(),
 		SceneMarker:    NewSceneMarkerStore(),

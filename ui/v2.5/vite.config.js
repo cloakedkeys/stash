@@ -38,6 +38,9 @@ export default defineConfig(() => {
     },
     publicDir: "public",
     assetsInclude: ["**/*.md"],
+    test: {
+      include: ["src/**/*.test.{ts,tsx}"],
+    },
     plugins,
   };
 });

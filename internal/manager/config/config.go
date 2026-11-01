@@ -170,6 +170,9 @@ const (
 	// Loaded at startup - requires restart to update
 	TrustedProxies = "trusted_proxies"
 
+	// Browser origins allowed to make cross-origin changes. Requires restart.
+	TrustedOrigins = "trusted_origins"
+
 	// key used to sign JWT tokens
 	JWTSignKey = "jwt_secret_key"
 
@@ -1980,6 +1983,10 @@ func (i *Config) GetNoProxy() string {
 
 func (i *Config) GetTrustedProxies() []string {
 	return i.getStringSlice(TrustedProxies)
+}
+
+func (i *Config) GetTrustedOrigins() []string {
+	return i.getStringSlice(TrustedOrigins)
 }
 
 func (i *Config) getPackageSources(key string) []*models.PackageSource {

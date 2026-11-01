@@ -57,6 +57,12 @@ INSERT INTO groups (id, name, created_at, updated_at) VALUES
   (13, 'Default group', '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
 INSERT INTO tags (id, name, created_at, updated_at) VALUES (3, 'A tag', '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
 INSERT INTO scenes_tags (scene_id, tag_id) VALUES (5, 3);
+INSERT INTO stories (id, title, author, source_website, language, details, tagline, date, date_precision, created_at, updated_at) VALUES
+  (17, 'A story', 'An author', 'A website', 'en', 'Details', 'Tagline', '2020-02-29', 0, '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
+INSERT INTO stories_files (story_id, file_id, "primary") VALUES (17, 7, 1);
+INSERT INTO stories_tags (story_id, tag_id) VALUES (17, 3);
+INSERT INTO story_urls (story_id, position, url) VALUES (17, 0, 'https://story.example/one'), (17, 1, 'https://story.example/two');
+INSERT INTO stories_user_data (story_id, user_id, rating) VALUES (17, 9, 81);
 INSERT INTO blobs (checksum, blob) VALUES ('sum', X'00FF10');
 INSERT INTO saved_filters (id, user_id, mode, name, find_filter, object_filter, ui_options) VALUES
   (2, 9, 'SCENES', 'Saved', '{"q":"x"}', '', NULL);
@@ -123,6 +129,20 @@ func TestMigrateFromSQLite(t *testing.T) {
 	var count int
 	get(&count, "SELECT COUNT(*) FROM scenes")
 	assert.Equal(t, 2, count)
+	get(&count, "SELECT COUNT(*) FROM stories")
+	assert.Equal(t, 1, count)
+	var storyTitle string
+	get(&storyTitle, "SELECT title FROM stories WHERE id=17")
+	assert.Equal(t, "A story", storyTitle)
+	get(&count, "SELECT COUNT(*) FROM stories_files WHERE story_id=17 AND file_id=7 AND \"primary\"")
+	assert.Equal(t, 1, count)
+	get(&count, "SELECT COUNT(*) FROM stories_tags WHERE story_id=17 AND tag_id=3")
+	assert.Equal(t, 1, count)
+	var storyURLs []string
+	require.NoError(t, db.readDB.Select(&storyURLs, "SELECT url FROM story_urls WHERE story_id=17 ORDER BY position"))
+	assert.Equal(t, []string{"https://story.example/one", "https://story.example/two"}, storyURLs)
+	get(&count, "SELECT rating FROM stories_user_data WHERE story_id=17 AND user_id=9")
+	assert.Equal(t, 81, count)
 
 	// IDs are kept, and the deleted one isn't reused
 	var nextScene int
