@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/mocks"
 	"github.com/stashapp/stash/pkg/session"
@@ -112,10 +113,20 @@ func TestStoryCreateChecksFiles(t *testing.T) {
 	gql := newTestGraphQLServer(r)
 	editor := models.User{ID: 3, Username: "editor", Roles: models.Roles{models.RoleEnumModify}}
 
-	video := &models.VideoFile{BaseFile: &models.BaseFile{ID: 5, Path: "video.mp4"}}
-	used := &models.BaseFile{ID: 6, Path: "used.txt"}
-	inStory := &models.BaseFile{ID: 7, Path: "other-story.txt"}
-	free := &models.BaseFile{ID: 8, Path: "free.txt"}
+	root := t.TempDir()
+	stories, videos := filepath.Join(root, "stories"), filepath.Join(root, "videos")
+	config.InitializeEmpty()
+	config.GetInstance().SetInterface(config.Stash, config.StashConfigs{{Path: stories, IncludeStory: true}, {Path: videos}})
+
+	video := &models.VideoFile{BaseFile: &models.BaseFile{ID: 5, Path: filepath.Join(stories, "video.mp4")}}
+	used := &models.BaseFile{ID: 6, Path: filepath.Join(stories, "used.txt")}
+	inStory := &models.BaseFile{ID: 7, Path: filepath.Join(stories, "other-story.txt")}
+	free := &models.BaseFile{ID: 8, Path: filepath.Join(stories, "free.txt")}
+	// a zip is a plain file record too, so its extension is what shows it isn't text
+	zip := &models.BaseFile{ID: 11, Path: filepath.Join(stories, "pack.zip")}
+	readme := &models.BaseFile{ID: 12, Path: filepath.Join(videos, "readme.txt")}
+	db.File.On("Find", mock.Anything, models.FileID(11)).Return([]models.File{zip}, nil)
+	db.File.On("Find", mock.Anything, models.FileID(12)).Return([]models.File{readme}, nil)
 	db.File.On("Find", mock.Anything, models.FileID(5)).Return([]models.File{video}, nil)
 	db.File.On("Find", mock.Anything, models.FileID(6)).Return([]models.File{used}, nil)
 	db.File.On("Find", mock.Anything, models.FileID(7)).Return([]models.File{inStory}, nil)
@@ -129,6 +140,8 @@ func TestStoryCreateChecksFiles(t *testing.T) {
 	for query, want := range map[string]string{
 		`mutation { storyCreate(input:{}) { id } }`:                          "title must be set",
 		`mutation { storyCreate(input:{file_ids:["5"]}) { id } }`:            "is not a text file",
+		`mutation { storyCreate(input:{file_ids:["11"]}) { id } }`:           "is not a text file",
+		`mutation { storyCreate(input:{file_ids:["12"]}) { id } }`:           "in a library that doesn't include stories",
 		`mutation { storyCreate(input:{file_ids:["6"]}) { id } }`:            "already belongs to something else",
 		`mutation { storyCreate(input:{file_ids:["7"]}) { id } }`:            "already belongs to another story",
 		`mutation { storyCreate(input:{file_ids:["8","8"]}) { id } }`:        "listed twice",

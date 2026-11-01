@@ -68,6 +68,16 @@ export const SettingsLibraryPanel: React.FC = () => {
         />
 
         <StringSetting
+          id="story-extensions"
+          headingID="config.general.story_ext_head"
+          subHeadingID="config.general.story_ext_desc"
+          value={listToCommaDelimited(general.storyExtensions ?? undefined)}
+          onChange={(v) =>
+            saveGeneral({ storyExtensions: commaDelimitedToList(v) })
+          }
+        />
+
+        <StringSetting
           id="gallery-extensions"
           headingID="config.general.gallery_ext_head"
           subHeadingID="config.general.gallery_ext_desc"

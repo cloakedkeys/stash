@@ -232,7 +232,7 @@ func Initialize() (*Server, error) {
 	gqlHandler := visitedPluginHandler(dataloaders.Middleware(http.HandlerFunc(gqlHandlerFunc)))
 	pluginCache.RegisterGQLHandler(gqlHandler)
 
-	r.HandleFunc(gqlEndpoint, gqlHandlerFunc)
+	r.With(originProtection.getAsUnsafe).HandleFunc(gqlEndpoint, gqlHandlerFunc)
 	r.HandleFunc(playgroundEndpoint, func(w http.ResponseWriter, r *http.Request) {
 		setPageSecurityHeaders(w, r, pluginCache.ListPlugins())
 		endpoint := getProxyPrefix(r) + gqlEndpoint
@@ -261,7 +261,10 @@ func Initialize() (*Server, error) {
 
 	r.Get(loginEndpoint, handleLogin())
 	r.Post(loginEndpoint, handleLoginPost(sessionStore, cfg))
-	r.Get(logoutEndpoint, handleLogout())
+	// Registered for all methods so a GET gets 405 rather than the web app.
+	r.HandleFunc(logoutEndpoint, handleLogout(sessionStore, func(ctx context.Context) (bool, error) {
+		return manager.GetInstance().UserService.LoginRequired(ctx)
+	}))
 	r.Get(loginLocaleEndpoint, handleLoginLocale(cfg))
 	r.HandleFunc(loginEndpoint+"/*", func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, loginEndpoint)
