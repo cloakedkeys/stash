@@ -6,6 +6,13 @@ input UserRatingFavoriteInput {
   favorite: Boolean
 }
 
+"The current user's own rating for an object that has no favourite"
+input UserRatingInput {
+  id: ID!
+  # rating expressed as 1-100
+  rating100: Int
+}
+
 "The current user's own favourite for an object"
 input UserFavoriteInput {
   id: ID!

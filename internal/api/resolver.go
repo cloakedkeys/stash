@@ -72,6 +72,9 @@ func (r *Resolver) Scene() SceneResolver {
 func (r *Resolver) Audio() AudioResolver {
 	return &audioResolver{r}
 }
+func (r *Resolver) Story() StoryResolver {
+	return &storyResolver{r}
+}
 func (r *Resolver) Image() ImageResolver {
 	return &imageResolver{r}
 }
@@ -140,6 +143,7 @@ type voiceActorResolver struct{ *Resolver }
 type sceneResolver struct{ *Resolver }
 type sceneMarkerResolver struct{ *Resolver }
 type audioResolver struct{ *Resolver }
+type storyResolver struct{ *Resolver }
 type imageResolver struct{ *Resolver }
 type studioResolver struct{ *Resolver }
 

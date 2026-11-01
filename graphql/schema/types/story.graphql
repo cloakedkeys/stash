@@ -1,0 +1,72 @@
+type StoryPathsType {
+  "The story's text, served as plain text"
+  text: String # Resolver
+}
+
+"A story, kept in a text file"
+type Story {
+  id: ID!
+  title: String
+  author: String
+  source_website: String
+  urls: [String!]!
+  date: String
+  language: String
+  details: String
+  tagline: String
+  "The current user's own rating, expressed as 1-100"
+  rating100: Int
+  created_at: Time!
+  updated_at: Time!
+
+  files: [BasicFile!]!
+  paths: StoryPathsType! # Resolver
+  tags: [Tag!]!
+}
+
+input StoryCreateInput {
+  title: String
+  author: String
+  source_website: String
+  urls: [String!]
+  date: String
+  "The current user's own rating, expressed as 1-100"
+  rating100: Int
+  language: String
+  details: String
+  tagline: String
+  tag_ids: [ID!]
+
+  """
+  The first id will be assigned as primary.
+  Files must not already be primary for another object.
+  """
+  file_ids: [ID!]
+}
+
+input StoryUpdateInput {
+  id: ID!
+  title: String
+  author: String
+  source_website: String
+  urls: [String!]
+  date: String
+  "The current user's own rating, expressed as 1-100"
+  rating100: Int
+  language: String
+  details: String
+  tagline: String
+  tag_ids: [ID!]
+
+  primary_file_id: ID
+}
+
+input StoriesDestroyInput {
+  "Removes the stories from the library. Their files are kept."
+  ids: [ID!]!
+}
+
+type FindStoriesResultType {
+  count: Int!
+  stories: [Story!]!
+}

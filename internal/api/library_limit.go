@@ -32,6 +32,8 @@ var limitedQueries = map[string]bool{
 	"sceneMarkerTags":       true,
 	"findAudio":             true,
 	"findAudios":            true,
+	"findStory":             true,
+	"findStories":           true,
 	"findImage":             true,
 	"findImages":            true,
 	"findPerformer":         true,
@@ -95,6 +97,7 @@ var limitedObjectMutations = map[string]librarylimit.Kind{
 	"audioDeletePlay":          librarylimit.Audios,
 	"audioResetPlayCount":      librarylimit.Audios,
 	"audioUserDataUpdate":      librarylimit.Audios,
+	"storyUserDataUpdate":      librarylimit.Stories,
 	"imageIncrementO":          librarylimit.Images,
 	"imageDecrementO":          librarylimit.Images,
 	"imageResetO":              librarylimit.Images,
@@ -181,6 +184,8 @@ func limitedMutationObjectID(args map[string]any) (int, bool) {
 			s = input.ID
 		case UserFavoriteInput:
 			s = input.ID
+		case UserRatingInput:
+			s = input.ID
 		default:
 			return 0, false
 		}
@@ -201,6 +206,10 @@ func (r *Resolver) limitedObjectVisible(ctx context.Context, kind librarylimit.K
 		case librarylimit.Audios:
 			var o *models.Audio
 			o, err = r.repository.Audio.Find(ctx, id)
+			visible = o != nil
+		case librarylimit.Stories:
+			var o *models.Story
+			o, err = r.repository.Story.Find(ctx, id)
 			visible = o != nil
 		case librarylimit.Images:
 			var o *models.Image
