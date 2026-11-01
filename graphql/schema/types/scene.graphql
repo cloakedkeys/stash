@@ -37,6 +37,13 @@ type VideoCaption {
   caption_type: String!
 }
 
+type EmbeddedCaption {
+  stream_index: Int!
+  language_code: String!
+  title: String!
+  codec: String!
+}
+
 type Scene {
   "The current user's favourite"
   favorite: Boolean!
@@ -56,6 +63,8 @@ type Scene {
   interactive: Boolean!
   interactive_speed: Int
   captions: [VideoCaption!]
+  "Primary file text subtitles, probed on demand for the player."
+  embedded_captions: [EmbeddedCaption!]
   created_at: Time!
   updated_at: Time!
   "The last time play count was updated"
