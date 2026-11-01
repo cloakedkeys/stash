@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
-import { Prompt } from "react-router-dom";
+import { Prompt, useLocation } from "react-router-dom";
 import { Button, Dropdown, Form, Col, Row, SplitButton } from "react-bootstrap";
 import Mousetrap from "mousetrap";
 import * as GQL from "src/core/generated-graphql";
@@ -51,6 +51,7 @@ export const GalleryEditPanel: React.FC<IProps> = ({
   onDelete,
 }) => {
   const intl = useIntl();
+  const { pathname } = useLocation();
   const Toast = useToast();
   const [scenes, setScenes] = useState<Scene[]>([]);
 
@@ -468,7 +469,7 @@ export const GalleryEditPanel: React.FC<IProps> = ({
     <div id="gallery-edit-details">
       <Prompt
         when={formik.dirty}
-        message={handleUnsavedChanges(intl, "galleries", gallery?.id)}
+        message={handleUnsavedChanges(intl, "galleries", gallery?.id, pathname)}
       />
 
       {maybeRenderScrapeDialog()}

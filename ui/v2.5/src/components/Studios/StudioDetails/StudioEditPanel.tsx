@@ -12,7 +12,7 @@ import ImageUtils from "src/utils/image";
 import { addUpdateStashID, getStashIDs } from "src/utils/stashIds";
 import { stashboxDisplayName } from "src/utils/stashbox";
 import { useFormik } from "formik";
-import { Prompt } from "react-router-dom";
+import { Prompt, useLocation } from "react-router-dom";
 import isEqual from "lodash-es/isEqual";
 import { useToast } from "src/hooks/Toast";
 import { useConfigurationContext } from "src/hooks/Config";
@@ -50,6 +50,7 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
   setEncodingImage,
 }) => {
   const intl = useIntl();
+  const { pathname } = useLocation();
   const isAdmin = useIsAdmin();
   const Toast = useToast();
   const { configuration: stashConfig } = useConfigurationContext();
@@ -488,7 +489,12 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
           if (action === "PUSH" && location.pathname.startsWith("/studios/"))
             return true;
 
-          return handleUnsavedChanges(intl, "studios", studio.id)(location);
+          return handleUnsavedChanges(
+            intl,
+            "studios",
+            studio.id,
+            pathname
+          )(location);
         }}
       />
 

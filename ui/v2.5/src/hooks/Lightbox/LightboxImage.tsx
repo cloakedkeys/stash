@@ -10,6 +10,7 @@ import useResizeObserver from "@react-hook/resize-observer";
 import * as GQL from "src/core/generated-graphql";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { useDebounce } from "src/hooks/debounce";
+import { createMouseGesture } from "./mouseGesture";
 
 const ZOOM_STEP = 1.1;
 const ZOOM_FACTOR = 700;
@@ -193,6 +194,7 @@ interface IProps {
   // whether horizontal swipes should navigate (false for single-image galleries)
   navigationEnabled: boolean;
   isVideo: boolean;
+  onMouseDrag: () => void;
 }
 
 export const LightboxImage: React.FC<IProps> = ({
@@ -218,6 +220,7 @@ export const LightboxImage: React.FC<IProps> = ({
   onResetPosition,
   navigationEnabled,
   isVideo,
+  onMouseDrag,
 }) => {
   const [defaultZoom, setDefaultZoom] = useState(1);
   const [moving, setMoving] = useState(false);
@@ -230,7 +233,12 @@ export const LightboxImage: React.FC<IProps> = ({
     useContainerDimensions<HTMLDivElement>();
   const dimensionsProvided = width > 0 && height > 0;
 
-  const mouseDownEvent = useRef<MouseEvent>();
+  const stopMouseGesture = useRef<() => void>();
+
+  useEffect(() => {
+    if (!current) stopMouseGesture.current?.();
+    return () => stopMouseGesture.current?.();
+  }, [current]);
   const resetPositionRef = useRef(resetPosition);
 
   const startPoints = useRef<number[]>([0, 0]);
@@ -668,63 +676,60 @@ export const LightboxImage: React.FC<IProps> = ({
     debouncedScrollReset();
   }
 
-  function onImageMouseOver(ev: React.MouseEvent) {
-    if (!moving) return;
+  function onImageMouseDown(ev: React.MouseEvent) {
+    if (!current || ev.button !== 0) return;
+    // Keep the existing suppression of mouse events synthesized after touch.
+    if (ev.timeStamp - lastTouchEnd.current < 700) return;
 
-    if (!ev.buttons) {
-      setMoving(false);
-      return;
-    }
-
-    const posX = ev.pageX - startPoints.current[0];
-    const posY = ev.pageY - startPoints.current[1];
-    startPoints.current = [ev.pageX, ev.pageY];
-
-    // clamp to the image bounds so a drag stops at the edge (matches touch pan)
+    stopMouseGesture.current?.();
+    const gesture = createMouseGesture(ev.nativeEvent);
+    const image = ev.currentTarget as HTMLElement;
     const appliedZoom = defaultZoom * zoom;
     const [minX, maxX] = minMaxX(appliedZoom);
     const [minY, maxY] = minMaxY(appliedZoom);
-    setPositionX(Math.min(Math.max(positionX + posX, minX), maxX));
-    setPositionY(Math.min(Math.max(positionY + posY, minY), maxY));
-  }
-
-  function onImageMouseDown(ev: React.MouseEvent) {
-    startPoints.current = [ev.pageX, ev.pageY];
     setMoving(true);
 
-    mouseDownEvent.current = ev.nativeEvent;
-  }
-
-  function onImageMouseUp(ev: React.MouseEvent) {
-    if (ev.button !== 0) return;
-
-    // ignore the synthesized click that follows a touch tap (iOS doesn't always
-    // honour touchstart-preventDefault here) so touch taps don't navigate -
-    // on touch, zoom is via double-tap and navigation via swipe. Real mouse
-    // clicks have no preceding touchend and pass through.
-    if (ev.timeStamp - lastTouchEnd.current < 700) return;
-
-    if (
-      !mouseDownEvent.current ||
-      ev.timeStamp - mouseDownEvent.current.timeStamp > 200
-    ) {
-      // not a click - ignore
-      return;
+    function move(event: MouseEvent) {
+      const [dx, dy] = gesture.move(event);
+      if (gesture.dragged) onMouseDrag();
+      setPositionX((x) => Math.min(Math.max(x + dx, minX), maxX));
+      setPositionY((y) => Math.min(Math.max(y + dy, minY), maxY));
     }
 
-    // must be a click
-    if (
-      ev.pageX !== startPoints.current[0] ||
-      ev.pageY !== startPoints.current[1]
-    ) {
-      return;
+    function stop() {
+      window.removeEventListener("mousemove", onMove, true);
+      window.removeEventListener("mouseup", onUp, true);
+      window.removeEventListener("blur", stop);
+      stopMouseGesture.current = undefined;
+      setMoving(false);
     }
 
-    if (ev.nativeEvent.offsetX >= (ev.target as HTMLElement).offsetWidth / 2) {
-      onRight();
-    } else {
-      onLeft();
+    function onMove(event: MouseEvent) {
+      if (!(event.buttons & 1)) {
+        stop();
+        return;
+      }
+      move(event);
     }
+
+    function onUp(event: MouseEvent) {
+      if (event.button !== 0) return;
+      move(event);
+      stop();
+      if (!gesture.isClick(event) || event.target !== image) return;
+
+      const bounds = image.getBoundingClientRect();
+      if (event.clientX >= bounds.left + bounds.width / 2) {
+        onRight();
+      } else {
+        onLeft();
+      }
+    }
+
+    stopMouseGesture.current = stop;
+    window.addEventListener("mousemove", onMove, true);
+    window.addEventListener("mouseup", onUp, true);
+    window.addEventListener("blur", stop);
   }
 
   function onTouchStart(ev: React.TouchEvent) {
@@ -1049,8 +1054,6 @@ export const LightboxImage: React.FC<IProps> = ({
             style={{ touchAction: "none" }}
             onWheel={current ? (e) => onImageScroll(e) : undefined}
             onMouseDown={onImageMouseDown}
-            onMouseUp={onImageMouseUp}
-            onMouseMove={onImageMouseOver}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}

@@ -529,10 +529,17 @@ const makeSceneMarkersSceneUrl = (scene: GQL.SceneMarkerSceneDataFragment) => {
 export function handleUnsavedChanges(
   intl: IntlShape,
   basepath: string,
-  id?: string
+  id: string | undefined,
+  currentPath: string
 ) {
   return (location: { pathname: string }) => {
-    // #2291 - don't prompt if we're navigating within the gallery being edited
+    // Use the editor's Router pathname: on POP, window.location already
+    // points at the destination before Prompt runs.
+    if (location.pathname === currentPath) {
+      return true;
+    }
+
+    // Keep the entity-root exception for the gallery Add flow (#2291).
     if (id !== undefined && location.pathname === `/${basepath}/${id}`) {
       return true;
     }

@@ -18,7 +18,8 @@ import ImageUtils from "src/utils/image";
 import { addUpdateStashID, getStashIDs } from "src/utils/stashIds";
 import { stashboxDisplayName } from "src/utils/stashbox";
 import { useToast } from "src/hooks/Toast";
-import { Prompt } from "react-router-dom";
+import { Prompt, useLocation } from "react-router-dom";
+import { handleUnsavedChanges } from "src/utils/navigation";
 import { useFormik } from "formik";
 import {
   genderToString,
@@ -80,6 +81,7 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
   setEncodingImage,
 }) => {
   const Toast = useToast();
+  const { pathname } = useLocation();
 
   const isNew = performer.id === undefined;
 
@@ -723,7 +725,12 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
 
       <Prompt
         when={formik.dirty}
-        message={intl.formatMessage({ id: "dialogs.unsaved_changes" })}
+        message={handleUnsavedChanges(
+          intl,
+          "performers",
+          performer.id,
+          pathname
+        )}
       />
       {renderButtons("mb-3")}
 
