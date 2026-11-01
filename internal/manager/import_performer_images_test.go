@@ -17,8 +17,8 @@ func TestDuplicatePerformerImportImages(t *testing.T) {
 	for _, behavior := range AllImportDuplicateEnum {
 		t.Run(string(behavior), func(t *testing.T) {
 			db := mocks.NewDatabase()
-			primary := []byte("imported primary")
-			alternate := []byte("imported alternate")
+			primary := []byte(`<svg><title>imported primary</title></svg>`)
+			alternate := []byte(`<svg><title>imported alternate</title></svg>`)
 			input := jsonschema.Performer{Name: "existing", Image: base64.StdEncoding.EncodeToString(primary), AlternateImages: []string{base64.StdEncoding.EncodeToString(alternate), base64.StdEncoding.EncodeToString(alternate)}}
 			db.Performer.On("Query", mock.Anything, mock.Anything, mock.Anything).Return([]*models.Performer{{ID: 7, Name: "existing"}}, 1, nil).Once()
 			if behavior == ImportDuplicateEnumOverwrite {
