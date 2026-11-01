@@ -188,6 +188,7 @@ func makeConfigGeneralResult() *ConfigGeneralResult {
 		VideoExtensions:                config.GetVideoExtensions(),
 		MaxUploadSize:                  config.GetMaxUploadSize(),
 		AudioExtensions:                config.GetAudioExtensions(),
+		StoryExtensions:                config.GetStoryExtensions(),
 		ImageExtensions:                config.GetImageExtensions(),
 		GalleryExtensions:              config.GetGalleryExtensions(),
 		CreateGalleriesFromFolders:     config.GetCreateGalleriesFromFolders(),

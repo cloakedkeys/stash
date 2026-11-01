@@ -113,6 +113,7 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 				}
 			}
 		}
+		config.KeepIncludeStory(input.Stashes, existingPaths)
 		c.SetInterface(config.Stash, input.Stashes)
 	}
 
@@ -390,6 +391,10 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 
 	if input.AudioExtensions != nil {
 		c.SetInterface(config.AudioExtensions, input.AudioExtensions)
+	}
+
+	if input.StoryExtensions != nil {
+		c.SetInterface(config.StoryExtensions, input.StoryExtensions)
 	}
 
 	if input.ImageExtensions != nil {

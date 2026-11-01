@@ -305,6 +305,7 @@ func (s *Manager) Setup(ctx context.Context, input SetupInput) error {
 		cfg.SetString(config.Database, input.DatabaseFile)
 	}
 
+	config.KeepIncludeStory(input.Stashes, nil)
 	cfg.SetInterface(config.Stash, input.Stashes)
 
 	if err := cfg.Write(); err != nil {
