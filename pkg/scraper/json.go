@@ -172,10 +172,10 @@ type jsonFragmentScraper struct {
 func (s *jsonFragmentScraper) scrapeSceneByScene(ctx context.Context, scene *models.Scene) (*models.ScrapedScene, error) {
 	// construct the URL
 	queryURL := queryURLParametersFromScene(scene)
-	if s.definition.QueryURLReplacements != nil {
-		queryURL.applyReplacements(s.definition.QueryURLReplacements)
+	url, err := constructFragmentURL(queryURL, scene.URLs.List(), s.definition, s.jsonScraper.definition, ScrapeContentTypeScene)
+	if err != nil {
+		return nil, err
 	}
-	url := queryURL.constructURL(s.definition.QueryURL)
 
 	scraper, err := s.getJsonScraper(s.definition.Scraper)
 	if err != nil {
@@ -206,10 +206,10 @@ func (s *jsonFragmentScraper) scrapeByFragment(ctx context.Context, input Input)
 
 	// construct the URL
 	queryURL := queryURLParametersFromScrapedScene(scene)
-	if s.definition.QueryURLReplacements != nil {
-		queryURL.applyReplacements(s.definition.QueryURLReplacements)
+	url, err := constructFragmentURL(queryURL, scene.URLs, s.definition, s.jsonScraper.definition, ScrapeContentTypeScene)
+	if err != nil {
+		return nil, err
 	}
-	url := queryURL.constructURL(s.definition.QueryURL)
 
 	scraper, err := s.getJsonScraper(s.definition.Scraper)
 	if err != nil {
@@ -229,10 +229,10 @@ func (s *jsonFragmentScraper) scrapeByFragment(ctx context.Context, input Input)
 func (s *jsonFragmentScraper) scrapeImageByImage(ctx context.Context, image *models.Image) (*models.ScrapedImage, error) {
 	// construct the URL
 	queryURL := queryURLParametersFromImage(image)
-	if s.definition.QueryURLReplacements != nil {
-		queryURL.applyReplacements(s.definition.QueryURLReplacements)
+	url, err := constructFragmentURL(queryURL, image.URLs.List(), s.definition, s.jsonScraper.definition, ScrapeContentTypeImage)
+	if err != nil {
+		return nil, err
 	}
-	url := queryURL.constructURL(s.definition.QueryURL)
 
 	scraper, err := s.getJsonScraper(s.definition.Scraper)
 	if err != nil {
@@ -252,10 +252,10 @@ func (s *jsonFragmentScraper) scrapeImageByImage(ctx context.Context, image *mod
 func (s *jsonFragmentScraper) scrapeGalleryByGallery(ctx context.Context, gallery *models.Gallery) (*models.ScrapedGallery, error) {
 	// construct the URL
 	queryURL := queryURLParametersFromGallery(gallery)
-	if s.definition.QueryURLReplacements != nil {
-		queryURL.applyReplacements(s.definition.QueryURLReplacements)
+	url, err := constructFragmentURL(queryURL, gallery.URLs.List(), s.definition, s.jsonScraper.definition, ScrapeContentTypeGallery)
+	if err != nil {
+		return nil, err
 	}
-	url := queryURL.constructURL(s.definition.QueryURL)
 
 	scraper, err := s.getJsonScraper(s.definition.Scraper)
 	if err != nil {
