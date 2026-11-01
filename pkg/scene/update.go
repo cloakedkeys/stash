@@ -103,7 +103,42 @@ func AddGallery(ctx context.Context, qb models.SceneUpdater, o *models.Scene, ga
 	return err
 }
 
+// addFileToNewScene adds a file to a scene being created. A part of a file, or the
+// whole of one that only parts of are used, is shared with the scenes using it. Otherwise
+// the file is moved to the new scene, as AssignFile does.
+func (s *Service) addFileToNewScene(ctx context.Context, sceneID int, fileID models.FileID, ranged bool) error {
+	others, err := s.otherScenes(ctx, sceneID, fileID)
+	if err != nil {
+		return err
+	}
+
+	wholeInUse := false
+	for _, o := range others {
+		if usesWholeFile(o, fileID) {
+			wholeInUse = true
+		}
+	}
+
+	if ranged || (len(others) > 0 && !wholeInUse) {
+		if _, err := s.findVideoFile(ctx, fileID); err != nil {
+			return err
+		}
+		return s.Repository.AddFileID(ctx, sceneID, fileID)
+	}
+
+	return s.AssignFile(ctx, sceneID, fileID)
+}
+
 func (s *Service) AssignFile(ctx context.Context, sceneID int, fileID models.FileID) error {
+	// a scene that's part of a file has only that file
+	sc, err := s.Repository.Find(ctx, sceneID)
+	if err != nil {
+		return err
+	}
+	if sc != nil && HasRange(sc) {
+		return ErrRangeNeedsOneFile
+	}
+
 	// ensure file isn't a primary file and that it is a video file
 	f, err := s.File.Find(ctx, fileID)
 	if err != nil {

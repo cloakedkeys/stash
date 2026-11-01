@@ -54,6 +54,8 @@ func (r *mutationResolver) SceneCreate(ctx context.Context, input models.SceneCr
 		newScene.Favorite = *input.Favorite
 	}
 	newScene.Organized = translator.bool(input.Organized)
+	newScene.StartTime = input.StartTime
+	newScene.EndTime = input.EndTime
 	newScene.StashIDs = models.NewRelatedStashIDs(models.StashIDInputs(input.StashIds).ToStashIDs())
 
 	newScene.Date, err = translator.datePtr(input.Date)
@@ -236,6 +238,9 @@ func scenePartialFromInput(input models.SceneUpdateInput, translator changesetTr
 
 	updatedScene.URLs = translator.optionalURLs(input.Urls, input.URL)
 
+	updatedScene.StartTime = translator.optionalFloat64(input.StartTime, "start_time")
+	updatedScene.EndTime = translator.optionalFloat64(input.EndTime, "end_time")
+
 	updatedScene.PrimaryFileID, err = translator.fileIDPtrFromString(input.PrimaryFileID)
 	if err != nil {
 		return nil, fmt.Errorf("converting primary file id: %w", err)
@@ -322,6 +327,19 @@ func (r *mutationResolver) sceneUpdate(ctx context.Context, input models.SceneUp
 
 		if f == nil {
 			return nil, fmt.Errorf("file with id %d not associated with scene", newPrimaryFileID)
+		}
+	}
+
+	if updatedScene.StartTime.Set || updatedScene.EndTime.Set {
+		start, end := originalScene.StartTime, originalScene.EndTime
+		if updatedScene.StartTime.Set {
+			start = updatedScene.StartTime.Ptr()
+		}
+		if updatedScene.EndTime.Set {
+			end = updatedScene.EndTime.Ptr()
+		}
+		if err := r.sceneService.ValidateRangeUpdate(ctx, originalScene, start, end); err != nil {
+			return nil, err
 		}
 	}
 

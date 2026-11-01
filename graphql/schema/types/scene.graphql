@@ -75,6 +75,16 @@ type Scene {
   play_duration: Float
   "The number of times a scene has been played"
   play_count: Int
+  """
+  Where the scene starts in its file, in seconds. Null is the start of the file.
+  Playback doesn't use it yet.
+  """
+  start_time: Float
+  """
+  Where the scene ends in its file, in seconds. Null is the end of the file.
+  Playback doesn't use it yet.
+  """
+  end_time: Float
 
   "Times a scene was played"
   play_history: [Time!]!
@@ -136,9 +146,18 @@ input SceneCreateInput {
   """
   The first id will be assigned as primary.
   Files will be reassigned from existing scenes if applicable.
-  Files must not already be primary for another scene.
+  Files must not already be primary for another scene, unless every scene using
+  the file is only part of it. A scene with a start or end time is shared instead.
   """
   file_ids: [ID!]
+
+  """
+  Where the scene starts in its file, in seconds. A scene with a start or end time
+  must have exactly one file, and can share it with other scenes.
+  """
+  start_time: Float
+  "Where the scene ends in its file, in seconds"
+  end_time: Float
 
   custom_fields: Map
 }
@@ -182,6 +201,14 @@ input SceneUpdateInput {
     )
 
   primary_file_id: ID
+
+  """
+  Where the scene starts in its file, in seconds. Set both start_time and end_time
+  to null for the whole file, which only one scene using the file can have.
+  """
+  start_time: Float
+  "Where the scene ends in its file, in seconds"
+  end_time: Float
 
   custom_fields: CustomFieldsInput
 }

@@ -24,13 +24,7 @@ type FileDeleter struct {
 // MarkGeneratedFiles marks for deletion the generated files for the provided scene.
 // Generated files bypass trash and are permanently deleted since they can be regenerated.
 func (d *FileDeleter) MarkGeneratedFiles(scene *models.Scene) error {
-	subtitleDir := d.Paths.Scene.GetEmbeddedSubtitleDir(scene.ID)
-	if err := embedded.MarkForDeletion(subtitleDir, func() error {
-		if exists, _ := fsutil.DirExists(subtitleDir); exists {
-			return d.DirsWithoutTrash([]string{subtitleDir})
-		}
-		return nil
-	}); err != nil {
+	if err := d.markSceneGeneratedFiles(scene); err != nil {
 		return err
 	}
 	sceneHash := scene.GetHash(d.FileNamingAlgo)
@@ -89,6 +83,17 @@ func (d *FileDeleter) MarkGeneratedFiles(scene *models.Scene) error {
 	return d.FilesWithoutTrash(files)
 }
 
+// markSceneGeneratedFiles marks the generated files named after the scene, rather than its file.
+func (d *FileDeleter) markSceneGeneratedFiles(scene *models.Scene) error {
+	subtitleDir := d.Paths.Scene.GetEmbeddedSubtitleDir(scene.ID)
+	return embedded.MarkForDeletion(subtitleDir, func() error {
+		if exists, _ := fsutil.DirExists(subtitleDir); exists {
+			return d.DirsWithoutTrash([]string{subtitleDir})
+		}
+		return nil
+	})
+}
+
 // MarkMarkerFiles deletes generated files for a scene marker with the
 // provided scene and timestamp.
 // Generated files bypass trash and are permanently deleted since they can be regenerated.
@@ -120,6 +125,12 @@ func (d *FileDeleter) MarkMarkerFiles(scene *models.Scene, seconds int) error {
 // Destroy deletes a scene and its associated relationships from the
 // database.
 func (s *Service) Destroy(ctx context.Context, scene *models.Scene, fileDeleter *FileDeleter, deleteGenerated, deleteFile, destroyFileEntry bool) error {
+	// generated files are named after the file, so they stay while another scene uses it
+	shared, err := s.sharesPrimaryFile(ctx, scene)
+	if err != nil {
+		return err
+	}
+
 	mqb := s.MarkerRepository
 	markers, err := mqb.FindBySceneID(ctx, scene.ID)
 	if err != nil {
@@ -127,6 +138,12 @@ func (s *Service) Destroy(ctx context.Context, scene *models.Scene, fileDeleter 
 	}
 
 	for _, m := range markers {
+		if shared {
+			if err := mqb.Destroy(ctx, m.ID); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := DestroyMarker(ctx, scene, m, mqb, fileDeleter); err != nil {
 			return err
 		}
@@ -143,7 +160,11 @@ func (s *Service) Destroy(ctx context.Context, scene *models.Scene, fileDeleter 
 	}
 
 	if deleteGenerated {
-		if err := fileDeleter.MarkGeneratedFiles(scene); err != nil {
+		if shared {
+			if err := fileDeleter.markSceneGeneratedFiles(scene); err != nil {
+				return err
+			}
+		} else if err := fileDeleter.MarkGeneratedFiles(scene); err != nil {
 			return err
 		}
 	}

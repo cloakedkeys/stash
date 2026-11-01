@@ -191,12 +191,12 @@ var (
 		orderBy:      tagTableSort,
 	}
 
-	scenesFilesTableMgr = &relatedFilesTable{
+	scenesFilesTableMgr = &sceneFilesTable{relatedFilesTable{
 		table: table{
 			table:    scenesFilesJoinTable,
 			idColumn: scenesFilesJoinTable.Col(sceneIDColumn),
 		},
-	}
+	}}
 
 	scenesTagsTableMgr = &joinTable{
 		table: table{

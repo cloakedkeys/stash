@@ -181,12 +181,12 @@ var (
 		idColumn: goqu.T(sceneMarkerTable).Col(idColumn),
 	}
 
-	scenesFilesTableMgr = &relatedFilesTable{
+	scenesFilesTableMgr = &sceneFilesTable{relatedFilesTable{
 		table: table{
 			table:    scenesFilesJoinTable,
 			idColumn: scenesFilesJoinTable.Col(sceneIDColumn),
 		},
-	}
+	}}
 
 	sceneMarkersTagsTableMgr = &joinTable{
 		table: table{

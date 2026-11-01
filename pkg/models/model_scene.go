@@ -36,6 +36,12 @@ type Scene struct {
 	// transient - checksum of primary file - empty if no files
 	Checksum string
 
+	// Where the scene starts and ends in its primary file, in seconds. Nil is the start
+	// or end of the file. Kept with the scene's link to the file, so that several scenes
+	// can use different parts of one file.
+	StartTime *float64 `json:"start_time"`
+	EndTime   *float64 `json:"end_time"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -99,6 +105,9 @@ type ScenePartial struct {
 	GroupIDs      *UpdateGroupIDs
 	StashIDs      *UpdateStashIDs
 	PrimaryFileID *FileID
+	// the range in the primary file. See Scene.StartTime.
+	StartTime OptionalFloat64
+	EndTime   OptionalFloat64
 }
 
 func NewScenePartial() ScenePartial {

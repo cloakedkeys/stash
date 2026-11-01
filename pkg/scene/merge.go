@@ -42,6 +42,12 @@ func (s *Service) Merge(ctx context.Context, sourceIDs []int, destinationID int,
 		return fmt.Errorf("finding source scenes: %w", err)
 	}
 
+	if dest != nil {
+		if err := s.checkMergeable(ctx, dest, sources); err != nil {
+			return err
+		}
+	}
+
 	var fileIDs []models.FileID
 
 	for _, src := range sources {

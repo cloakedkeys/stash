@@ -16,6 +16,20 @@ func (s *Service) Create(ctx context.Context, input models.CreateSceneInput) (*m
 		return nil, errors.New("title must be set if scene has no files")
 	}
 
+	ranged := HasRange(input.Scene)
+	if ranged {
+		if len(input.FileIDs) != 1 {
+			return nil, ErrRangeNeedsOneFile
+		}
+		f, err := s.findVideoFile(ctx, input.FileIDs[0])
+		if err != nil {
+			return nil, err
+		}
+		if err := ValidateRange(f, input.Scene.StartTime, input.Scene.EndTime); err != nil {
+			return nil, err
+		}
+	}
+
 	now := time.Now()
 	newScene := *input.Scene
 	newScene.CreatedAt = now
@@ -36,16 +50,21 @@ func (s *Service) Create(ctx context.Context, input models.CreateSceneInput) (*m
 	}
 
 	for _, f := range input.FileIDs {
-		if err := s.AssignFile(ctx, newScene.ID, f); err != nil {
+		if err := s.addFileToNewScene(ctx, newScene.ID, f, ranged); err != nil {
 			return nil, fmt.Errorf("assigning file %d to new scene: %w", f, err)
 		}
 	}
 
 	if len(input.FileIDs) > 0 {
-		// assign the primary to the first
-		if _, err := s.Repository.UpdatePartial(ctx, newScene.ID, models.ScenePartial{
+		// assign the primary to the first, and the scene's part of it
+		partial := models.ScenePartial{
 			PrimaryFileID: &input.FileIDs[0],
-		}); err != nil {
+		}
+		if ranged {
+			partial.StartTime = models.NewOptionalFloat64Ptr(input.Scene.StartTime)
+			partial.EndTime = models.NewOptionalFloat64Ptr(input.Scene.EndTime)
+		}
+		if _, err := s.Repository.UpdatePartial(ctx, newScene.ID, partial); err != nil {
 			return nil, fmt.Errorf("setting primary file on new scene: %w", err)
 		}
 	}

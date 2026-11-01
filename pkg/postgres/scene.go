@@ -138,6 +138,8 @@ type sceneQueryRow struct {
 	PrimaryFileBasename   zero.String `db:"primary_file_basename"`
 	PrimaryFileOshash     zero.String `db:"primary_file_oshash"`
 	PrimaryFileChecksum   zero.String `db:"primary_file_checksum"`
+	PrimaryFileStartTime  null.Float  `db:"primary_file_start_time"`
+	PrimaryFileEndTime    null.Float  `db:"primary_file_end_time"`
 }
 
 func (r *sceneQueryRow) resolve() *models.Scene {
@@ -156,6 +158,8 @@ func (r *sceneQueryRow) resolve() *models.Scene {
 		PrimaryFileID: nullIntFileIDPtr(r.PrimaryFileID),
 		OSHash:        r.PrimaryFileOshash.String,
 		Checksum:      r.PrimaryFileChecksum.String,
+		StartTime:     r.PrimaryFileStartTime.Ptr(),
+		EndTime:       r.PrimaryFileEndTime.Ptr(),
 
 		CreatedAt: r.CreatedAt.Timestamp.UTC(),
 		UpdatedAt: r.UpdatedAt.Timestamp.UTC(),
@@ -317,6 +321,8 @@ func (qb *SceneStore) selectDataset() *goqu.SelectDataset {
 		files.Col("basename").As("primary_file_basename"),
 		checksum.Col("fingerprint").As("primary_file_checksum"),
 		oshash.Col("fingerprint").As("primary_file_oshash"),
+		scenesFilesJoinTable.Col("start_time").As("primary_file_start_time"),
+		scenesFilesJoinTable.Col("end_time").As("primary_file_end_time"),
 	)
 }
 
@@ -437,6 +443,11 @@ func (qb *SceneStore) UpdatePartial(ctx context.Context, id int, partial models.
 	}
 	if partial.PrimaryFileID != nil {
 		if err := scenesFilesTableMgr.setPrimary(ctx, id, *partial.PrimaryFileID); err != nil {
+			return nil, err
+		}
+	}
+	if partial.StartTime.Set || partial.EndTime.Set {
+		if err := scenesFilesTableMgr.setPrimaryRange(ctx, id, partial.StartTime, partial.EndTime); err != nil {
 			return nil, err
 		}
 	}
