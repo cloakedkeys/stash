@@ -304,7 +304,7 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
     if (canModify) {
       Mousetrap.bind("e", () => setActiveTabKey("image-edit-panel"));
     }
-    Mousetrap.bind("f", () => setActiveTabKey("image-file-info-panel"));
+    Mousetrap.bind("i", () => setActiveTabKey("image-file-info-panel"));
     Mousetrap.bind("o", () => {
       onIncrementClick();
     });
@@ -312,7 +312,7 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
     return () => {
       Mousetrap.unbind("a");
       Mousetrap.unbind("e");
-      Mousetrap.unbind("f");
+      Mousetrap.unbind("i");
       Mousetrap.unbind("o");
     };
   });

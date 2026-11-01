@@ -1,3 +1,4 @@
+import { useListOperationShortcuts } from "../List/keyboardShortcuts";
 import { useCanModify } from "src/hooks/CurrentUser";
 import cloneDeep from "lodash-es/cloneDeep";
 import React, { useCallback, useEffect } from "react";
@@ -489,24 +490,7 @@ export const FilteredPerformerList = PatchComponent(
       setShowSidebar,
     });
 
-    useEffect(() => {
-      Mousetrap.bind("e", () => {
-        if (hasSelection) {
-          onEdit?.();
-        }
-      });
-
-      Mousetrap.bind("d d", () => {
-        if (hasSelection) {
-          onDelete?.();
-        }
-      });
-
-      return () => {
-        Mousetrap.unbind("e");
-        Mousetrap.unbind("d d");
-      };
-    });
+    useListOperationShortcuts({ hasSelection, onEdit, onDelete });
 
     const onCloseEditDelete = useCloseEditDelete({
       closeModal,
