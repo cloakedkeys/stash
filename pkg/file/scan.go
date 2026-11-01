@@ -29,7 +29,7 @@ import (
 // If the folder does not exist in the database, then a new folder entry its created.
 //
 // Files are handled by first querying for the file by its path. If the file entry exists in the
-// database, then the mod time is compared to the value in the database. If the mod time is different
+// database, then the mod time and size are compared to the values in the database. If either is different
 // then file is marked as updated - it recalculates any fingerprints and fires decorators, then
 // the file entry is updated and any applicable handlers are fired.
 //
@@ -787,7 +787,7 @@ func (s *Scanner) onExistingFile(ctx context.Context, f ScannedFile, existing mo
 
 	fileModTime := f.ModTime
 	// #6326 - also force a rescan if the basename changed
-	updated := !fileModTime.Equal(base.ModTime) || base.Basename != f.Basename
+	updated := !fileModTime.Equal(base.ModTime) || base.Size != f.Size || base.Basename != f.Basename
 	forceRescan := s.Rescan
 
 	if !updated && !forceRescan {
