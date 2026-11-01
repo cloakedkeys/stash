@@ -345,6 +345,11 @@ func (s *scriptScraper) runScraperScript(ctx context.Context, command []string, 
 		s := sb.String()
 		lenientErr := json.NewDecoder(strings.NewReader(s)).Decode(out)
 		if lenientErr != nil {
+			// Stop the script if it is still running, and always reap it before
+			// returning the decode error.
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+
 			// The error is genuine, so return it
 			logger.Errorf("could not unmarshal json from script output: %v", lenientErr)
 			return errors.New("error running scraper script, check the logs for more information")

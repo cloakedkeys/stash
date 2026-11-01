@@ -1,13 +1,99 @@
 package scraper
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestRunScraperScriptReapsProcess(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, mode := range []string{"empty", "malformed", "malformed-running", "valid", "unknown-field", "nonzero"} {
+		t.Run(mode, func(t *testing.T) {
+			pidFile := filepath.Join(t.TempDir(), "pid")
+			t.Setenv("STASH_TEST_SCRAPER_PID_FILE", pidFile)
+			t.Setenv("STASH_TEST_SCRAPER_MODE", mode)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			s := scriptScraper{definition: Definition{path: filepath.Join(t.TempDir(), "scraper.yml")}}
+			var out struct {
+				Title string `json:"title"`
+			}
+			err := s.runScraperScript(ctx, []string{executable, "-test.run=^TestScraperScriptProcess$"}, "{}", &out)
+			switch mode {
+			case "valid", "unknown-field":
+				assert.NoError(t, err)
+				assert.Equal(t, "test", out.Title)
+			case "nonzero":
+				assert.ErrorIs(t, err, ErrScraperScript)
+			default:
+				assert.EqualError(t, err, "error running scraper script, check the logs for more information")
+			}
+
+			pidBytes, err := os.ReadFile(pidFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pid, err := strconv.Atoi(string(pidBytes))
+			if err != nil {
+				t.Fatal(err)
+			}
+			process, err := os.FindProcess(pid)
+			if err != nil {
+				// Windows cannot open an exited process once its handles are closed.
+				return
+			}
+			defer process.Release()
+			// On Unix, waiting again must fail because the scraper already reaped
+			// the child. On Windows, an unreleased handle lets this wait succeed.
+			if state, err := process.Wait(); err == nil {
+				t.Errorf("scraper process was not reaped before returning: %v", state)
+			}
+		})
+	}
+}
+
+func TestScraperScriptProcess(t *testing.T) {
+	pidFile := os.Getenv("STASH_TEST_SCRAPER_PID_FILE")
+	if pidFile == "" {
+		return
+	}
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	mode := os.Getenv("STASH_TEST_SCRAPER_MODE")
+	switch mode {
+	case "empty":
+	case "malformed", "malformed-running":
+		fmt.Fprint(os.Stdout, "invalid json")
+	case "unknown-field":
+		fmt.Fprint(os.Stdout, `{"title":"test","extra":true}`)
+	default:
+		fmt.Fprint(os.Stdout, `{"title":"test"}`)
+	}
+	if mode == "malformed-running" {
+		// A decode error must also clean up a child that has not exited yet.
+		time.Sleep(time.Minute)
+	}
+	if mode == "nonzero" {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
 
 func Test_imageInputFromImage_worksWithMultipleFiles(t *testing.T) {
 
