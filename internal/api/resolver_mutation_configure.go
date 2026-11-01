@@ -113,6 +113,7 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 				}
 			}
 		}
+		config.KeepIncludeStory(input.Stashes, existingPaths)
 		c.SetInterface(config.Stash, input.Stashes)
 	}
 
