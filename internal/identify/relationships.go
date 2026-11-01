@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil"
@@ -62,9 +63,23 @@ func (r relationshipResolver) performers(ctx context.Context, existingIDs []int,
 	}
 
 	singleNamePerformerSkipped := false
+	createdPerformers := make(map[[2]string]int)
 	for _, performer := range scraped {
 		if performerGenderExcluded(allowedGenders, performer.Gender) {
 			continue
+		}
+
+		var key [2]string
+		unmatched := performer.StoredID == nil && performer.Name != nil
+		if unmatched {
+			key[0] = strings.TrimSpace(*performer.Name)
+			if performer.Disambiguation != nil {
+				key[1] = *performer.Disambiguation
+			}
+			if id, ok := createdPerformers[key]; ok {
+				performerIDs = sliceutil.AppendUnique(performerIDs, id)
+				continue
+			}
 		}
 
 		performerID, err := getPerformerID(ctx, r.endpoint, r.performerCreator, performer, createMissing, r.skipSingleNamePerformers)
@@ -77,6 +92,9 @@ func (r relationshipResolver) performers(ctx context.Context, existingIDs []int,
 		}
 
 		if performerID != nil {
+			if unmatched {
+				createdPerformers[key] = *performerID
+			}
 			performerIDs = sliceutil.AppendUnique(performerIDs, *performerID)
 		}
 	}
