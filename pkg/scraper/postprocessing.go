@@ -128,6 +128,14 @@ func (c *postScraper) postScrapePerformer(ctx context.Context, p models.ScrapedP
 
 	c.postProcessCareerLength(&p)
 
+	// Keep the legacy field for clients that do not yet use alias_list.
+	if p.AliasList != nil {
+		aliases := strings.Join(p.AliasList, ", ")
+		p.Aliases = &aliases
+	} else {
+		p.AliasList = p.GetAliases()
+	}
+
 	return p, nil
 }
 

@@ -183,7 +183,7 @@ func marshalScrapedGallery(content scraper.ScrapedContent) (*models.ScrapedGalle
 // marshalScrapedImage will marshal a single scraped image
 func marshalScrapedImage(content scraper.ScrapedContent) (*models.ScrapedImage, error) {
 	g, err := marshalScrapedImages([]scraper.ScrapedContent{content})
-	if err != nil {
+	if err != nil || len(g) == 0 {
 		return nil, err
 	}
 
