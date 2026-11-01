@@ -47,6 +47,40 @@ func extractHostname(urlStr string) string {
 type isMultiFunc func(key string) bool
 
 func (s mappedConfig) process(ctx context.Context, q mappedQuery, common commonMappedConfig, isMulti isMultiFunc) mappedResults {
+	return s.processAttributes(ctx, q, common, isMulti, false)
+}
+
+// processObjects preserves attribute positions until complete objects can be
+// filtered by name. Cleaning each attribute separately would misalign them.
+func (s mappedConfig) processObjects(ctx context.Context, q mappedQuery, common commonMappedConfig) mappedResults {
+	results := s.processAttributes(ctx, q, common, nil, q.getType() != SearchQuery)
+	if q.getType() == SearchQuery {
+		return results
+	}
+
+	var ret mappedResults
+	seen := make(map[string]bool)
+	for _, result := range results {
+		if _, hasName := s["Name"]; hasName {
+			name, _ := result.string("Name")
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+		}
+		for key, value := range result {
+			if value == "" {
+				delete(result, key)
+			}
+		}
+		if len(result) > 0 {
+			ret = append(ret, result)
+		}
+	}
+	return ret
+}
+
+func (s mappedConfig) processAttributes(ctx context.Context, q mappedQuery, common commonMappedConfig, isMulti isMultiFunc, preservePositions bool) mappedResults {
 	var ret mappedResults
 
 	for k, attrConfig := range s {
@@ -65,13 +99,19 @@ func (s mappedConfig) process(ctx context.Context, q mappedQuery, common commonM
 			selector = strings.ReplaceAll(selector, "{inputURL}", q.getURL())
 			selector = strings.ReplaceAll(selector, "{inputHostname}", extractHostname(q.getURL()))
 
-			found, err := q.runQuery(selector)
+			query := q.runQuery
+			// Only direct attribute lists are matched by their original index.
+			// Concat and split consume the list before producing object values.
+			if preservePositions && !attrConfig.hasConcat() && !attrConfig.hasSplit() {
+				query = q.runQueryWithPositions
+			}
+			found, err := query(selector)
 			if err != nil {
 				logger.Warnf("key '%v': %v", k, err)
 			}
 
 			if len(found) > 0 {
-				result := s.postProcess(ctx, q, attrConfig, found)
+				result := s.postProcess(ctx, q, attrConfig, found, preservePositions)
 
 				// HACK - if the key is URLs, then we need to set the value as a multi-value
 				isMulti := isMulti != nil && isMulti(k)
@@ -89,13 +129,16 @@ func (s mappedConfig) process(ctx context.Context, q mappedQuery, common commonM
 	return ret
 }
 
-func (s mappedConfig) postProcess(ctx context.Context, q mappedQuery, attrConfig mappedScraperAttrConfig, found []string) []string {
+func (s mappedConfig) postProcess(ctx context.Context, q mappedQuery, attrConfig mappedScraperAttrConfig, found []string, preservePositions bool) []string {
 	// check if we're concatenating the results into a single result
 	var ret []string
 	if attrConfig.hasConcat() {
 		result := attrConfig.concatenateResults(found)
 		result = attrConfig.postProcess(ctx, result, q)
 		if attrConfig.hasSplit() {
+			if preservePositions {
+				return strings.Split(result, attrConfig.Split)
+			}
 			results := attrConfig.splitString(result)
 			// skip cleaning when the query is used for searching
 			if q.getType() == SearchQuery {
@@ -110,13 +153,16 @@ func (s mappedConfig) postProcess(ctx context.Context, q mappedQuery, attrConfig
 		for _, text := range found {
 			text = attrConfig.postProcess(ctx, text, q)
 			if attrConfig.hasSplit() {
+				if preservePositions {
+					return strings.Split(text, attrConfig.Split)
+				}
 				return attrConfig.splitString(text)
 			}
 
 			ret = append(ret, text)
 		}
 		// skip cleaning when the query is used for searching
-		if q.getType() == SearchQuery {
+		if preservePositions || q.getType() == SearchQuery {
 			return ret
 		}
 		ret = attrConfig.cleanResults(ret)

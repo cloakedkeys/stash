@@ -322,6 +322,10 @@ func (q *jsonQuery) runQuery(selector string) ([]string, error) {
 	return ret, nil
 }
 
+func (q *jsonQuery) runQueryWithPositions(selector string) ([]string, error) {
+	return q.runQuery(selector)
+}
+
 func (q *jsonQuery) subScrape(ctx context.Context, value string) mappedQuery {
 	doc, err := q.scraper.loadURL(ctx, value)
 
