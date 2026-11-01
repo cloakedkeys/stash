@@ -3,15 +3,68 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
+	"github.com/go-chi/cors"
 	"github.com/gorilla/websocket"
 	"github.com/stashapp/stash/pkg/logger"
+	"github.com/stashapp/stash/pkg/session"
+)
+
+const (
+	castReceiverHTTPOrigin  = "http://www.gstatic.com"
+	castReceiverHTTPSOrigin = "https://www.gstatic.com"
 )
 
 var authenticatedAPIKeyCtxKey = &contextKey{"authenticatedAPIKey"}
 
 type crossOriginProtection struct {
 	protection *http.CrossOriginProtection
+}
+
+func (p *crossOriginProtection) allowCORS(r *http.Request, origin string) bool {
+	// The Cast receiver needs to read scene streams and captions without a key.
+	method := r.Method
+	if method == http.MethodOptions {
+		method = r.Header.Get("Access-Control-Request-Method")
+	}
+	if (method == http.MethodGet || method == http.MethodHead) && strings.HasPrefix(r.URL.Path, "/scene/") &&
+		(origin == castReceiverHTTPOrigin || origin == castReceiverHTTPSOrigin) {
+		return true
+	}
+	if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+		// Preflights carry no key. Permission to send one does not grant
+		// permission to read the actual response: authentication checks it first.
+		for _, header := range strings.Split(r.Header.Get("Access-Control-Request-Headers"), ",") {
+			if strings.EqualFold(strings.TrimSpace(header), session.ApiKeyHeader) {
+				return true
+			}
+		}
+	}
+	if r.Context().Value(authenticatedAPIKeyCtxKey) == true {
+		return true
+	}
+	// Check as an unsafe method so GET responses use the same trusted-origin
+	// and same-origin rules, including Sec-Fetch-Site behind reverse proxies.
+	check := new(http.Request)
+	*check = *r
+	check.Method = http.MethodPost
+	return p.protection.Check(check) == nil
+}
+
+func (p *crossOriginProtection) corsMiddleware(next http.Handler) http.Handler {
+	handler := cors.New(cors.Options{
+		AllowOriginFunc: p.allowCORS,
+		AllowedMethods:  []string{http.MethodHead, http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete},
+		AllowedHeaders:  []string{"*"},
+	}).Handler(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Origin alone is insufficient: the decision also depends on the key
+		// and the browser's same-origin signal. Query keys are part of the URL.
+		w.Header().Add("Vary", session.ApiKeyHeader)
+		w.Header().Add("Vary", "Sec-Fetch-Site")
+		handler.ServeHTTP(w, r)
+	})
 }
 
 func newCrossOriginProtection(trustedOrigins []string) (*crossOriginProtection, error) {
