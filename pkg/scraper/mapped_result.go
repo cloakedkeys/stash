@@ -145,6 +145,7 @@ func (r mappedResult) scrapedPerformer() *models.ScrapedPerformer {
 		Tattoos:        r.stringPtr("Tattoos"),
 		Piercings:      r.stringPtr("Piercings"),
 		Aliases:        r.stringPtr("Aliases"),
+		AliasList:      r.stringSlice("AliasList"),
 		Image:          r.stringPtr("Image"),
 		Images:         r.stringSlice("Images"),
 		Details:        r.stringPtr("Details"),

@@ -1,7 +1,9 @@
 package scraper
 
 import (
+	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/stashapp/stash/pkg/models"
@@ -13,15 +15,23 @@ type queryURLParameters map[string]string
 
 func queryURLParametersFromScene(scene *models.Scene) queryURLParameters {
 	ret := make(queryURLParameters)
-	ret["checksum"] = scene.Checksum
-	ret["oshash"] = scene.OSHash
-	ret["filename"] = filepath.Base(scene.Path)
-	ret["path"] = scene.Path
+	if scene.Checksum != "" {
+		ret["checksum"] = scene.Checksum
+	}
+	if scene.OSHash != "" {
+		ret["oshash"] = scene.OSHash
+	}
+	if scene.Path != "" {
+		ret["filename"] = filepath.Base(scene.Path)
+		ret["path"] = scene.Path
+	}
 
 	// pull phash from primary file
-	phashFingerprints := scene.Files.Primary().Base().Fingerprints.Filter(models.FingerprintTypePhash)
-	if len(phashFingerprints) > 0 {
-		ret["phash"] = phashFingerprints[0].Value()
+	if file := scene.Files.Primary(); file != nil {
+		phashFingerprints := file.Base().Fingerprints.Filter(models.FingerprintTypePhash)
+		if len(phashFingerprints) > 0 {
+			ret["phash"] = phashFingerprints[0].Value()
+		}
 	}
 
 	if scene.Title != "" {
@@ -37,7 +47,7 @@ func queryURLParametersFromScrapedScene(scene models.ScrapedSceneInput) queryURL
 	ret := make(queryURLParameters)
 
 	setField := func(field string, value *string) {
-		if value != nil {
+		if value != nil && *value != "" {
 			ret[field] = *value
 		}
 	}
@@ -65,7 +75,9 @@ func queryURLParameterFromURL(url string) queryURLParameters {
 
 func queryURLParametersFromGallery(gallery *models.Gallery) queryURLParameters {
 	ret := make(queryURLParameters)
-	ret["checksum"] = gallery.PrimaryChecksum()
+	if checksum := gallery.PrimaryChecksum(); checksum != "" {
+		ret["checksum"] = checksum
+	}
 
 	if gallery.Path != "" {
 		ret["filename"] = filepath.Base(gallery.Path)
@@ -83,7 +95,9 @@ func queryURLParametersFromGallery(gallery *models.Gallery) queryURLParameters {
 
 func queryURLParametersFromImage(image *models.Image) queryURLParameters {
 	ret := make(queryURLParameters)
-	ret["checksum"] = image.Checksum
+	if image.Checksum != "" {
+		ret["checksum"] = image.Checksum
+	}
 
 	if image.Path != "" {
 		ret["filename"] = filepath.Base(image.Path)
@@ -115,6 +129,53 @@ func (p queryURLParameters) constructURL(url string) string {
 	}
 
 	return escapeInvalidURLChars(ret)
+}
+
+var queryURLFields = []string{
+	"checksum", "oshash", "filename", "path", "phash", "title", "url",
+	"code", "date", "details", "director", "production_date", "remote_site_id",
+}
+
+// constructFragmentURL validates required fields before making a request. URL
+// patterns apply to the source URL, before queryURLReplace transforms it.
+func constructFragmentURL(p queryURLParameters, urls []string, fragment ByFragmentDefinition, config Definition, ty ScrapeContentType) (string, error) {
+	if strings.Contains(fragment.QueryURL, "{url}") {
+		if len(urls) == 0 && p["url"] != "" {
+			urls = []string{p["url"]}
+		}
+		delete(p, "url")
+		hasURL := false
+		for _, url := range urls {
+			if url == "" {
+				continue
+			}
+			hasURL = true
+			if len(loadUrlCandidates(config, ty)) == 0 || config.matchesURL(url, ty) {
+				p["url"] = url
+				break
+			}
+		}
+		if hasURL && p["url"] == "" {
+			return "", fmt.Errorf("no matching URLs found for this scraper")
+		}
+	}
+
+	p.applyReplacements(fragment.QueryURLReplacements)
+	missing := make(map[string]bool)
+	for _, field := range queryURLFields {
+		if strings.Contains(fragment.QueryURL, "{"+field+"}") && p[field] == "" {
+			missing[field] = true
+		}
+	}
+	if len(missing) > 0 {
+		fields := make([]string, 0, len(missing))
+		for field := range missing {
+			fields = append(fields, field)
+		}
+		sort.Strings(fields)
+		return "", fmt.Errorf("missing fields for queryURL: %s", strings.Join(fields, ", "))
+	}
+	return p.constructURL(fragment.QueryURL), nil
 }
 
 // escapeInvalidURLChars percent-encodes the characters that can never appear in a URL as-is,

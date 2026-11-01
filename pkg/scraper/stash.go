@@ -83,7 +83,7 @@ type scrapedPerformerStash struct {
 	CareerLength *string            `graphql:"career_length" json:"career_length"`
 	Tattoos      *string            `graphql:"tattoos" json:"tattoos"`
 	Piercings    *string            `graphql:"piercings" json:"piercings"`
-	Aliases      []string           `graphql:"alias_list" json:"alias_list"`
+	AliasList    []string           `graphql:"alias_list" json:"alias_list"`
 	Tags         []*scrapedTagStash `graphql:"tags" json:"tags"`
 	Details      *string            `graphql:"details" json:"details"`
 	DeathDate    *string            `graphql:"death_date" json:"death_date"`
@@ -143,7 +143,7 @@ func (s *stashScraper) scrapeByPerformerFragment(ctx context.Context, scrapedPer
 	}
 
 	// convert alias list to aliases
-	aliasStr := strings.Join(q.FindPerformer.Aliases, ", ")
+	aliasStr := strings.Join(q.FindPerformer.AliasList, ", ")
 	ret.Aliases = &aliasStr
 
 	// convert numeric to string
