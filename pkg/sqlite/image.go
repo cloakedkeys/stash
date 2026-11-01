@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/stashapp/stash/pkg/librarylimit"
@@ -738,60 +739,43 @@ func (qb *ImageStore) FindByChecksum(ctx context.Context, checksum string) ([]*m
 	})
 }
 
-var defaultGalleryOrder = []exp.OrderedExpression{
-	goqu.L("COALESCE(folders.path, '') || COALESCE(files.basename, '') COLLATE NATURAL_CI").Asc(),
-	goqu.L("COALESCE(images.title, images.id) COLLATE NATURAL_CI").Asc(),
-}
-
 func (qb *ImageStore) FindByGalleryID(ctx context.Context, galleryID int) ([]*models.Image, error) {
-	table := qb.table()
-
-	sq := dialect.From(table).
-		InnerJoin(
-			galleriesImagesJoinTable,
-			goqu.On(table.Col(idColumn).Eq(galleriesImagesJoinTable.Col(imageIDColumn))),
-		).
-		Select(table.Col(idColumn)).Where(
-		galleriesImagesJoinTable.Col("gallery_id").Eq(galleryID),
-	)
-
-	q := qb.selectDataset().Prepared(true).Where(
-		table.Col(idColumn).Eq(
-			sq,
-		),
-	).Order(defaultGalleryOrder...)
-
-	ret, err := qb.getMany(ctx, q)
-	if err != nil {
-		return nil, fmt.Errorf("getting images for gallery %d: %w", galleryID, err)
-	}
-
-	return ret, nil
+	perPage := models.PerPageAll
+	return qb.queryGalleryImages(ctx, galleryID, &models.FindFilterType{PerPage: &perPage})
 }
 
 func (qb *ImageStore) FindByGalleryIDIndex(ctx context.Context, galleryID int, index uint) (*models.Image, error) {
-	table := qb.table()
-
-	q := qb.selectDataset().
-		InnerJoin(
-			galleriesImagesJoinTable,
-			goqu.On(table.Col(idColumn).Eq(galleriesImagesJoinTable.Col(imageIDColumn))),
-		).
-		Where(galleriesImagesJoinTable.Col(galleryIDColumn).Eq(galleryID)).
-		Prepared(true).
-		Order(defaultGalleryOrder...).
-		Limit(1).Offset(index)
-
-	ret, err := qb.getMany(ctx, q)
+	page, perPage := int(index)+1, 1
+	ret, err := qb.queryGalleryImages(ctx, galleryID, &models.FindFilterType{Page: &page, PerPage: &perPage})
 	if err != nil {
-		return nil, fmt.Errorf("getting images for gallery %d: %w", galleryID, err)
+		return nil, err
 	}
-
 	if len(ret) == 0 {
 		return nil, nil
 	}
-
 	return ret[0], nil
+}
+
+func (qb *ImageStore) queryGalleryImages(ctx context.Context, galleryID int, findFilter *models.FindFilterType) ([]*models.Image, error) {
+	sort := "path"
+	findFilter.Sort = &sort
+	result, err := qb.Query(ctx, models.ImageQueryOptions{
+		QueryOptions: models.QueryOptions{FindFilter: findFilter},
+		ImageFilter: &models.ImageFilterType{
+			Galleries: &models.MultiCriterionInput{
+				Value:    []string{strconv.Itoa(galleryID)},
+				Modifier: models.CriterionModifierIncludes,
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("getting images for gallery %d: %w", galleryID, err)
+	}
+	ret, err := result.Resolve(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting images for gallery %d: %w", galleryID, err)
+	}
+	return ret, nil
 }
 
 func (qb *ImageStore) CountByGalleryID(ctx context.Context, galleryID int) (int, error) {

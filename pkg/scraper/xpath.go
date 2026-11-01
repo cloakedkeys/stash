@@ -302,6 +302,20 @@ func (q *xpathQuery) getURL() string {
 }
 
 func (q *xpathQuery) runQuery(selector string) ([]string, error) {
+	found, err := q.runQueryWithPositions(selector)
+	if err != nil {
+		return nil, err
+	}
+	var ret []string
+	for _, text := range found {
+		if text != "" {
+			ret = append(ret, text)
+		}
+	}
+	return ret, nil
+}
+
+func (q *xpathQuery) runQueryWithPositions(selector string) ([]string, error) {
 	found, err := htmlquery.QueryAll(q.doc, selector)
 	if err != nil {
 		return nil, fmt.Errorf("selector '%s': parse error: %v", selector, err)
@@ -309,11 +323,13 @@ func (q *xpathQuery) runQuery(selector string) ([]string, error) {
 
 	var ret []string
 	for _, n := range found {
-		// don't add empty strings
-		nodeText := q.nodeText(n)
-		if nodeText != "" {
-			ret = append(ret, q.nodeText(n))
+		text := q.nodeText(n)
+		// Empty text nodes are formatting whitespace, not object values.
+		if n.Type == html.TextNode && text == "" {
+			continue
 		}
+		// Keep empty matches so attributes from the same object stay aligned.
+		ret = append(ret, text)
 	}
 
 	return ret, nil
