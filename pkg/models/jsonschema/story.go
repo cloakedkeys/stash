@@ -3,6 +3,7 @@ package jsonschema
 import (
 	"fmt"
 	"os"
+	"unicode/utf8"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/stashapp/stash/pkg/fsutil"
@@ -27,7 +28,18 @@ type Story struct {
 	UpdatedAt json.JSONTime `json:"updated_at,omitempty"`
 }
 
+// maxStoryNameBytes keeps an export file name well under the 255 bytes most
+// file systems allow. The id in the name keeps stories apart.
+const maxStoryNameBytes = 100
+
 func (s Story) Filename(basename string, id string) string {
+	if len(basename) > maxStoryNameBytes {
+		n := maxStoryNameBytes
+		for n > 0 && !utf8.RuneStart(basename[n]) {
+			n--
+		}
+		basename = basename[:n]
+	}
 	ret := fsutil.SanitiseBasename(basename)
 	if ret != "" {
 		ret += "."

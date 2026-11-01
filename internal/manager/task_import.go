@@ -602,6 +602,7 @@ func (t *ImportTask) ImportStories(ctx context.Context) {
 	}
 
 	r := t.repository
+	claimed := make(map[int]bool)
 	for i, fi := range files {
 		storyJSON, err := jsonschema.LoadStoryFile(filepath.Join(path, fi.Name()))
 		if err != nil {
@@ -618,6 +619,7 @@ func (t *ImportTask) ImportStories(ctx context.Context) {
 				FileFinder:          r.File,
 				Input:               *storyJSON,
 				MissingRefBehaviour: t.MissingRefBehaviour,
+				Claimed:             claimed,
 			}, t.DuplicateBehaviour)
 		}); err != nil {
 			logger.Errorf("[stories] <%s> import failed to commit: %v", fi.Name(), err)

@@ -194,6 +194,66 @@ func TestImporterFindExistingID(t *testing.T) {
 	})
 }
 
+// Review finding 2: two stories with no file and the same title each get
+// their own story, whether the import makes them or finds them again.
+func TestImporterSameTitleStories(t *testing.T) {
+	ctx := context.Background()
+	twin := jsonschema.Story{Title: "Twin"}
+	isTwinQuery := mock.MatchedBy(func(o models.StoryQueryOptions) bool { return o.StoryFilter.Title.Value == "Twin" })
+
+	importTwin := func(db *mocks.Database, claimed map[int]bool) *Importer {
+		i := newImporter(db, twin, models.ImportMissingRefEnumFail)
+		i.Claimed = claimed
+		require.NoError(t, i.PreImport(ctx))
+		return i
+	}
+	queryResult := func(db *mocks.Database, stories ...*models.Story) *models.StoryQueryResult {
+		r := models.NewStoryQueryResult(db.Story)
+		for _, s := range stories {
+			r.IDs = append(r.IDs, s.ID)
+		}
+		return r
+	}
+
+	t.Run("into an empty library", func(t *testing.T) {
+		db := mocks.NewDatabase()
+		claimed := map[int]bool{}
+		first := &models.Story{ID: 1, Title: "Twin"}
+
+		db.Story.On("Query", ctx, isTwinQuery).Return(queryResult(db), nil).Once()
+		db.Story.On("FindMany", ctx, []int(nil)).Return(nil, nil).Once()
+		db.Story.On("Create", ctx, mock.Anything, []models.FileID(nil)).Run(func(a mock.Arguments) { a.Get(1).(*models.Story).ID = 1 }).Return(nil).Once()
+		i := importTwin(db, claimed)
+		id, err := i.FindExistingID(ctx)
+		require.NoError(t, err)
+		require.Nil(t, id)
+		_, err = i.Create(ctx)
+		require.NoError(t, err)
+
+		// the second twin finds only the first, which this import made
+		db.Story.On("Query", ctx, isTwinQuery).Return(queryResult(db, first), nil).Once()
+		db.Story.On("FindMany", ctx, []int{1}).Return([]*models.Story{first}, nil).Once()
+		id, err = importTwin(db, claimed).FindExistingID(ctx)
+		require.NoError(t, err)
+		assert.Nil(t, id)
+	})
+
+	t.Run("into a library that has them", func(t *testing.T) {
+		db := mocks.NewDatabase()
+		claimed := map[int]bool{}
+		both := []*models.Story{{ID: 1, Title: "Twin"}, {ID: 2, Title: "Twin"}}
+		db.Story.On("Query", ctx, isTwinQuery).Return(queryResult(db, both...), nil)
+		db.Story.On("FindMany", ctx, []int{1, 2}).Return(both, nil)
+
+		id, err := importTwin(db, claimed).FindExistingID(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, intPtr(1), id)
+		id, err = importTwin(db, claimed).FindExistingID(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, intPtr(2), id)
+	})
+}
+
 func TestImporterUpdate(t *testing.T) {
 	ctx := context.Background()
 	db := mocks.NewDatabase()

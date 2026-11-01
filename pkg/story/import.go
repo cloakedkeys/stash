@@ -25,7 +25,18 @@ type Importer struct {
 	Input               jsonschema.Story
 	MissingRefBehaviour models.ImportMissingRefEnum
 
+	// Claimed holds the stories this import has already matched by title or
+	// made, shared by the importers of one import. Two stories with no file
+	// and the same title then each get their own story.
+	Claimed map[int]bool
+
 	story models.Story
+}
+
+func (i *Importer) claim(id int) {
+	if i.Claimed != nil {
+		i.Claimed[id] = true
+	}
 }
 
 func (i *Importer) PreImport(ctx context.Context) error {
@@ -169,8 +180,9 @@ func (i *Importer) FindExistingID(ctx context.Context) (*int, error) {
 		return nil, err
 	}
 	for _, s := range stories {
-		if s.PrimaryFileID == nil && s.Title == i.story.Title {
+		if s.PrimaryFileID == nil && s.Title == i.story.Title && !i.Claimed[s.ID] {
 			id := s.ID
+			i.claim(id)
 			return &id, nil
 		}
 	}
@@ -186,6 +198,7 @@ func (i *Importer) Create(ctx context.Context) (*int, error) {
 		return nil, fmt.Errorf("error creating story: %w", err)
 	}
 	id := i.story.ID
+	i.claim(id)
 	return &id, nil
 }
 
