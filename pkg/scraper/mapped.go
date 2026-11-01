@@ -44,7 +44,9 @@ func (s mappedScraper) scrapePerformer(ctx context.Context, q mappedQuery) (*mod
 
 	performerTagsMap := performerMap.Tags
 
-	results := performerMap.process(ctx, q, s.Common, urlsIsMulti)
+	results := performerMap.process(ctx, q, s.Common, func(key string) bool {
+		return urlsIsMulti(key) || key == "AliasList"
+	})
 
 	// now apply the tags
 	var tagResults mappedResults
