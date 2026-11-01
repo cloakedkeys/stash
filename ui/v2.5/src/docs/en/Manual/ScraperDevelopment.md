@@ -93,6 +93,8 @@ The script is sent input and expects output based on the scraping type, as detai
 | `imageByFragment` | JSON-encoded image fragment | JSON-encoded image fragment |
 | `imageByURL` | `{"url": "<url>"}` | JSON-encoded image fragment |
 
+When no result is found, output JSON `null` for a scrape that returns a single fragment, or `[]` for a name search. In Python, use `json.dump(None, sys.stdout)` or `json.dump([], sys.stdout)` respectively. An image scraper may also return `{}` to indicate no images were found. Writing nothing to `stdout` is invalid JSON and causes an error.
+
 For `performerByName`, only `name` is required in the returned performer fragments. One entire object is sent back to `performerByFragment` to scrape a specific performer, so the other fields may be included to assist in scraping a performer. For example, the `url` field may be filled in for the specific performer page, then `performerByFragment` can extract by using its value.
   
 Python example of a performer scraper:
