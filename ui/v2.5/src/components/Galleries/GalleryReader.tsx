@@ -33,6 +33,7 @@ const PageImage: React.FC<{
     return (
       <video
         src={image.paths.image ?? undefined}
+        poster={image.paths.thumbnail ?? undefined}
         muted
         controls
         preload="none"
@@ -44,6 +45,7 @@ const PageImage: React.FC<{
           display: "block",
           width: "100%",
           height: "100%",
+          maxHeight: "calc(100dvh - 4rem)",
           objectFit: "contain",
         }}
       />
