@@ -208,14 +208,15 @@ func (d *Deleter) ZipEntry(zipID models.FileID, zipPath, entryRelPath string) {
 }
 
 // PrepareZipRewrites removes the marked entries from their zips, once per zip, and
-// stores each zip's new size. Call it inside the transaction, after all entries are
+// stores each zip's new size, or calls destroyEmptyZip to remove its database records
+// if no files remain in the archive. Call it inside the transaction, after all entries are
 // marked. The original zip is set aside like any other deleted file: moved to the
 // trash, or renamed with a .delete suffix. The rewritten zip takes its place right
 // away, so the library and the archive match as soon as the transaction commits. If
 // anything fails, the error rolls the whole deletion back, and Rollback puts the
 // original zip back. The stored modification time is left as it was, so the next scan
 // sees the zip changed and refreshes its fingerprints.
-func (d *Deleter) PrepareZipRewrites(ctx context.Context, files ZipFileStore) error {
+func (d *Deleter) PrepareZipRewrites(ctx context.Context, files ZipFileStore, destroyEmptyZip func(context.Context, models.File) error) error {
 	for zipPath, z := range d.zips {
 		if len(z.pending) == 0 {
 			continue
@@ -225,7 +226,7 @@ func (d *Deleter) PrepareZipRewrites(ctx context.Context, files ZipFileStore) er
 			z.pending = nil
 			continue
 		}
-		if err := d.rewriteZip(ctx, files, zipPath, z); err != nil {
+		if err := d.rewriteZip(ctx, files, zipPath, z, destroyEmptyZip); err != nil {
 			return err
 		}
 		z.pending = nil
@@ -234,7 +235,7 @@ func (d *Deleter) PrepareZipRewrites(ctx context.Context, files ZipFileStore) er
 	return nil
 }
 
-func (d *Deleter) rewriteZip(ctx context.Context, files ZipFileStore, zipPath string, z *zipRewrite) error {
+func (d *Deleter) rewriteZip(ctx context.Context, files ZipFileStore, zipPath string, z *zipRewrite, destroyEmptyZip func(context.Context, models.File) error) error {
 	entries := z.pending
 	found, err := files.Find(ctx, z.id)
 	if err != nil {
@@ -253,6 +254,10 @@ func (d *Deleter) rewriteZip(ctx context.Context, files ZipFileStore, zipPath st
 		return err
 	}
 
+	if tmpPath == "" && destroyEmptyZip == nil {
+		return fmt.Errorf("no empty zip destroyer for %q", zipPath)
+	}
+
 	if z.replaced {
 		// already rewritten in this transaction: the original is set aside, so the
 		// earlier rewrite can simply go
@@ -265,8 +270,15 @@ func (d *Deleter) rewriteZip(ctx context.Context, files ZipFileStore, zipPath st
 		}
 	}
 	if err != nil {
-		_ = d.RenamerRemover.Remove(tmpPath)
+		if tmpPath != "" {
+			_ = d.RenamerRemover.Remove(tmpPath)
+		}
 		return fmt.Errorf("setting aside %q: %w", zipPath, err)
+	}
+
+	if tmpPath == "" {
+		// The original is already set aside for rollback and trash handling.
+		return destroyEmptyZip(ctx, zf)
 	}
 
 	if err := d.RenamerRemover.Rename(tmpPath, zipPath); err != nil {
