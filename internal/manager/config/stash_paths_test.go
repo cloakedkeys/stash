@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/knadh/koanf/v2"
@@ -20,13 +21,21 @@ func TestGetStashPathsFromEnvironment(t *testing.T) {
 
 	got := c.GetStashPaths()
 	require.Len(t, got, 1)
-	assert.Equal(t, "/data/", got[0].Path)
+	assert.Equal(t, filepath.FromSlash("/data"), got[0].Path, "no trailing slash, as gallery paths have none")
 	assert.False(t, got[0].ExcludeVideo)
 	assert.False(t, got[0].ExcludeImage)
 }
 
 func TestGetStashPathsNotSet(t *testing.T) {
 	assert.Empty(t, newStashPathsConfig().GetStashPaths())
+}
+
+// Clearing every folder under Settings saves an empty list, which isn't a folder.
+func TestGetStashPathsEmptyList(t *testing.T) {
+	c := newStashPathsConfig()
+	require.NoError(t, c.main.Set(Stash, []interface{}{}))
+
+	assert.Empty(t, c.GetStashPaths())
 }
 
 // Folders saved in the config file win over the environment variable.
