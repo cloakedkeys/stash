@@ -699,6 +699,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
     try {
       const result = await queryScrapeSceneURL(url);
       if (!result.data?.scrapeSceneURL) {
+        Toast.success("No scenes found");
         return;
       }
       setScrapedScene(result.data.scrapeSceneURL);
