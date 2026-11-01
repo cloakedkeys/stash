@@ -41,7 +41,7 @@ func (d *FileDeleter) MarkGeneratedFiles(scene *models.Scene) error {
 
 	markersFolder := filepath.Join(d.Paths.Generated.Markers, sceneHash)
 
-	exists, _ := fsutil.FileExists(markersFolder)
+	exists, _ := fsutil.DirExists(markersFolder)
 	if exists {
 		if err := d.DirsWithoutTrash([]string{markersFolder}); err != nil {
 			return err

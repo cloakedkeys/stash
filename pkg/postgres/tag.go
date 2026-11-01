@@ -1180,6 +1180,7 @@ func (qb *TagStore) Merge(ctx context.Context, source []int, destination int) er
 		"scene_markers_tags": "scene_marker_id",
 		galleriesTagsTable:   galleryIDColumn,
 		audiosTagsTable:      audioIDColumn,
+		storiesTagsTable:     storyIDColumn,
 		imagesTagsTable:      imageIDColumn,
 		"performers_tags":    "performer_id",
 		"studios_tags":       "studio_id",

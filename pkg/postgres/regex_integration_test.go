@@ -4,12 +4,14 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"net/url"
 	"os"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
@@ -172,10 +174,15 @@ func TestOpenRefusesOtherEncodings(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = admin.Close(ctx) })
 
-	const name = "stash_test_latin1"
+	name := fmt.Sprintf("stash_test_latin1_%d", time.Now().UnixNano())
 	_, err = admin.Exec(ctx, "CREATE DATABASE "+name+" ENCODING 'LATIN1' LOCALE 'C' TEMPLATE template0")
 	require.NoError(t, err)
-	t.Cleanup(func() { _, _ = admin.Exec(ctx, "DROP DATABASE "+name+" WITH (FORCE)") })
+	t.Cleanup(func() {
+		dropTestDatabase(t, name, func() error {
+			_, err := admin.Exec(ctx, "DROP DATABASE "+name+" WITH (FORCE)")
+			return err
+		})
+	})
 
 	u, err := url.Parse(dsn)
 	require.NoError(t, err)
