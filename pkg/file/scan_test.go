@@ -3,7 +3,9 @@ package file
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -56,7 +58,63 @@ type scanTestFingerprintCalculator struct {
 }
 
 func (c scanTestFingerprintCalculator) CalculateFingerprints(f *models.BaseFile, o Opener, useExisting bool) ([]models.Fingerprint, error) {
+	if useExisting {
+		return f.Fingerprints, nil
+	}
 	return c.fingerprints, nil
+}
+
+func TestScannerScanFileReplacedImageWithSameModTime(t *testing.T) {
+	for _, size := range []int64{90, 110} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			ctx := context.Background()
+			db := mocks.NewDatabase()
+			modTime := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+			existing := &models.ImageFile{
+				BaseFile: &models.BaseFile{
+					ID:       1,
+					Path:     filepath.Join("Test", "image00001.jpg"),
+					Basename: "image00001.jpg",
+					Size:     100,
+					DirEntry: models.DirEntry{ModTime: modTime},
+					Fingerprints: []models.Fingerprint{
+						{Type: models.FingerprintTypeMD5, Fingerprint: "old-md5"},
+					},
+				},
+			}
+			scanner := Scanner{
+				Repository: Repository{
+					TxnManager: db.Repository().TxnManager,
+					File:       db.File,
+				},
+				FingerprintCalculator: scanTestFingerprintCalculator{fingerprints: []models.Fingerprint{
+					{Type: models.FingerprintTypeMD5, Fingerprint: "replacement-md5"},
+				}},
+			}
+			scanned := ScannedFile{
+				BaseFile: &models.BaseFile{
+					Path:     existing.Path,
+					Basename: existing.Basename,
+					Size:     size,
+					DirEntry: models.DirEntry{ModTime: modTime},
+				},
+				FS: scanTestFS{caseSensitive: true},
+			}
+			db.File.On("FindByPath", mock.Anything, scanned.Path, true).Return(existing, nil).Once()
+			db.File.On("Update", mock.Anything, mock.MatchedBy(func(f models.File) bool {
+				return f.Base().ID == existing.ID && f.Base().Size == size &&
+					f.Base().Fingerprints.GetString(models.FingerprintTypeMD5) == "replacement-md5"
+			})).Return(nil).Once()
+
+			result, err := scanner.ScanFile(ctx, scanned)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.True(t, result.Updated)
+			assert.True(t, result.FingerprintChanged)
+			assert.Equal(t, "replacement-md5", result.File.Base().Fingerprints.GetString(models.FingerprintTypeMD5))
+			db.File.AssertExpectations(t)
+		})
+	}
 }
 
 func TestScannerScanFileMatchesCaseOnlyRenameOnCaseInsensitiveFilesystem(t *testing.T) {
