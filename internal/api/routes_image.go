@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"time"
@@ -58,11 +59,7 @@ func (rs imageRoutes) serveThumbnail(w http.ResponseWriter, r *http.Request, img
 	// if the thumbnail doesn't exist, encode on the fly
 	exists, _ := fsutil.FileExists(filepath)
 	if exists {
-		if modTime == nil {
-			utils.ServeStaticFile(w, r, filepath)
-		} else {
-			utils.ServeStaticFileModTime(w, r, filepath, *modTime)
-		}
+		serveImageThumbnailFile(w, r, filepath, modTime)
 	} else {
 		const useDefault = true
 
@@ -107,12 +104,28 @@ func (rs imageRoutes) serveThumbnail(w http.ResponseWriter, r *http.Request, img
 		if manager.GetInstance().Config.IsWriteImageThumbnails() {
 			logger.Debugf("writing thumbnail to disk: %s", img.Path)
 			if err := fsutil.WriteFile(filepath, data); err == nil {
-				utils.ServeStaticFile(w, r, filepath)
+				serveImageThumbnailFile(w, r, filepath, nil)
 				return
 			}
 			logger.Errorf("error writing thumbnail for image %s: %v", img.Path, err)
 		}
 		utils.ServeStaticContent(w, r, data)
+	}
+}
+
+// Thumbnail cache paths retain their .jpg suffix for compatibility. Detect the
+// bytes so transparent WebP (or fallback PNG) is served with its actual type.
+func serveImageThumbnailFile(w http.ResponseWriter, r *http.Request, path string, modTime *time.Time) {
+	if f, err := os.Open(path); err == nil {
+		var header [512]byte
+		n, _ := f.Read(header[:])
+		f.Close()
+		w.Header().Set("Content-Type", http.DetectContentType(header[:n]))
+	}
+	if modTime == nil {
+		utils.ServeStaticFile(w, r, path)
+	} else {
+		utils.ServeStaticFileModTime(w, r, path, *modTime)
 	}
 }
 
