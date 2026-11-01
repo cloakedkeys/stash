@@ -29,6 +29,10 @@ const sortByOptions = [
   .map(ListFilterOptions.createSortBy)
   .concat([
     {
+      messageID: "favourite",
+      value: "favorite",
+    },
+    {
       messageID: "gallery_count",
       value: "galleries_count",
     },

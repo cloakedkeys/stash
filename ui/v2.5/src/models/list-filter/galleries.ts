@@ -26,7 +26,7 @@ import { ParentFolderCriterionOption } from "./criteria/folder";
 
 const defaultSortBy = "path";
 
-const sortByOptions = ["date", ...MediaSortByOptions]
+const sortByOptions = ["organized", "date", ...MediaSortByOptions]
   .map(ListFilterOptions.createSortBy)
   .concat([
     {

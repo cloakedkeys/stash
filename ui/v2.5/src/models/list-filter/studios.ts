@@ -17,6 +17,7 @@ import { CustomFieldsCriterionOption } from "./criteria/custom-fields";
 
 const defaultSortBy = "name";
 const sortByOptions = [
+  "organized",
   "name",
   "tag_count",
   "random",
@@ -27,6 +28,10 @@ const sortByOptions = [
 ]
   .map(ListFilterOptions.createSortBy)
   .concat([
+    {
+      messageID: "favourite",
+      value: "favorite",
+    },
     {
       messageID: "gallery_count",
       value: "galleries_count",

@@ -16,11 +16,11 @@ function VoiceActorList() {
   const canModify = useCanModify();
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
-  const [favorite, setFavorite] = useState(false);
+  const [favorite, setFavorite] = useState("");
   const { data, loading, error } = GQL.useFindVoiceActorsQuery({
     variables: {
       filter: { q, page, per_page: 40 },
-      favorite: favorite ? true : undefined,
+      favorite: favorite === "" ? undefined : favorite === "true",
     },
     fetchPolicy: "cache-and-network",
   });
@@ -43,15 +43,20 @@ function VoiceActorList() {
           setPage(1);
         }}
       />
-      <Form.Check
+      <Form.Control
+        as="select"
         className="my-3"
-        label="Favorites only"
-        checked={favorite}
+        aria-label="Filter by favorite"
+        value={favorite}
         onChange={(e) => {
-          setFavorite(e.target.checked);
+          setFavorite(e.target.value);
           setPage(1);
         }}
-      />
+      >
+        <option value="">All voice actors</option>
+        <option value="true">Favorites only</option>
+        <option value="false">Non-favorites only</option>
+      </Form.Control>
       {error && <Alert variant="danger">{error.message}</Alert>}
       {loading && !data && <LoadingIndicator />}
       <p>{data?.findVoiceActors.count ?? 0} voice actors</p>

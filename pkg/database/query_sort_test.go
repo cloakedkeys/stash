@@ -43,7 +43,7 @@ func TestQueryAllSortOptions(t *testing.T) {
 		},
 		{
 			name:  "image",
-			sorts: []string{"created_at", "date", "file_count", "file_mod_time", "filesize", "id", "o_counter", "path", "performer_age", "performer_count", "random", "rating", "resolution", "tag_count", "title", "updated_at"},
+			sorts: []string{"created_at", "date", "file_count", "file_mod_time", "filesize", "id", "o_counter", "path", "performer_age", "performer_count", "random", "rating", "resolution", "tag_count", "title", "updated_at", "organized"},
 			query: func(ctx context.Context, sort string, direction models.SortDirectionEnum) error {
 				for _, totals := range []bool{false, true} {
 					if _, err := db.Image().Query(ctx, models.ImageQueryOptions{QueryOptions: find(sort, direction), Megapixels: totals, TotalSize: totals}); err != nil {
@@ -87,7 +87,7 @@ func TestQueryAllSortOptions(t *testing.T) {
 		},
 		{
 			name:  "gallery",
-			sorts: []string{"created_at", "date", "file_count", "file_mod_time", "id", "images_count", "o_counter", "path", "performer_age", "performer_count", "random", "rating", "tag_count", "title", "updated_at"},
+			sorts: []string{"created_at", "date", "file_count", "file_mod_time", "id", "images_count", "o_counter", "path", "performer_age", "performer_count", "random", "rating", "tag_count", "title", "updated_at", "organized"},
 			query: func(ctx context.Context, sort string, direction models.SortDirectionEnum) error {
 				_, _, err := db.Gallery().Query(ctx, nil, find(sort, direction).FindFilter)
 				return err
@@ -119,7 +119,7 @@ func TestQueryAllSortOptions(t *testing.T) {
 		},
 		{
 			name:  "studio",
-			sorts: []string{"child_count", "created_at", "galleries_count", "id", "images_count", "latest_scene", "name", "favorite", "o_counter", "o_counter_all", "performer_count", "performer_count_all", "scenes_count", "scenes_count_all", "scenes_duration", "scenes_size", "scene_markers_count", "audios_count", "audios_duration", "audios_size", "random", "rating", "tag_count", "updated_at"},
+			sorts: []string{"child_count", "created_at", "galleries_count", "id", "images_count", "latest_scene", "name", "favorite", "o_counter", "o_counter_all", "performer_count", "performer_count_all", "scenes_count", "scenes_count_all", "scenes_duration", "scenes_size", "scene_markers_count", "audios_count", "audios_duration", "audios_size", "random", "rating", "tag_count", "updated_at", "organized"},
 			query: func(ctx context.Context, sort string, direction models.SortDirectionEnum) error {
 				_, _, err := db.Studio().Query(ctx, nil, find(sort, direction).FindFilter)
 				return err
@@ -325,4 +325,85 @@ func TestQueryPagesSeveralFiles(t *testing.T) {
 		}
 		assert.Equal(t, all, paged, "paging gives the same list")
 	})
+}
+
+// Organized sorting must group both values in either direction, with the usual
+// title/name ordering within each group. These tests run on either backend.
+func TestQuerySortOrganized(t *testing.T) {
+	tests := []struct {
+		name   string
+		create func(context.Context, *testing.T, string, bool) int
+		query  func(context.Context, *testing.T, *models.FindFilterType) []int
+	}{
+		{
+			name: "image",
+			create: func(ctx context.Context, t *testing.T, title string, organized bool) int {
+				image := &models.Image{Title: title, Organized: organized}
+				require.NoError(t, db.Image().Create(ctx, &models.CreateImageInput{Image: image}))
+				return image.ID
+			},
+			query: func(ctx context.Context, t *testing.T, find *models.FindFilterType) []int {
+				result, err := db.Image().Query(ctx, models.ImageQueryOptions{QueryOptions: models.QueryOptions{FindFilter: find, Count: true}})
+				require.NoError(t, err)
+				assert.Equal(t, 4, result.Count)
+				return result.IDs
+			},
+		},
+		{
+			name: "gallery",
+			create: func(ctx context.Context, t *testing.T, title string, organized bool) int {
+				gallery := &models.Gallery{Title: title, Organized: organized}
+				require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: gallery}))
+				return gallery.ID
+			},
+			query: func(ctx context.Context, t *testing.T, find *models.FindFilterType) []int {
+				galleries, count, err := db.Gallery().Query(ctx, nil, find)
+				require.NoError(t, err)
+				assert.Equal(t, 4, count)
+				ids := make([]int, len(galleries))
+				for i, gallery := range galleries {
+					ids[i] = gallery.ID
+				}
+				return ids
+			},
+		},
+		{
+			name: "studio",
+			create: func(ctx context.Context, t *testing.T, name string, organized bool) int {
+				studio := &models.Studio{Name: name, Organized: organized}
+				require.NoError(t, db.Studio().Create(ctx, &models.CreateStudioInput{Studio: studio}))
+				return studio.ID
+			},
+			query: func(ctx context.Context, t *testing.T, find *models.FindFilterType) []int {
+				studios, count, err := db.Studio().Query(ctx, nil, find)
+				require.NoError(t, err)
+				assert.Equal(t, 4, count)
+				ids := make([]int, len(studios))
+				for i, studio := range studios {
+					ids[i] = studio.ID
+				}
+				return ids
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		for _, direction := range []models.SortDirectionEnum{models.SortDirectionEnumAsc, models.SortDirectionEnumDesc} {
+			runWithRollbackTxn(t, tt.name+" "+direction.String(), func(t *testing.T, ctx context.Context) {
+				q := "TestQuerySortOrganized"
+				var ids []int
+				for i, organized := range []bool{true, false, true, false} {
+					ids = append(ids, tt.create(ctx, t, fmt.Sprintf("%s %d", q, i), organized))
+				}
+				sort := "organized"
+				perPage := models.PerPageAll
+				find := &models.FindFilterType{Q: &q, Sort: &sort, Direction: &direction, PerPage: &perPage}
+				want := []int{ids[1], ids[3], ids[0], ids[2]}
+				if direction == models.SortDirectionEnumDesc {
+					want = []int{ids[0], ids[2], ids[1], ids[3]}
+				}
+				assert.Equal(t, want, tt.query(ctx, t, find))
+			})
+		}
+	}
 }
