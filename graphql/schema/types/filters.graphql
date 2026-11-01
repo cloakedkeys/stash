@@ -813,6 +813,18 @@ input ImageFilterType {
   custom_fields: [CustomFieldCriterionInput!]
 }
 
+input StoryFilterType {
+  AND: StoryFilterType
+  OR: StoryFilterType
+  NOT: StoryFilterType
+
+  title: StringCriterionInput
+  "Filter to only include stories with these tags"
+  tags: HierarchicalMultiCriterionInput
+  "The current user's own rating, expressed as 1-100"
+  rating100: IntCriterionInput
+}
+
 input AudioFilterType {
   favorite: Boolean
   AND: AudioFilterType

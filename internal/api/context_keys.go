@@ -15,4 +15,5 @@ const (
 	imageKey
 	pluginKey
 	audioKey
+	storyKey
 )

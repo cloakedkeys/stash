@@ -83,6 +83,14 @@ type Query {
     filter: FindFilterType
   ): FindAudiosResultType!
 
+  findStory(id: ID!): Story
+
+  "A function which queries Story objects"
+  findStories(
+    story_filter: StoryFilterType
+    filter: FindFilterType
+  ): FindStoriesResultType!
+
   parseAudioFilenames(
     filter: FindFilterType
     config: AudioParserInput!
@@ -315,6 +323,7 @@ type Mutation {
   # Set the current user's own rating and favourite. These need no permission to edit the library.
   sceneUserDataUpdate(input: UserRatingFavoriteInput!): Scene @hasRole(role: READ)
   audioUserDataUpdate(input: UserRatingFavoriteInput!): Audio @hasRole(role: READ)
+  storyUserDataUpdate(input: UserRatingInput!): Story @hasRole(role: READ)
   imageUserDataUpdate(input: UserRatingFavoriteInput!): Image @hasRole(role: READ)
   galleryUserDataUpdate(input: UserRatingFavoriteInput!): Gallery @hasRole(role: READ)
   groupUserDataUpdate(input: UserRatingFavoriteInput!): Group @hasRole(role: READ)
@@ -406,6 +415,11 @@ type Mutation {
   bulkAudioUpdate(input: BulkAudioUpdateInput!): [Audio!] @hasRole(role: MODIFY)
   audiosDestroy(input: AudiosDestroyInput!): Boolean! @hasRole(role: MODIFY)
   audiosUpdate(input: [AudioUpdateInput!]!): [Audio] @hasRole(role: MODIFY)
+
+  storyCreate(input: StoryCreateInput!): Story @hasRole(role: MODIFY)
+  storyUpdate(input: StoryUpdateInput!): Story @hasRole(role: MODIFY)
+  "Removes stories from the library. Their files stay on disk."
+  storiesDestroy(input: StoriesDestroyInput!): Boolean! @hasRole(role: MODIFY)
 
   "Increments the o-counter for a audio. Uses the current time if none provided."
   audioAddO(id: ID!, times: [Timestamp!]): HistoryMutationResult!
