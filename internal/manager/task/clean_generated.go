@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/job"
@@ -72,7 +73,8 @@ func (j *CleanGeneratedJob) deleteDir(path string) {
 }
 
 func (j *CleanGeneratedJob) countTasks() int {
-	tasks := 0
+	// Embedded subtitle caches are always checked.
+	tasks := 1
 
 	if j.Options.BlobFiles {
 		tasks++
@@ -178,6 +180,13 @@ func (j *CleanGeneratedJob) Execute(ctx context.Context, progress *job.Progress)
 		})
 		j.taskComplete(progress)
 	}
+
+	progress.ExecuteTask("Cleaning embedded subtitle files", func() {
+		if err := j.cleanEmbeddedSubtitleFiles(ctx); err != nil {
+			j.logError(fmt.Errorf("error cleaning embedded subtitle files: %w", err))
+		}
+	})
+	j.taskComplete(progress)
 
 	if job.IsCancelled(ctx) {
 		logger.Info("Stopping due to user request")
@@ -762,4 +771,47 @@ func (j *CleanGeneratedJob) cleanThumbnailFiles(ctx context.Context, progress *j
 	j.removeEmptyDirs(j.Paths.Generated.Thumbnails)
 
 	return nil
+}
+
+func (j *CleanGeneratedJob) cleanEmbeddedSubtitleFiles(ctx context.Context) error {
+	root := j.Paths.Generated.EmbeddedSubtitles
+	return filepath.Walk(root, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			if path == root && os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if path == root || !info.IsDir() {
+			return nil
+		}
+
+		name := info.Name()
+		if strings.Trim(name, "0123456789") != "" {
+			logger.Warnf("Ignoring unknown embedded subtitle directory: %s", path)
+			return fs.SkipDir
+		}
+		id, err := strconv.Atoi(name)
+		if err != nil {
+			return fs.SkipDir
+		}
+
+		if err := j.Repository.WithReadTxn(ctx, func(ctx context.Context) error {
+			scene, err := j.Repository.Scene.Find(ctx, id)
+			if err != nil {
+				return err
+			}
+			if scene == nil {
+				j.logDelete("deleting unused embedded subtitle directory: %s", name)
+				j.deleteDir(path)
+			}
+			return nil
+		}); err != nil {
+			logger.Errorf("error checking scene entry: %v", err)
+		}
+		return fs.SkipDir
+	})
 }

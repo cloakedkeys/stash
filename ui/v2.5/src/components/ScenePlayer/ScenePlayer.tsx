@@ -297,6 +297,21 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     onNext,
     onPrevious,
   }) => {
+    const { data: embeddedCaptions, error: embeddedCaptionsError } =
+      GQL.useSceneEmbeddedCaptionsQuery({
+        variables: { id: scene.id },
+        fetchPolicy: "no-cache",
+      });
+
+    useEffect(() => {
+      if (embeddedCaptionsError) {
+        console.error(
+          "Failed to load embedded captions",
+          embeddedCaptionsError
+        );
+      }
+    }, [embeddedCaptionsError]);
+
     const { configuration } = useConfigurationContext();
     const interfaceConfig = configuration?.interface;
     const uiConfig = configuration?.ui;
@@ -418,6 +433,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           remainingTimeDisplay: false,
         },
         html5: {
+          preloadTextTracks: false,
           dash: {
             updateSettings: [
               {
@@ -933,6 +949,51 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       uiConfig?.defaultStreamingResolution,
       _initialTimestamp,
     ]);
+
+    useEffect(() => {
+      const player = getPlayer();
+      if (
+        !player ||
+        embeddedCaptionsError ||
+        embeddedCaptions?.findScene?.id !== scene.id ||
+        loadedSource.current?.sceneId !== scene.id ||
+        !scene.paths.caption
+      )
+        return;
+
+      const sourceSelector = player.sourceSelector();
+      for (const track of embeddedCaptions.findScene.embedded_captions ?? []) {
+        const captionURL = new URL(scene.paths.caption, window.location.href);
+        captionURL.searchParams.set("stream", String(track.stream_index));
+        if (
+          sourceSelector.textTracks.some(
+            (existing) => existing.src === captionURL.toString()
+          )
+        )
+          continue;
+
+        const lang = track.language_code || "und";
+        const language = languageMap.get(lang) ?? lang;
+        const title = track.title ? " - " + track.title : "";
+        sourceSelector.addTextTrack(
+          {
+            src: captionURL.toString(),
+            kind: "captions",
+            srclang: lang,
+            label:
+              language +
+              title +
+              " (" +
+              track.codec +
+              ", #" +
+              track.stream_index +
+              ")",
+            default: false,
+          },
+          false
+        );
+      }
+    }, [getPlayer, scene, embeddedCaptions, embeddedCaptionsError]);
 
     useEffect(() => {
       return () => {
