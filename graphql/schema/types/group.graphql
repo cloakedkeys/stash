@@ -19,6 +19,7 @@ type Group {
   synopsis: String
   urls: [String!]!
   tags: [Tag!]!
+  organized: Boolean!
   created_at: Time!
   updated_at: Time!
 
@@ -57,6 +58,7 @@ input GroupCreateInput {
   synopsis: String
   urls: [String!]
   tag_ids: [ID!]
+  organized: Boolean @hasRole(role: ADMIN)
 
   containing_groups: [GroupDescriptionInput!]
   sub_groups: [GroupDescriptionInput!]
@@ -84,6 +86,7 @@ input GroupUpdateInput {
   synopsis: String
   urls: [String!]
   tag_ids: [ID!]
+  organized: Boolean @hasRole(role: ADMIN)
 
   containing_groups: [GroupDescriptionInput!]
   sub_groups: [GroupDescriptionInput!]
@@ -112,6 +115,7 @@ input BulkGroupUpdateInput {
   director: String
   urls: BulkUpdateStrings
   tag_ids: BulkUpdateIds
+  organized: Boolean @hasRole(role: ADMIN)
 
   containing_groups: BulkUpdateGroupDescriptionsInput
   sub_groups: BulkUpdateGroupDescriptionsInput

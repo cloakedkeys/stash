@@ -6,6 +6,7 @@ fragment GroupData on Group {
   duration
   date
   rating100
+  organized
   director
 
   studio {
@@ -54,6 +55,7 @@ fragment ListGroupData on Group {
   duration
   date
   rating100
+  organized
   director
 
   studio {

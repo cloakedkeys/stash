@@ -53,6 +53,7 @@ type groupRow struct {
 	Description   zero.String `db:"description"`
 	CreatedAt     Timestamp   `db:"created_at"`
 	UpdatedAt     Timestamp   `db:"updated_at"`
+	Organized     bool        `db:"organized"`
 
 	// not used in resolutions or updates
 	FrontImageBlob zero.String `db:"front_image_blob"`
@@ -60,6 +61,7 @@ type groupRow struct {
 }
 
 func (r *groupRow) fromGroup(o models.Group) {
+	r.Organized = o.Organized
 	r.ID = o.ID
 	r.Name = zero.StringFrom(o.Name)
 	r.Duration = intFromPtr(o.Duration)
@@ -74,6 +76,7 @@ func (r *groupRow) fromGroup(o models.Group) {
 
 func (r *groupRow) resolve() *models.Group {
 	ret := &models.Group{
+		Organized: r.Organized,
 		ID:        r.ID,
 		Name:      r.Name.String,
 		Duration:  nullIntPtr(r.Duration),
@@ -119,6 +122,7 @@ type groupRowRecord struct {
 }
 
 func (r *groupRowRecord) fromPartial(o models.GroupPartial) {
+	r.setBool("organized", o.Organized)
 	r.setNullString("name", o.Name)
 	r.setNullInt("duration", o.Duration)
 	r.setNullDate("date", "date_precision", o.Date)
@@ -603,6 +607,7 @@ func (qb *GroupStore) QueryCount(ctx context.Context, groupFilter *models.GroupF
 }
 
 var groupSortOptions = sortOptions{
+	"organized",
 	"created_at",
 	"date",
 	"duration",

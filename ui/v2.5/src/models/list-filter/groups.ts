@@ -1,5 +1,6 @@
 import {
   createStringCriterionOption,
+  createBooleanCriterionOption,
   createDateCriterionOption,
   createMandatoryTimestampCriterionOption,
   createDurationCriterionOption,
@@ -23,6 +24,7 @@ const defaultSortBy = "name";
 
 const sortByOptions = [
   "name",
+  "organized",
   "random",
   "date",
   "duration",
@@ -46,6 +48,7 @@ const sortByOptions = [
   ]);
 const displayModeOptions = [DisplayMode.Grid];
 const criterionOptions = [
+  createBooleanCriterionOption("organized"),
   // StudioTagsCriterionOption,
   StudiosCriterionOption,
   GroupIsMissingCriterionOption,
