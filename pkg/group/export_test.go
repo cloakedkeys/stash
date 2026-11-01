@@ -47,13 +47,13 @@ var (
 const studioName = "studio"
 
 const (
-	frontImage = "ZnJvbnRJbWFnZUJ5dGVz"
-	backImage  = "YmFja0ltYWdlQnl0ZXM="
+	frontImage = "PHN2Zz48dGl0bGU+ZnJvbnRJbWFnZUJ5dGVzPC90aXRsZT48L3N2Zz4="
+	backImage  = "PHN2Zz48dGl0bGU+YmFja0ltYWdlQnl0ZXM8L3RpdGxlPjwvc3ZnPg=="
 )
 
 var (
-	frontImageBytes = []byte("frontImageBytes")
-	backImageBytes  = []byte("backImageBytes")
+	frontImageBytes = []byte(`<svg><title>frontImageBytes</title></svg>`)
+	backImageBytes  = []byte(`<svg><title>backImageBytes</title></svg>`)
 
 	emptyCustomFields = make(map[string]interface{})
 	customFields      = map[string]interface{}{

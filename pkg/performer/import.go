@@ -48,7 +48,7 @@ func (i *Importer) PreImport(ctx context.Context) error {
 	}
 
 	if len(i.Input.Image) > 0 {
-		i.imageData, err = utils.ProcessBase64Image(i.Input.Image)
+		i.imageData, err = utils.ProcessBase64ImageForImport(i.Input.Image)
 		if err != nil {
 			return fmt.Errorf("invalid image: %v", err)
 		}
@@ -56,9 +56,12 @@ func (i *Importer) PreImport(ctx context.Context) error {
 
 	i.alternateImageData = nil
 	for n, image := range i.Input.AlternateImages {
-		data, err := utils.ProcessBase64Image(image)
+		data, err := utils.ProcessBase64ImageForImport(image)
 		if err != nil {
 			return fmt.Errorf("invalid alternate image %d: %w", n+1, err)
+		}
+		if data == nil {
+			continue // skipped legacy text image
 		}
 		if len(data) == 0 {
 			return fmt.Errorf("alternate image %d is empty", n+1)
