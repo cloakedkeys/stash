@@ -22,9 +22,12 @@ type limitFixture struct {
 
 	tagAllowed, tagAllowedChild, tagShared, tagMarker, tagHidden, tagPerformerShared int
 	studioAllowed, studioAllowedChild, studioShared, studioHidden                    int
+	tagStoryVisible, tagStoryHidden                                                  int
 
 	sceneInFolder, sceneTagged, sceneInStudio, sceneHidden int
 	audioInFolder, audioHidden                             int
+	storyInFolder, storyTagged, storyHidden                int
+	storyFiles                                             map[int]models.FileID
 	imageInFolder, imageInGallery, imageHidden             int
 	galleryOfFiles, galleryOfFolder, galleryHidden         int
 	markerVisible, markerHidden                            int
@@ -118,6 +121,17 @@ func createLimitFixture(t *testing.T, ctx context.Context) *limitFixture {
 		require.NoError(t, db.Audio().Create(ctx, o, []models.FileID{audioFile(parent)}))
 		return o.ID
 	}
+	f.storyFiles = make(map[int]models.FileID)
+	story := func(parent models.FolderID, tags []int) int {
+		file := base(parent)
+		require.NoError(t, db.File().Create(ctx, file))
+		o := models.NewStory()
+		o.Title = fmt.Sprintf("limit story %d", n)
+		o.TagIDs = models.NewRelatedIDs(tags)
+		require.NoError(t, db.Story().Create(ctx, &o, []models.FileID{file.ID}))
+		f.storyFiles[o.ID] = file.ID
+		return o.ID
+	}
 	image := func(parent models.FolderID, tags []int) int {
 		o := &models.Image{Title: fmt.Sprintf("limit image %d", n), TagIDs: models.NewRelatedIDs(tags)}
 		require.NoError(t, db.Image().Create(ctx, &models.CreateImageInput{Image: o, FileIDs: []models.FileID{imageFile(parent)}}))
@@ -139,6 +153,8 @@ func createLimitFixture(t *testing.T, ctx context.Context) *limitFixture {
 	f.tagMarker = tag("marker")
 	f.tagHidden = tag("hidden")
 	f.tagPerformerShared = tag("performer shared")
+	f.tagStoryVisible = tag("story visible")
+	f.tagStoryHidden = tag("story hidden")
 
 	f.studioAllowed = studio("allowed", nil)
 	f.studioAllowedChild = studio("allowed child", &f.studioAllowed)
@@ -167,6 +183,9 @@ func createLimitFixture(t *testing.T, ctx context.Context) *limitFixture {
 
 	f.audioInFolder = audio(f.subFolder, nil, nil)
 	f.audioHidden = audio(f.hiddenFolder, []int{f.tagHidden}, []int{f.performerHidden})
+	f.storyInFolder = story(f.subFolder, []int{f.tagStoryVisible})
+	f.storyTagged = story(f.hiddenFolder, []int{f.tagAllowedChild, f.tagStoryVisible})
+	f.storyHidden = story(f.hiddenFolder, []int{f.tagStoryHidden})
 
 	f.imageInFolder = image(f.subFolder, nil)
 	f.imageInGallery = image(f.hiddenFolder, nil)
@@ -255,6 +274,24 @@ func limitReadsOfKinds() map[string]limitReads {
 				rows, err := db.Audio().All(ctx)
 				return ids(rows, err, func(o *models.Audio) int { return o.ID })
 			},
+		},
+		"stories": {
+			find: func(ctx context.Context, id int) (bool, error) {
+				o, err := db.Story().Find(ctx, id)
+				return o != nil, err
+			},
+			many: func(ctx context.Context, in []int) ([]int, error) {
+				rows, err := db.Story().FindMany(ctx, in)
+				return ids(rows, err, func(o *models.Story) int { return o.ID })
+			},
+			query: func(ctx context.Context) ([]int, error) {
+				r, err := db.Story().Query(ctx, models.StoryQueryOptions{QueryOptions: models.QueryOptions{FindFilter: perPageAll(), Count: true}})
+				if err != nil {
+					return nil, err
+				}
+				return r.IDs, nil
+			},
+			count: func(ctx context.Context) (int, error) { return db.Story().QueryCount(ctx, nil, nil) },
 		},
 		"images": {
 			find: func(ctx context.Context, id int) (bool, error) {
@@ -416,11 +453,12 @@ func (f *limitFixture) allObjects() map[string][]int {
 	return map[string][]int{
 		"scenes":       {f.sceneInFolder, f.sceneTagged, f.sceneInStudio, f.sceneHidden},
 		"audios":       {f.audioInFolder, f.audioHidden},
+		"stories":      {f.storyInFolder, f.storyTagged, f.storyHidden},
 		"images":       {f.imageInFolder, f.imageInGallery, f.imageHidden},
 		"galleries":    {f.galleryOfFiles, f.galleryOfFolder, f.galleryHidden},
 		"markers":      {f.markerVisible, f.markerHidden},
 		"performers":   {f.performerVisible, f.performerHidden},
-		"tags":         {f.tagAllowed, f.tagAllowedChild, f.tagShared, f.tagMarker, f.tagHidden, f.tagPerformerShared},
+		"tags":         {f.tagAllowed, f.tagAllowedChild, f.tagShared, f.tagMarker, f.tagHidden, f.tagPerformerShared, f.tagStoryVisible, f.tagStoryHidden},
 		"studios":      {f.studioAllowed, f.studioAllowedChild, f.studioShared, f.studioHidden},
 		"groups":       {f.groupVisible, f.groupHidden},
 		"voice actors": {f.actorVisible, f.actorHidden},
@@ -444,11 +482,12 @@ func TestLibraryLimitReads(t *testing.T) {
 				want: map[string][]int{
 					"scenes":       {f.sceneInFolder},
 					"audios":       {f.audioInFolder},
+					"stories":      {f.storyInFolder},
 					"images":       {f.imageInFolder, f.imageInGallery},
 					"galleries":    {f.galleryOfFiles, f.galleryOfFolder},
 					"markers":      {f.markerVisible},
 					"performers":   {f.performerVisible},
-					"tags":         {f.tagShared, f.tagMarker, f.tagPerformerShared},
+					"tags":         {f.tagShared, f.tagMarker, f.tagPerformerShared, f.tagStoryVisible},
 					"studios":      {f.studioShared},
 					"groups":       {f.groupVisible},
 					"voice actors": {f.actorVisible},
@@ -458,8 +497,9 @@ func TestLibraryLimitReads(t *testing.T) {
 				name:  "tag and its sub-tags",
 				limit: &models.LibraryLimit{TagIDs: []int{f.tagAllowed}},
 				want: map[string][]int{
-					"scenes": {f.sceneTagged},
-					"tags":   {f.tagAllowed, f.tagAllowedChild},
+					"scenes":  {f.sceneTagged},
+					"stories": {f.storyTagged},
+					"tags":    {f.tagAllowed, f.tagAllowedChild, f.tagStoryVisible},
 				},
 			},
 			{
@@ -475,7 +515,8 @@ func TestLibraryLimitReads(t *testing.T) {
 				limit: &models.LibraryLimit{TagIDs: []int{f.tagAllowed}, StudioIDs: []int{f.studioAllowed}},
 				want: map[string][]int{
 					"scenes":  {f.sceneTagged, f.sceneInStudio},
-					"tags":    {f.tagAllowed, f.tagAllowedChild},
+					"stories": {f.storyTagged},
+					"tags":    {f.tagAllowed, f.tagAllowedChild, f.tagStoryVisible},
 					"studios": {f.studioAllowed, f.studioAllowedChild},
 				},
 			},
@@ -494,6 +535,15 @@ func TestLibraryLimitReads(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				ctx := models.WithLibraryLimit(unlimited, tt.limit)
+				for storyID, fileID := range f.storyFiles {
+					got, err := db.Story().FindByFileID(ctx, fileID)
+					require.NoError(t, err)
+					var want []int
+					if slices.Contains(tt.want["stories"], storyID) {
+						want = []int{storyID}
+					}
+					assert.ElementsMatch(t, want, sliceutil.Map(got, func(o *models.Story) int { return o.ID }), "stories: file %d", fileID)
+				}
 				for kind, r := range reads {
 					want := slices.Sorted(slices.Values(tt.want[kind]))
 
