@@ -18,6 +18,10 @@ query FindPerformers(
 query FindPerformer($id: ID!) {
   findPerformer(id: $id) {
     ...PerformerData
+    alternate_images {
+      checksum
+      path
+    }
   }
 }
 

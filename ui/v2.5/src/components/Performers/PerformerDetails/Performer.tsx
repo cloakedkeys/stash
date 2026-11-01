@@ -29,6 +29,7 @@ import { PerformerAudiosPanel } from "./PerformerAudiosPanel";
 import { PerformerGalleriesPanel } from "./PerformerGalleriesPanel";
 import { PerformerGroupsPanel } from "./PerformerGroupsPanel";
 import { PerformerImagesPanel } from "./PerformerImagesPanel";
+import { PerformerPortraits } from "./PerformerPortraits";
 import { PerformerAppearsWithPanel } from "./performerAppearsWithPanel";
 import { PerformerEditPanel } from "./PerformerEditPanel";
 import { PerformerMergeModal } from "../PerformerMergeDialog";
@@ -55,7 +56,7 @@ import { goBackOrReplace } from "src/utils/history";
 import { OCounterButton } from "src/components/Shared/CountButton";
 
 interface IProps {
-  performer: GQL.PerformerDataFragment;
+  performer: NonNullable<GQL.FindPerformerQuery["findPerformer"]>;
   tabKey?: TabKey;
 }
 
@@ -293,8 +294,13 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
     }, [image, isEditing, performer.image_path]);
 
     const lightboxImages = useMemo(
-      () => [{ paths: { thumbnail: activeImage, image: activeImage } }],
-      [activeImage]
+      () => [
+        { paths: { thumbnail: activeImage, image: activeImage } },
+        ...(!isEditing ? performer.alternate_images : []).map((image) => ({
+          paths: { thumbnail: image.path, image: image.path },
+        })),
+      ],
+      [activeImage, isEditing, performer.alternate_images]
     );
 
     const [updatePerformer] = usePerformerUpdate();
@@ -535,6 +541,12 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
                     </Row>
                   </Col>
                 )}
+                {!isEditing && (
+                  <PerformerPortraits
+                    key={performer.id}
+                    performer={performer}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -572,7 +584,7 @@ const PerformerLoader: React.FC<RouteComponentProps<IPerformerParams>> = ({
 
   useScrollToTopOnMount();
 
-  if (loading) return <LoadingIndicator />;
+  if (loading && !data?.findPerformer) return <LoadingIndicator />;
   if (error) return <ErrorMessage error={error.message} />;
   if (!data?.findPerformer)
     return <ErrorMessage error={`No performer found with id ${id}.`} />;

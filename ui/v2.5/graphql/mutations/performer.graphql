@@ -35,3 +35,31 @@ mutation PerformerUserDataUpdate($input: UserRatingFavoriteInput!) {
     ...PerformerData
   }
 }
+
+mutation PerformerImageAdd($id: ID!, $image: String!) {
+  performerImageAdd(id: $id, image: $image) {
+    id
+    image_path
+  }
+}
+
+mutation PerformerImageRemove($id: ID!, $checksum: String!) {
+  performerImageRemove(id: $id, checksum: $checksum) {
+    id
+    image_path
+  }
+}
+
+mutation PerformerImageSetPrimary($id: ID!, $checksum: String!) {
+  performerImageSetPrimary(id: $id, checksum: $checksum) {
+    id
+    image_path
+  }
+}
+
+mutation PerformerImagesReorder($id: ID!, $checksums: [String!]!) {
+  performerImagesReorder(id: $id, checksums: $checksums) {
+    id
+    image_path
+  }
+}
