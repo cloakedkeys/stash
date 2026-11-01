@@ -1,3 +1,4 @@
+import { expect, it } from "vitest";
 import { faBookOpen } from "@fortawesome/free-solid-svg-icons";
 import type {
   CriterionModifier,
@@ -48,71 +49,62 @@ const configuredItems: ISavedFilterMenuItem[] = [
   },
 ];
 
-const [item] = buildSavedFilterMenuItems(configuredItems, [mangaFilter]);
+it("builds saved filter menus and highlights the matching item", () => {
+  const [item] = buildSavedFilterMenuItems(configuredItems, [mangaFilter]);
 
-assertEqual(item.name, "saved-filter:manga-section");
-assertEqual(item.label, "Manga");
-assertEqual(item.message, undefined);
-assertEqual(item.icon, faBookOpen);
-assertEqual(item.hotkey, undefined);
-assertMatch(item.href, /^\/galleries\?/);
-assertMatch(item.href, /sortby=date/);
-assertMatch(item.href, /sortdir=asc/);
-assertMatch(item.href, /z=0/);
-assertMatch(item.href, /c=/);
-assertEqual(buildSavedFilterMenuItems(configuredItems, []).length, 0);
+  expect(item.name).toBe("saved-filter:manga-section");
+  expect(item.label).toBe("Manga");
+  expect(item.message).toBe(undefined);
+  expect(item.icon).toBe(faBookOpen);
+  expect(item.hotkey).toBe(undefined);
+  expect(item.href).toMatch(/^\/galleries\?/);
+  expect(item.href).toMatch(/sortby=date/);
+  expect(item.href).toMatch(/sortdir=asc/);
+  expect(item.href).toMatch(/z=0/);
+  expect(item.href).toMatch(/c=/);
+  expect(buildSavedFilterMenuItems(configuredItems, []).length).toBe(0);
 
-const builtInItems: INavbarMenuItem[] = [
-  {
-    name: "galleries",
-    label: "Galleries",
-    href: "/galleries",
-    icon: faBookOpen,
-  },
-];
+  const builtInItems: INavbarMenuItem[] = [
+    {
+      name: "galleries",
+      label: "Galleries",
+      href: "/galleries",
+      icon: faBookOpen,
+    },
+  ];
 
-const combinedItems = buildMainNavbarMenuItems(
-  builtInItems,
-  undefined,
-  configuredItems,
-  [mangaFilter]
-);
+  const combinedItems = buildMainNavbarMenuItems(
+    builtInItems,
+    undefined,
+    configuredItems,
+    [mangaFilter]
+  );
 
-assertEqual(combinedItems.length, 2);
-assertEqual(combinedItems[0].name, "galleries");
-assertEqual(combinedItems[1].name, "saved-filter:manga-section");
+  expect(combinedItems.length).toBe(2);
+  expect(combinedItems[0].name).toBe("galleries");
+  expect(combinedItems[1].name).toBe("saved-filter:manga-section");
 
-// only one item is highlighted on a saved filter's page
-const [galleriesItem, mangaItem] = combinedItems;
-const mangaSearch = "?" + mangaItem.href.split("?")[1];
-const activeNames = (pathname: string, search: string) =>
-  combinedItems
-    .filter((i) => isMenuItemActive(i, combinedItems, pathname, search))
-    .map((i) => i.name)
-    .join(",");
+  // only one item is highlighted on a saved filter's page
+  const [galleriesItem, mangaItem] = combinedItems;
+  const mangaSearch = "?" + mangaItem.href.split("?")[1];
+  const activeNames = (pathname: string, search: string) =>
+    combinedItems
+      .filter((i) => isMenuItemActive(i, combinedItems, pathname, search))
+      .map((i) => i.name)
+      .join(",");
 
-assertEqual(activeNames("/galleries", mangaSearch), mangaItem.name);
-assertEqual(activeNames("/galleries", ""), galleriesItem.name);
-assertEqual(activeNames("/galleries", "?sortby=title"), galleriesItem.name);
-assertEqual(activeNames("/scenes", mangaSearch), "");
+  expect(activeNames("/galleries", mangaSearch)).toBe(mangaItem.name);
+  expect(activeNames("/galleries", "")).toBe(galleriesItem.name);
+  expect(activeNames("/galleries", "?sortby=title")).toBe(galleriesItem.name);
+  expect(activeNames("/scenes", mangaSearch)).toBe("");
 
-// parameter order does not matter
-const reordered =
-  "?" +
-  new URLSearchParams(mangaSearch).toString().split("&").reverse().join("&");
-assertEqual(activeNames("/galleries", reordered), mangaItem.name);
+  // parameter order does not matter
+  const reordered =
+    "?" +
+    new URLSearchParams(mangaSearch).toString().split("&").reverse().join("&");
+  expect(activeNames("/galleries", reordered)).toBe(mangaItem.name);
 
-assertEqual(splitHref("/galleries?a=1").pathname, "/galleries");
-assertEqual(splitHref("/galleries?a=1").search, "a=1");
-assertEqual(splitHref("/galleries").search, "");
-function assertEqual<T>(actual: T, expected: T) {
-  if (actual !== expected) {
-    throw new Error(`Expected ${String(expected)}, got ${String(actual)}`);
-  }
-}
-
-function assertMatch(actual: string, expected: RegExp) {
-  if (!expected.test(actual)) {
-    throw new Error(`Expected ${actual} to match ${expected.toString()}`);
-  }
-}
+  expect(splitHref("/galleries?a=1").pathname).toBe("/galleries");
+  expect(splitHref("/galleries?a=1").search).toBe("a=1");
+  expect(splitHref("/galleries").search).toBe("");
+});
