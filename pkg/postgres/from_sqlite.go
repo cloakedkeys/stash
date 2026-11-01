@@ -354,11 +354,11 @@ func checkTargetEmpty(ctx context.Context, conn pgx.Tx, plans []copyPlan) error 
 		if slices.Contains(seededTables, plan.table) {
 			continue
 		}
-		var any bool
-		if err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM "+quoteIdent(plan.table)+")").Scan(&any); err != nil {
+		var hasRows bool
+		if err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM "+quoteIdent(plan.table)+")").Scan(&hasRows); err != nil {
 			return fmt.Errorf("checking %s: %w", plan.table, err)
 		}
-		if any {
+		if hasRows {
 			used = append(used, plan.table)
 		}
 	}
