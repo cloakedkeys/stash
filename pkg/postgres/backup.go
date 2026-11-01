@@ -143,7 +143,7 @@ func (db *Database) RestoreFromBackup(backupPath string) error {
 		return fmt.Errorf("closing database: %w", err)
 	}
 
-	conn, err := db.open(false, true)
+	conn, err := db.open(true)
 	if err != nil {
 		return err
 	}

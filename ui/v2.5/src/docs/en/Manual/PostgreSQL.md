@@ -9,14 +9,12 @@ Stash keeps its library in an SQLite file by default. It can use a PostgreSQL se
 - PostgreSQL 18 is the version Stash is tested with.
 - ICU support, which PostgreSQL packages and the official Docker images include.
 - An empty database using the UTF8 encoding, owned by the account Stash connects with. Stash won't start on any other encoding.
-- Permission for that account to change the `session_replication_role` setting, which Stash does every time it starts. Superuser accounts already have it, including the one the Docker example below creates.
 
-To create the account and database, run these as a PostgreSQL superuser. On Linux that is usually the `postgres` system user. Elsewhere, add `-U` and the superuser's name to each command, and `-h` and the address for a server on another computer.
+The account doesn't need to be a superuser. To create the account and database, run these as a PostgreSQL superuser. On Linux that is usually the `postgres` system user. Elsewhere, add `-U` and the superuser's name to each command, and `-h` and the address for a server on another computer.
 
 ```shell
 createuser --pwprompt stash
 createdb -E UTF8 -T template0 -O stash stash
-psql -c "GRANT SET ON PARAMETER session_replication_role TO stash"
 ```
 
 Backups and database upgrades also need `pg_dump` and `pg_restore` on the computer that runs Stash, at least as new as the database server. The Stash Docker images include them. Without them, upgrades go ahead with a warning and no backup.
@@ -61,6 +59,7 @@ services:
       - "9999:9999"
     environment:
       - STASH_DATABASE=postgresql://stash:change-me@db:5432/stash?sslmode=disable
+      - STASH_STASH=/data/
       - STASH_GENERATED=/generated/
       - STASH_METADATA=/metadata/
       - STASH_CACHE=/cache/
@@ -82,7 +81,7 @@ The Stash image is built from this repository with `docker build -t stash-local/
 With `STASH_DATABASE` set, Stash skips the setup wizard. After the first start:
 
 1. Set a password for the `admin` account under Settings > Security. Until then, anyone who can reach the port can use Stash.
-2. Add your library folder, `/data` in this example, under Settings > Library, then scan.
+2. Run a scan. Your library folder comes from `STASH_STASH`, `/data/` in this example. Once you save folders under Settings > Library, those are used instead.
 
 Keep `STASH_DATABASE` set. The `database` line Stash writes to `config.yml` is the SQLite default, so without the variable Stash would start on an empty SQLite library.
 
@@ -92,6 +91,13 @@ Stash can copy a SQLite library into an empty PostgreSQL database. Everything in
 
 1. Start this version of Stash on SQLite once, so the library is upgraded if it needs to be, then stop Stash. Changes made while the copy runs wouldn't be included.
 2. Set up the PostgreSQL server as described in "What the server needs". If Stash has already started on that database, it's fine as long as there's no library in it yet.
+
+   The copy needs one extra permission unless the account is a superuser, which includes the one the Docker example creates. Run this as a superuser first, and you can take the permission away again afterwards with `REVOKE`:
+
+   ```shell
+   psql -c "GRANT SET ON PARAMETER session_replication_role TO stash"
+   ```
+
 3. Set `STASH_DATABASE` to the address of the PostgreSQL database and run the copy, giving it the SQLite file:
 
    ```shell

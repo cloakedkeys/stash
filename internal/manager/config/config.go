@@ -797,6 +797,13 @@ func (i *Config) GetStashPaths() StashConfigs {
 	if err := v.Unmarshal(Stash, &ret); err != nil || len(ret) == 0 {
 		// fallback to legacy format
 		ss := v.Strings(Stash)
+		if len(ss) == 0 {
+			// a single path, as set by the STASH_STASH environment variable. Cleaned
+			// because library folders are compared with paths that have no trailing slash.
+			if s, ok := v.Get(Stash).(string); ok && s != "" {
+				ss = []string{filepath.Clean(s)}
+			}
+		}
 		ret = nil
 		for _, path := range ss {
 			toAdd := &StashConfig{
