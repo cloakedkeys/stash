@@ -94,23 +94,57 @@ func (s *Service) destroyZipFileImages(ctx context.Context, i *models.Gallery, f
 }
 
 // PrepareZipRewrites removes queued zip entries and deletes galleries for empty zips.
-func (s *Service) PrepareZipRewrites(ctx context.Context, fileDeleter *image.FileDeleter) error {
+func (s *Service) PrepareZipRewrites(ctx context.Context, fileDeleter *image.FileDeleter, deleteGenerated bool) error {
 	return fileDeleter.PrepareZipRewrites(ctx, s.File, func(ctx context.Context, f models.File) error {
 		galleries, err := s.Repository.FindByFileID(ctx, f.Base().ID)
 		if err != nil {
 			return err
 		}
 
-		destroyer := &file.ZipDestroyer{FileDestroyer: s.File, FolderDestroyer: s.Folder}
-		// PrepareZipRewrites has already set the original zip aside.
-		if err := destroyer.DestroyZip(ctx, f, nil, false); err != nil {
+		// Collect folder galleries before DestroyZip clears their folder links.
+		folders, err := s.Folder.FindByZipFileID(ctx, f.Base().ID)
+		if err != nil {
 			return err
 		}
+		for _, folder := range folders {
+			folderGalleries, err := s.Repository.FindByFolderID(ctx, folder.ID)
+			if err != nil {
+				return err
+			}
+			galleries = append(galleries, folderGalleries...)
+		}
+
+		// The database can still list images whose files are already absent from the zip.
+		if _, err := s.ImageService.DestroyZipImages(ctx, f, fileDeleter, deleteGenerated); err != nil {
+			return err
+		}
+
+		destroyed := make(map[int]bool)
 		for _, g := range galleries {
+			if destroyed[g.ID] {
+				continue
+			}
+			if err := g.LoadFiles(ctx, s.Repository); err != nil {
+				return err
+			}
+			hasOtherFile := false
+			for _, gf := range g.Files.List() {
+				if gf.Base().ID != f.Base().ID {
+					hasOtherFile = true
+					break
+				}
+			}
+			if hasOtherFile {
+				continue
+			}
 			if err := s.Repository.Destroy(ctx, g.ID); err != nil {
 				return err
 			}
+			destroyed[g.ID] = true
 		}
-		return nil
+
+		destroyer := &file.ZipDestroyer{FileDestroyer: s.File, FolderDestroyer: s.Folder}
+		// PrepareZipRewrites has already set the original zip aside.
+		return destroyer.DestroyZip(ctx, f, nil, false)
 	})
 }

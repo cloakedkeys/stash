@@ -454,7 +454,7 @@ func TestDeleter_ZipRewrite_DeletesEmptyZip(t *testing.T) {
 }
 
 func TestDeleter_ZipRewrite_KeepsUntrackedEntries(t *testing.T) {
-	for _, remaining := range []string{"notes.txt", "subdir/"} {
+	for _, remaining := range []string{"notes.txt", "subdir/notes.txt"} {
 		t.Run(remaining, func(t *testing.T) {
 			zipPath := filepath.Join(t.TempDir(), "gallery.zip")
 			makeTestZip(t, zipPath, "", map[string]string{"a.jpg": "a", remaining: ""})
@@ -468,6 +468,31 @@ func TestDeleter_ZipRewrite_KeepsUntrackedEntries(t *testing.T) {
 			}
 			d.Commit()
 			sameNames(t, "remaining entry", zipNames(t, zipPath), remaining)
+		})
+	}
+}
+
+func TestDeleter_ZipRewrite_DeletesZipWithOnlyDirectories(t *testing.T) {
+	for _, imagePath := range []string{"a.jpg", "subdir/a.jpg"} {
+		t.Run(imagePath, func(t *testing.T) {
+			zipPath := filepath.Join(t.TempDir(), "gallery.zip")
+			makeTestZip(t, zipPath, "", map[string]string{"subdir/": "", imagePath: "a"})
+			d, _ := newDeleterWithFake(t)
+			d.ZipEntry(1, zipPath, imagePath)
+			destroyed := false
+			if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath), func(context.Context, models.File) error {
+				destroyed = true
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if !destroyed {
+				t.Fatal("zip containing only directories was not destroyed")
+			}
+			d.Commit()
+			if _, err := os.Stat(zipPath); !os.IsNotExist(err) {
+				t.Fatalf("zip should be deleted, stat err = %v", err)
+			}
 		})
 	}
 }

@@ -222,7 +222,7 @@ func zipEntryPath(name string) string {
 
 // RemoveEntriesFromZip rewrites the zip at zipPath to a new temporary file in the same
 // directory, excluding all entries whose relative paths (using forward slashes) appear in
-// entriesToRemove. Returns an empty path if no entries remain, otherwise the path of
+// entriesToRemove. Returns an empty path if no files remain, otherwise the path of
 // the temporary file. The caller is responsible for
 // atomically replacing the original zip with the temp file, or cleaning it up on rollback.
 func RemoveEntriesFromZip(zipPath string, entriesToRemove []string) (string, error) {
@@ -241,10 +241,10 @@ func RemoveEntriesFromZip(zipPath string, entriesToRemove []string) (string, err
 	decodedNames := decodeZipEntryNames(r.File, r.Comment, zipPath)
 	remaining := 0
 	removed := make(map[string]bool, len(exclude))
-	for _, name := range decodedNames {
+	for i, name := range decodedNames {
 		if n := zipEntryPath(name); exclude[n] {
 			removed[n] = true
-		} else {
+		} else if !r.File[i].FileInfo().IsDir() {
 			remaining++
 		}
 	}

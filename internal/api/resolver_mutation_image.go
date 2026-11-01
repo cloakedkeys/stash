@@ -343,7 +343,7 @@ func (r *mutationResolver) ImageDestroy(ctx context.Context, input models.ImageD
 			return err
 		}
 
-		return r.galleryService.PrepareZipRewrites(ctx, fileDeleter)
+		return r.galleryService.PrepareZipRewrites(ctx, fileDeleter, utils.IsTrue(input.DeleteGenerated))
 	}); err != nil {
 		fileDeleter.Rollback()
 		return false, err
@@ -396,7 +396,7 @@ func (r *mutationResolver) ImagesDestroy(ctx context.Context, input models.Image
 		}
 
 		// images in a zip are removed from it once per zip, after all of them are marked
-		return r.galleryService.PrepareZipRewrites(ctx, fileDeleter)
+		return r.galleryService.PrepareZipRewrites(ctx, fileDeleter, utils.IsTrue(input.DeleteGenerated))
 	}); err != nil {
 		fileDeleter.Rollback()
 		return false, err

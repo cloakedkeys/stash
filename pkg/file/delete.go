@@ -209,7 +209,7 @@ func (d *Deleter) ZipEntry(zipID models.FileID, zipPath, entryRelPath string) {
 
 // PrepareZipRewrites removes the marked entries from their zips, once per zip, and
 // stores each zip's new size, or calls destroyEmptyZip to remove its database records
-// if no archive entries remain. Call it inside the transaction, after all entries are
+// if no files remain in the archive. Call it inside the transaction, after all entries are
 // marked. The original zip is set aside like any other deleted file: moved to the
 // trash, or renamed with a .delete suffix. The rewritten zip takes its place right
 // away, so the library and the archive match as soon as the transaction commits. If
