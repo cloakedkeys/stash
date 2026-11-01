@@ -282,6 +282,11 @@ export const LightboxComponent: React.FC<IProps> = ({
   const slideshowDelay =
     savedDelay ?? configuredDelay ?? DEFAULT_SLIDESHOW_DELAY;
 
+  const scrollToChangeImage =
+    lightboxSettings?.scrollToChangeImage ??
+    config?.interface.imageLightbox.scrollToChangeImage ??
+    true;
+
   const scrollAttemptsBeforeChange = Math.max(
     0,
     config?.interface.imageLightbox.scrollAttemptsBeforeChange ?? 0
@@ -908,6 +913,20 @@ export const LightboxComponent: React.FC<IProps> = ({
             })}
           </Form.Text>
         </Form.Group>
+        <Form.Group controlId="scrollToChangeImage">
+          <Form.Check
+            type="checkbox"
+            label={intl.formatMessage({
+              id: "dialogs.lightbox.scroll_to_change_image",
+            })}
+            checked={scrollToChangeImage}
+            onChange={(e) =>
+              setLightboxSettings({
+                scrollToChangeImage: e.currentTarget.checked,
+              })
+            }
+          />
+        </Form.Group>
       </>
     );
   }
@@ -1073,6 +1092,7 @@ export const LightboxComponent: React.FC<IProps> = ({
                     scrollMode={scrollMode}
                     resetPosition={resetPosition}
                     zoom={i === currentIndex ? zoom : 1}
+                    scrollToChangeImage={scrollToChangeImage}
                     scrollAttemptsBeforeChange={scrollAttemptsBeforeChange}
                     firstScroll={firstScroll}
                     inScrollGroup={inScrollGroup}

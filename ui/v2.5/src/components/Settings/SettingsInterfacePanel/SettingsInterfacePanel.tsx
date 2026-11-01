@@ -886,6 +886,15 @@ export const SettingsInterfacePanel: React.FC = PatchComponent(
           )}
 
           {isAdmin && (
+            <BooleanSetting
+              id="lightbox_scroll_to_change_image"
+              headingID="dialogs.lightbox.scroll_to_change_image"
+              checked={iface.imageLightbox?.scrollToChangeImage ?? true}
+              onChange={(v) => saveLightboxSettings({ scrollToChangeImage: v })}
+            />
+          )}
+
+          {isAdmin && (
             <NumberSetting
               headingID="config.ui.scroll_attempts_before_change.heading"
               subHeadingID="config.ui.scroll_attempts_before_change.description"
