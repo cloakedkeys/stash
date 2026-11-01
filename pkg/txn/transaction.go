@@ -76,9 +76,6 @@ func withTxn(ctx context.Context, m Manager, fn TxnFunc, writable bool, execComp
 				hookMgr.executePostCompleteHooks(ctx)
 			}
 		} else {
-			// all good, commit
-			err = commit(txnCtx, m)
-
 			// execute post-hooks with outside context
 			hookMgr.executePostCommitHooks(ctx)
 			hookMgr.executePostCompleteHooks(ctx)
@@ -87,6 +84,10 @@ func withTxn(ctx context.Context, m Manager, fn TxnFunc, writable bool, execComp
 	}()
 
 	err = fn(txnCtx)
+	if err == nil {
+		// a failed commit is handled the same as any other failure, in the function above
+		err = commit(txnCtx, m)
+	}
 	return err
 }
 
