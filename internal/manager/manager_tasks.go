@@ -43,6 +43,17 @@ func useAsImage(pathname string) bool {
 	return isImage(pathname)
 }
 
+// UseAsStory reports whether the file is a story: a text file in a library that includes stories.
+func UseAsStory(pathname string) bool {
+	stash := config.GetInstance().GetStashPaths().GetStashFromDirPath(pathname)
+	return stash != nil && stash.IncludeStory && IsStoryFile(pathname)
+}
+
+// IsStoryFile reports whether the file is a text file that can be a story.
+func IsStoryFile(pathname string) bool {
+	return fsutil.MatchExtension(pathname, config.GetInstance().GetStoryExtensions())
+}
+
 func isZip(pathname string) bool {
 	gExt := config.GetInstance().GetGalleryExtensions()
 	return fsutil.MatchExtension(pathname, gExt)

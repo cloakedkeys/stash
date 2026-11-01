@@ -52,8 +52,13 @@ type FFMpegConfig interface {
 	GetGenerationHardwareAcceleration() bool
 }
 
+type videoProber interface {
+	NewVideoFile(string) (*ffmpeg.VideoFile, error)
+}
+
 type Generator struct {
 	Encoder      *ffmpeg.FFMpeg
+	FFProbe      videoProber
 	FFMpegConfig FFMpegConfig
 	LockManager  *fsutil.ReadLockManager
 	MarkerPaths  MarkerPaths

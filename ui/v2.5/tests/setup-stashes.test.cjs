@@ -110,6 +110,7 @@ test("setup displays and submits the library folder supplied by configuration", 
         excludeVideo: false,
         excludeAudio: true,
         excludeImage: false,
+        includeStory: true,
       },
     ];
     const step = renderPaths(

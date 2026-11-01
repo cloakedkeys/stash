@@ -113,6 +113,7 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 				}
 			}
 		}
+		config.KeepIncludeStory(input.Stashes, existingPaths)
 		c.SetInterface(config.Stash, input.Stashes)
 	}
 
@@ -392,6 +393,10 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 		c.SetInterface(config.AudioExtensions, input.AudioExtensions)
 	}
 
+	if input.StoryExtensions != nil {
+		c.SetInterface(config.StoryExtensions, input.StoryExtensions)
+	}
+
 	if input.ImageExtensions != nil {
 		c.SetInterface(config.ImageExtensions, input.ImageExtensions)
 	}
@@ -514,6 +519,7 @@ func (r *mutationResolver) ConfigureInterface(ctx context.Context, input ConfigI
 		r.setConfigBool(config.ImageLightboxResetZoomOnNav, options.ResetZoomOnNav)
 		r.setConfigString(config.ImageLightboxScrollModeKey, (*string)(options.ScrollMode))
 
+		r.setConfigBool(config.ImageLightboxScrollToChangeImage, options.ScrollToChangeImage)
 		r.setConfigInt(config.ImageLightboxScrollAttemptsBeforeChange, options.ScrollAttemptsBeforeChange)
 
 		r.setConfigBool(config.ImageLightboxDisableAnimation, options.DisableAnimation)
