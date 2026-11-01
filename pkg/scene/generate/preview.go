@@ -231,12 +231,35 @@ func (g Generator) generateConcatFile(chunkFiles []string) (fn string, err error
 	defer concatFile.Close()
 
 	w := bufio.NewWriter(concatFile)
+	segments := 0
 	for _, f := range chunkFiles {
+		stat, err := os.Stat(f)
+		if err != nil {
+			return concatFile.Name(), fmt.Errorf("checking preview segment %s: %w", f, err)
+		}
+		if stat.Size() == 0 {
+			logger.Debugf("[generator] skipping preview segment %s: empty file", f)
+			continue
+		}
+
+		video, err := g.FFProbe.NewVideoFile(f)
+		if err != nil {
+			return concatFile.Name(), fmt.Errorf("probing preview segment %s: %w", f, err)
+		}
+		if video.VideoStream == nil {
+			logger.Debugf("[generator] skipping preview segment %s: no video stream", f)
+			continue
+		}
+
 		// files in concat file should be relative to concat
 		relFile := filepath.Base(f)
 		if _, err := fmt.Fprintf(w, "file '%s'\n", relFile); err != nil {
 			return concatFile.Name(), fmt.Errorf("writing concat file: %w", err)
 		}
+		segments++
+	}
+	if segments == 0 {
+		return concatFile.Name(), fmt.Errorf("generating video preview: no usable segments")
 	}
 	return concatFile.Name(), w.Flush()
 }
