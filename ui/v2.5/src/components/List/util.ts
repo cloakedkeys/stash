@@ -1,3 +1,4 @@
+import { useListFilterShortcut } from "./keyboardShortcuts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Mousetrap from "mousetrap";
 import { ListFilterModel } from "src/models/list-filter/filter";
@@ -352,22 +353,7 @@ export function useListKeyboardShortcuts(props: {
     onInvertSelection,
   } = props;
 
-  // set up hotkeys
-  useEffect(() => {
-    if (showEditFilter) {
-      Mousetrap.bind("f", (e) => {
-        showEditFilter();
-        // prevent default behavior of typing f in a text field
-        // otherwise the filter dialog closes, the query field is focused and
-        // f is typed.
-        e.preventDefault();
-      });
-
-      return () => {
-        Mousetrap.unbind("f");
-      };
-    }
-  }, [showEditFilter]);
+  useListFilterShortcut(showEditFilter);
 
   useEffect(() => {
     if (!currentPage || !changePage || !pages) return;

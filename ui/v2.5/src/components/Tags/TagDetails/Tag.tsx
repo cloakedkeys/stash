@@ -1,3 +1,7 @@
+import {
+  PageListShortcutsContext,
+  usePageListShortcuts,
+} from "../../List/keyboardShortcuts";
 import { useCanModify } from "src/hooks/CurrentUser";
 import { Button, Tabs, Tab, Form } from "react-bootstrap";
 import React, { useEffect, useMemo, useState } from "react";
@@ -373,26 +377,22 @@ const TagPage: React.FC<IProps> = PatchComponent(
 
     const canModify = useCanModify();
 
+    const pageListShortcuts = usePageListShortcuts({
+      onEdit: canModify ? () => toggleEditing() : undefined,
+      onDelete: canModify ? () => setIsDeleteAlertOpen(true) : undefined,
+      onFavorite: () => setFavorite(!tag.favorite),
+    });
+
     // set up hotkeys
     useEffect(() => {
-      if (canModify) {
-        Mousetrap.bind("e", () => toggleEditing());
-        Mousetrap.bind("d d", () => {
-          setIsDeleteAlertOpen(true);
-        });
-      }
       Mousetrap.bind(",", () => setCollapsed(!collapsed));
-      Mousetrap.bind("f", () => setFavorite(!tag.favorite));
 
       return () => {
         if (isEditing) {
           Mousetrap.unbind("s s");
         }
 
-        Mousetrap.unbind("e");
-        Mousetrap.unbind("d d");
         Mousetrap.unbind(",");
-        Mousetrap.unbind("f");
       };
     });
 
@@ -601,12 +601,14 @@ const TagPage: React.FC<IProps> = PatchComponent(
           <div className="tag-body">
             <div className="tag-tabs">
               {!isEditing && (
-                <TagTabs
-                  tabKey={tabKey}
-                  tag={tag}
-                  abbreviateCounter={abbreviateCounter}
-                  showAllCounts={showAllCounts}
-                />
+                <PageListShortcutsContext.Provider value={pageListShortcuts}>
+                  <TagTabs
+                    tabKey={tabKey}
+                    tag={tag}
+                    abbreviateCounter={abbreviateCounter}
+                    showAllCounts={showAllCounts}
+                  />
+                </PageListShortcutsContext.Provider>
               )}
             </div>
           </div>

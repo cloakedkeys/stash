@@ -32,3 +32,18 @@ func TestConfig_GetAllPluginConfiguration(t *testing.T) {
 		"plugin2": {"key3": "value3"},
 	}, i.GetAllPluginConfiguration())
 }
+
+func TestConfig_ImageLightboxScrollToChangeImage(t *testing.T) {
+	i := InitializeEmpty()
+
+	assert.True(t, i.GetImageLightboxOptions().ScrollToChangeImage, "enabled for existing configurations")
+
+	i.SetInterface(ImageLightboxScrollToChangeImage, false)
+	assert.False(t, i.GetImageLightboxOptions().ScrollToChangeImage)
+
+	i.SetInterface(ImageLightboxScrollToChangeImage, true)
+	assert.True(t, i.GetImageLightboxOptions().ScrollToChangeImage)
+
+	i.SetInterface(ImageLightboxScrollToChangeImage, nil)
+	assert.True(t, i.GetImageLightboxOptions().ScrollToChangeImage, "clearing the setting restores the default")
+}
