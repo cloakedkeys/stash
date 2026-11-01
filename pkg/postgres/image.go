@@ -1118,6 +1118,7 @@ var imageSortOptions = sortOptions{
 	"filesize",
 	"id",
 	"o_counter",
+	"organized",
 	"path",
 	"performer_age",
 	"performer_count",
