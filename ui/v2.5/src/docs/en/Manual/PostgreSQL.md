@@ -117,3 +117,4 @@ The copy happens all at once. If it fails, the PostgreSQL database stays empty, 
 Regex filters accept the same [syntax](https://github.com/google/re2/wiki/Syntax) and give the same results on PostgreSQL as on SQLite, including for plugins that use them.
 
 Raw SQL, which some plugins run, goes straight to the database, so it uses PostgreSQL's own [regular expression syntax](https://www.postgresql.org/docs/current/functions-matching.html#FUNCTIONS-POSIX-REGEXP) instead. That includes the `regex_match(text, pattern)` function. A pattern PostgreSQL can't read gives an error saying so. One it can read may still match differently: for example, `.` also matches a new line, and `\w` also matches accented letters.
+
