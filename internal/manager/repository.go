@@ -47,6 +47,8 @@ type GalleryService interface {
 
 	ValidateImageGalleryChange(ctx context.Context, i *models.Image, updateIDs models.UpdateIDs) error
 
+	PrepareZipRewrites(ctx context.Context, fileDeleter *image.FileDeleter, deleteGenerated bool) error
+
 	Updated(ctx context.Context, galleryID int) error
 }
 
