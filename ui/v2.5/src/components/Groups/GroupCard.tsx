@@ -1,7 +1,7 @@
 import { FavoriteIcon } from "../Shared/FavoriteIcon";
 import { useGroupUserDataUpdate } from "src/core/StashService";
 import React, { useMemo } from "react";
-import { Button, ButtonGroup } from "react-bootstrap";
+import { Button, ButtonGroup, OverlayTrigger, Tooltip } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
 import { PatchComponent } from "src/patch";
 import { GridCard } from "../Shared/GridCard/GridCard";
@@ -11,7 +11,7 @@ import { SceneLink, TagLink } from "../Shared/TagLink";
 import { TruncatedText } from "../Shared/TruncatedText";
 import { FormattedMessage } from "react-intl";
 import { RatingBanner } from "../Shared/RatingBanner";
-import { faPlayCircle, faTag } from "@fortawesome/free-solid-svg-icons";
+import { faPlayCircle, faTag, faBox } from "@fortawesome/free-solid-svg-icons";
 import { RelatedGroupPopoverButton } from "./RelatedGroupPopover";
 import { OCounterButton } from "../Shared/CountButton";
 
@@ -120,6 +120,27 @@ export const GroupCard: React.FC<IProps> = PatchComponent(
       return <OCounterButton value={group.o_counter} />;
     }
 
+    function maybeRenderOrganized() {
+      if (group.organized) {
+        return (
+          <OverlayTrigger
+            overlay={
+              <Tooltip id="organized-tooltip">
+                <FormattedMessage id="organized" />
+              </Tooltip>
+            }
+            placement="bottom"
+          >
+            <div className="organized">
+              <Button className="minimal">
+                <Icon icon={faBox} />
+              </Button>
+            </div>
+          </OverlayTrigger>
+        );
+      }
+    }
+
     function maybeRenderPopoverButtonGroup() {
       if (
         sceneNumber ||
@@ -127,7 +148,8 @@ export const GroupCard: React.FC<IProps> = PatchComponent(
         group.scenes.length > 0 ||
         group.tags.length > 0 ||
         group.containing_groups.length > 0 ||
-        group.sub_group_count > 0
+        group.sub_group_count > 0 ||
+        group.organized
       ) {
         return (
           <>
@@ -144,6 +166,7 @@ export const GroupCard: React.FC<IProps> = PatchComponent(
                 <RelatedGroupPopoverButton group={group} />
               )}
               {maybeRenderOCounter()}
+              {maybeRenderOrganized()}
             </ButtonGroup>
           </>
         );

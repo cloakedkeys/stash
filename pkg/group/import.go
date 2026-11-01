@@ -142,6 +142,7 @@ func createTags(ctx context.Context, tagWriter models.TagFinderCreator, names []
 
 func (i *Importer) groupJSONToGroup(groupJSON jsonschema.Group) models.Group {
 	newGroup := models.Group{
+		Organized: groupJSON.Organized,
 		Name:      groupJSON.Name,
 		Director:  groupJSON.Director,
 		Synopsis:  groupJSON.Synopsis,

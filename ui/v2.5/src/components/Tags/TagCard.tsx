@@ -13,6 +13,7 @@ import { faHeart } from "@fortawesome/free-solid-svg-icons";
 import cx from "classnames";
 import { useTagUserDataUpdate } from "src/core/StashService";
 import { RatingBanner } from "../Shared/RatingBanner";
+import { useConfigurationContext } from "src/hooks/Config";
 
 interface IProps {
   tag: GQL.TagDataFragment | GQL.TagListDataFragment;
@@ -26,6 +27,8 @@ interface IProps {
 const TagCardPopovers: React.FC<IProps> = PatchComponent(
   "TagCard.Popovers",
   ({ tag }) => {
+    const { configuration } = useConfigurationContext();
+    const showChildTagContent = configuration?.ui.showChildTagContent;
     return (
       <>
         <hr />
@@ -33,8 +36,12 @@ const TagCardPopovers: React.FC<IProps> = PatchComponent(
           <PopoverCountButton
             className="scene-count"
             type="scene"
-            count={tag.scene_count}
-            url={NavUtils.makeTagScenesUrl(tag)}
+            count={
+              showChildTagContent && "scene_count_all" in tag
+                ? tag.scene_count_all
+                : tag.scene_count
+            }
+            url={NavUtils.makeTagScenesUrl(tag, showChildTagContent ? -1 : 0)}
             showZero={false}
           />
           <PopoverCountButton

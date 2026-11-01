@@ -18,6 +18,7 @@ type Group struct {
 	Synopsis  string    `json:"synopsis"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Organized bool      `json:"organized"`
 
 	Aliases RelatedStrings `json:"aliases"`
 	URLs    RelatedStrings `json:"urls"`
@@ -85,6 +86,7 @@ type GroupPartial struct {
 	Synopsis  OptionalString
 	CreatedAt OptionalTime
 	UpdatedAt OptionalTime
+	Organized OptionalBool
 
 	Aliases          *UpdateStrings
 	URLs             *UpdateStrings

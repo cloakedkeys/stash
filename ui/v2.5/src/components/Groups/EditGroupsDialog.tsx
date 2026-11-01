@@ -1,5 +1,6 @@
-import { IndeterminateCheckbox } from "../Shared/IndeterminateCheckbox";
 import React, { useEffect, useMemo, useState } from "react";
+import { useIsAdmin } from "src/hooks/CurrentUser";
+import { IndeterminateCheckbox } from "../Shared/IndeterminateCheckbox";
 import { Form } from "react-bootstrap";
 import { useIntl } from "react-intl";
 import { useBulkGroupUpdate } from "src/core/StashService";
@@ -68,12 +69,20 @@ function getAggregateContainingGroupInput(
   return undefined;
 }
 
-const groupFields = ["favorite", "rating100", "synopsis", "director", "date"];
+const groupFields = [
+  "favorite",
+  "rating100",
+  "synopsis",
+  "director",
+  "date",
+  "organized",
+];
 
 export const EditGroupsDialog: React.FC<IListOperationProps> = (
   props: IListOperationProps
 ) => {
   const intl = useIntl();
+  const isAdmin = useIsAdmin();
   const Toast = useToast();
 
   const [updateInput, setUpdateInput] = useState<GQL.BulkGroupUpdateInput>({
@@ -150,6 +159,11 @@ export const EditGroupsDialog: React.FC<IListOperationProps> = (
       aggregateState.containingGroups
     );
 
+    // organized may only be changed by administrators
+    if (!isAdmin) {
+      groupInput.organized = undefined;
+    }
+
     return groupInput;
   }
 
@@ -203,6 +217,16 @@ export const EditGroupsDialog: React.FC<IListOperationProps> = (
               label={intl.formatMessage({ id: "favourite" })}
             />
           </Form.Group>
+          {isAdmin && (
+            <Form.Group controlId="organized">
+              <IndeterminateCheckbox
+                label={intl.formatMessage({ id: "organized" })}
+                setChecked={(checked) => setUpdateField({ organized: checked })}
+                checked={updateInput.organized ?? undefined}
+              />
+            </Form.Group>
+          )}
+
           <BulkUpdateFormGroup name="rating">
             <RatingSystem
               value={updateInput.rating100}

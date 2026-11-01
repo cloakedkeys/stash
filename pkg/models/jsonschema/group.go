@@ -18,6 +18,7 @@ type SubGroupDescription struct {
 
 type Group struct {
 	Favorite   bool                  `json:"favorite,omitempty"`
+	Organized  bool                  `json:"organized,omitempty"`
 	Name       string                `json:"name,omitempty"`
 	AliasList  []string              `json:"alias_list,omitempty"`
 	Duration   int                   `json:"duration,omitempty"`

@@ -21,6 +21,7 @@ type GroupExportReader interface {
 // ToJSON converts a Group into its JSON equivalent.
 func ToJSON(ctx context.Context, reader GroupExportReader, studioReader models.StudioGetter, group *models.Group) (*jsonschema.Group, error) {
 	newGroupJSON := jsonschema.Group{
+		Organized: group.Organized,
 		Name:      group.Name,
 		Director:  group.Director,
 		Synopsis:  group.Synopsis,

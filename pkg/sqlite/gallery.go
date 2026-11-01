@@ -1044,6 +1044,7 @@ var gallerySortOptions = sortOptions{
 	"id",
 	"images_count",
 	"o_counter",
+	"organized",
 	"path",
 	"performer_age",
 	"performer_count",

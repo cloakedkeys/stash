@@ -1,0 +1,5 @@
+query FindDuplicateImages($distance: Int, $image_filter: ImageFilterType) {
+  findDuplicateImages(distance: $distance, image_filter: $image_filter) {
+    ...SlimImageData
+  }
+}

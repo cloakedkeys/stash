@@ -49,4 +49,6 @@ type GroupFilterType struct {
 	UpdatedAt *TimestampCriterionInput `json:"updated_at"`
 	// Filter by custom fields
 	CustomFields []CustomFieldCriterionInput `json:"custom_fields"`
+	// Filter by organized
+	Organized *bool `json:"organized"`
 }

@@ -267,6 +267,60 @@ func TestTagQuerySort(t *testing.T) {
 	})
 }
 
+func TestTagQuerySortScenesCountAll(t *testing.T) {
+	runWithRollbackTxn(t, "scene count including descendants", func(t *testing.T, ctx context.Context) {
+		qb := db.Tag()
+		const prefix = "scene-count-all-sort-"
+		createTag := func(name string, parents ...int) int {
+			tag := models.Tag{
+				Name:      prefix + name,
+				ParentIDs: models.NewRelatedIDs(parents),
+			}
+			require.NoError(t, qb.Create(ctx, &models.CreateTagInput{Tag: &tag}))
+			return tag.ID
+		}
+		parent := createTag("b-parent")
+		child := createTag("c-child", parent)
+		otherChild := createTag("d-other-child", parent)
+		grandchild := createTag("a-grandchild", child, otherChild)
+		empty := createTag("e-empty")
+		peer := createTag("z-peer")
+
+		// The parent has two distinct scenes across its descendants. One is
+		// tagged with both parent and child; the other has two hierarchy paths.
+		for i, ids := range [][]int{{parent, child}, {grandchild}, {peer}, {peer}, {peer}} {
+			_, err := db.Scene().UpdatePartial(ctx, sceneIDs[i], models.ScenePartial{
+				TagIDs: &models.UpdateIDs{Mode: models.RelationshipUpdateModeSet, IDs: ids},
+			})
+			require.NoError(t, err)
+		}
+
+		filter := &models.TagFilterType{Name: &models.StringCriterionInput{
+			Value: prefix, Modifier: models.CriterionModifierIncludes,
+		}}
+		for _, tt := range []struct {
+			sort      string
+			direction models.SortDirectionEnum
+			want      []int
+		}{
+			{"scenes_count_all", models.SortDirectionEnumDesc, []int{peer, parent, child, grandchild, otherChild, empty}},
+			{"scenes_count_all", models.SortDirectionEnumAsc, []int{empty, grandchild, otherChild, parent, child, peer}},
+			{"scenes_count", models.SortDirectionEnumDesc, []int{peer, grandchild, parent, child, otherChild, empty}},
+			{"scenes_count", models.SortDirectionEnumAsc, []int{otherChild, empty, grandchild, parent, child, peer}},
+		} {
+			t.Run(tt.sort+" "+string(tt.direction), func(t *testing.T) {
+				perPage := models.PerPageAll
+				tags, count, err := qb.Query(ctx, filter, &models.FindFilterType{
+					Sort: &tt.sort, Direction: &tt.direction, PerPage: &perPage,
+				})
+				require.NoError(t, err)
+				assert.Equal(t, len(tt.want), count)
+				assert.Equal(t, tt.want, tagsToIDs(tags))
+			})
+		}
+	})
+}
+
 func TestTagQuerySortFavorite(t *testing.T) {
 	runWithRollbackTxn(t, "favorite sort", func(t *testing.T, ctx context.Context) {
 		// the fixture has no favourite tags, so add one

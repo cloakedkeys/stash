@@ -50,6 +50,11 @@ INSERT INTO scenes (id, title, date, date_precision, organized, created_at, upda
   (900, 'Blank date', '', NULL, 0, '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
 INSERT INTO scene_custom_fields (scene_id, field, value) VALUES
   (5, 'text', 'hello "world"'), (5, 'number', 42), (5, 'decimal', 1.5), (5, 'looks like a number', '42'), (5, 'big', 9007199254740993);
+INSERT INTO groups (id, name, organized, created_at, updated_at) VALUES
+  (11, 'Organized group', 1, '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z'),
+  (12, 'Unorganized group', 0, '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
+INSERT INTO groups (id, name, created_at, updated_at) VALUES
+  (13, 'Default group', '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
 INSERT INTO tags (id, name, created_at, updated_at) VALUES (3, 'A tag', '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
 INSERT INTO scenes_tags (scene_id, tag_id) VALUES (5, 3);
 INSERT INTO blobs (checksum, blob) VALUES ('sum', X'00FF10');
@@ -148,6 +153,13 @@ func TestMigrateFromSQLite(t *testing.T) {
 	var organized bool
 	get(&organized, "SELECT organized FROM scenes WHERE id = 5")
 	assert.True(t, organized)
+
+	get(&organized, "SELECT organized FROM groups WHERE id = 11")
+	assert.True(t, organized)
+	for _, id := range []int{12, 13} {
+		get(&organized, "SELECT organized FROM groups WHERE id = $1", id)
+		assert.False(t, organized)
+	}
 
 	var created time.Time
 	get(&created, "SELECT mod_time FROM folders WHERE id = 101")

@@ -74,6 +74,7 @@ func createFullMovie(id int, studioID int) models.Group {
 	return models.Group{
 		ID:        id,
 		Name:      movieName,
+		Organized: true,
 		Aliases:   models.NewRelatedStrings(movieAliases),
 		Date:      &dateObj,
 		Rating:    &rating,
@@ -99,6 +100,7 @@ func createEmptyMovie(id int) models.Group {
 func createFullJSONMovie(studio, frontImage, backImage string, customFields map[string]interface{}) *jsonschema.Group {
 	return &jsonschema.Group{
 		Name:       movieName,
+		Organized:  true,
 		AliasList:  movieAliases,
 		Date:       date,
 		Rating:     rating,
