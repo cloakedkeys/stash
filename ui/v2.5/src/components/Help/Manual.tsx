@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useIntl } from "react-intl";
 import { Modal, Container, Row, Col, Nav, Tab } from "react-bootstrap";
 import Introduction from "src/docs/en/Manual/Introduction.md";
 import Tasks from "src/docs/en/Manual/Tasks.md";
@@ -9,6 +10,7 @@ import PostgreSQL from "src/docs/en/Manual/PostgreSQL.md";
 import Interface from "src/docs/en/Manual/Interface.md";
 import Images from "src/docs/en/Manual/Images.md";
 import Audio from "src/docs/en/Manual/Audio.md";
+import VideoUpload from "src/docs/en/Manual/VideoUpload.md";
 import Scraping from "src/docs/en/Manual/Scraping.md";
 import ScraperDevelopment from "src/docs/en/Manual/ScraperDevelopment.md";
 import Plugins from "src/docs/en/Manual/Plugins.md";
@@ -41,6 +43,7 @@ export const Manual: React.FC<IManualProps> = ({
   onClose,
   defaultActiveTab,
 }) => {
+  const intl = useIntl();
   const content = [
     {
       key: "Introduction.md",
@@ -106,6 +109,11 @@ export const Manual: React.FC<IManualProps> = ({
       key: "Audio.md",
       title: "Audio",
       content: Audio,
+    },
+    {
+      key: "VideoUpload.md",
+      title: intl.formatMessage({ id: "scene_upload.title" }),
+      content: VideoUpload,
     },
     {
       key: "Scraping.md",

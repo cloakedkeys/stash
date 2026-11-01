@@ -8,11 +8,14 @@ import ImageUtils from "src/utils/image";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { useToast } from "src/hooks/Toast";
 import { PatchComponent } from "src/patch";
+import { useCanAdminister } from "src/hooks/CurrentUser";
+import { SceneUpload } from "./SceneUpload";
 
 const SceneCreate: React.FC = PatchComponent("SceneCreate", () => {
   const history = useHistory();
   const intl = useIntl();
   const Toast = useToast();
+  const isAdmin = useCanAdminister();
 
   const location = useLocation();
   const query = useMemo(() => new URLSearchParams(location.search), [location]);
@@ -86,6 +89,7 @@ const SceneCreate: React.FC = PatchComponent("SceneCreate", () => {
             values={{ entityType: intl.formatMessage({ id: "scene" }) }}
           />
         </h2>
+        {isAdmin && <SceneUpload />}
         <SceneEditPanel
           scene={scene}
           initialCoverImage={coverImage}

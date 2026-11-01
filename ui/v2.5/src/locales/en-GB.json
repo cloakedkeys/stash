@@ -1,4 +1,19 @@
 {
+  "scene_upload": {
+    "title": "Upload videos",
+    "library": "Video library",
+    "files": "Video files",
+    "start": "Upload videos",
+    "pending": "Pending",
+    "uploading": "Uploading and scanning…",
+    "saved": "Saved and scanned",
+    "failed": "Upload or scan failed",
+    "view_scene": "View scene",
+    "no_libraries": "Configure a library that allows video to upload files.",
+    "no_result": "The server did not return an upload result.",
+    "too_large": "This file exceeds the upload request limit. It was not uploaded.",
+    "limit": "Upload request limit: {limit} MiB, including form overhead. Files must be slightly smaller. To raise it, set max_upload_size in config.yml (MiB) and restart Stash. A proxy may have a lower limit."
+  },
   "gallery_reader": {
     "read": "Read",
     "back": "Back to gallery",

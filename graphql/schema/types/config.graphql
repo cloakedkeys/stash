@@ -333,6 +333,8 @@ type ConfigGeneralResult {
   spriteScreenshotSize: Int!
   "Array of video file extensions"
   videoExtensions: [String!]!
+  "Maximum multipart upload request size in bytes, including form overhead."
+  maxUploadSize: Int64!
   "Array of audio file extensions"
   audioExtensions: [String!]!
   "Array of image file extensions"

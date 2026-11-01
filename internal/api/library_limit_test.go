@@ -75,6 +75,7 @@ func TestLibraryLimitRefusesWhatItDoesNotKnow(t *testing.T) {
 		{"Query", "directory"},
 		{"Query", "somethingAddedLater"},
 		{"Mutation", "sceneUpdate"},
+		{"Mutation", "sceneUpload"},
 		{"Mutation", "somethingAddedLater"},
 		{"Subscription", "jobsSubscribe"},
 		{"Subscription", "scanCompleteSubscribe"},
