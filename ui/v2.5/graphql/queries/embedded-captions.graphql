@@ -1,0 +1,11 @@
+query SceneEmbeddedCaptions($id: ID!) {
+  findScene(id: $id) {
+    id
+    embedded_captions {
+      stream_index
+      language_code
+      title
+      codec
+    }
+  }
+}
