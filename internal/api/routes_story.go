@@ -1,8 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -11,6 +14,7 @@ import (
 	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/story"
 )
 
 type storyRoutes struct {
@@ -47,12 +51,44 @@ func (rs storyRoutes) Text(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Security-Policy", "sandbox")
 
-	if err := f.Base().Serve(&file.OsFS{}, w, r); err != nil {
+	if err := serveStoryText(f.Base(), w, r); err != nil {
 		if !errors.Is(err, context.Canceled) {
 			logger.Warnf("error serving text of story %d: %v", story.ID, err)
 		}
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 	}
+}
+
+// maxDecodedStorySize is the largest story file that is read whole to turn
+// its text into UTF-8. A bigger file is sent as it is.
+const maxDecodedStorySize = 64 * 1024 * 1024
+
+// serveStoryText sends the file's text as UTF-8, whatever encoding it was
+// saved in.
+func serveStoryText(f *models.BaseFile, w http.ResponseWriter, r *http.Request) error {
+	if f.Size > maxDecodedStorySize {
+		return f.Serve(&file.OsFS{}, w, r)
+	}
+
+	reader, err := f.Open(&file.OsFS{})
+	if err != nil {
+		return err
+	}
+	data, err := io.ReadAll(reader)
+	reader.Close()
+	if err != nil {
+		return err
+	}
+
+	if r.URL.Query().Has("t") {
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`filename="%s"`, f.Basename))
+
+	http.ServeContent(w, r, f.Basename, f.ModTime, bytes.NewReader(story.DecodeText(data)))
+	return nil
 }
 
 func (rs storyRoutes) StoryCtx(next http.Handler) http.Handler {

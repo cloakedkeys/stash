@@ -1,6 +1,7 @@
 package api
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,7 @@ import (
 	"github.com/stashapp/stash/pkg/session"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/text/encoding/charmap"
 )
 
 func storyRequest(t *testing.T, gql *handler.Server, u models.User, query string) string {
@@ -241,6 +243,61 @@ func TestStoryTextRoute(t *testing.T) {
 	require.Equal(t, missing.Body.String(), noFile.Body.String())
 
 	require.Equal(t, http.StatusBadRequest, get("/x/text").Code)
+}
+
+// A story saved in an older encoding, on disk or inside a zip, is sent as
+// UTF-8, and a range of it is a range of the UTF-8 text.
+func TestStoryTextRouteDecodes(t *testing.T) {
+	db := mocks.NewDatabase()
+	rs := storyRoutes{routes: routes{txnManager: db.Repository().TxnManager}, storyFinder: db.Story, fileGetter: db.File}
+	router := rs.Routes()
+
+	const text = "Il était une fois, dans un café près de la forêt, une jeune fille qui rêvait d'été."
+	latin1, err := charmap.ISO8859_1.NewEncoder().Bytes([]byte(text))
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "story.txt")
+	require.NoError(t, os.WriteFile(path, latin1, 0o644))
+
+	zipPath := filepath.Join(dir, "stories.zip")
+	zf, err := os.Create(zipPath)
+	require.NoError(t, err)
+	zw := zip.NewWriter(zf)
+	entry, err := zw.Create("inside.txt")
+	require.NoError(t, err)
+	_, err = entry.Write(latin1)
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+	require.NoError(t, zf.Close())
+	zipInfo, err := os.Stat(zipPath)
+	require.NoError(t, err)
+
+	onDisk, inZip := models.FileID(5), models.FileID(6)
+	modTime := models.DirEntry{ModTime: time.Now()}
+
+	db.Story.On("Find", mock.Anything, 1).Return(&models.Story{ID: 1, PrimaryFileID: &onDisk}, nil)
+	db.Story.On("Find", mock.Anything, 2).Return(&models.Story{ID: 2, PrimaryFileID: &inZip}, nil)
+	db.File.On("Find", mock.Anything, onDisk).Return([]models.File{&models.BaseFile{ID: onDisk, Path: path, Basename: "story.txt", Size: int64(len(latin1)), DirEntry: modTime}}, nil)
+	db.File.On("Find", mock.Anything, inZip).Return([]models.File{&models.BaseFile{
+		ID: inZip, Path: filepath.Join(zipPath, "inside.txt"), Basename: "inside.txt", Size: int64(len(latin1)), DirEntry: models.DirEntry{ModTime: time.Now(),
+			ZipFile: &models.BaseFile{Path: zipPath, Basename: "stories.zip", Size: zipInfo.Size()}},
+	}}, nil)
+
+	for _, url := range []string{"/1/text", "/2/text"} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, url, nil))
+		require.Equal(t, http.StatusOK, w.Code, url)
+		require.Equal(t, text, w.Body.String(), url)
+		require.Equal(t, "text/plain; charset=utf-8", w.Header().Get("Content-Type"), url)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/1/text", nil)
+	req.Header.Set("Range", "bytes=3-11")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusPartialContent, w.Code)
+	require.Equal(t, text[3:12], w.Body.String())
 }
 
 func TestStoryTextURL(t *testing.T) {
