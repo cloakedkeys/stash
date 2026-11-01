@@ -226,7 +226,7 @@ func TestDeleter_ZipRewrite_RollbackCollision(t *testing.T) {
 	makeTestZip(t, zipPath, "", map[string]string{"keep.jpg": "keep", "remove.jpg": "remove"})
 	d := NewDeleter()
 	d.ZipEntry(1, zipPath, "remove.jpg")
-	if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath)); err != nil {
+	if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath), nil); err != nil {
 		t.Fatal(err)
 	}
 	writeDeleteTestFile(t, zipPath+rewrittenZipSuffix, "unrelated")
