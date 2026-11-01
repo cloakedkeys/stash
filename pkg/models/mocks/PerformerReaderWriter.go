@@ -743,3 +743,12 @@ func (_m *PerformerReaderWriter) UpdatePartial(ctx context.Context, id int, upda
 
 	return r0, r1
 }
+
+func (_m *PerformerReaderWriter) GetAlternateImagesBulk(ctx context.Context, ids []int) ([][]models.PerformerImage, error) {
+	ret := _m.Called(ctx, ids)
+	var rows [][]models.PerformerImage
+	if ret.Get(0) != nil {
+		rows = ret.Get(0).([][]models.PerformerImage)
+	}
+	return rows, ret.Error(1)
+}

@@ -484,6 +484,12 @@ type Mutation {
     @hasRole(role: MODIFY)
   performerUpdate(input: PerformerUpdateInput!): Performer
     @hasRole(role: MODIFY)
+  "Add a portrait from a data URL or HTTP URL."
+  performerImageAdd(id: ID!, image: String!): Performer! @hasRole(role: MODIFY)
+  performerImageRemove(id: ID!, checksum: String!): Performer! @hasRole(role: MODIFY)
+  performerImageSetPrimary(id: ID!, checksum: String!): Performer! @hasRole(role: MODIFY)
+  "Supply every alternate checksum exactly once, in display order."
+  performerImagesReorder(id: ID!, checksums: [String!]!): Performer! @hasRole(role: MODIFY)
   performerDestroy(input: PerformerDestroyInput!): Boolean!
     @hasRole(role: MODIFY)
   performersDestroy(ids: [ID!]!): Boolean! @hasRole(role: MODIFY)

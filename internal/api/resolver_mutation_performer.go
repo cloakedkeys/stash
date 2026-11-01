@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/stashapp/stash/internal/api/loaders"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/performer"
 	"github.com/stashapp/stash/pkg/plugin/hook"
@@ -431,6 +432,9 @@ func (r *mutationResolver) PerformerUpdate(ctx context.Context, input models.Per
 	}
 
 	r.hookExecutor.ExecutePostHooks(ctx, performerID, hook.PerformerUpdatePost, input, translator.getFields())
+	if imageIncluded {
+		loaders.InvalidatePerformerImages(ctx, performerID)
+	}
 	return r.getPerformer(ctx, performerID)
 }
 
@@ -702,5 +706,6 @@ func (r *mutationResolver) PerformerMerge(ctx context.Context, input PerformerMe
 		return nil, err
 	}
 
+	loaders.InvalidatePerformerImages(ctx, append(srcIDs, destID)...)
 	return dest, nil
 }

@@ -14,6 +14,8 @@ import (
 
 type ImageAliasStashIDGetter interface {
 	GetImage(ctx context.Context, performerID int) ([]byte, error)
+	GetAlternateImages(ctx context.Context, performerID int) ([]models.PerformerImage, error)
+	GetAlternateImage(ctx context.Context, performerID int, checksum string) ([]byte, error)
 	models.AliasLoader
 	models.StashIDLoader
 	models.URLLoader
@@ -109,6 +111,18 @@ func ToJSON(ctx context.Context, reader ImageAliasStashIDGetter, performer *mode
 		newPerformerJSON.Image = utils.GetBase64StringFromData(image)
 	}
 
+	newPerformerJSON.AlternateImages = []string{}
+	images, err := reader.GetAlternateImages(ctx, performer.ID)
+	if err != nil {
+		return nil, fmt.Errorf("getting alternate performer images: %w", err)
+	}
+	for _, ref := range images {
+		data, err := reader.GetAlternateImage(ctx, performer.ID, ref.Checksum)
+		if err != nil {
+			return nil, fmt.Errorf("getting alternate performer image %s: %w", ref.Checksum, err)
+		}
+		newPerformerJSON.AlternateImages = append(newPerformerJSON.AlternateImages, utils.GetBase64StringFromData(data))
+	}
 	return &newPerformerJSON, nil
 }
 

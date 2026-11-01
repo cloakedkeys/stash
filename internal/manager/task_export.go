@@ -1156,6 +1156,8 @@ func (t *ExportTask) exportGallery(ctx context.Context, wg *sync.WaitGroup, jobC
 }
 
 func (t *ExportTask) ExportPerformers(ctx context.Context, workers int) {
+	// Base64 portraits can be large. Keep only one performer's image data in memory.
+	workers = 1
 	var performersWg sync.WaitGroup
 
 	reader := t.repository.Performer

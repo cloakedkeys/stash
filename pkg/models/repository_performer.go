@@ -87,6 +87,7 @@ type PerformerReader interface {
 	GetImage(ctx context.Context, performerID int) ([]byte, error)
 	HasImage(ctx context.Context, performerID int) (bool, error)
 	GetAlternateImages(ctx context.Context, performerID int) ([]PerformerImage, error)
+	GetAlternateImagesBulk(ctx context.Context, performerIDs []int) ([][]PerformerImage, error)
 	// GetAlternateImage returns an error if the checksum is not an alternate of this performer.
 	GetAlternateImage(ctx context.Context, performerID int, checksum string) ([]byte, error)
 }

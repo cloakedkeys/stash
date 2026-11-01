@@ -17,6 +17,9 @@ import (
 type ImporterReaderWriter interface {
 	models.PerformerCreatorUpdater
 	models.PerformerQueryer
+	GetAlternateImages(ctx context.Context, performerID int) ([]models.PerformerImage, error)
+	AddAlternateImage(ctx context.Context, performerID int, image []byte) (bool, error)
+	RemoveAlternateImage(ctx context.Context, performerID int, checksum string) error
 }
 
 type Importer struct {
@@ -25,10 +28,11 @@ type Importer struct {
 	Input               jsonschema.Performer
 	MissingRefBehaviour models.ImportMissingRefEnum
 
-	ID           int
-	performer    models.Performer
-	customFields models.CustomFieldMap
-	imageData    []byte
+	ID                 int
+	performer          models.Performer
+	customFields       models.CustomFieldMap
+	imageData          []byte
+	alternateImageData [][]byte
 }
 
 func (i *Importer) PreImport(ctx context.Context) error {
@@ -50,6 +54,17 @@ func (i *Importer) PreImport(ctx context.Context) error {
 		}
 	}
 
+	i.alternateImageData = nil
+	for n, image := range i.Input.AlternateImages {
+		data, err := utils.ProcessBase64Image(image)
+		if err != nil {
+			return fmt.Errorf("invalid alternate image %d: %w", n+1, err)
+		}
+		if len(data) == 0 {
+			return fmt.Errorf("alternate image %d is empty", n+1)
+		}
+		i.alternateImageData = append(i.alternateImageData, data)
+	}
 	return nil
 }
 
@@ -130,6 +145,24 @@ func (i *Importer) PostImport(ctx context.Context, id int) error {
 		}
 	}
 
+	// As with the primary image, an absent field leaves existing images alone.
+	// An explicit list replaces the alternates when duplicate handling permits an update.
+	if i.Input.AlternateImages != nil {
+		images, err := i.ReaderWriter.GetAlternateImages(ctx, id)
+		if err != nil {
+			return err
+		}
+		for _, image := range images {
+			if err := i.ReaderWriter.RemoveAlternateImage(ctx, id, image.Checksum); err != nil {
+				return err
+			}
+		}
+		for _, data := range i.alternateImageData {
+			if _, err := i.ReaderWriter.AddAlternateImage(ctx, id, data); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

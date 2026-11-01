@@ -41,6 +41,8 @@ type Performer {
   ignore_auto_tag: Boolean!
 
   image_path: String # Resolver
+  "Other portraits, in display order. Loaded only when requested."
+  alternate_images: [PerformerAlternateImage!]! # Resolver
   scene_count: Int! # Resolver
   audio_count: Int! # Resolver
   image_count: Int! # Resolver
@@ -203,4 +205,9 @@ input PerformerMergeInput {
   destination: ID!
   # values defined here will override values in the destination
   values: PerformerUpdateInput
+}
+
+type PerformerAlternateImage {
+  checksum: String!
+  path: String!
 }
