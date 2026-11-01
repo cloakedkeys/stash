@@ -310,7 +310,20 @@ class SourceSelectorPlugin extends videojs.getPlugin("plugin") {
     } else {
       this.cleanupTextTracks.push(track);
     }
+
     return track;
+  }
+
+  selectTextTrack() {
+    // Video.js records mode changes as language choices synchronously. Automatic
+    // fallback must not replace a saved choice for the next scene.
+    const cache = this.player.getCache();
+    const preference = cache.selectedLanguage;
+    const display = this.player.getChild("textTrackDisplay") as
+      | (videojs.Component & { preselectTrack(): void })
+      | undefined;
+    display?.preselectTrack();
+    if (preference) cache.selectedLanguage = preference;
   }
 
   removeTextTrack(track: HTMLTrackElement) {
