@@ -16,7 +16,6 @@ import (
 
 	gqlTransport "github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/cors"
 	"github.com/gorilla/websocket"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/models"
@@ -82,11 +81,15 @@ func originTestRouter(t *testing.T, single, setup bool) (http.Handler, *apiVoice
 	gql.AddTransport(gqlTransport.GET{})
 	gql.AddTransport(gqlTransport.MultipartForm{MaxUploadSize: 1024 * 1024})
 	r := chi.NewRouter()
-	r.Use(cors.AllowAll().Handler)
+	r.Use(p.corsMiddleware)
 	r.Use(RequestIPMiddleware)
 	r.Use(authenticateHandlerWithServices(tx, cfg, func() UserAuthenticator { return users }, sessions))
+	r.Use(p.corsMiddleware)
 	r.Use(p.middleware)
 	r.Handle(gqlEndpoint, gql)
+	r.HandleFunc("/scene/*", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 	r.Post(loginEndpoint, handleLoginPost(sessions, cfg))
 	login := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("username=reader&password=reader-password"))
 	login.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -294,5 +297,151 @@ func TestCrossOriginInvalidTrustedOrigins(t *testing.T) {
 			_, err := newCrossOriginProtection([]string{origin})
 			require.ErrorContains(t, err, "trusted_origins")
 		})
+	}
+}
+
+func TestCrossOriginResponseAccess(t *testing.T) {
+	isolateOriginTestLimiters(t)
+	for _, single := range []bool{true, false} {
+		for _, tc := range []struct {
+			name, origin, fetchSite, key, preflightHeaders string
+			post, queryKey                                 bool
+			wantOrigin                                     string
+		}{
+			{name: "untrusted", origin: "https://evil.example", fetchSite: "cross-site"},
+			{name: "null origin", origin: "null", fetchSite: "cross-site"},
+			{name: "trusted", origin: "https://trusted.example", fetchSite: "cross-site", wantOrigin: "https://trusted.example"},
+			{name: "development UI", origin: "http://localhost:3000", fetchSite: "same-site", post: true, wantOrigin: "http://localhost:3000"},
+			{name: "valid key", origin: "https://evil.example", fetchSite: "cross-site", key: "admin-key", wantOrigin: "https://evil.example"},
+			{name: "extension key", origin: "chrome-extension://test-extension", key: "admin-key", wantOrigin: "chrome-extension://test-extension"},
+			{name: "valid query key", origin: "https://evil.example", fetchSite: "cross-site", key: "admin-key", queryKey: true, wantOrigin: "https://evil.example"},
+			{name: "wrong key", origin: "https://evil.example", fetchSite: "cross-site", key: "wrong-key"},
+			{name: "key preflight", origin: "https://evil.example", preflightHeaders: "content-type, aPiKeY", wantOrigin: "https://evil.example"},
+			{name: "untrusted preflight", origin: "https://evil.example", preflightHeaders: "Content-Type"},
+			{name: "similar header preflight", origin: "https://evil.example", preflightHeaders: "X-ApiKey"},
+			{name: "trusted preflight", origin: "https://trusted.example", preflightHeaders: "Content-Type", wantOrigin: "https://trusted.example"},
+			{name: "same origin", origin: "http://stash.test", fetchSite: "same-origin", post: true, wantOrigin: "http://stash.test"},
+			{name: "same origin fallback", origin: "http://stash.test", post: true, wantOrigin: "http://stash.test"},
+			{name: "proxy changed Host", origin: "https://public.example", fetchSite: "same-origin", post: true, wantOrigin: "https://public.example"},
+			{name: "no origin"},
+		} {
+			t.Run(tc.name+"/single="+strconv.FormatBool(single), func(t *testing.T) {
+				router, _, cookie := originTestRouter(t, single, false)
+				req := httptest.NewRequest(http.MethodGet, "http://stash.test/graphql?query="+url.QueryEscape(`{ __typename }`), nil)
+				req.RemoteAddr = "127.0.0.1:12345"
+				if tc.post {
+					req.Method = http.MethodPost
+					req.Body = io.NopCloser(strings.NewReader(`{"query":"{ __typename }"}`))
+					req.Header.Set("Content-Type", "application/json")
+				}
+				if tc.preflightHeaders != "" {
+					req.Method = http.MethodOptions
+					req.Header.Set("Access-Control-Request-Method", "POST")
+					req.Header.Set("Access-Control-Request-Headers", tc.preflightHeaders)
+				} else if !single && tc.key == "" {
+					req.AddCookie(cookie)
+				}
+				req.Header.Set("Origin", tc.origin)
+				req.Header.Set("Sec-Fetch-Site", tc.fetchSite)
+				if tc.queryKey {
+					req.URL.RawQuery += "&apikey=" + tc.key
+				} else {
+					req.Header.Set(session.ApiKeyHeader, tc.key)
+				}
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, req)
+				wantStatus := http.StatusOK
+				if !single && tc.key == "wrong-key" {
+					wantStatus = http.StatusUnauthorized
+				}
+				require.Equal(t, wantStatus, w.Code, w.Body.String())
+				require.Equal(t, tc.wantOrigin, w.Header().Get("Access-Control-Allow-Origin"))
+				if tc.wantOrigin != "" {
+					require.Equal(t, []string{tc.wantOrigin}, w.Header().Values("Access-Control-Allow-Origin"))
+				}
+				if tc.wantOrigin != "" {
+					vary := strings.Join(w.Header().Values("Vary"), ", ")
+					require.Contains(t, vary, "Origin")
+					require.Contains(t, vary, session.ApiKeyHeader)
+					require.Contains(t, vary, "Sec-Fetch-Site")
+				}
+				if tc.preflightHeaders != "" && tc.wantOrigin != "" {
+					vary := strings.Join(w.Header().Values("Vary"), ", ")
+					require.Contains(t, vary, "Access-Control-Request-Method")
+					require.Contains(t, vary, "Access-Control-Request-Headers")
+					require.Equal(t, "POST", w.Header().Get("Access-Control-Allow-Methods"))
+					require.Equal(t, strings.ToLower(tc.preflightHeaders), strings.ToLower(w.Header().Get("Access-Control-Allow-Headers")))
+				} else if wantStatus == http.StatusOK && tc.preflightHeaders == "" {
+					require.Contains(t, w.Body.String(), `"__typename":"Query"`)
+				}
+			})
+		}
+	}
+}
+
+func TestCrossOriginCastResponseAccess(t *testing.T) {
+	for _, tc := range []struct {
+		name, origin, path, method string
+		allowed                    bool
+	}{
+		{"HTTPS stream", "https://www.gstatic.com", "/scene/1/stream.m3u8", "GET", true},
+		{"HTTP stream", "http://www.gstatic.com", "/scene/1/stream.m3u8", "GET", true},
+		{"segment", "https://www.gstatic.com", "/scene/1/stream/segment.ts", "GET", true},
+		{"captions", "https://www.gstatic.com", "/scene/1/caption.vtt", "GET", true},
+		{"HEAD", "https://www.gstatic.com", "/scene/1/stream.m3u8", "HEAD", true},
+		{"preflight", "https://www.gstatic.com", "/scene/1/stream.m3u8", "OPTIONS", true},
+		{"HTTPS GraphQL", "https://www.gstatic.com", "/graphql", "GET", false},
+		{"HTTP GraphQL", "http://www.gstatic.com", "/graphql", "GET", false},
+		{"similar host", "https://www.gstatic.com.evil.example", "/scene/1/stream.m3u8", "GET", false},
+		{"other origin", "https://evil.example", "/scene/1/stream.m3u8", "GET", false},
+		{"similar path", "https://www.gstatic.com", "/scene-other/1/stream.m3u8", "GET", false},
+		{"write", "https://www.gstatic.com", "/scene/1/stream.m3u8", "POST", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			router, _, _ := originTestRouter(t, true, false)
+			req := httptest.NewRequest(tc.method, "http://stash.test"+tc.path, nil)
+			req.RemoteAddr = "127.0.0.1:12345"
+			req.Header.Set("Origin", tc.origin)
+			req.Header.Set("Sec-Fetch-Site", "cross-site")
+			if tc.method == http.MethodOptions {
+				req.Header.Set("Access-Control-Request-Method", "GET")
+			}
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			if tc.allowed {
+				require.Equal(t, http.StatusOK, w.Code)
+				require.Equal(t, []string{tc.origin}, w.Header().Values("Access-Control-Allow-Origin"))
+			} else {
+				require.Empty(t, w.Header().Values("Access-Control-Allow-Origin"))
+			}
+		})
+	}
+}
+
+func TestCrossOriginUnauthorizedResponseAccess(t *testing.T) {
+	for _, origin := range []string{"https://trusted.example", "https://evil.example"} {
+		for _, key := range []string{"", "wrong-key"} {
+			t.Run(origin+"/key="+key, func(t *testing.T) {
+				isolateOriginTestLimiters(t)
+				router, _, _ := originTestRouter(t, false, false)
+				req := httptest.NewRequest(http.MethodGet, "http://stash.test/graphql", nil)
+				req.RemoteAddr = "127.0.0.1:12345"
+				req.Header.Set("Origin", origin)
+				req.Header.Set("Sec-Fetch-Site", "cross-site")
+				req.Header.Set(session.ApiKeyHeader, key)
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, req)
+				require.Equal(t, http.StatusUnauthorized, w.Code)
+				if origin == "https://trusted.example" {
+					require.Equal(t, []string{origin}, w.Header().Values("Access-Control-Allow-Origin"))
+				} else {
+					require.Empty(t, w.Header().Values("Access-Control-Allow-Origin"))
+				}
+				vary := strings.Join(w.Header().Values("Vary"), ", ")
+				require.Contains(t, vary, "Origin")
+				require.Contains(t, vary, session.ApiKeyHeader)
+				require.Contains(t, vary, "Sec-Fetch-Site")
+			})
+		}
 	}
 }
