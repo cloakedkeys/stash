@@ -1,3 +1,7 @@
+import {
+  PageListShortcutsContext,
+  usePageListShortcuts,
+} from "../../List/keyboardShortcuts";
 import { FavoriteIcon } from "src/components/Shared/FavoriteIcon";
 import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useEffect, useMemo, useState } from "react";
@@ -288,19 +292,16 @@ const GroupPage: React.FC<IProps> = PatchComponent(
 
     const canModify = useCanModify();
 
+    const pageListShortcuts = usePageListShortcuts({
+      onEdit: canModify ? () => toggleEditing() : undefined,
+      onDelete: canModify ? () => setIsDeleteAlertOpen(true) : undefined,
+    });
+
     // set up hotkeys
     useEffect(() => {
-      if (canModify) {
-        Mousetrap.bind("e", () => toggleEditing());
-        Mousetrap.bind("d d", () => {
-          setIsDeleteAlertOpen(true);
-        });
-      }
       Mousetrap.bind(",", () => setCollapsed(!collapsed));
 
       return () => {
-        Mousetrap.unbind("e");
-        Mousetrap.unbind("d d");
         Mousetrap.unbind(",");
       };
     });
@@ -521,11 +522,13 @@ const GroupPage: React.FC<IProps> = PatchComponent(
           <div className="group-body">
             <div className="group-tabs">
               {!isEditing && (
-                <GroupTabs
-                  group={group}
-                  tabKey={tabKey}
-                  abbreviateCounter={abbreviateCounter}
-                />
+                <PageListShortcutsContext.Provider value={pageListShortcuts}>
+                  <GroupTabs
+                    group={group}
+                    tabKey={tabKey}
+                    abbreviateCounter={abbreviateCounter}
+                  />
+                </PageListShortcutsContext.Provider>
               )}
             </div>
           </div>

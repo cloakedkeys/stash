@@ -40,6 +40,9 @@ func (t *GenerateMarkersTask) GetDescription() string {
 }
 
 func (t *GenerateMarkersTask) Start(ctx context.Context) {
+	generator := *t.generator
+	t.generator = &generator
+
 	if t.Scene != nil {
 		t.generateSceneMarkers(ctx, t.Scene)
 	}
@@ -75,11 +78,25 @@ func (t *GenerateMarkersTask) generateSpecificMarker(ctx context.Context, marker
 		return
 	}
 
+	if err := t.setMarkerSampleAspectRatio(videoFile.Path); err != nil {
+		logger.Errorf("error reading marker video file: %v", err)
+		return
+	}
+
 	codec, fullhw := t.determineMarkerCodec(ctx, videoFile)
 
 	if err := t.generateMarker(videoFile, scene, marker, codec, fullhw); err != nil {
 		logger.Errorf("[generator] error generating marker files for scene (%d) marker (%d) at %s: %v", scene.ID, marker.ID, formatSeconds(float64(marker.Seconds)), err)
 	}
+}
+
+func (t *GenerateMarkersTask) setMarkerSampleAspectRatio(path string) error {
+	videoFile, err := instance.FFProbe.NewVideoFile(path)
+	if err != nil {
+		return err
+	}
+	t.generator.SampleAspectRatio = videoFile.SampleAspectRatio()
+	return nil
 }
 
 func (t *GenerateMarkersTask) determineMarkerCodec(ctx context.Context, videoFile *models.VideoFile) (ffmpeg.VideoCodec, bool) {
@@ -110,6 +127,11 @@ func (t *GenerateMarkersTask) generateSceneMarkers(ctx context.Context, scene *m
 	videoFile := scene.Files.Primary()
 
 	if len(sceneMarkers) == 0 || videoFile == nil || videoFile.Width == 0 || videoFile.Height == 0 {
+		return
+	}
+
+	if err := t.setMarkerSampleAspectRatio(videoFile.Path); err != nil {
+		logger.Errorf("error reading marker video file: %v", err)
 		return
 	}
 
