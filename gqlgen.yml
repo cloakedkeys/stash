@@ -20,6 +20,8 @@ autobind:
   - github.com/stashapp/stash/pkg/stashbox
 
 models:
+  EmbeddedCaption:
+    model: github.com/stashapp/stash/pkg/scene/embedded.Track
   # Scalars
   ID:
     model:

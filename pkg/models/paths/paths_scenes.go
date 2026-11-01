@@ -2,6 +2,7 @@ package paths
 
 import (
 	"path/filepath"
+	"strconv"
 
 	"github.com/stashapp/stash/pkg/fsutil"
 )
@@ -52,4 +53,9 @@ func (sp *scenePaths) GetSpriteVttFilePath(checksum string) string {
 
 func (sp *scenePaths) GetInteractiveHeatmapPath(checksum string) string {
 	return filepath.Join(sp.InteractiveHeatmap, checksum+".png")
+}
+
+// GetEmbeddedSubtitleDir uses only a numeric database ID, never a media path.
+func (sp *scenePaths) GetEmbeddedSubtitleDir(sceneID int) string {
+	return filepath.Join(sp.EmbeddedSubtitles, strconv.Itoa(sceneID))
 }

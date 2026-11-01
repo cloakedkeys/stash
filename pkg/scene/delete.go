@@ -10,6 +10,7 @@ import (
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/paths"
+	"github.com/stashapp/stash/pkg/scene/embedded"
 )
 
 // FileDeleter is an extension of file.Deleter that handles deletion of scene files.
@@ -23,6 +24,15 @@ type FileDeleter struct {
 // MarkGeneratedFiles marks for deletion the generated files for the provided scene.
 // Generated files bypass trash and are permanently deleted since they can be regenerated.
 func (d *FileDeleter) MarkGeneratedFiles(scene *models.Scene) error {
+	subtitleDir := d.Paths.Scene.GetEmbeddedSubtitleDir(scene.ID)
+	if err := embedded.MarkForDeletion(subtitleDir, func() error {
+		if exists, _ := fsutil.DirExists(subtitleDir); exists {
+			return d.DirsWithoutTrash([]string{subtitleDir})
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	sceneHash := scene.GetHash(d.FileNamingAlgo)
 
 	if sceneHash == "" {
