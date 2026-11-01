@@ -6,7 +6,6 @@ import (
 
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
-	"github.com/stashapp/stash/pkg/studio"
 )
 
 func createMissingStudio(ctx context.Context, endpoint string, w models.StudioReaderWriter, s *models.ScrapedStudio) (*int, error) {
@@ -37,35 +36,6 @@ func createMissingStudio(ctx context.Context, endpoint string, w models.StudioRe
 
 			storedId := strconv.Itoa(newParentStudio.ID)
 			s.Parent.StoredID = &storedId
-		} else {
-			// The parent studio matched an existing one and the user has chosen in the UI to link and/or update it
-			storedID, _ := strconv.Atoi(*s.Parent.StoredID)
-
-			existingStashIDs, err := w.GetStashIDs(ctx, storedID)
-			if err != nil {
-				return nil, err
-			}
-
-			studioPartial := s.Parent.ToPartial(*s.Parent.StoredID, endpoint, nil, existingStashIDs)
-			parentImage, err := s.Parent.GetImage(ctx, nil)
-			if err != nil {
-				return nil, err
-			}
-
-			if err := studio.ValidateModify(ctx, studioPartial, w); err != nil {
-				return nil, err
-			}
-
-			_, err = w.UpdatePartial(ctx, studioPartial)
-			if err != nil {
-				return nil, err
-			}
-
-			if len(parentImage) > 0 {
-				if err := w.UpdateImage(ctx, studioPartial.ID, parentImage); err != nil {
-					return nil, err
-				}
-			}
 		}
 	}
 

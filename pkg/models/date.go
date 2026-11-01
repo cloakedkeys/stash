@@ -117,7 +117,7 @@ func FormatYearRangeString(start *string, end *string) string {
 }
 
 // ParseYearRangeString parses a year range string into start and end year integers.
-// Supported formats: "YYYY", "YYYY - YYYY", "YYYY-YYYY", "YYYY -", "- YYYY", "YYYY-present".
+// Supported formats: "YYYY", "YYYY - YYYY", "YYYY-YYYY", "YYYY -", "- YYYY", "YYYY-present", "YYYY-now".
 // Returns nil for start/end if not present in the string.
 func ParseYearRangeString(s string) (start *Date, end *Date, err error) {
 	s = strings.TrimSpace(s)
@@ -153,7 +153,7 @@ func ParseYearRangeString(s string) (start *Date, end *Date, err error) {
 		start = y
 	}
 
-	if endStr != "" {
+	if endStr != "" && endStr != "now" {
 		y, err := parseYear(endStr)
 		if err != nil {
 			return nil, nil, fmt.Errorf("invalid end year in %q: %w", s, err)
