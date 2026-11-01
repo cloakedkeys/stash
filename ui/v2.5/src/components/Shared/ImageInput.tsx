@@ -34,6 +34,7 @@ interface IImageInput {
   onImageURL?: (url: string) => void;
   onReset?: () => void;
   acceptSVG?: boolean;
+  multiple?: boolean;
   extraActions?: IImageInputExtraAction[];
 }
 
@@ -50,6 +51,7 @@ export const ImageInput: React.FC<IImageInput> = PatchComponent(
     onImageURL,
     onReset,
     acceptSVG = false,
+    multiple = false,
     extraActions,
   }) => {
     const [isShowDialog, setIsShowDialog] = useState(false);
@@ -67,6 +69,7 @@ export const ImageInput: React.FC<IImageInput> = PatchComponent(
           </Button>
           <Form.Control
             type="file"
+            multiple={multiple}
             onChange={onImageChange}
             accept={acceptExtensions(acceptSVG)}
           />
@@ -155,6 +158,7 @@ export const ImageInput: React.FC<IImageInput> = PatchComponent(
               </span>
               <Form.Control
                 type="file"
+                multiple={multiple}
                 onChange={onImageChange}
                 accept={acceptExtensions(acceptSVG)}
               />
