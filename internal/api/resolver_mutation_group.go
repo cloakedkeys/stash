@@ -50,6 +50,9 @@ func groupFromGroupCreateInput(ctx context.Context, input GroupCreateInput) (*mo
 	newGroup.Aliases = models.NewRelatedStrings(stringslice.UniqueExcludeFold(stringslice.TrimSpace(aliases), newGroup.Name))
 	newGroup.Duration = input.Duration
 	newGroup.Rating = input.Rating100
+	if input.Favorite != nil {
+		newGroup.Favorite = *input.Favorite
+	}
 	newGroup.Director = translator.string(input.Director)
 	newGroup.Synopsis = translator.string(input.Synopsis)
 	newGroup.Organized = translator.bool(input.Organized)
@@ -147,6 +150,7 @@ func groupPartialFromGroupUpdateInput(translator changesetTranslator, input Grou
 	}
 	updatedGroup.Duration = translator.optionalInt(input.Duration, "duration")
 	updatedGroup.Rating = translator.optionalInt(input.Rating100, "rating100")
+	updatedGroup.Favorite = translator.optionalBool(input.Favorite, "favorite")
 	updatedGroup.Director = translator.optionalString(input.Director, "director")
 	updatedGroup.Synopsis = translator.optionalString(input.Synopsis, "synopsis")
 	updatedGroup.Organized = translator.optionalBool(input.Organized, "organized")
@@ -288,6 +292,7 @@ func groupPartialFromBulkGroupUpdateInput(translator changesetTranslator, input 
 	updatedGroup.Synopsis = translator.optionalString(input.Synopsis, "synopsis")
 	updatedGroup.Organized = translator.optionalBool(input.Organized, "organized")
 	updatedGroup.Rating = translator.optionalInt(input.Rating100, "rating100")
+	updatedGroup.Favorite = translator.optionalBool(input.Favorite, "favorite")
 	updatedGroup.Director = translator.optionalString(input.Director, "director")
 
 	updatedGroup.StudioID, err = translator.optionalIntFromString(input.StudioID, "studio_id")

@@ -659,6 +659,7 @@ const SceneMergeDetails: React.FC<ISceneMergeDetailsProps> = ({
         date: date.getNewValue(),
         production_date: productionDate.getNewValue(),
         rating100: rating.getNewValue(),
+        favorite: all.some((s) => s.favorite),
         o_counter: oCounter.getNewValue(),
         play_count: playCount.getNewValue(),
         play_duration: playDuration.getNewValue(),

@@ -27,6 +27,8 @@ func ToBasicJSON(ctx context.Context, reader ExportReader, image *models.Image) 
 		UpdatedAt:    json.JSONTime{Time: image.UpdatedAt},
 	}
 
+	newImageJSON.Favorite = image.Favorite
+
 	if image.Rating != nil {
 		newImageJSON.Rating = *image.Rating
 	}

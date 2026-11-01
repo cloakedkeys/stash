@@ -1,4 +1,5 @@
 fragment AudioData on Audio {
+  favorite
   id
   title
   code

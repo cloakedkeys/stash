@@ -5,6 +5,8 @@ type GalleryPathsType {
 
 "Gallery type"
 type Gallery {
+  "The current user's favourite"
+  favorite: Boolean!
   id: ID!
   title: String
   code: String
@@ -39,6 +41,7 @@ type Gallery {
 }
 
 input GalleryCreateInput {
+  favorite: Boolean
   title: String!
   code: String
   url: String @deprecated(reason: "Use urls")
@@ -59,6 +62,7 @@ input GalleryCreateInput {
 }
 
 input GalleryUpdateInput {
+  favorite: Boolean
   clientMutationId: String
   id: ID!
   title: String
@@ -83,6 +87,7 @@ input GalleryUpdateInput {
 }
 
 input BulkGalleryUpdateInput {
+  favorite: Boolean
   clientMutationId: String
   ids: [ID!]
   code: String

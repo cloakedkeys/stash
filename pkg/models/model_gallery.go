@@ -17,6 +17,7 @@ type Gallery struct {
 	Photographer string `json:"photographer"`
 	// Rating expressed in 1-100 scale
 	Rating    *int `json:"rating"`
+	Favorite  bool `json:"favorite"`
 	Organized bool `json:"organized"`
 	OCounter  int  `json:"o_counter"`
 	StudioID  *int `json:"studio_id"`
@@ -76,6 +77,7 @@ type GalleryPartial struct {
 	Photographer OptionalString
 	// Rating expressed in 1-100 scale
 	Rating    OptionalInt
+	Favorite  OptionalBool
 	Organized OptionalBool
 	OCounter  OptionalInt
 	StudioID  OptionalInt
@@ -177,6 +179,7 @@ func (s GalleryPartial) UpdateInput(id int) GalleryUpdateInput {
 		Urls:         s.URLs.Strings(),
 		Date:         dateStr,
 		Rating100:    s.Rating.Ptr(),
+		Favorite:     s.Favorite.Ptr(),
 		Organized:    s.Organized.Ptr(),
 		StudioID:     s.StudioID.StringPtr(),
 		TagIds:       s.TagIDs.IDStrings(),

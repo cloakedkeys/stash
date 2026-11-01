@@ -1,0 +1,26 @@
+query GalleryReaderImages(
+  $filter: FindFilterType!
+  $image_filter: ImageFilterType!
+) {
+  findImages(filter: $filter, image_filter: $image_filter) {
+    count
+    images {
+      id
+      paths {
+        image
+      }
+      visual_files {
+        __typename
+        ... on ImageFile {
+          width
+          height
+        }
+        ... on VideoFile {
+          video_codec
+          width
+          height
+        }
+      }
+    }
+  }
+}

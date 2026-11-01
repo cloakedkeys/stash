@@ -1,3 +1,4 @@
+import { FavoriteIcon } from "src/components/Shared/FavoriteIcon";
 import { Tab, Nav, Dropdown } from "react-bootstrap";
 import React, {
   useCallback,
@@ -538,6 +539,14 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
 
           <div className="audio-toolbar">
             <span className="audio-toolbar-group">
+              <FavoriteIcon
+                favorite={audio.favorite}
+                onToggleFavorite={(favorite) => {
+                  setAudioUserData({
+                    variables: { input: { id: audio.id, favorite } },
+                  }).catch(Toast.error);
+                }}
+              />
               <RatingSystem
                 value={audio.rating100}
                 onSetRating={setRating}

@@ -18,6 +18,7 @@ type GalleryChapter struct {
 }
 
 type Gallery struct {
+	Favorite     bool                   `json:"favorite,omitempty"`
 	ZipFiles     []string               `json:"zip_files,omitempty"`
 	FolderPath   string                 `json:"folder_path,omitempty"`
 	Title        string                 `json:"title,omitempty"`

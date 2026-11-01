@@ -33,6 +33,8 @@ func ToJSON(ctx context.Context, reader GroupExportReader, studioReader models.S
 	if group.Date != nil {
 		newGroupJSON.Date = group.Date.String()
 	}
+	newGroupJSON.Favorite = group.Favorite
+
 	if group.Rating != nil {
 		newGroupJSON.Rating = *group.Rating
 	}

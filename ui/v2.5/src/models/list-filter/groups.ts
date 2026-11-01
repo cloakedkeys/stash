@@ -1,3 +1,4 @@
+import { FavoriteStudioCriterionOption } from "./criteria/favorite";
 import {
   createStringCriterionOption,
   createBooleanCriterionOption,
@@ -36,6 +37,7 @@ const sortByOptions = [
 ]
   .map(ListFilterOptions.createSortBy)
   .concat([
+    { messageID: "favourite", value: "favorite" },
     {
       messageID: "scene_count",
       value: "scenes_count",
@@ -48,6 +50,7 @@ const sortByOptions = [
   ]);
 const displayModeOptions = [DisplayMode.Grid];
 const criterionOptions = [
+  FavoriteStudioCriterionOption,
   createBooleanCriterionOption("organized"),
   // StudioTagsCriterionOption,
   StudiosCriterionOption,

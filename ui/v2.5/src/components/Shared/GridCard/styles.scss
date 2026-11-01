@@ -82,3 +82,25 @@
 .card-drag-handle {
   filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.7));
 }
+
+.scene-card,
+.image-card,
+.gallery-card,
+.group-card,
+.audio-card {
+  button.btn.favorite-button {
+    left: 2.5rem;
+    padding: 0;
+    position: absolute;
+    top: 10px;
+
+    svg.fa-icon {
+      margin-left: 0.4rem;
+      margin-right: 0.4rem;
+    }
+  }
+
+  &:hover button.btn.favorite-button.not-favorite {
+    opacity: 1;
+  }
+}

@@ -5,6 +5,7 @@ import (
 )
 
 type ImageFilterType struct {
+	Favorite *bool `json:"favorite"`
 	OperatorFilter[ImageFilterType]
 	ID           *IntCriterionInput    `json:"id"`
 	Title        *StringCriterionInput `json:"title"`
@@ -72,6 +73,7 @@ type ImageFilterType struct {
 }
 
 type ImageUpdateInput struct {
+	Favorite         *bool              `json:"favorite"`
 	ClientMutationID *string            `json:"clientMutationId"`
 	ID               string             `json:"id"`
 	Title            *string            `json:"title"`

@@ -3,6 +3,7 @@ package models
 import "context"
 
 type AudioFilterType struct {
+	Favorite *bool `json:"favorite"`
 	OperatorFilter[AudioFilterType]
 	ID      *IntCriterionInput    `json:"id"`
 	Title   *StringCriterionInput `json:"title"`
@@ -109,6 +110,7 @@ type AudioGroupInput struct {
 }
 
 type AudioCreateInput struct {
+	Favorite     *bool             `json:"favorite"`
 	Title        *string           `json:"title"`
 	Code         *string           `json:"code"`
 	Details      *string           `json:"details"`
@@ -132,6 +134,7 @@ type AudioCreateInput struct {
 }
 
 type AudioUpdateInput struct {
+	Favorite         *bool             `json:"favorite"`
 	ClientMutationID *string           `json:"clientMutationId"`
 	ID               string            `json:"id"`
 	Title            *string           `json:"title"`

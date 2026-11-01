@@ -262,6 +262,7 @@ input SceneMarkerFilterType {
 }
 
 input SceneFilterType {
+  favorite: Boolean
   AND: SceneFilterType
   OR: SceneFilterType
   NOT: SceneFilterType
@@ -424,6 +425,7 @@ input MovieFilterType {
 }
 
 input GroupFilterType {
+  favorite: Boolean
   "Filter by organized"
   organized: Boolean
   AND: GroupFilterType
@@ -548,6 +550,7 @@ input StudioFilterType {
 }
 
 input GalleryFilterType {
+  favorite: Boolean
   AND: GalleryFilterType
   OR: GalleryFilterType
   NOT: GalleryFilterType
@@ -735,6 +738,7 @@ input TagFilterType {
 }
 
 input ImageFilterType {
+  favorite: Boolean
   AND: ImageFilterType
   OR: ImageFilterType
   NOT: ImageFilterType
@@ -810,6 +814,7 @@ input ImageFilterType {
 }
 
 input AudioFilterType {
+  favorite: Boolean
   AND: AudioFilterType
   OR: AudioFilterType
   NOT: AudioFilterType
