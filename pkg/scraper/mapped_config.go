@@ -99,11 +99,19 @@ func (s mappedConfig) processAttributes(ctx context.Context, q mappedQuery, comm
 			selector = strings.ReplaceAll(selector, "{inputURL}", q.getURL())
 			selector = strings.ReplaceAll(selector, "{inputHostname}", extractHostname(q.getURL()))
 
-			query := q.runQuery
+			fieldQuery := q
+			if xpath, ok := q.(*xpathQuery); ok {
+				// Keep multiline Details without changing normalization for other fields.
+				xpathField := *xpath
+				xpathField.preserveNewlines = k == "Details"
+				fieldQuery = &xpathField
+			}
+
+			query := fieldQuery.runQuery
 			// Only direct attribute lists are matched by their original index.
 			// Concat and split consume the list before producing object values.
 			if preservePositions && !attrConfig.hasConcat() && !attrConfig.hasSplit() {
-				query = q.runQueryWithPositions
+				query = fieldQuery.runQueryWithPositions
 			}
 			found, err := query(selector)
 			if err != nil {
@@ -111,7 +119,7 @@ func (s mappedConfig) processAttributes(ctx context.Context, q mappedQuery, comm
 			}
 
 			if len(found) > 0 {
-				result := s.postProcess(ctx, q, attrConfig, found, preservePositions)
+				result := s.postProcess(ctx, fieldQuery, attrConfig, found, preservePositions)
 
 				// HACK - if the key is URLs, then we need to set the value as a multi-value
 				isMulti := isMulti != nil && isMulti(k)
