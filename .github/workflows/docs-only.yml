@@ -11,6 +11,7 @@ on:
 
 jobs:
   changes:
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-24.04
     outputs:
       docs_only: ${{ steps.check.outputs.docs_only }}
@@ -23,12 +24,16 @@ jobs:
     - id: check
       run: |
         docs_only=false
-        if [ "$GITHUB_EVENT_NAME" = pull_request ] \
-          && git rev-parse --verify --quiet HEAD^2 > /dev/null \
+        files=""
+        if git rev-parse --verify --quiet HEAD^2 > /dev/null \
           && files=$(git diff --no-renames --name-only HEAD^1 HEAD) \
-          && [ -n "$files" ] \
-          && ! printf '%s\n' "$files" | grep -qvE '^(ui/v2\.5/src/docs/.*\.md|[^/]+\.md)$'; then
-          docs_only=true
+          && [ -n "$files" ]; then
+          # grep exits 1 only when every file matched. 0 means some didn't, and 2 is an error.
+          status=0
+          printf '%s\n' "$files" | grep -qvE '^(ui/v2\.5/src/docs/.*\.md|[^/]+\.md)$' || status=$?
+          if [ "$status" -eq 1 ]; then
+            docs_only=true
+          fi
         fi
         printf '%s\n' "$files"
         echo "docs only: $docs_only"

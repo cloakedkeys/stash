@@ -11,7 +11,8 @@ on:
 
 concurrency:
   group: lint-${{ github.ref }}
-  cancel-in-progress: true
+  # every commit on a shared branch still gets a result
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
@@ -42,10 +43,7 @@ jobs:
           version: v2.11.4
 
       - name: Save Go cache
-        if: ${{ github.event_name == 'push' && steps.go.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v5
+        uses: ./.github/actions/save-go-cached
         with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
           key: ${{ steps.go.outputs.key }}
+          cache-hit: ${{ steps.go.outputs.cache-hit }}

@@ -1,0 +1,23 @@
+name: Save the Go build cache
+description: >-
+  Goes with setup-go-cached. Only pushes to develop save, because pull requests can read
+  its caches, which keeps the total small.
+
+inputs:
+  key:
+    description: The key output of setup-go-cached
+    required: true
+  cache-hit:
+    description: The cache-hit output of setup-go-cached
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' && inputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ inputs.key }}

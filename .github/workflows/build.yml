@@ -97,13 +97,10 @@ jobs:
           ui/login/locales/
 
     - name: Save Go cache
-      if: ${{ github.event_name == 'push' && steps.go.outputs.cache-hit != 'true' }}
-      uses: actions/cache/save@v5
+      uses: ./.github/actions/save-go-cached
       with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
         key: ${{ steps.go.outputs.key }}
+        cache-hit: ${{ steps.go.outputs.cache-hit }}
 
   # Job 2: Integration tests
   # Runs natively (no Docker) — only needs Go + GCC (for CGO/SQLite), both on ubuntu-22.04.
@@ -136,13 +133,10 @@ jobs:
       run: make it
 
     - name: Save Go cache
-      if: ${{ github.event_name == 'push' && steps.go.outputs.cache-hit != 'true' }}
-      uses: actions/cache/save@v5
+      uses: ./.github/actions/save-go-cached
       with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
         key: ${{ steps.go.outputs.key }}
+        cache-hit: ${{ steps.go.outputs.cache-hit }}
 
   # Job 3: Cross-compile for all platforms
   # Each platform gets its own runner and Docker container (ghcr.io/stashapp/compiler:13).
@@ -242,6 +236,9 @@ jobs:
   # into dist/ for checksums, GitHub releases, and multi-arch Docker push.
   release:
     needs: [test, build]
+    # spelled out, because the default also needs test's own needs to have passed, and a failed
+    # check for documentation-only changes shouldn't stop a release
+    if: ${{ !cancelled() && needs.test.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6
