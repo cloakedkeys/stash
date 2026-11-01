@@ -92,3 +92,25 @@ func (s *Service) destroyZipFileImages(ctx context.Context, i *models.Gallery, f
 
 	return imgsDestroyed, nil
 }
+
+// PrepareZipRewrites removes queued zip entries and deletes galleries for empty zips.
+func (s *Service) PrepareZipRewrites(ctx context.Context, fileDeleter *image.FileDeleter) error {
+	return fileDeleter.PrepareZipRewrites(ctx, s.File, func(ctx context.Context, f models.File) error {
+		galleries, err := s.Repository.FindByFileID(ctx, f.Base().ID)
+		if err != nil {
+			return err
+		}
+
+		destroyer := &file.ZipDestroyer{FileDestroyer: s.File, FolderDestroyer: s.Folder}
+		// PrepareZipRewrites has already set the original zip aside.
+		if err := destroyer.DestroyZip(ctx, f, nil, false); err != nil {
+			return err
+		}
+		for _, g := range galleries {
+			if err := s.Repository.Destroy(ctx, g.ID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

@@ -2,8 +2,10 @@ package file
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -109,7 +111,7 @@ func TestDeleter_ZipRewrite_CommitRemovesEntriesAndStoresSize(t *testing.T) {
 
 	d, _ := newDeleterWithFake(t)
 	d.ZipEntry(1, zipPath, "remove.jpg")
-	if err := d.PrepareZipRewrites(context.Background(), store); err != nil {
+	if err := d.PrepareZipRewrites(context.Background(), store, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -143,11 +145,11 @@ func TestDeleter_ZipRewrite_OncePerZip(t *testing.T) {
 	d.ZipEntry(1, zip1, "a.jpg")
 	d.ZipEntry(2, zip2, "d.jpg")
 	d.ZipEntry(1, zip1, "b.jpg")
-	if err := d.PrepareZipRewrites(context.Background(), store); err != nil {
+	if err := d.PrepareZipRewrites(context.Background(), store, nil); err != nil {
 		t.Fatal(err)
 	}
 	// nothing is pending, so a second call does nothing
-	if err := d.PrepareZipRewrites(context.Background(), store); err != nil {
+	if err := d.PrepareZipRewrites(context.Background(), store, nil); err != nil {
 		t.Fatal(err)
 	}
 	if store.updates != 2 {
@@ -172,11 +174,11 @@ func TestDeleter_ZipRewrite_EntriesAfterPrepare(t *testing.T) {
 
 		d, _ := newDeleterWithFake(t)
 		d.ZipEntry(1, zipPath, "a.jpg")
-		if err := d.PrepareZipRewrites(context.Background(), store); err != nil {
+		if err := d.PrepareZipRewrites(context.Background(), store, nil); err != nil {
 			t.Fatal(err)
 		}
 		d.ZipEntry(1, zipPath, "b.jpg")
-		if err := d.PrepareZipRewrites(context.Background(), store); err != nil {
+		if err := d.PrepareZipRewrites(context.Background(), store, nil); err != nil {
 			t.Fatal(err)
 		}
 		if got, want := store.files[1].Size, fileSize(t, zipPath); got != want {
@@ -205,7 +207,7 @@ func TestDeleter_ZipRewrite_RollbackRestoresZip(t *testing.T) {
 
 	d, _ := newDeleterWithFake(t)
 	d.ZipEntry(1, zipPath, "remove.jpg")
-	if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath)); err != nil {
+	if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath), nil); err != nil {
 		t.Fatal(err)
 	}
 	d.Rollback()
@@ -235,7 +237,7 @@ func TestDeleter_ZipRewrite_PrepareFailsTheTransaction(t *testing.T) {
 
 		d, _ := newDeleterWithFake(t)
 		d.ZipEntry(1, zipPath, c.entry)
-		if err := d.PrepareZipRewrites(context.Background(), c.store(zipPath)); err == nil {
+		if err := d.PrepareZipRewrites(context.Background(), c.store(zipPath), nil); err == nil {
 			t.Fatalf("%s: expected an error", c.name)
 		}
 		d.Rollback()
@@ -249,7 +251,7 @@ func TestDeleter_ZipRewrite_PrepareFailsTheTransaction(t *testing.T) {
 	missing := filepath.Join(dir, "missing.zip")
 	d, _ := newDeleterWithFake(t)
 	d.ZipEntry(1, missing, "a.jpg")
-	if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(missing)); err == nil {
+	if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(missing), nil); err == nil {
 		t.Fatal("expected an error for a zip that can't be opened")
 	}
 	d.Rollback()
@@ -264,7 +266,7 @@ func TestDeleter_ZipRewrite_EntryAlreadyGone(t *testing.T) {
 
 	d, _ := newDeleterWithFake(t)
 	d.ZipEntry(1, zipPath, "ghost.jpg")
-	if err := d.PrepareZipRewrites(context.Background(), store); err != nil {
+	if err := d.PrepareZipRewrites(context.Background(), store, nil); err != nil {
 		t.Fatal(err)
 	}
 	d.Commit()
@@ -289,7 +291,7 @@ func TestDeleter_ZipRewrite_SkipsZipDeletedWhole(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.ZipEntry(1, zipPath, "a.jpg")
-	if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath)); err != nil {
+	if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath), nil); err != nil {
 		t.Fatal(err)
 	}
 	d.Commit()
@@ -321,7 +323,7 @@ func TestDeleter_ZipRewrite_RollbackKeepsRewriteIfRestoreFails(t *testing.T) {
 	d := NewDeleter()
 	d.RenamerRemover = &failRestore{}
 	d.ZipEntry(1, zipPath, "remove.jpg")
-	if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath)); err != nil {
+	if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath), nil); err != nil {
 		t.Fatal(err)
 	}
 	d.Rollback()
@@ -356,7 +358,7 @@ func TestDeleter_ZipRewrite_Trash(t *testing.T) {
 		d, _ := newDeleterWithFake(t)
 		d.TrashPath = trash
 		d.ZipEntry(1, zipPath, "remove.jpg")
-		if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath)); err != nil {
+		if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath), nil); err != nil {
 			t.Fatal(err)
 		}
 		trashed := filepath.Join(trash, "gallery.zip")
@@ -377,5 +379,95 @@ func TestDeleter_ZipRewrite_Trash(t *testing.T) {
 		if stray := strayFiles(t, dir, "gallery.zip"); len(stray) != 0 {
 			t.Errorf("commit=%v left behind: %v", commit, stray)
 		}
+	}
+}
+
+func TestDeleter_ZipRewrite_DeletesEmptyZip(t *testing.T) {
+	for _, trash := range []bool{false, true} {
+		for _, commit := range []bool{false, true} {
+			for _, prepareTwice := range []bool{false, true} {
+				t.Run(fmt.Sprintf("trash=%v/commit=%v/prepareTwice=%v", trash, commit, prepareTwice), func(t *testing.T) {
+					dir := t.TempDir()
+					zipPath := filepath.Join(dir, "gallery.zip")
+					makeTestZip(t, zipPath, "", map[string]string{"a.jpg": "a", "b.jpg": "b"})
+					before, err := os.ReadFile(zipPath)
+					if err != nil {
+						t.Fatal(err)
+					}
+					d, _ := newDeleterWithFake(t)
+					if trash {
+						d.TrashPath = t.TempDir()
+					}
+					store := newFakeZipStore(zipPath)
+					destroyed := false
+					destroy := func(ctx context.Context, f models.File) error {
+						if f.Base().ID != 1 {
+							t.Fatalf("destroyed file ID = %v, want 1", f.Base().ID)
+						}
+						destroyed = true
+						return nil
+					}
+					d.ZipEntry(1, zipPath, "a.jpg")
+					if prepareTwice {
+						if err := d.PrepareZipRewrites(context.Background(), store, destroy); err != nil {
+							t.Fatal(err)
+						}
+					}
+					d.ZipEntry(1, zipPath, "b.jpg")
+					if err := d.PrepareZipRewrites(context.Background(), store, destroy); err != nil {
+						t.Fatal(err)
+					}
+					if !destroyed {
+						t.Fatal("empty zip records were not destroyed")
+					}
+					if _, err := os.Stat(zipPath); !os.IsNotExist(err) {
+						t.Fatalf("empty zip should be deleted before commit, stat err = %v", err)
+					}
+					if commit {
+						d.Commit()
+						if stray := strayFiles(t, dir); len(stray) != 0 {
+							t.Errorf("left behind: %v", stray)
+						}
+						if trash {
+							sameNames(t, "trashed original", zipNames(t, filepath.Join(d.TrashPath, "gallery.zip")), "a.jpg", "b.jpg")
+						}
+					} else {
+						d.Rollback()
+						after, err := os.ReadFile(zipPath)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if !bytes.Equal(before, after) {
+							t.Error("rollback did not restore the original zip bytes")
+						}
+						if stray := strayFiles(t, dir, "gallery.zip"); len(stray) != 0 {
+							t.Errorf("left behind: %v", stray)
+						}
+						if trash && len(strayFiles(t, d.TrashPath)) != 0 {
+							t.Error("trash should be empty after rollback")
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestDeleter_ZipRewrite_KeepsUntrackedEntries(t *testing.T) {
+	for _, remaining := range []string{"notes.txt", "subdir/"} {
+		t.Run(remaining, func(t *testing.T) {
+			zipPath := filepath.Join(t.TempDir(), "gallery.zip")
+			makeTestZip(t, zipPath, "", map[string]string{"a.jpg": "a", remaining: ""})
+			d, _ := newDeleterWithFake(t)
+			d.ZipEntry(1, zipPath, "a.jpg")
+			if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath), func(context.Context, models.File) error {
+				t.Fatal("zip with an untracked entry must not be destroyed")
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			d.Commit()
+			sameNames(t, "remaining entry", zipNames(t, zipPath), remaining)
+		})
 	}
 }
