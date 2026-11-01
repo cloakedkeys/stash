@@ -21,11 +21,11 @@ func encode(t *testing.T, e encoding.Encoding, s string) []byte {
 
 func TestDecodeText(t *testing.T) {
 	const (
-		french   = "Il était une fois, dans un café près de la forêt, une jeune fille qui rêvait d'été et de liberté. Elle s'appelait Hélène."
-		quotes   = "She said “yes” — and smiled. It’s the end…"
-		jaText   = "昔々、ある所におじいさんとおばあさんが住んでいました。おじいさんは山へ芝刈りに、おばあさんは川へ洗濯に行きました。"
-		zhText   = "从前有一座山，山里有一座庙，庙里有一个老和尚在给小和尚讲故事。"
-		ruText   = "Жили-были дед да баба. Была у них курочка Ряба. Снесла курочка яичко, не простое — золотое."
+		french = "Il était une fois, dans un café près de la forêt, une jeune fille qui rêvait d'été et de liberté. Elle s'appelait Hélène."
+		quotes = "She said “yes” — and smiled. It’s the end…"
+		jaText = "昔々、ある所におじいさんとおばあさんが住んでいました。おじいさんは山へ芝刈りに、おばあさんは川へ洗濯に行きました。"
+		zhText = "从前有一座山，山里有一座庙，庙里有一个老和尚在给小和尚讲故事。"
+		ruText = "Жили-были дед да баба. Была у них курочка Ряба. Снесла курочка яичко, не простое — золотое."
 	)
 
 	tests := []struct {
