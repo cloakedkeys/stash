@@ -424,6 +424,8 @@ input MovieFilterType {
 }
 
 input GroupFilterType {
+  "Filter by organized"
+  organized: Boolean
   AND: GroupFilterType
   OR: GroupFilterType
   NOT: GroupFilterType

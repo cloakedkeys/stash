@@ -63,6 +63,7 @@ var groupHierarchyHandler = hierarchicalRelationshipHandler{
 func (qb *groupFilterHandler) criterionHandler() criterionHandler {
 	groupFilter := qb.groupFilter
 	return compoundHandler{
+		boolCriterionHandler(groupFilter.Organized, groupTable+".organized", nil),
 		stringCriterionHandler(groupFilter.Name, "groups.name"),
 		qb.aliasCriterionHandler(groupFilter.Aliases),
 		stringCriterionHandler(groupFilter.Director, "groups.director"),

@@ -3,6 +3,7 @@ fragment SlimGroupData on Group {
   name
   front_image_path
   rating100
+  organized
 }
 
 fragment SelectGroupData on Group {

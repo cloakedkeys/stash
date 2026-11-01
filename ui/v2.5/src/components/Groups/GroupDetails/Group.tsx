@@ -48,6 +48,7 @@ import { GroupPerformersPanel } from "./GroupPerformersPanel";
 import { Icon } from "src/components/Shared/Icon";
 import { goBackOrReplace } from "src/utils/history";
 import { PatchComponent } from "src/patch";
+import { OrganizedButton } from "src/components/Scenes/SceneDetails/OrganizedButton";
 
 const validTabs = [
   "default",
@@ -257,6 +258,28 @@ const GroupPage: React.FC<IProps> = PatchComponent(
 
     const [updateGroup, { loading: updating }] = useGroupUpdate();
 
+    const [organizedLoading, setOrganizedLoading] = useState(false);
+
+    async function onOrganizedClick() {
+      if (!group.id) return;
+
+      setOrganizedLoading(true);
+      try {
+        await updateGroup({
+          variables: {
+            input: {
+              id: group.id,
+              organized: !group.organized,
+            },
+          },
+        });
+      } catch (e) {
+        Toast.error(e);
+      } finally {
+        setOrganizedLoading(false);
+      }
+    }
+
     const [setGroupUserData] = useGroupUserDataUpdate();
     const [deleteGroup, { loading: deleting }] = useGroupDestroy({
       id: group.id,
@@ -432,6 +455,11 @@ const GroupPage: React.FC<IProps> = PatchComponent(
                     />
                   )}
                   <span className="name-icons">
+                    <OrganizedButton
+                      loading={organizedLoading}
+                      organized={group.organized}
+                      onClick={onOrganizedClick}
+                    />
                     <ExternalLinkButtons urls={group.urls ?? undefined} />
                   </span>
                 </DetailTitle>
