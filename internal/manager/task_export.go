@@ -193,7 +193,8 @@ func (t *ExportTask) Start(ctx context.Context, wg *sync.WaitGroup) {
 		if err := t.exportVoiceActors(ctx); err != nil {
 			return err
 		}
-		t.ExportPerformers(ctx, workerCount)
+		// Base64 portraits can be large. Keep only one performer's image data in memory.
+		t.ExportPerformers(ctx, 1)
 		t.ExportStudios(ctx, workerCount)
 		t.ExportTags(ctx, workerCount)
 		t.ExportSavedFilters(ctx, workerCount)
@@ -1156,8 +1157,6 @@ func (t *ExportTask) exportGallery(ctx context.Context, wg *sync.WaitGroup, jobC
 }
 
 func (t *ExportTask) ExportPerformers(ctx context.Context, workers int) {
-	// Base64 portraits can be large. Keep only one performer's image data in memory.
-	workers = 1
 	var performersWg sync.WaitGroup
 
 	reader := t.repository.Performer

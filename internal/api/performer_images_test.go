@@ -116,7 +116,10 @@ func TestPerformerImageMutations(t *testing.T) {
 
 func TestPerformerImageAddFormsAndProtection(t *testing.T) {
 	data := []byte("portrait")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(data) }))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write(data)
+		require.NoError(t, err)
+	}))
 	defer server.Close()
 	for _, input := range []string{"data:image/png;base64,cG9ydHJhaXQ=", server.URL} {
 		db := mocks.NewDatabase()
@@ -196,7 +199,8 @@ func TestAlternateImageURLOmitsAPIKey(t *testing.T) {
 	config.InitializeEmpty()
 	h := BaseURLMiddleware(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		base, _ := req.Context().Value(BaseURLCtxKey).(string)
-		w.Write([]byte(urlbuilders.NewPerformerURLBuilder(base, &models.Performer{ID: 7}).GetAlternateImageURL("abc")))
+		_, err := w.Write([]byte(urlbuilders.NewPerformerURLBuilder(base, &models.Performer{ID: 7}).GetAlternateImageURL("abc")))
+		require.NoError(t, err)
 	}))
 	for _, header := range []bool{true, false} {
 		req := httptest.NewRequest("GET", "http://example.com/graphql", nil)
