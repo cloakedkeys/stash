@@ -27,7 +27,6 @@ import (
 	gqlPlayground "github.com/99designs/gqlgen/graphql/playground"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
 	"github.com/go-chi/httplog"
 	"github.com/gorilla/websocket"
 	"github.com/vearutop/statigz"
@@ -130,9 +129,11 @@ func Initialize() (*Server, error) {
 	}
 
 	r.Use(middleware.Heartbeat("/healthz"))
-	r.Use(cors.AllowAll().Handler)
+	// Preflights carry no credentials; actual responses need the checked key.
+	r.Use(originProtection.corsMiddleware)
 	r.Use(RequestIPMiddleware)
 	r.Use(authenticateHandler(mgr.Repository.TxnManager, cfg))
+	r.Use(originProtection.corsMiddleware)
 	r.Use(originProtection.middleware)
 	visitedPluginHandler := mgr.SessionStore.VisitedPluginHandler()
 	r.Use(visitedPluginHandler)
@@ -668,8 +669,8 @@ func setPageSecurityHeaders(w http.ResponseWriter, r *http.Request, plugins []*p
 	imageSrc := "data: *"
 	scriptSrcSlice := []string{
 		"'self'",
-		"http://www.gstatic.com",
-		"https://www.gstatic.com",
+		castReceiverHTTPOrigin,
+		castReceiverHTTPSOrigin,
 		"'unsafe-inline'",
 		"'unsafe-eval'",
 	}
