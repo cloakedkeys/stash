@@ -683,6 +683,79 @@ func verifyPerformers(t *testing.T, expectedNames []string, expectedURLs []strin
 	}
 }
 
+func TestXPathSceneDetailsNewlines(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		html     string
+		selector string
+		concat   string
+		want     string
+	}{
+		{"element", "<p>  around to\nwatch  us\n\nSecond line.  </p>", "//p", "", "around to\nwatch us\n\nSecond line."},
+		{"text", "<p>First line.\r\nSecond line.</p>", "//p/text()", "", "First line.\nSecond line."},
+		{"attribute", "<p data-details=\"First line.&#10;Second line.\"></p>", "//p/@data-details", "", "First line.\nSecond line."},
+		{"concat", "<p>First\nline.</p><p>Second\nline.</p>", "//p", "\n", "First\nline.\nSecond\nline."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc, err := htmlquery.Parse(strings.NewReader(tc.html))
+			if err != nil {
+				t.Fatal(err)
+			}
+			scraper := mappedScraper{Scene: &mappedSceneScraperConfig{mappedConfig: mappedConfig{
+				"Title":   {Selector: tc.selector, Concat: tc.concat},
+				"Details": {Selector: tc.selector, Concat: tc.concat},
+			}}}
+			q := &xpathQuery{doc: doc}
+			scene, err := scraper.scrapeScene(context.Background(), q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !assert.NotNil(t, scene) {
+				return
+			}
+			verifyField(t, tc.want, scene.Details, "Details")
+			// Other fields retain their existing normalization, including concat separators.
+			wantTitle := strings.ReplaceAll(tc.want, "\n", "")
+			if tc.concat != "" {
+				wantTitle = "Firstline.\nSecondline."
+			}
+			verifyField(t, wantTitle, scene.Title, "Title")
+			// Processing Details must not change later queries on the same document.
+			values, err := q.runQuery(tc.selector)
+			assert.NoError(t, err)
+			for _, value := range values {
+				assert.NotContains(t, value, "\n")
+			}
+		})
+	}
+}
+
+func TestXPathSceneDetailsSubScraperNewlines(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "<p>First line.\nSecond line.</p>")
+	}))
+	defer ts.Close()
+
+	doc, err := htmlquery.Parse(strings.NewReader(`<a href="` + ts.URL + `">Details</a>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := postProcessSubScraper{Selector: "//p"}
+	scraper := mappedScraper{Scene: &mappedSceneScraperConfig{mappedConfig: mappedConfig{
+		"Details": {Selector: "//a/@href", postProcessActions: []postProcessAction{&sub}},
+		"Title":   {Selector: "//a/@href", postProcessActions: []postProcessAction{&sub}},
+	}}}
+	q := &xpathQuery{doc: doc, scraper: &xpathScraper{client: ts.Client(), globalConfig: mockGlobalConfig{}}}
+	scene, err := scraper.scrapeScene(context.Background(), q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assert.NotNil(t, scene) {
+		verifyField(t, "First line.\nSecond line.", scene.Details, "Details")
+		verifyField(t, "First line.Second line.", scene.Title, "Title")
+	}
+}
+
 func TestApplySceneXPathConfig(t *testing.T) {
 	reader := strings.NewReader(sceneHTML)
 	doc, err := htmlquery.Parse(reader)
