@@ -14,6 +14,27 @@ type PerformerReaderWriter struct {
 	mock.Mock
 }
 
+// AddAlternateImage provides a mock function with given fields: ctx, performerID, image
+func (_m *PerformerReaderWriter) AddAlternateImage(ctx context.Context, performerID int, image []byte) (bool, error) {
+	ret := _m.Called(ctx, performerID, image)
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(context.Context, int, []byte) bool); ok {
+		r0 = rf(ctx, performerID, image)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int, []byte) error); ok {
+		r1 = rf(ctx, performerID, image)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // All provides a mock function with given fields: ctx
 func (_m *PerformerReaderWriter) All(ctx context.Context) ([]*models.Performer, error) {
 	ret := _m.Called(ctx)
@@ -337,6 +358,52 @@ func (_m *PerformerReaderWriter) GetAliases(ctx context.Context, relatedID int) 
 	return r0, r1
 }
 
+// GetAlternateImage provides a mock function with given fields: ctx, performerID, checksum
+func (_m *PerformerReaderWriter) GetAlternateImage(ctx context.Context, performerID int, checksum string) ([]byte, error) {
+	ret := _m.Called(ctx, performerID, checksum)
+
+	var r0 []byte
+	if rf, ok := ret.Get(0).(func(context.Context, int, string) []byte); ok {
+		r0 = rf(ctx, performerID, checksum)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]byte)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int, string) error); ok {
+		r1 = rf(ctx, performerID, checksum)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetAlternateImages provides a mock function with given fields: ctx, performerID
+func (_m *PerformerReaderWriter) GetAlternateImages(ctx context.Context, performerID int) ([]models.PerformerImage, error) {
+	ret := _m.Called(ctx, performerID)
+
+	var r0 []models.PerformerImage
+	if rf, ok := ret.Get(0).(func(context.Context, int) []models.PerformerImage); ok {
+		r0 = rf(ctx, performerID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]models.PerformerImage)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, performerID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // GetCustomFields provides a mock function with given fields: ctx, id
 func (_m *PerformerReaderWriter) GetCustomFields(ctx context.Context, id int) (map[string]interface{}, error) {
 	ret := _m.Called(ctx, id)
@@ -582,6 +649,48 @@ func (_m *PerformerReaderWriter) QueryForAutoTag(ctx context.Context, words []st
 	}
 
 	return r0, r1
+}
+
+// RemoveAlternateImage provides a mock function with given fields: ctx, performerID, checksum
+func (_m *PerformerReaderWriter) RemoveAlternateImage(ctx context.Context, performerID int, checksum string) error {
+	ret := _m.Called(ctx, performerID, checksum)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, int, string) error); ok {
+		r0 = rf(ctx, performerID, checksum)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ReorderAlternateImages provides a mock function with given fields: ctx, performerID, checksums
+func (_m *PerformerReaderWriter) ReorderAlternateImages(ctx context.Context, performerID int, checksums []string) error {
+	ret := _m.Called(ctx, performerID, checksums)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, int, []string) error); ok {
+		r0 = rf(ctx, performerID, checksums)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// SetPrimaryImage provides a mock function with given fields: ctx, performerID, checksum
+func (_m *PerformerReaderWriter) SetPrimaryImage(ctx context.Context, performerID int, checksum string) error {
+	ret := _m.Called(ctx, performerID, checksum)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, int, string) error); ok {
+		r0 = rf(ctx, performerID, checksum)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // Update provides a mock function with given fields: ctx, updatedPerformer

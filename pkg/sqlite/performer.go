@@ -449,12 +449,28 @@ func (qb *PerformerStore) Update(ctx context.Context, updatedObject *models.Upda
 }
 
 func (qb *PerformerStore) Destroy(ctx context.Context, id int) error {
+	if _, err := qb.lockImageReferences(ctx, id); err != nil {
+		return err
+	}
+	images, err := qb.GetAlternateImages(ctx, id)
+	if err != nil {
+		return err
+	}
 	// must handle image checksums manually
 	if err := qb.destroyImage(ctx, id); err != nil {
 		return err
 	}
 
-	return performerRepository.destroyExisting(ctx, []int{id})
+	if err := performerRepository.destroyExisting(ctx, []int{id}); err != nil {
+		return err
+	}
+	// The foreign key has removed the alternates; only delete blobs no longer shared.
+	for _, image := range images {
+		if err := qb.blobStore.Delete(ctx, image.Checksum); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // returns nil, nil if not found
@@ -1088,7 +1104,14 @@ func (qb *PerformerStore) HasImage(ctx context.Context, performerID int) (bool, 
 }
 
 func (qb *PerformerStore) UpdateImage(ctx context.Context, performerID int, image []byte) error {
-	return qb.blobJoinQueryBuilder.UpdateImage(ctx, performerID, performerImageBlobColumn, image)
+	if _, err := qb.lockImageReferences(ctx, performerID); err != nil {
+		return err
+	}
+	if err := qb.blobJoinQueryBuilder.UpdateImage(ctx, performerID, performerImageBlobColumn, image); err != nil {
+		return err
+	}
+	_, err := dbWrapper.Exec(ctx, "DELETE FROM performer_images WHERE performer_id = ? AND image_blob = (SELECT image_blob FROM performers WHERE id = ?)", performerID, performerID)
+	return err
 }
 
 func (qb *PerformerStore) destroyImage(ctx context.Context, performerID int) error {
@@ -1165,6 +1188,11 @@ func (qb *PerformerStore) Merge(ctx context.Context, source []int, destination i
 	}
 
 	args = append(args, srcArgs...)
+
+	// Attach every portrait before any source can be destroyed.
+	if err := qb.mergeImageReferences(ctx, source, destination); err != nil {
+		return err
+	}
 
 	performerTables := map[string]string{
 		performersScenesTable:    sceneIDColumn,

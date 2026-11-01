@@ -86,6 +86,9 @@ type PerformerReader interface {
 	All(ctx context.Context) ([]*Performer, error)
 	GetImage(ctx context.Context, performerID int) ([]byte, error)
 	HasImage(ctx context.Context, performerID int) (bool, error)
+	GetAlternateImages(ctx context.Context, performerID int) ([]PerformerImage, error)
+	// GetAlternateImage returns an error if the checksum is not an alternate of this performer.
+	GetAlternateImage(ctx context.Context, performerID int, checksum string) ([]byte, error)
 }
 
 // PerformerWriter provides all methods to modify performers.
@@ -93,6 +96,15 @@ type PerformerWriter interface {
 	PerformerCreator
 	PerformerUpdater
 	PerformerDestroyer
+
+	// AddAlternateImage returns false when the bytes already belong to the primary or an alternate.
+	AddAlternateImage(ctx context.Context, performerID int, image []byte) (bool, error)
+	// RemoveAlternateImage returns an error when the checksum is not an alternate of this performer.
+	RemoveAlternateImage(ctx context.Context, performerID int, checksum string) error
+	// SetPrimaryImage exchanges an alternate with the primary, retaining its position for the old primary.
+	SetPrimaryImage(ctx context.Context, performerID int, checksum string) error
+	// ReorderAlternateImages requires every alternate checksum exactly once.
+	ReorderAlternateImages(ctx context.Context, performerID int, checksums []string) error
 
 	Merge(ctx context.Context, source []int, destination int) error
 }

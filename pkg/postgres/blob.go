@@ -294,6 +294,15 @@ func (qb *BlobStore) readFromDatabase(ctx context.Context, checksum string) (sql
 // Delete marks a checksum as no longer in use by a single reference.
 // If no references remain, the blob is deleted from the database and filesystem.
 func (qb *BlobStore) Delete(ctx context.Context, checksum string) error {
+	// Alternate portraits retain blobs just like the primary image field.
+	var alternateReferences int
+	if err := dbWrapper.Get(ctx, &alternateReferences, "SELECT COUNT(*) FROM performer_images WHERE image_blob = ?", checksum); err != nil {
+		return fmt.Errorf("checking alternate portraits: %w", err)
+	}
+	if alternateReferences != 0 {
+		return nil
+	}
+
 	// an audio doesn't stop the delete below: its foreign key clears the cover
 	// instead, and tracks from the same album usually share one
 	inUse, err := qb.usedByAudio(ctx, checksum)
