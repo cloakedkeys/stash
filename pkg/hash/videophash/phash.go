@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"math/bits"
 
 	"github.com/corona10/goimagehash"
 	"github.com/disintegration/imaging"
@@ -25,9 +26,6 @@ const screenshotSize = 160
 // See https://github.com/stashapp/stash/issues/3722.
 func spriteColumns(duration float64) int {
 	switch {
-	// duration is not always known - treat it as full length
-	case duration <= 0:
-		return 5
 	case duration <= 45:
 		return 2
 	case duration <= 90:
@@ -40,6 +38,10 @@ func spriteColumns(duration float64) int {
 }
 
 func Generate(encoder *ffmpeg.FFMpeg, videoFile *models.VideoFile) (*uint64, error) {
+	if videoFile.Duration <= 0 {
+		return nil, fmt.Errorf("cannot generate phash with nonpositive video duration: %v", videoFile.Duration)
+	}
+
 	sprite, err := generateSprite(encoder, videoFile, spriteColumns(videoFile.Duration))
 	if err != nil {
 		return nil, err
@@ -50,7 +52,36 @@ func Generate(encoder *ffmpeg.FFMpeg, videoFile *models.VideoFile) (*uint64, err
 		return nil, fmt.Errorf("computing phash from sprite: %w", err)
 	}
 	hashValue := hash.GetHash()
+	if !validHash(hashValue) {
+		return nil, fmt.Errorf("invalid phash: %016x matches a known bad phash", hashValue)
+	}
 	return &hashValue, nil
+}
+
+func validHash(hash uint64) bool {
+	// Solid black and white sprites produce 0 and 8000000000000000.
+	// The other values are reported in https://github.com/stashapp/stash/issues/2149.
+	// Allow up to three changed bits to catch variations of these bad hashes.
+	for _, bad := range [...]uint64{
+		0x0000000000000000,
+		0x8000000000000000,
+		0xa000000000800080,
+		0x8080808080808080,
+		0x870707030787fefc,
+		0x82070707078ffff8,
+		0x8055557555575575,
+		0x805555555d755d55,
+		0x87070707037ef8fc,
+		0x8707070303fefcdc,
+		0xcdcdcdc9c1233332,
+		0xf8fcfcfcf8e00100,
+		0xf8fcfcfcfc700000,
+	} {
+		if bits.OnesCount64(hash^bad) <= 3 {
+			return false
+		}
+	}
+	return true
 }
 
 func generateSpriteScreenshot(encoder *ffmpeg.FFMpeg, input string, t float64, slowSeek bool) (image.Image, error) {
