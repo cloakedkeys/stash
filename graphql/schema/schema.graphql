@@ -615,6 +615,8 @@ type Mutation {
   metadataScan(input: ScanMetadataInput!): ID! @hasRole(role: ADMIN)
   "Scans a single file, returning the file metadata."
   scanFile(input: ScanFileInput!): BaseFile! @hasRole(role: ADMIN)
+  "Save one video in an exact configured library root without overwriting, then scan only that file. Scan errors leave the saved file in place."
+  sceneUpload(file: Upload!, library_path: String!): VideoFile! @hasRole(role: ADMIN)
   "Start generating content. Returns the job ID"
   metadataGenerate(input: GenerateMetadataInput!): ID! @hasRole(role: ADMIN)
   "Start auto-tagging. Returns the job ID"
