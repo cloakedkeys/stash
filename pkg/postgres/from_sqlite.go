@@ -114,7 +114,7 @@ func MigrateFromSQLite(ctx context.Context, sqlitePath string, postgresPath stri
 
 	// rows go in table by table, so a row can arrive before one it refers to
 	if _, err := tx.Exec(ctx, "SET LOCAL session_replication_role = replica"); err != nil {
-		return fmt.Errorf("preparing to copy, which needs the same permission Stash needs to start: %w", err)
+		return fmt.Errorf("preparing to copy, which needs an extra permission explained in the manual's PostgreSQL page: %w", err)
 	}
 
 	// the starter account goes, and the library's accounts replace it

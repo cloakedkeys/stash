@@ -26,10 +26,9 @@ func NewMigrator(db *Database) (*Migrator, error) {
 		db: db,
 	}
 
-	const disableForeignKeys = true
 	const writable = true
 	var err error
-	m.conn, err = m.db.open(disableForeignKeys, writable)
+	m.conn, err = m.db.open(writable)
 	if err != nil {
 		return nil, err
 	}
