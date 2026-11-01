@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"html/template"
@@ -178,15 +179,22 @@ func handleLoginPost(s *session.Store, cfg authenticationConfig) http.HandlerFun
 	}
 }
 
-func handleLogout() http.HandlerFunc {
+// handleLogout only accepts POST, because any website can make a browser send a
+// GET, and the cross-origin check only refuses unsafe methods.
+func handleLogout(sessions *session.Store, isLoginRequired func(context.Context) (bool, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := manager.GetInstance().SessionStore.Logout(w, r); err != nil {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		if err := sessions.Logout(w, r); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		s := manager.GetInstance().UserService
-		loginRequired, err := s.LoginRequired(r.Context())
+		loginRequired, err := isLoginRequired(r.Context())
 		if err != nil {
 			http.Error(w, "An unexpected error occurred. See logs", http.StatusInternalServerError)
 			return
@@ -195,9 +203,9 @@ func handleLogout() http.HandlerFunc {
 		// redirect to the login page if credentials are required
 		prefix := getProxyPrefix(r)
 		if loginRequired {
-			http.Redirect(w, r, prefix+loginEndpoint, http.StatusFound)
+			http.Redirect(w, r, prefix+loginEndpoint, http.StatusSeeOther)
 		} else {
-			http.Redirect(w, r, prefix+"/", http.StatusFound)
+			http.Redirect(w, r, prefix+"/", http.StatusSeeOther)
 		}
 	}
 }
