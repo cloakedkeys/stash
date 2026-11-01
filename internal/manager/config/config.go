@@ -78,6 +78,7 @@ const (
 	AudioExtensions            = "audio_extensions"
 	ImageExtensions            = "image_extensions"
 	GalleryExtensions          = "gallery_extensions"
+	StoryExtensions            = "story_extensions"
 	CreateGalleriesFromFolders = "create_galleries_from_folders"
 
 	// CalculateMD5 is the config key used to determine if MD5 should be calculated
@@ -342,6 +343,7 @@ var (
 	defaultAudioExtensions   = []string{"mp3", "mpa", "m4a", "m4b", "aac", "flac", "wav", "aif", "aiff", "ogg", "oga", "opus", "wma", "ape", "mka"}
 	defaultImageExtensions   = []string{"png", "jpg", "jpeg", "gif", "webp", "avif", "jxl"}
 	defaultGalleryExtensions = []string{"zip", "cbz"}
+	defaultStoryExtensions   = []string{"txt", "text", "md", "markdown"}
 	defaultMenuItems         = []string{"scenes", "audios", "images", "groups", "markers", "galleries", "folders", "performers", "voice-actors", "studios", "tags"}
 )
 
@@ -932,6 +934,16 @@ func (i *Config) GetAudioExtensions() []string {
 	ret := i.getStringSlice(AudioExtensions)
 	if len(ret) == 0 {
 		ret = defaultAudioExtensions
+	}
+	return ret
+}
+
+// GetStoryExtensions returns the extensions of the text files that are stories, in the
+// libraries that include stories. The defaults are plain text, which the reader shows as it is.
+func (i *Config) GetStoryExtensions() []string {
+	ret := i.getStringSlice(StoryExtensions)
+	if len(ret) == 0 {
+		ret = defaultStoryExtensions
 	}
 	return ret
 }

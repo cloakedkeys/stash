@@ -392,6 +392,10 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 		c.SetInterface(config.AudioExtensions, input.AudioExtensions)
 	}
 
+	if input.StoryExtensions != nil {
+		c.SetInterface(config.StoryExtensions, input.StoryExtensions)
+	}
+
 	if input.ImageExtensions != nil {
 		c.SetInterface(config.ImageExtensions, input.ImageExtensions)
 	}

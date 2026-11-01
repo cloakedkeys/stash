@@ -12,6 +12,9 @@ type StashConfigInput struct {
 	ExcludeVideo bool   `json:"excludeVideo"`
 	ExcludeAudio bool   `json:"excludeAudio"`
 	ExcludeImage bool   `json:"excludeImage"`
+	// stories are left out unless a library includes them, since libraries often hold
+	// text files, such as readmes, that aren't stories
+	IncludeStory bool `json:"includeStory"`
 }
 
 type StashConfig struct {
@@ -19,6 +22,9 @@ type StashConfig struct {
 	ExcludeVideo bool   `json:"excludeVideo"`
 	ExcludeAudio bool   `json:"excludeAudio"`
 	ExcludeImage bool   `json:"excludeImage"`
+	// stories are left out unless a library includes them, since libraries often hold
+	// text files, such as readmes, that aren't stories
+	IncludeStory bool `json:"includeStory"`
 }
 
 type StashConfigs []*StashConfig
