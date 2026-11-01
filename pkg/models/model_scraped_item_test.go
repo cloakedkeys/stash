@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"encoding/base64"
 	"strconv"
 	"testing"
 	"time"
@@ -442,8 +443,15 @@ func TestScrapedStudio_ToPartial(t *testing.T) {
 }
 
 func TestScrapedGetImage(t *testing.T) {
-	legacy := "data:image/png;base64,bGVnYWN5"
-	images := []string{"data:image/png;base64,Zmlyc3Q=", "data:image/png;base64,c2Vjb25k"}
+	// Two different 1x1 PNGs keep image selection observable.
+	const firstPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+	const legacyPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/5ncLrgAAAABJRU5ErkJggg=="
+	firstBytes, err := base64.StdEncoding.DecodeString(firstPNG)
+	require.NoError(t, err)
+	legacyBytes, err := base64.StdEncoding.DecodeString(legacyPNG)
+	require.NoError(t, err)
+	legacy := "data:image/png;base64," + legacyPNG
+	images := []string{"data:image/png;base64," + firstPNG, legacy}
 
 	for _, tt := range []struct {
 		name     string
@@ -452,11 +460,11 @@ func TestScrapedGetImage(t *testing.T) {
 		excluded map[string]bool
 		want     []byte
 	}{
-		{name: "only Images", images: images, want: []byte("first")},
-		{name: "only Image", image: &legacy, want: []byte("legacy")},
-		{name: "both", image: &legacy, images: images, want: []byte("first")},
+		{name: "only Images", images: images, want: firstBytes},
+		{name: "only Image", image: &legacy, want: legacyBytes},
+		{name: "both", image: &legacy, images: images, want: firstBytes},
 		{name: "neither"},
-		{name: "empty Images", image: &legacy, images: []string{}, want: []byte("legacy")},
+		{name: "empty Images", image: &legacy, images: []string{}, want: legacyBytes},
 		{name: "excluded Images", images: images, excluded: map[string]bool{"image": true}},
 		{name: "excluded Image", image: &legacy, excluded: map[string]bool{"image": true}},
 		{name: "excluded both", image: &legacy, images: images, excluded: map[string]bool{"image": true}},
