@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-const image = "aW1hZ2VCeXRlcw=="
+const image = "PHN2Zz48dGl0bGU+aW1hZ2VCeXRlczwvdGl0bGU+PC9zdmc+"
 const invalidImage = "aW1hZ2VCeXRlcw&&"
 
-var imageBytes = []byte("imageBytes")
+var imageBytes = []byte(`<svg><title>imageBytes</title></svg>`)
 
 const (
 	tagNameErr      = "tagNameErr"

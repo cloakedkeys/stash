@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net"
 
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/stashapp/stash/pkg/models/mocks"
 	"github.com/stashapp/stash/pkg/plugin/hook"
 	"github.com/stashapp/stash/pkg/session"
+	"github.com/stashapp/stash/pkg/utils"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -60,9 +62,9 @@ func TestPerformerImageMutations(t *testing.T) {
 			var value interface{} = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 			switch name {
 			case "performerImageAdd":
-				args = `id:"1", image:"data:image/png;base64,cG9ydHJhaXQ="`
+				args = `id:"1", image:"data:image/svg+xml;base64,` + utils.GetBase64StringFromData([]byte(`<svg><title>portrait</title></svg>`)) + `"`
 				method = "AddAlternateImage"
-				value = []byte("portrait")
+				value = []byte(`<svg><title>portrait</title></svg>`)
 			case "performerImageSetPrimary":
 				method = "SetPrimaryImage"
 			case "performerImagesReorder":
@@ -115,13 +117,13 @@ func TestPerformerImageMutations(t *testing.T) {
 }
 
 func TestPerformerImageAddFormsAndProtection(t *testing.T) {
-	data := []byte("portrait")
+	data := []byte(`<svg><title>portrait</title></svg>`)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := w.Write(data)
 		require.NoError(t, err)
 	}))
 	defer server.Close()
-	for _, input := range []string{"data:image/png;base64,cG9ydHJhaXQ=", server.URL} {
+	for _, input := range []string{"data:image/svg+xml;base64," + utils.GetBase64StringFromData(data), server.URL} {
 		db := mocks.NewDatabase()
 		r := newResolver(db)
 		db.Performer.On("Find", mock.Anything, 1).Return(&models.Performer{ID: 1}, nil)
@@ -247,16 +249,18 @@ func TestPerformerImagesRefreshBetweenMutationFields(t *testing.T) {
 	db := mocks.NewDatabase()
 	r := newResolver(db)
 	db.Performer.On("Find", mock.Anything, 1).Return(&models.Performer{ID: 1}, nil)
-	db.Performer.On("AddAlternateImage", mock.Anything, 1, []byte("a")).Return(true, nil).Once()
-	db.Performer.On("AddAlternateImage", mock.Anything, 1, []byte("b")).Return(true, nil).Once()
+	first := []byte(`<svg><title>a</title></svg>`)
+	second := []byte(`<svg><title>b</title></svg>`)
+	db.Performer.On("AddAlternateImage", mock.Anything, 1, first).Return(true, nil).Once()
+	db.Performer.On("AddAlternateImage", mock.Anything, 1, second).Return(true, nil).Once()
 	db.Performer.On("UpdatePartial", mock.Anything, 1, mock.Anything).Return(&models.Performer{ID: 1}, nil).Twice()
 	db.Performer.On("GetAlternateImagesBulk", mock.Anything, []int{1}).Return([][]models.PerformerImage{{{Checksum: "a"}}}, nil).Once()
 	db.Performer.On("GetAlternateImagesBulk", mock.Anything, []int{1}).Return([][]models.PerformerImage{{{Checksum: "a"}, {Checksum: "b"}}}, nil).Once()
 	h := loaders.Middleware{Repository: r.repository}.Middleware(newTestGraphQLServer(r))
-	result := performerImageQuery(t, h, `mutation {
- first: performerImageAdd(id:"1",image:"data:image/png;base64,YQ==") { alternate_images { checksum } }
- second: performerImageAdd(id:"1",image:"data:image/png;base64,Yg==") { alternate_images { checksum } }
- }`, models.RoleEnumModify)
+	result := performerImageQuery(t, h, fmt.Sprintf(`mutation {
+ first: performerImageAdd(id:"1",image:"data:image/svg+xml;base64,%s") { alternate_images { checksum } }
+ second: performerImageAdd(id:"1",image:"data:image/svg+xml;base64,%s") { alternate_images { checksum } }
+ }`, utils.GetBase64StringFromData(first), utils.GetBase64StringFromData(second)), models.RoleEnumModify)
 	require.NotContains(t, result, "errors")
 	require.Contains(t, result, `"second":{"alternate_images":[{"checksum":"a"},{"checksum":"b"}]}`)
 	db.AssertExpectations(t)
