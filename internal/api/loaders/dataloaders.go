@@ -19,6 +19,7 @@
 //go:generate go run github.com/vektah/dataloaden RelatedCountLoader int int
 //go:generate go run github.com/vektah/dataloaden RelatedTimeSliceLoader int []time.Time
 //go:generate go run github.com/vektah/dataloaden RelatedTimeLoader int *time.Time
+//go:generate go run github.com/vektah/dataloaden PerformerImagesLoader int []github.com/stashapp/stash/pkg/models.PerformerImage
 package loaders
 
 import (
@@ -71,6 +72,7 @@ type Loaders struct {
 	ImageIDsByFileID    *FileIDsRelatedIDsLoader
 	ImageCustomFields   *CustomFieldsLoader
 
+	PerformerImages       *PerformerImagesLoader
 	PerformerByID         *PerformerLoader
 	PerformerCustomFields *CustomFieldsLoader
 
@@ -148,6 +150,7 @@ func (m Middleware) Middleware(next http.Handler) http.Handler {
 				maxBatch: maxBatch,
 				fetch:    m.fetchImageCustomFields(ctx),
 			},
+			PerformerImages: &PerformerImagesLoader{wait: wait, maxBatch: maxBatch, fetch: m.fetchPerformerImages(ctx)},
 			PerformerByID: &PerformerLoader{
 				wait:     wait,
 				maxBatch: maxBatch,
@@ -763,5 +766,27 @@ func (m Middleware) fetchAudiosLastPlayed(ctx context.Context) func(keys []int) 
 			return err
 		})
 		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchPerformerImages(ctx context.Context) func([]int) ([][]models.PerformerImage, []error) {
+	return func(keys []int) (ret [][]models.PerformerImage, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Performer.GetAlternateImagesBulk(ctx, keys)
+			return err
+		})
+		return ret, toErrorSlice(err)
+	}
+}
+
+// InvalidatePerformerImages makes later mutation fields in the same request see changed references.
+func InvalidatePerformerImages(ctx context.Context, ids ...int) {
+	ldrs, ok := ctx.Value(loadersCtxKey).(Loaders)
+	if !ok || ldrs.PerformerImages == nil {
+		return
+	}
+	for _, id := range ids {
+		ldrs.PerformerImages.Clear(id)
 	}
 }

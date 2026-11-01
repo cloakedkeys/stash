@@ -398,3 +398,12 @@ func TestImportCareerFields(t *testing.T) {
 		assert.Nil(t, p.CareerEnd)
 	})
 }
+
+func TestImporterRejectsInvalidAlternateImages(t *testing.T) {
+	for _, image := range []string{"", "!!!!", "PGh0bWw+"} {
+		i := Importer{Input: jsonschema.Performer{AlternateImages: []string{image}}}
+		err := i.PreImport(context.Background())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "image 1")
+	}
+}

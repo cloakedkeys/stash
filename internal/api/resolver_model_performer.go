@@ -346,3 +346,17 @@ func (r *performerResolver) CustomFields(ctx context.Context, obj *models.Perfor
 func (r *performerResolver) Movies(ctx context.Context, obj *models.Performer) (ret []*models.Group, err error) {
 	return r.Groups(ctx, obj)
 }
+
+func (r *performerResolver) AlternateImages(ctx context.Context, obj *models.Performer) ([]*PerformerAlternateImage, error) {
+	images, err := loaders.From(ctx).PerformerImages.Load(obj.ID)
+	if err != nil {
+		return nil, err
+	}
+	baseURL, _ := ctx.Value(BaseURLCtxKey).(string)
+	builder := urlbuilders.NewPerformerURLBuilder(baseURL, obj)
+	ret := make([]*PerformerAlternateImage, 0, len(images))
+	for _, image := range images {
+		ret = append(ret, &PerformerAlternateImage{Checksum: image.Checksum, Path: builder.GetAlternateImageURL(image.Checksum)})
+	}
+	return ret, nil
+}

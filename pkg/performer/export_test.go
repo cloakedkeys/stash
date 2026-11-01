@@ -9,6 +9,7 @@ import (
 	"github.com/stashapp/stash/pkg/models/jsonschema"
 	"github.com/stashapp/stash/pkg/models/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 
 	"testing"
 	"time"
@@ -154,15 +155,16 @@ func createFullJSONPerformer(name string, image string, withCustomFields bool) *
 		UpdatedAt: json.JSONTime{
 			Time: updateTime,
 		},
-		Rating:        rating,
-		Image:         image,
-		Details:       details,
-		DeathDate:     deathDate.String(),
-		HairColor:     hairColor,
-		Weight:        weight,
-		StashIDs:      stashIDs,
-		IgnoreAutoTag: autoTagIgnored,
-		CustomFields:  emptyCustomFields,
+		Rating:          rating,
+		Image:           image,
+		AlternateImages: []string{},
+		Details:         details,
+		DeathDate:       deathDate.String(),
+		HairColor:       hairColor,
+		Weight:          weight,
+		StashIDs:        stashIDs,
+		IgnoreAutoTag:   autoTagIgnored,
+		CustomFields:    emptyCustomFields,
 	}
 
 	if withCustomFields {
@@ -173,9 +175,10 @@ func createFullJSONPerformer(name string, image string, withCustomFields bool) *
 
 func createEmptyJSONPerformer() *jsonschema.Performer {
 	return &jsonschema.Performer{
-		Aliases:  []string{},
-		URLs:     []string{},
-		StashIDs: []models.StashID{},
+		AlternateImages: []string{},
+		Aliases:         []string{},
+		URLs:            []string{},
+		StashIDs:        []models.StashID{},
 		CreatedAt: json.JSONTime{
 			Time: createTime,
 		},
@@ -237,6 +240,7 @@ func TestToJSON(t *testing.T) {
 
 	db := mocks.NewDatabase()
 
+	db.Performer.On("GetAlternateImages", testCtx, mock.Anything).Return([]models.PerformerImage{}, nil)
 	imageErr := errors.New("error getting image")
 	customFieldsErr := errors.New("error getting custom fields")
 

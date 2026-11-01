@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stashapp/stash/pkg/hash/md5"
 	"github.com/stashapp/stash/pkg/models"
 )
@@ -177,4 +178,31 @@ func (qb *PerformerStore) mergeImageReferences(ctx context.Context, source []int
 		}
 	}
 	return nil
+}
+
+// GetAlternateImagesBulk returns ordered references aligned to the requested IDs, without blobs.
+func (qb *PerformerStore) GetAlternateImagesBulk(ctx context.Context, performerIDs []int) ([][]models.PerformerImage, error) {
+	ret := make([][]models.PerformerImage, len(performerIDs))
+	if len(performerIDs) == 0 {
+		return ret, nil
+	}
+	query, args, err := sqlx.In("SELECT performer_id, image_blob, position FROM performer_images WHERE performer_id IN (?) ORDER BY performer_id, position, image_blob", performerIDs)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		PerformerID int `db:"performer_id"`
+		models.PerformerImage
+	}
+	if err := dbWrapper.Select(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
+	byID := make(map[int][]models.PerformerImage)
+	for _, row := range rows {
+		byID[row.PerformerID] = append(byID[row.PerformerID], row.PerformerImage)
+	}
+	for n, id := range performerIDs {
+		ret[n] = byID[id]
+	}
+	return ret, nil
 }
