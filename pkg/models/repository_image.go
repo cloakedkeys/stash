@@ -24,6 +24,7 @@ type ImageFinder interface {
 
 // ImageQueryer provides methods to query images.
 type ImageQueryer interface {
+	FindDuplicates(ctx context.Context, distance int, filter *ImageFilterType) ([][]*Image, error)
 	Query(ctx context.Context, options ImageQueryOptions) (*ImageQueryResult, error)
 	QueryCount(ctx context.Context, imageFilter *ImageFilterType, findFilter *FindFilterType) (int, error)
 }

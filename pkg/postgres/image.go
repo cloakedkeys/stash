@@ -13,6 +13,7 @@ import (
 	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil"
+	"github.com/stashapp/stash/pkg/utils"
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
 
@@ -1300,4 +1301,65 @@ func (qb *ImageStore) UpdateTags(ctx context.Context, imageID int, tagIDs []int)
 
 func (qb *ImageStore) GetURLs(ctx context.Context, imageID int) ([]string, error) {
 	return imagesURLsTableMgr.get(ctx, imageID)
+}
+
+// FindDuplicates compares generated image phashes on all attached files.
+func (qb *ImageStore) FindDuplicates(ctx context.Context, distance int, filter *models.ImageFilterType) ([][]*models.Image, error) {
+	if distance < 0 || distance > 64 {
+		return nil, fmt.Errorf("distance must be between 0 and 64")
+	}
+	query, err := qb.makeQuery(ctx, filter, nil)
+	if err != nil {
+		return nil, err
+	}
+	query.addJoins(
+		join{table: imagesFilesTable, onClause: "images.id = images_files.image_id"},
+		join{table: fingerprintTable, as: "duplicate_fp", onClause: "images_files.file_id = duplicate_fp.file_id AND duplicate_fp.type = 'phash'"},
+	)
+	query.columns = []string{"DISTINCT images.id", "duplicate_fp.fingerprint AS phash"}
+	query.addWhere("duplicate_fp.fingerprint IS NOT NULL")
+	query.addGroupBy("duplicate_fp.fingerprint")
+	var ids [][]int
+	if distance == 0 {
+		sql := "SELECT id, phash FROM (SELECT id, phash, COUNT(*) OVER (PARTITION BY phash) AS copies FROM (" + query.toSQL(false) + ") entries) duplicates WHERE copies > 1 ORDER BY phash, id"
+		var rows []struct {
+			ID    int
+			Phash int64
+		}
+		if err := querySelect(ctx, sql, query.allArgs(), &rows); err != nil {
+			return nil, err
+		}
+		for start := 0; start < len(rows); {
+			end := start + 1
+			for end < len(rows) && rows[end].Phash == rows[start].Phash {
+				end++
+			}
+			group := make([]int, 0, end-start)
+			for _, row := range rows[start:end] {
+				group = append(group, row.ID)
+			}
+			ids = append(ids, group)
+			start = end
+		}
+	} else {
+		var hashes []*utils.Phash
+		if err := querySelect(ctx, query.toSQL(false)+" ORDER BY images.id, phash", query.allArgs(), &hashes); err != nil {
+			return nil, err
+		}
+		for _, hash := range hashes {
+			hash.Bucket = -1
+		}
+		ids = utils.FindDuplicates(hashes, distance, -1)
+	}
+	ret := make([][]*models.Image, 0, len(ids))
+	for _, group := range ids {
+		images, err := qb.FindMany(ctx, group)
+		if err != nil {
+			return nil, err
+		}
+		if len(images) > 1 {
+			ret = append(ret, images)
+		}
+	}
+	return ret, nil
 }
