@@ -216,11 +216,8 @@ func TestRemoveEntriesFromZip_AllEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RemoveEntriesFromZip: %v", err)
 	}
-	defer os.Remove(tmpPath)
-
-	got := readZipEntries(t, tmpPath)
-	if len(got) != 0 {
-		t.Errorf("expected empty zip, got entries: %v", got)
+	if tmpPath != "" {
+		t.Errorf("expected no replacement zip, got %q", tmpPath)
 	}
 }
 

@@ -55,11 +55,26 @@ jobs:
         sudo apt-get install -y postgresql-client-18
         echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
 
+    # an ordinary account, as the manual describes, so Stash can't come to need more
+    # without a test failing. It can create databases only because some tests do.
+    - name: Create an ordinary database account
+      run: |
+        docker exec postgres-db psql -U username -d testdb -c "CREATE ROLE stash LOGIN PASSWORD 'password' CREATEDB"
+        docker exec postgres-db psql -U username -d testdb -c "CREATE DATABASE stash_test OWNER stash"
+
     # one package at a time, since they share the database
     - name: Test
       env:
-        PGSQL_TEST: 'postgresql://username:password@localhost:5432/testdb?sslmode=disable'
-      run: go test -count=1 -p 1 -tags "sqlite_stat4 sqlite_math_functions integration" ./pkg/database ./pkg/postgres
+        PGSQL_TEST: 'postgresql://stash:password@localhost:5432/stash_test?sslmode=disable'
+      run: go test -count=1 -p 1 -tags "sqlite_stat4 sqlite_math_functions integration" -skip 'TestMigrateFromSQLite' ./pkg/database ./pkg/postgres
+
+    # the only thing that needs an extra permission, and the manual says to grant it
+    - name: Test copying from SQLite
+      env:
+        PGSQL_TEST: 'postgresql://stash:password@localhost:5432/stash_test?sslmode=disable'
+      run: |
+        docker exec postgres-db psql -U username -d testdb -c "GRANT SET ON PARAMETER session_replication_role TO stash"
+        go test -count=1 -tags "sqlite_stat4 sqlite_math_functions integration" -run 'TestMigrateFromSQLite' ./pkg/postgres
 
     - name: Save Go cache
       uses: ./.github/actions/save-go-cached
