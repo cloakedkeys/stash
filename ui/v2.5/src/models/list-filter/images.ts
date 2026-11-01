@@ -28,6 +28,7 @@ import { FolderCriterionOption } from "./criteria/folder";
 const defaultSortBy = "path";
 
 const sortByOptions = [
+  "organized",
   "file_count",
   "date",
   "resolution",

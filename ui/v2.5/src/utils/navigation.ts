@@ -331,20 +331,20 @@ const makeChildTagsUrl = (tag: Partial<GQL.TagDataFragment>) => {
   return `/tags?${filter.makeQueryParameters()}`;
 };
 
-function makeTagFilter(mode: GQL.FilterMode, tag: INamedObject) {
+function makeTagFilter(mode: GQL.FilterMode, tag: INamedObject, depth = 0) {
   const filter = new ListFilterModel(mode, undefined);
   const criterion = new TagsCriterion(TagsCriterionOption);
   criterion.value = {
     items: [{ id: tag.id, label: tag.name || `Tag ${tag.id}` }],
     excluded: [],
-    depth: 0,
+    depth,
   };
   filter.criteria.push(criterion);
   return filter.makeQueryParameters();
 }
 
-const makeTagScenesUrl = (tag: INamedObject) => {
-  return `/scenes?${makeTagFilter(GQL.FilterMode.Scenes, tag)}`;
+const makeTagScenesUrl = (tag: INamedObject, depth = 0) => {
+  return `/scenes?${makeTagFilter(GQL.FilterMode.Scenes, tag, depth)}`;
 };
 
 const makeTagAudiosUrl = (tag: INamedObject) => {

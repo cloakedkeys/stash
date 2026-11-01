@@ -901,6 +901,7 @@ var studioSortOptions = sortOptions{
 	"name",
 	"favorite",
 	"o_counter",
+	"organized",
 	"o_counter_all",
 	"performer_count",
 	"performer_count_all",
