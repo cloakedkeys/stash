@@ -9,6 +9,8 @@ type AudioGroup {
 }
 
 type Audio {
+  "The current user's favourite"
+  favorite: Boolean!
   id: ID!
   title: String
   code: String
@@ -88,6 +90,7 @@ type AudioParserResultType {
 }
 
 input AudioCreateInput {
+  favorite: Boolean
   title: String
   code: String
   details: String
@@ -115,6 +118,7 @@ input AudioCreateInput {
 }
 
 input AudioUpdateInput {
+  favorite: Boolean
   id: ID!
   title: String
   code: String
@@ -143,6 +147,7 @@ input AudioUpdateInput {
 }
 
 input BulkAudioUpdateInput {
+  favorite: Boolean
   ids: [ID!]
   title: String
   code: String

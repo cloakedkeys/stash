@@ -13,14 +13,14 @@ import (
 // mutations they don't need permission to edit the library, and they don't change
 // when the object itself was last updated.
 
-func (r *mutationResolver) SceneUserDataUpdate(ctx context.Context, input UserRatingInput) (*models.Scene, error) {
+func (r *mutationResolver) SceneUserDataUpdate(ctx context.Context, input UserRatingFavoriteInput) (*models.Scene, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("converting id: %w", err)
 	}
 
 	translator := changesetTranslator{inputMap: getUpdateInputMap(ctx)}
-	partial := models.ScenePartial{Rating: translator.optionalInt(input.Rating100, "rating100")}
+	partial := models.ScenePartial{Rating: translator.optionalInt(input.Rating100, "rating100"), Favorite: translator.optionalBool(input.Favorite, "favorite")}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		_, err := r.repository.Scene.UpdatePartial(ctx, id, partial)
@@ -33,14 +33,14 @@ func (r *mutationResolver) SceneUserDataUpdate(ctx context.Context, input UserRa
 	return r.getScene(ctx, id)
 }
 
-func (r *mutationResolver) AudioUserDataUpdate(ctx context.Context, input UserRatingInput) (*models.Audio, error) {
+func (r *mutationResolver) AudioUserDataUpdate(ctx context.Context, input UserRatingFavoriteInput) (*models.Audio, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("converting id: %w", err)
 	}
 
 	translator := changesetTranslator{inputMap: getUpdateInputMap(ctx)}
-	partial := models.AudioPartial{Rating: translator.optionalInt(input.Rating100, "rating100")}
+	partial := models.AudioPartial{Rating: translator.optionalInt(input.Rating100, "rating100"), Favorite: translator.optionalBool(input.Favorite, "favorite")}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		_, err := r.repository.Audio.UpdatePartial(ctx, id, partial)
@@ -53,14 +53,14 @@ func (r *mutationResolver) AudioUserDataUpdate(ctx context.Context, input UserRa
 	return r.getAudio(ctx, id)
 }
 
-func (r *mutationResolver) ImageUserDataUpdate(ctx context.Context, input UserRatingInput) (*models.Image, error) {
+func (r *mutationResolver) ImageUserDataUpdate(ctx context.Context, input UserRatingFavoriteInput) (*models.Image, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("converting id: %w", err)
 	}
 
 	translator := changesetTranslator{inputMap: getUpdateInputMap(ctx)}
-	partial := models.ImagePartial{Rating: translator.optionalInt(input.Rating100, "rating100")}
+	partial := models.ImagePartial{Rating: translator.optionalInt(input.Rating100, "rating100"), Favorite: translator.optionalBool(input.Favorite, "favorite")}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		_, err := r.repository.Image.UpdatePartial(ctx, id, partial)
@@ -73,14 +73,14 @@ func (r *mutationResolver) ImageUserDataUpdate(ctx context.Context, input UserRa
 	return r.getImage(ctx, id)
 }
 
-func (r *mutationResolver) GalleryUserDataUpdate(ctx context.Context, input UserRatingInput) (*models.Gallery, error) {
+func (r *mutationResolver) GalleryUserDataUpdate(ctx context.Context, input UserRatingFavoriteInput) (*models.Gallery, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("converting id: %w", err)
 	}
 
 	translator := changesetTranslator{inputMap: getUpdateInputMap(ctx)}
-	partial := models.GalleryPartial{Rating: translator.optionalInt(input.Rating100, "rating100")}
+	partial := models.GalleryPartial{Rating: translator.optionalInt(input.Rating100, "rating100"), Favorite: translator.optionalBool(input.Favorite, "favorite")}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		_, err := r.repository.Gallery.UpdatePartial(ctx, id, partial)
@@ -93,14 +93,14 @@ func (r *mutationResolver) GalleryUserDataUpdate(ctx context.Context, input User
 	return r.getGallery(ctx, id)
 }
 
-func (r *mutationResolver) GroupUserDataUpdate(ctx context.Context, input UserRatingInput) (*models.Group, error) {
+func (r *mutationResolver) GroupUserDataUpdate(ctx context.Context, input UserRatingFavoriteInput) (*models.Group, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("converting id: %w", err)
 	}
 
 	translator := changesetTranslator{inputMap: getUpdateInputMap(ctx)}
-	partial := models.GroupPartial{Rating: translator.optionalInt(input.Rating100, "rating100")}
+	partial := models.GroupPartial{Rating: translator.optionalInt(input.Rating100, "rating100"), Favorite: translator.optionalBool(input.Favorite, "favorite")}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		_, err := r.repository.Group.UpdatePartial(ctx, id, partial)

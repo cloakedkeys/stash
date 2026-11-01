@@ -74,6 +74,7 @@ func (qb *audioFilterHandler) criterionHandler() criterionHandler {
 			stringCriterionHandler(audioFilter.Checksum, "fingerprints_md5.fingerprint")(ctx, f)
 		}),
 
+		audioUserData.boolCriterionHandler(audioFilter.Favorite, audioUserData.columnOrDefault("favorite", "0")),
 		audioUserData.intCriterionHandler(audioFilter.Rating100, audioUserData.column("rating")),
 		qb.oCountCriterionHandler(audioFilter.OCounter),
 		boolCriterionHandler(audioFilter.Organized, "audios.organized", nil),

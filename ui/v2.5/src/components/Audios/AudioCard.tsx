@@ -1,3 +1,5 @@
+import { FavoriteIcon } from "../Shared/FavoriteIcon";
+import { useAudioUserDataUpdate } from "src/core/StashService";
 import React, { useMemo } from "react";
 import { Button, ButtonGroup, OverlayTrigger, Tooltip } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
@@ -216,11 +218,23 @@ const AudioCardDetails = React.memo(
 
 const AudioCardOverlays = React.memo(
   PatchComponent("AudioCard.Overlays", (props: IAudioCardProps) => {
-    const ret = useMemo(() => {
-      return (
+    const [setUserData] = useAudioUserDataUpdate();
+    const ret = (
+      <>
+        <FavoriteIcon
+          favorite={props.audio.favorite}
+          onToggleFavorite={(favorite) => {
+            setUserData({
+              variables: { input: { id: props.audio.id, favorite } },
+            });
+          }}
+          size="2x"
+          className="hide-not-favorite"
+        />
+
         <StudioOverlay studio={props.audio.studio} disabled={props.selecting} />
-      );
-    }, [props.audio.studio, props.selecting]);
+      </>
+    );
 
     return ret;
   })

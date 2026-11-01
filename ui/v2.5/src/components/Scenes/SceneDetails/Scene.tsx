@@ -1,3 +1,4 @@
+import { FavoriteIcon } from "src/components/Shared/FavoriteIcon";
 import { Tab, Nav, Dropdown, Button } from "react-bootstrap";
 import React, {
   useCallback,
@@ -760,6 +761,14 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
 
           <div className="scene-toolbar">
             <span className="scene-toolbar-group">
+              <FavoriteIcon
+                favorite={scene.favorite}
+                onToggleFavorite={(favorite) => {
+                  setSceneUserData({
+                    variables: { input: { id: scene.id, favorite } },
+                  }).catch(Toast.error);
+                }}
+              />
               <RatingSystem
                 value={scene.rating100}
                 onSetRating={setRating}

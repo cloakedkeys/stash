@@ -1,3 +1,4 @@
+import { FavoriteIcon } from "src/components/Shared/FavoriteIcon";
 import { Tab, Nav, Dropdown } from "react-bootstrap";
 import React, { useEffect, useMemo, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -364,6 +365,14 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
 
         <div className="image-toolbar">
           <span className="image-toolbar-group">
+            <FavoriteIcon
+              favorite={image.favorite}
+              onToggleFavorite={(favorite) => {
+                setImageUserData({
+                  variables: { input: { id: image.id, favorite } },
+                }).catch(Toast.error);
+              }}
+            />
             <RatingSystem
               value={image.rating100}
               onSetRating={setRating}

@@ -34,6 +34,8 @@ func ToBasicJSON(gallery *models.Gallery) (*jsonschema.Gallery, error) {
 		newGalleryJSON.Date = gallery.Date.String()
 	}
 
+	newGalleryJSON.Favorite = gallery.Favorite
+
 	if gallery.Rating != nil {
 		newGalleryJSON.Rating = *gallery.Rating
 	}

@@ -49,6 +49,8 @@ func ToBasicJSON(ctx context.Context, reader ExportGetter, scene *models.Scene) 
 		newSceneJSON.ProductionDate = scene.ProductionDate.String()
 	}
 
+	newSceneJSON.Favorite = scene.Favorite
+
 	if scene.Rating != nil {
 		newSceneJSON.Rating = *scene.Rating
 	}

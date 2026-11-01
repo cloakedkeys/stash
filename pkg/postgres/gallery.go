@@ -69,20 +69,23 @@ func (r *galleryRow) fromGallery(o models.Gallery) {
 
 // galleryUserDataRow is a row of a user's data for a gallery.
 type galleryUserDataRow struct {
-	GalleryID int `db:"gallery_id"`
-	UserID    int `db:"user_id"`
+	Favorite  bool `db:"favorite"`
+	GalleryID int  `db:"gallery_id"`
+	UserID    int  `db:"user_id"`
 	// expressed as 1-100
 	Rating   null.Int `db:"rating"`
 	OCounter int      `db:"o_counter"`
 }
 
 func (r galleryUserDataRow) apply(g *models.Gallery) {
+	g.Favorite = r.Favorite
 	g.Rating = nullIntPtr(r.Rating)
 	g.OCounter = r.OCounter
 }
 
 func galleryUserDataRecord(o models.Gallery) goqu.Record {
 	return goqu.Record{
+		"favorite":  o.Favorite,
 		"rating":    intFromPtr(o.Rating),
 		"o_counter": o.OCounter,
 	}
@@ -93,6 +96,7 @@ func galleryUserDataPartialRecord(o models.GalleryPartial) goqu.Record {
 		Record: make(exp.Record),
 	}
 	r.setNullInt("rating", o.Rating)
+	r.setBool("favorite", o.Favorite)
 	r.setInt("o_counter", o.OCounter)
 	return goqu.Record(r.Record)
 }
@@ -1050,6 +1054,7 @@ var gallerySortOptions = sortOptions{
 	"performer_count",
 	"random",
 	"rating",
+	"favorite",
 	"tag_count",
 	"title",
 	"updated_at",
@@ -1152,6 +1157,9 @@ func (qb *GalleryStore) setGallerySort(ctx context.Context, query *queryBuilder,
 		addFolderTable()
 		query.sort += " ORDER BY COALESCE(galleries.title, files.basename, " + getBasenameSQL("COALESCE(folders.path, '')") + ") COLLATE \"natural_ci\" " + direction + ", file_folder.path COLLATE \"natural_ci\" " + direction
 		query.addGroupBy("galleries.title", "files.basename", "folders.path", "file_folder.path")
+	case "favorite":
+		galleryUserData.joinSort(ctx, query)
+		query.sort += " ORDER BY " + galleryUserData.columnOrDefault(sort, "false") + " " + getSortDirection(direction)
 	case "rating", "o_counter":
 		galleryUserData.joinSort(ctx, query)
 		add, agg := getSort(sort, direction, galleriesUserDataTable)

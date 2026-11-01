@@ -75,6 +75,7 @@ func (r *audioRow) fromAudio(o models.Audio) {
 }
 
 type audioUserDataRow struct {
+	Favorite     bool     `db:"favorite"`
 	AudioID      int      `db:"audio_id"`
 	UserID       int      `db:"user_id"`
 	Rating       null.Int `db:"rating"`
@@ -83,6 +84,7 @@ type audioUserDataRow struct {
 }
 
 func (r audioUserDataRow) apply(a *models.Audio) {
+	a.Favorite = r.Favorite
 	a.Rating = nullIntPtr(r.Rating)
 	a.ResumeTime = r.ResumeTime
 	a.PlayDuration = r.PlayDuration
@@ -90,6 +92,7 @@ func (r audioUserDataRow) apply(a *models.Audio) {
 
 func audioUserDataRecord(a models.Audio) goqu.Record {
 	return goqu.Record{
+		"favorite":      a.Favorite,
 		"rating":        intFromPtr(a.Rating),
 		"resume_time":   a.ResumeTime,
 		"play_duration": a.PlayDuration,
@@ -99,6 +102,7 @@ func audioUserDataRecord(a models.Audio) goqu.Record {
 func audioUserDataPartialRecord(a models.AudioPartial) goqu.Record {
 	r := updateRecord{Record: make(exp.Record)}
 	r.setNullInt("rating", a.Rating)
+	r.setBool("favorite", a.Favorite)
 	r.setFloat64("resume_time", a.ResumeTime)
 	r.setFloat64("play_duration", a.PlayDuration)
 	return goqu.Record(r.Record)
@@ -1165,6 +1169,7 @@ var audioSortOptions = sortOptions{
 	"path",
 	"random",
 	"rating",
+	"favorite",
 	"studio",
 	"tag_count",
 	"title",
@@ -1266,6 +1271,9 @@ func (qb *AudioStore) setAudioSort(ctx context.Context, query *queryBuilder, fin
 		query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT MAX(o_date) FROM %s AS sort WHERE sort.%s = %s.id AND sort.%s = %d) %s", audiosODatesTable, audioIDColumn, audioTable, userIDColumn, currentUserID(ctx), getSortDirection(direction))
 	case "o_counter":
 		query.sortAndPagination += getUserCountSort(audioTable, audiosODatesTable, audioIDColumn, currentUserID(ctx), direction)
+	case "favorite":
+		audioUserData.joinSort(ctx, query)
+		query.sortAndPagination += " ORDER BY " + audioUserData.columnOrDefault(sort, "0") + " " + getSortDirection(direction)
 	case "rating":
 		audioUserData.joinSort(ctx, query)
 		query.sortAndPagination += getSort(sort, direction, audiosUserDataTable)

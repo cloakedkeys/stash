@@ -177,8 +177,6 @@ func limitedMutationObjectID(args map[string]any) (int, bool) {
 		s = id
 	} else {
 		switch input := args["input"].(type) {
-		case UserRatingInput:
-			s = input.ID
 		case UserRatingFavoriteInput:
 			s = input.ID
 		case UserFavoriteInput:
