@@ -109,6 +109,10 @@ func Initialize() (*Server, error) {
 	}
 
 	r := chi.NewRouter()
+	originProtection, err := newCrossOriginProtection(cfg.GetTrustedOrigins())
+	if err != nil {
+		return nil, err
+	}
 
 	server := &Server{
 		Server: http.Server{
@@ -129,6 +133,7 @@ func Initialize() (*Server, error) {
 	r.Use(cors.AllowAll().Handler)
 	r.Use(RequestIPMiddleware)
 	r.Use(authenticateHandler(mgr.Repository.TxnManager, cfg))
+	r.Use(originProtection.middleware)
 	visitedPluginHandler := mgr.SessionStore.VisitedPluginHandler()
 	r.Use(visitedPluginHandler)
 
@@ -199,9 +204,7 @@ func Initialize() (*Server, error) {
 	gqlSrv.SetRecoverFunc(recoverFunc)
 	gqlSrv.AddTransport(gqlTransport.Websocket{
 		Upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				return true
-			},
+			CheckOrigin: originProtection.checkWebsocketOrigin,
 		},
 		KeepAlivePingInterval: 10 * time.Second,
 	})

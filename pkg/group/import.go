@@ -55,13 +55,13 @@ func (i *Importer) PreImport(ctx context.Context) error {
 
 	var err error
 	if len(i.Input.FrontImage) > 0 {
-		i.frontImageData, err = utils.ProcessBase64Image(i.Input.FrontImage)
+		i.frontImageData, err = utils.ProcessBase64ImageForImport(i.Input.FrontImage)
 		if err != nil {
 			return fmt.Errorf("invalid front_image: %v", err)
 		}
 	}
 	if len(i.Input.BackImage) > 0 {
-		i.backImageData, err = utils.ProcessBase64Image(i.Input.BackImage)
+		i.backImageData, err = utils.ProcessBase64ImageForImport(i.Input.BackImage)
 		if err != nil {
 			return fmt.Errorf("invalid back_image: %v", err)
 		}

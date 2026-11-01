@@ -45,7 +45,7 @@ var parentStudio models.Studio = models.Studio{
 	Name: parentStudioName,
 }
 
-var imageBytes = []byte("imageBytes")
+var imageBytes = []byte(`<svg><title>imageBytes</title></svg>`)
 
 func getUUID(_ string) string {
 	// TODO: Encode input string
@@ -61,7 +61,7 @@ var stashIDs = []models.StashID{
 	stashID,
 }
 
-const image = "aW1hZ2VCeXRlcw=="
+const image = "PHN2Zz48dGl0bGU+aW1hZ2VCeXRlczwvdGl0bGU+PC9zdmc+"
 
 var (
 	createTime = time.Date(2001, 01, 01, 0, 0, 0, 0, time.Local)
