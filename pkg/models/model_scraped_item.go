@@ -182,6 +182,7 @@ type ScrapedPerformer struct {
 	Tattoos        *string       `json:"tattoos"`
 	Piercings      *string       `json:"piercings"`
 	Aliases        *string       `json:"aliases"`
+	AliasList      []string      `json:"alias_list"`
 	Tags           []*ScrapedTag `json:"tags"`
 	// This should be a base64 encoded data URL
 	Image              *string  `json:"image"` // deprecated: use Images
@@ -197,17 +198,24 @@ type ScrapedPerformer struct {
 
 func (ScrapedPerformer) IsScrapedContent() {}
 
+// GetAliases prefers the structured list, retaining support for legacy scrapers.
+func (p *ScrapedPerformer) GetAliases() []string {
+	if p.AliasList != nil {
+		return p.AliasList
+	}
+	if p.Aliases != nil {
+		return stringslice.FromString(*p.Aliases, ",")
+	}
+	return nil
+}
+
 func (p *ScrapedPerformer) ToPerformer(endpoint string, excluded map[string]bool) *Performer {
 	ret := NewPerformer()
 	currentTime := time.Now()
 	ret.Name = strings.TrimSpace(*p.Name)
 
-	if p.Aliases != nil && !excluded["aliases"] {
-		aliases := stringslice.FromString(*p.Aliases, ",")
-		for i, alias := range aliases {
-			aliases[i] = strings.TrimSpace(alias)
-		}
-		ret.Aliases = NewRelatedStrings(aliases)
+	if aliases := p.GetAliases(); aliases != nil && !excluded["aliases"] {
+		ret.Aliases = NewRelatedStrings(stringslice.TrimSpace(aliases))
 	}
 	if p.Birthdate != nil && !excluded["birthdate"] {
 		date, err := ParseDate(*p.Birthdate)
@@ -351,13 +359,13 @@ func (p *ScrapedPerformer) GetImage(ctx context.Context, excluded map[string]boo
 func (p *ScrapedPerformer) ToPartial(endpoint string, excluded map[string]bool, merge map[string]bool, existingStashIDs []StashID) PerformerPartial {
 	ret := NewPerformerPartial()
 
-	if p.Aliases != nil && !excluded["aliases"] {
+	if aliases := p.GetAliases(); aliases != nil && !excluded["aliases"] {
 		mode := RelationshipUpdateModeSet
 		if merge["aliases"] {
 			mode = RelationshipUpdateModeAdd
 		}
 		ret.Aliases = &UpdateStrings{
-			Values: stringslice.FromString(*p.Aliases, ","),
+			Values: aliases,
 			Mode:   mode,
 		}
 	}
