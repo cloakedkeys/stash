@@ -107,7 +107,8 @@ func (g *Generator) previewVideo(path string, width, height int, videoStreamDura
 
 		stepSize, offset := options.getStepSizeAndOffset(videoStreamDuration)
 
-		targetHeight := ffmpeg.ScaledShortSide(width, height, scenePreviewWidth)
+		displayWidth, displayHeight := ffmpeg.SquarePixelDimensions(width, height, g.SampleAspectRatio)
+		targetHeight := ffmpeg.ScaledShortSide(displayWidth, displayHeight, scenePreviewWidth)
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
 
 		segmentDuration := options.SegmentDuration
@@ -157,7 +158,8 @@ func (g *Generator) previewVideo(path string, width, height int, videoStreamDura
 
 func (g *Generator) previewVideoSingle(path string, width, height int, videoStreamDuration float64, options PreviewOptions, fallback bool, useVsync2 bool) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
-		targetHeight := ffmpeg.ScaledShortSide(width, height, scenePreviewWidth)
+		displayWidth, displayHeight := ffmpeg.SquarePixelDimensions(width, height, g.SampleAspectRatio)
+		targetHeight := ffmpeg.ScaledShortSide(displayWidth, displayHeight, scenePreviewWidth)
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
 
 		chunkOptions := previewChunkOptions{
@@ -181,9 +183,7 @@ type previewChunkOptions struct {
 }
 
 func (g Generator) previewVideoChunk(lockCtx *fsutil.LockContext, path string, width, height int, options previewChunkOptions, fallback bool, useVsync2 bool, codec ffmpeg.VideoCodec, fullhw bool) error {
-	targetHeight := ffmpeg.ScaledShortSide(width, height, scenePreviewWidth)
-
-	videoFilter := g.Encoder.HWMaxResFilter(codec, width, height, targetHeight, fullhw)
+	videoFilter, fullhw := g.previewVideoFilter(codec, width, height, scenePreviewWidth, fullhw)
 
 	videoArgs := codec.ExtraArgsHQ(options.Preset, scenePreviewCRF)
 	videoArgs = videoArgs.VideoFilter(videoFilter)
@@ -311,6 +311,7 @@ func (g Generator) PreviewWebp(ctx context.Context, input string, hash string) e
 func (g Generator) previewVideoToImage(input string) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
 		var videoFilter ffmpeg.VideoFilter
+		videoFilter = videoFilter.SquarePixels(g.SampleAspectRatio)
 		videoFilter = videoFilter.ScaleWidth(scenePreviewWidth)
 		videoFilter = videoFilter.Fps(scenePreviewImageFPS)
 
