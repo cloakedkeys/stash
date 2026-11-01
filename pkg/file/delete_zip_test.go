@@ -219,6 +219,23 @@ func TestDeleter_ZipRewrite_RollbackRestoresZip(t *testing.T) {
 	}
 }
 
+func TestDeleter_ZipRewrite_RollbackCollision(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "gallery.zip")
+	makeTestZip(t, zipPath, "", map[string]string{"keep.jpg": "keep", "remove.jpg": "remove"})
+	d := NewDeleter()
+	d.ZipEntry(1, zipPath, "remove.jpg")
+	if err := d.PrepareZipRewrites(context.Background(), newFakeZipStore(zipPath)); err != nil {
+		t.Fatal(err)
+	}
+	writeDeleteTestFile(t, zipPath+rewrittenZipSuffix, "unrelated")
+	logs := captureDeleteWarnings(t)
+	d.Rollback()
+	assertDeleteTestFile(t, zipPath+rewrittenZipSuffix, "unrelated")
+	sameNames(t, "rewritten zip", zipNames(t, zipPath), "keep.jpg")
+	sameNames(t, "original zip", zipNames(t, zipPath+deleteFileSuffix), "keep.jpg", "remove.jpg")
+	assertDeleteWarningPath(t, logs, zipPath+deleteFileSuffix)
+}
+
 // a zip that can't be rewritten fails the transaction, and the zip is untouched
 func TestDeleter_ZipRewrite_PrepareFailsTheTransaction(t *testing.T) {
 	cases := []struct {

@@ -269,7 +269,7 @@ func (d *Deleter) rewriteZip(ctx context.Context, files ZipFileStore, zipPath st
 		return fmt.Errorf("setting aside %q: %w", zipPath, err)
 	}
 
-	if err := d.RenamerRemover.Rename(tmpPath, zipPath); err != nil {
+	if err := d.renameToVacantPath(tmpPath, zipPath); err != nil {
 		_ = d.RenamerRemover.Remove(tmpPath)
 		return fmt.Errorf("replacing %q: %w", zipPath, err)
 	}
@@ -301,7 +301,7 @@ func (d *Deleter) Rollback() {
 			continue
 		}
 		aside := zipPath + rewrittenZipSuffix
-		if err := d.RenamerRemover.Rename(zipPath, aside); err != nil {
+		if err := d.renameToVacantPath(zipPath, aside); err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
 				logger.Warnf("Error moving rewritten zip %q aside: %v", zipPath, err)
 			}
@@ -312,10 +312,10 @@ func (d *Deleter) Rollback() {
 
 	for _, f := range append(d.files, d.dirs...) {
 		if err := d.renameForRestore(f); err != nil {
-			logger.Warnf("Error restoring %q: %v", f, err)
+			logger.Warnf("Error restoring %q: %v. The original is at %q.", f, err, d.setAsidePath(f))
 			if aside, ok := rewritten[f]; ok {
 				// better the rewritten zip than none at all
-				if err := d.RenamerRemover.Rename(aside, f); err != nil {
+				if err := d.renameToVacantPath(aside, f); err != nil {
 					logger.Errorf("Error putting back %q: %v. The original zip is at %q.", f, err, d.setAsidePath(f))
 				}
 				delete(rewritten, f)
@@ -348,26 +348,26 @@ func (d *Deleter) setAsidePath(path string) string {
 }
 
 // Commit deletes all files marked for deletion and clears the marked list.
-// When using trash, files have already been moved during renameForDelete, so
-// this just clears the tracking. Otherwise, permanently delete the .delete files.
+// Paths in trashedPaths have already been moved to trash during renameForDelete.
+// Other paths are permanently deleted from their .delete locations.
 // Any errors encountered are logged. All files will be attempted, regardless
 // of the errors encountered.
 func (d *Deleter) Commit() {
-	if d.TrashPath != "" {
-		// Files were already moved to trash during renameForDelete, just clear tracking
-		logger.Debugf("Commit: %d files and %d directories already in trash, clearing tracking", len(d.files), len(d.dirs))
-	} else {
-		// Permanently delete files and directories marked with .delete suffix
-		for _, f := range d.files {
-			if err := d.RenamerRemover.Remove(f + deleteFileSuffix); err != nil {
-				logger.Warnf("Error deleting file %q: %v", f+deleteFileSuffix, err)
-			}
+	for _, f := range d.files {
+		if _, trashed := d.trashedPaths[f]; trashed {
+			continue
 		}
+		if err := d.RenamerRemover.Remove(f + deleteFileSuffix); err != nil {
+			logger.Warnf("Error deleting file %q: %v", f+deleteFileSuffix, err)
+		}
+	}
 
-		for _, f := range d.dirs {
-			if err := d.RenamerRemover.RemoveAll(f + deleteFileSuffix); err != nil {
-				logger.Warnf("Error deleting directory %q: %v", f+deleteFileSuffix, err)
-			}
+	for _, f := range d.dirs {
+		if _, trashed := d.trashedPaths[f]; trashed {
+			continue
+		}
+		if err := d.RenamerRemover.RemoveAll(f + deleteFileSuffix); err != nil {
+			logger.Warnf("Error deleting directory %q: %v", f+deleteFileSuffix, err)
 		}
 	}
 
@@ -397,21 +397,22 @@ func (d *Deleter) renameForDelete(path string, bypassTrash bool) error {
 	}
 
 	// Standard behavior: rename with .delete suffix (or when bypassing trash)
-	return d.RenamerRemover.Rename(path, path+deleteFileSuffix)
+	return d.renameToVacantPath(path, path+deleteFileSuffix)
 }
 
 func (d *Deleter) renameForRestore(path string) error {
-	if d.TrashPath != "" {
-		// Restore file from trash
-		trashPath, ok := d.trashedPaths[path]
-		if !ok {
-			return fmt.Errorf("no trash path found for %q", path)
-		}
-		return d.RenamerRemover.Rename(trashPath, path)
-	}
+	return d.renameToVacantPath(d.setAsidePath(path), path)
+}
 
-	// Standard behavior: restore from .delete suffix
-	return d.RenamerRemover.Rename(path+deleteFileSuffix, path)
+// renameToVacantPath refuses to replace an existing destination.
+// The check and rename are not atomic with respect to other filesystem writers.
+func (d *Deleter) renameToVacantPath(oldpath, newpath string) error {
+	if _, err := d.RenamerRemover.Stat(newpath); err == nil {
+		return fmt.Errorf("destination %q already exists: %w", newpath, fs.ErrExist)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("checking destination %q: %w", newpath, err)
+	}
+	return d.RenamerRemover.Rename(oldpath, newpath)
 }
 
 func Destroy(ctx context.Context, destroyer models.FileDestroyer, f models.File, fileDeleter *Deleter, deleteFile bool) error {
