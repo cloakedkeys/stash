@@ -24,8 +24,8 @@ const _CountrySelect: React.FC<IProps> = ({
   className,
   menuPortalTarget,
 }) => {
-  const { locale } = useIntl();
-  const options = getCountries(locale);
+  const intl = useIntl();
+  const options = getCountries(intl.locale, intl);
   const selected = options.find((opt) => opt.value === value) ?? {
     label: value,
     value,
