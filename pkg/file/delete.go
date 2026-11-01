@@ -409,7 +409,11 @@ func (d *Deleter) renameForDelete(path string, bypassTrash bool) error {
 	}
 
 	// Standard behavior: rename with .delete suffix (or when bypassing trash)
-	return d.RenamerRemover.Rename(path, path+deleteFileSuffix)
+	err := d.RenamerRemover.Rename(path, path+deleteFileSuffix)
+	if isDeleteNameTooLong(err) {
+		return fmt.Errorf("name of %q is too long for Stash to delete; shorten its name or remove it manually: %w", path, err)
+	}
+	return err
 }
 
 func (d *Deleter) renameForRestore(path string) error {
