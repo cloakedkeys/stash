@@ -28,6 +28,7 @@ const FilterModeToMessageID = {
   [GQL.FilterMode.Performers]: "performers",
   [GQL.FilterMode.SceneMarkers]: "markers",
   [GQL.FilterMode.Scenes]: "scenes",
+  [GQL.FilterMode.Stories]: "stories",
   [GQL.FilterMode.Studios]: "studios",
   [GQL.FilterMode.Tags]: "tags",
 };

@@ -26,6 +26,7 @@ import {
 } from "./MainNavbar/menuItems";
 import {
   faBars,
+  faBook,
   faChartColumn,
   faFilm,
   faFolderTree,
@@ -82,6 +83,10 @@ const messages = defineMessages({
   galleries: {
     id: "galleries",
     defaultMessage: "Galleries",
+  },
+  stories: {
+    id: "stories",
+    defaultMessage: "Stories",
   },
   folders: {
     id: "folders",
@@ -146,6 +151,12 @@ const allMenuItems: INavbarMenuItem[] = [
     icon: faImages,
     hotkey: "g l",
     userCreatable: true,
+  },
+  {
+    name: "stories",
+    message: messages.stories,
+    href: "/stories",
+    icon: faBook,
   },
   {
     name: "folders",

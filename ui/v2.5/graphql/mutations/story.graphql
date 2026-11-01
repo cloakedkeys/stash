@@ -1,0 +1,15 @@
+mutation StoryUpdate($input: StoryUpdateInput!) {
+  storyUpdate(input: $input) {
+    ...StoryData
+  }
+}
+
+mutation StoryUserDataUpdate($input: UserRatingInput!) {
+  storyUserDataUpdate(input: $input) {
+    ...StoryData
+  }
+}
+
+mutation StoriesDestroy($ids: [ID!]!) {
+  storiesDestroy(input: { ids: $ids })
+}

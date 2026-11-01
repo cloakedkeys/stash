@@ -74,6 +74,7 @@ const FrontPage = lazyComponent(
 const Scenes = lazyComponent(() => import("./components/Scenes/Scenes"));
 const Folders = lazyComponent(() => import("./components/Folders/Folders"));
 const Audios = lazyComponent(() => import("./components/Audios/Audios"));
+const Stories = lazyComponent(() => import("./components/Stories/Stories"));
 const Settings = lazyComponent(() => import("./components/Settings/Settings"));
 const Stats = lazyComponent(() => import("./components/Stats"));
 const Studios = lazyComponent(() => import("./components/Studios/Studios"));
@@ -277,6 +278,7 @@ export const App: React.FC = () => {
             <Route path="/scenes" component={Scenes} />
             <Route path="/folders" component={Folders} />
             <Route path="/audios" component={Audios} />
+            <Route path="/stories" component={Stories} />
             <Route path="/images" component={Images} />
             <Route path="/galleries" component={Galleries} />
             <Route path="/performers" component={Performers} />

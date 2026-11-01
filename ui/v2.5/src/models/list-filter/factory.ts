@@ -7,6 +7,7 @@ import { GroupListFilterOptions } from "./groups";
 import { PerformerListFilterOptions } from "./performers";
 import { SceneMarkerListFilterOptions } from "./scene-markers";
 import { SceneListFilterOptions } from "./scenes";
+import { StoryListFilterOptions } from "./stories";
 import { StudioListFilterOptions } from "./studios";
 import { TagListFilterOptions } from "./tags";
 
@@ -31,5 +32,7 @@ export function getFilterOptions(mode: FilterMode): ListFilterOptions {
       return ImageListFilterOptions;
     case FilterMode.Audios:
       return AudioListFilterOptions;
+    case FilterMode.Stories:
+      return StoryListFilterOptions;
   }
 }

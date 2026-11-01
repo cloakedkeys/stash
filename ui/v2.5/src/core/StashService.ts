@@ -203,6 +203,27 @@ export const useFindAudio = (id: string) => {
   return GQL.useFindAudioQuery({ variables: { id }, skip });
 };
 
+export const useFindStory = (id: string) =>
+  GQL.useFindStoryQuery({ variables: { id }, skip: id === "" });
+
+export const useFindStories = (filter?: ListFilterModel) =>
+  GQL.useFindStoriesQuery({
+    skip: filter === undefined,
+    variables: {
+      filter: filter?.makeFindFilter(),
+      story_filter: filter?.makeFilter(),
+    },
+  });
+
+export const queryFindStories = (filter: ListFilterModel) =>
+  client.query<GQL.FindStoriesQuery>({
+    query: GQL.FindStoriesDocument,
+    variables: {
+      filter: filter.makeFindFilter(),
+      story_filter: filter.makeFilter(),
+    },
+  });
+
 export const useAudioStreams = (id: string) =>
   GQL.useAudioStreamsQuery({ variables: { id } });
 
@@ -1231,6 +1252,42 @@ const audioMutationImpactedQueries = [
   GQL.FindStudiosDocument, // filter by audio count
   GQL.FindTagsDocument, // filter by audio count
 ];
+
+const storyMutationImpactedQueries = [
+  GQL.FindStoriesDocument, // various filters
+  GQL.FindTagsDocument, // tag lists
+];
+
+export const useStoryUpdate = () =>
+  GQL.useStoryUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.storyUpdate) return;
+      evictQueries(cache, storyMutationImpactedQueries);
+    },
+  });
+
+export const useStoryUserDataUpdate = () =>
+  GQL.useStoryUserDataUpdateMutation({
+    update(cache, result) {
+      if (!result.data?.storyUserDataUpdate) return;
+      evictQueries(cache, storyMutationImpactedQueries);
+    },
+  });
+
+export const useStoriesDestroy = (input: GQL.StoriesDestroyMutationVariables) =>
+  GQL.useStoriesDestroyMutation({
+    variables: input,
+    update(cache, result) {
+      if (!result.data?.storiesDestroy) return;
+
+      for (const id of input.ids) {
+        const obj = { __typename: "Story", id };
+        deleteObject(cache, obj, GQL.FindStoryDocument);
+      }
+
+      evictQueries(cache, storyMutationImpactedQueries);
+    },
+  });
 
 export const useAudioUpdate = () =>
   GQL.useAudioUpdateMutation({

@@ -19,6 +19,7 @@ const (
 	FilterModeTags         FilterMode = "TAGS"
 	FilterModeImages       FilterMode = "IMAGES"
 	FilterModeAudios       FilterMode = "AUDIOS"
+	FilterModeStories      FilterMode = "STORIES"
 )
 
 var AllFilterMode = []FilterMode{
@@ -32,11 +33,12 @@ var AllFilterMode = []FilterMode{
 	FilterModeTags,
 	FilterModeImages,
 	FilterModeAudios,
+	FilterModeStories,
 }
 
 func (e FilterMode) IsValid() bool {
 	switch e {
-	case FilterModeScenes, FilterModePerformers, FilterModeStudios, FilterModeGalleries, FilterModeSceneMarkers, FilterModeMovies, FilterModeGroups, FilterModeTags, FilterModeImages, FilterModeAudios:
+	case FilterModeScenes, FilterModePerformers, FilterModeStudios, FilterModeGalleries, FilterModeSceneMarkers, FilterModeMovies, FilterModeGroups, FilterModeTags, FilterModeImages, FilterModeAudios, FilterModeStories:
 		return true
 	}
 	return false

@@ -1,0 +1,22 @@
+.story-page {
+  .story-header {
+    margin: 1rem 0;
+
+    .story-author {
+      opacity: 0.75;
+    }
+  }
+
+  .story-details {
+    margin-top: 1rem;
+  }
+}
+
+.story-text {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  margin: 1.5rem auto;
+  max-width: 45em;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

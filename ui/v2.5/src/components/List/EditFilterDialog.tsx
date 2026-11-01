@@ -221,6 +221,7 @@ const FilterModeToConfigKey = {
   [FilterMode.Performers]: "performers",
   [FilterMode.SceneMarkers]: "sceneMarkers",
   [FilterMode.Scenes]: "scenes",
+  [FilterMode.Stories]: "stories",
   [FilterMode.Studios]: "studios",
   [FilterMode.Tags]: "tags",
 };
