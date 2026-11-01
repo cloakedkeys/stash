@@ -23,6 +23,7 @@ type Repository struct {
 	Group          GroupReaderWriter
 	Performer      PerformerReaderWriter
 	Audio          AudioReaderWriter
+	Story          StoryReaderWriter
 	VoiceActor     VoiceActorReaderWriter
 	Scene          SceneReaderWriter
 	SceneMarker    SceneMarkerReaderWriter

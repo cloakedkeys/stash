@@ -144,6 +144,7 @@ func (db *Database) Repository() models.Repository {
 		Image:          db.Image(),
 		Group:          db.Group(),
 		Audio:          db.Audio(),
+		Story:          db.Story(),
 		UserUIConfig:   db.UserUIConfig(),
 		VoiceActor:     db.VoiceActor(),
 		Performer:      db.Performer(),

@@ -760,9 +760,9 @@ func Test_sceneRelationships_cover(t *testing.T) {
 		existingID
 		validStoredIDInt
 	)
-	existingData := []byte("existingData")
-	newData := []byte("newData")
-	const base64Prefix = "data:image/png;base64,"
+	existingData := []byte(`<svg><title>existing</title></svg>`)
+	newData := []byte(`<svg><title>new</title></svg>`)
+	const base64Prefix = "data:image/svg+xml;base64,"
 	existingDataEncoded := base64Prefix + utils.GetBase64StringFromData(existingData)
 	newDataEncoded := base64Prefix + utils.GetBase64StringFromData(newData)
 	invalidData := newDataEncoded + "!!!"

@@ -51,6 +51,7 @@ func seedAnonymiserData(t *testing.T) func() {
 	var (
 		user  models.User
 		audio models.Audio
+		story models.Story
 		voice models.VoiceActor
 	)
 
@@ -84,6 +85,16 @@ func seedAnonymiserData(t *testing.T) func() {
 		if err := db.Audio().Create(ctx, &audio, nil); err != nil {
 			return err
 		}
+		story = models.NewStory()
+		story.Title = "secret-story-title"
+		story.Author = "secret-story-author"
+		story.SourceWebsite = "secret-story-website"
+		story.Details = "secret-story-details"
+		story.Tagline = "secret-story-tagline"
+		story.URLs = models.NewRelatedStrings([]string{"https://secret-story.example/"})
+		if err := db.Story().Create(ctx, &story, nil); err != nil {
+			return err
+		}
 		if err := db.Audio().SetCustomFields(ctx, audio.ID, models.CustomFieldsInput{
 			Full: map[string]interface{}{"personal": anonAudioField},
 		}); err != nil {
@@ -111,6 +122,9 @@ func seedAnonymiserData(t *testing.T) func() {
 				return err
 			}
 			if err := db.Audio().Destroy(ctx, audio.ID); err != nil {
+				return err
+			}
+			if err := db.Story().Destroy(ctx, story.ID); err != nil {
 				return err
 			}
 			return db.User().Destroy(ctx, user.ID)
@@ -235,12 +249,14 @@ func TestAnonymiser_Anonymise(t *testing.T) {
 		anonUsername, anonNotes, anonPassword, anonAPIKey, anonUIConfig,
 		anonAudioTitle, anonAudioDetail, anonAudioCode, anonAudioURL, anonAudioField,
 		anonVoiceName, anonVoiceDetail, anonVoiceAlias, anonVoiceURL,
+		"secret-story-title", "secret-story-author", "secret-story-website",
+		"secret-story-details", "secret-story-tagline", "https://secret-story.example/",
 	}))
 
 	// the structure must survive, or the result is no use for diagnosing anything
 	assert.Equal(t, wantUsers, countRows(t, f.Name(), "users"))
 	assert.Equal(t, wantAudios, countRows(t, f.Name(), "audios"))
-	for _, table := range []string{"users", "user_roles", "audios", "audio_urls", "audio_custom_fields", "voice_actors", "scenes", "performers", "tags"} {
+	for _, table := range []string{"users", "user_roles", "audios", "audio_urls", "audio_custom_fields", "stories", "story_urls", "voice_actors", "scenes", "performers", "tags"} {
 		assert.NotZero(t, countRows(t, f.Name(), table), "%s should still have rows", table)
 	}
 	for _, table := range []string{"user_ui_config", "audios_o_dates", "audios_play_dates", "scenes_o_dates", "scenes_view_dates"} {
