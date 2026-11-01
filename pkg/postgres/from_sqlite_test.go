@@ -88,10 +88,12 @@ func TestMigrateFromSQLite(t *testing.T) {
 	_, err = raw.Exec(`INSERT INTO users (id, username, locked, created_at, updated_at)
  VALUES (10, 'other', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
 	require.NoError(t, err)
-	for _, table := range []string{"images", "galleries", "groups", "audios"} {
+	for _, table := range []string{"images", "galleries", "audios"} {
 		_, err = raw.Exec("INSERT INTO " + table + " (id, created_at, updated_at) VALUES (5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
 		require.NoError(t, err)
 	}
+	_, err = raw.Exec("INSERT INTO groups (id, name, created_at, updated_at) VALUES (5, 'Favorite group', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+	require.NoError(t, err)
 	for table, idColumn := range map[string]string{"scenes": "scene_id", "images": "image_id", "galleries": "gallery_id", "groups": "group_id", "audios": "audio_id"} {
 		_, err = raw.Exec("INSERT INTO " + table + "_user_data (" + idColumn + ", user_id, favorite) VALUES (5, 9, 1), (5, 10, 0)")
 		require.NoError(t, err)
