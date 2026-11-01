@@ -1,13 +1,104 @@
 package scraper
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// Run the test executable as a scraper so these tests need no external interpreter.
+func TestScriptImageOutputProcess(t *testing.T) {
+	output, ok := os.LookupEnv("STASH_TEST_IMAGE_SCRIPT_OUTPUT")
+	if !ok {
+		return
+	}
+	_, _ = io.Copy(io.Discard, os.Stdin)
+	_, _ = io.WriteString(os.Stdout, output)
+	os.Exit(0)
+}
+
+func TestScriptImageOutput(t *testing.T) {
+	exe, err := os.Executable()
+	require.NoError(t, err)
+	command := []string{exe, "-test.run=^TestScriptImageOutputProcess$"}
+	s := scriptFragmentScraper{
+		scriptScraper: scriptScraper{definition: Definition{path: filepath.Join(t.TempDir(), "scraper.yml")}},
+		definition:    ByFragmentDefinition{ActionDefinition: ActionDefinition{Script: command}},
+	}
+	u := scriptURLScraper{
+		scriptScraper: s.scriptScraper,
+		definition:    ByURLDefinition{ActionDefinition: ActionDefinition{Script: command}},
+	}
+
+	for _, tt := range []struct {
+		name    string
+		output  string
+		noMatch bool
+		wantErr bool
+	}{
+		{name: "empty object", output: `{}`, noMatch: true},
+		{name: "empty object with whitespace", output: " \n{ }\n", noMatch: true},
+		{name: "null", output: `null`, noMatch: true},
+		{name: "title", output: `{"title":"Image"}`},
+		{name: "explicit empty title", output: `{"title":""}`},
+		{name: "code", output: `{"code":"ABC"}`},
+		{name: "details", output: `{"details":"Description"}`},
+		{name: "photographer", output: `{"photographer":"Photographer"}`},
+		{name: "date", output: `{"date":"2026-01-01"}`},
+		{name: "urls", output: `{"urls":["https://example.com/image"]}`},
+		{name: "studio", output: `{"studio":{"name":"Studio"}}`},
+		{name: "tags", output: `{"tags":[{"name":"Tag"}]}`},
+		{name: "performers", output: `{"performers":[{"name":"Performer"}]}`},
+		{name: "no output", wantErr: true},
+		{name: "invalid JSON", output: `invalid`, wantErr: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("STASH_TEST_IMAGE_SCRIPT_OUTPUT", tt.output)
+			for _, path := range []string{"image", "fragment", "url"} {
+				t.Run(path, func(t *testing.T) {
+					var got ScrapedContent
+					var err error
+					switch path {
+					case "image":
+						var image *models.ScrapedImage
+						image, err = s.scrapeImageByImage(context.Background(), &models.Image{
+							URLs:  models.NewRelatedStrings([]string{}),
+							Files: models.NewRelatedFiles([]models.File{}),
+						})
+						if image != nil {
+							got = image
+						}
+					case "fragment":
+						got, err = s.scrapeByFragment(context.Background(), Input{Image: &models.ScrapedImageInput{}})
+					case "url":
+						got, err = u.scrapeByURL(context.Background(), "https://example.com/image", ScrapeContentTypeImage)
+					}
+					if tt.wantErr {
+						require.Error(t, err)
+						return
+					}
+					require.NoError(t, err)
+					if tt.noMatch {
+						// Check the interface itself, including typed nil pointers.
+						assert.True(t, got == nil, "expected no image, got %#v", got)
+						return
+					}
+					var want models.ScrapedImage
+					require.NoError(t, json.Unmarshal([]byte(tt.output), &want))
+					assert.Equal(t, &want, got)
+				})
+			}
+		})
+	}
+}
 
 func Test_imageInputFromImage_worksWithMultipleFiles(t *testing.T) {
 

@@ -43,6 +43,7 @@ fragment ScrapedPerformerData on ScrapedPerformer {
   tattoos
   piercings
   aliases
+  alias_list
   tags {
     ...ScrapedSceneTagData
   }
@@ -74,6 +75,7 @@ fragment ScrapedScenePerformerData on ScrapedPerformer {
   tattoos
   piercings
   aliases
+  alias_list
   tags {
     ...ScrapedSceneTagData
   }

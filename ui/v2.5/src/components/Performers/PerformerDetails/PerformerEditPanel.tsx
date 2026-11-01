@@ -224,7 +224,9 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     if (state.disambiguation) {
       formik.setFieldValue("disambiguation", state.disambiguation);
     }
-    if (state.aliases) {
+    if (state.alias_list) {
+      formik.setFieldValue("alias_list", state.alias_list);
+    } else if (state.aliases) {
       formik.setFieldValue(
         "alias_list",
         state.aliases.split(",").map((a) => a.trim())
