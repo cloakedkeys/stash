@@ -149,10 +149,10 @@ type xpathFragmentScraper struct {
 func (s *xpathFragmentScraper) scrapeSceneByScene(ctx context.Context, scene *models.Scene) (*models.ScrapedScene, error) {
 	// construct the URL
 	queryURL := queryURLParametersFromScene(scene)
-	if s.definition.QueryURLReplacements != nil {
-		queryURL.applyReplacements(s.definition.QueryURLReplacements)
+	url, err := constructFragmentURL(queryURL, scene.URLs.List(), s.definition, s.xpathScraper.definition, ScrapeContentTypeScene)
+	if err != nil {
+		return nil, err
 	}
-	url := queryURL.constructURL(s.definition.QueryURL)
 
 	scraper, err := s.getXpathScraper(s.definition.Scraper)
 	if err != nil {
@@ -183,10 +183,10 @@ func (s *xpathFragmentScraper) scrapeByFragment(ctx context.Context, input Input
 
 	// construct the URL
 	queryURL := queryURLParametersFromScrapedScene(scene)
-	if s.definition.QueryURLReplacements != nil {
-		queryURL.applyReplacements(s.definition.QueryURLReplacements)
+	url, err := constructFragmentURL(queryURL, scene.URLs, s.definition, s.xpathScraper.definition, ScrapeContentTypeScene)
+	if err != nil {
+		return nil, err
 	}
-	url := queryURL.constructURL(s.definition.QueryURL)
 
 	scraper, err := s.getXpathScraper(s.definition.Scraper)
 	if err != nil {
@@ -206,10 +206,10 @@ func (s *xpathFragmentScraper) scrapeByFragment(ctx context.Context, input Input
 func (s *xpathFragmentScraper) scrapeGalleryByGallery(ctx context.Context, gallery *models.Gallery) (*models.ScrapedGallery, error) {
 	// construct the URL
 	queryURL := queryURLParametersFromGallery(gallery)
-	if s.definition.QueryURLReplacements != nil {
-		queryURL.applyReplacements(s.definition.QueryURLReplacements)
+	url, err := constructFragmentURL(queryURL, gallery.URLs.List(), s.definition, s.xpathScraper.definition, ScrapeContentTypeGallery)
+	if err != nil {
+		return nil, err
 	}
-	url := queryURL.constructURL(s.definition.QueryURL)
 
 	scraper, err := s.getXpathScraper(s.definition.Scraper)
 	if err != nil {
@@ -229,10 +229,10 @@ func (s *xpathFragmentScraper) scrapeGalleryByGallery(ctx context.Context, galle
 func (s *xpathFragmentScraper) scrapeImageByImage(ctx context.Context, image *models.Image) (*models.ScrapedImage, error) {
 	// construct the URL
 	queryURL := queryURLParametersFromImage(image)
-	if s.definition.QueryURLReplacements != nil {
-		queryURL.applyReplacements(s.definition.QueryURLReplacements)
+	url, err := constructFragmentURL(queryURL, image.URLs.List(), s.definition, s.xpathScraper.definition, ScrapeContentTypeImage)
+	if err != nil {
+		return nil, err
 	}
-	url := queryURL.constructURL(s.definition.QueryURL)
 
 	scraper, err := s.getXpathScraper(s.definition.Scraper)
 	if err != nil {
@@ -282,10 +282,11 @@ var (
 )
 
 type xpathQuery struct {
-	doc       *html.Node
-	scraper   *xpathScraper
-	queryType QueryType
-	url       string
+	doc              *html.Node
+	scraper          *xpathScraper
+	queryType        QueryType
+	url              string
+	preserveNewlines bool
 }
 
 func (q *xpathQuery) getType() QueryType {
@@ -301,6 +302,20 @@ func (q *xpathQuery) getURL() string {
 }
 
 func (q *xpathQuery) runQuery(selector string) ([]string, error) {
+	found, err := q.runQueryWithPositions(selector)
+	if err != nil {
+		return nil, err
+	}
+	var ret []string
+	for _, text := range found {
+		if text != "" {
+			ret = append(ret, text)
+		}
+	}
+	return ret, nil
+}
+
+func (q *xpathQuery) runQueryWithPositions(selector string) ([]string, error) {
 	found, err := htmlquery.QueryAll(q.doc, selector)
 	if err != nil {
 		return nil, fmt.Errorf("selector '%s': parse error: %v", selector, err)
@@ -308,11 +323,13 @@ func (q *xpathQuery) runQuery(selector string) ([]string, error) {
 
 	var ret []string
 	for _, n := range found {
-		// don't add empty strings
-		nodeText := q.nodeText(n)
-		if nodeText != "" {
-			ret = append(ret, q.nodeText(n))
+		text := q.nodeText(n)
+		// Empty text nodes are formatting whitespace, not object values.
+		if n.Type == html.TextNode && text == "" {
+			continue
 		}
+		// Keep empty matches so attributes from the same object stay aligned.
+		ret = append(ret, text)
 	}
 
 	return ret, nil
@@ -332,8 +349,9 @@ func (q *xpathQuery) nodeText(n *html.Node) string {
 	// remove multiple whitespace
 	ret = multiSpaceRE.ReplaceAllString(ret, " ")
 
-	// TODO - make this optional
-	ret = newlineRE.ReplaceAllString(ret, "")
+	if !q.preserveNewlines {
+		ret = newlineRE.ReplaceAllString(ret, "")
+	}
 
 	return ret
 }
@@ -346,5 +364,7 @@ func (q *xpathQuery) subScrape(ctx context.Context, value string) mappedQuery {
 		return nil
 	}
 
-	return q.scraper.getXPathQuery(doc, value)
+	ret := q.scraper.getXPathQuery(doc, value)
+	ret.preserveNewlines = q.preserveNewlines
+	return ret
 }

@@ -105,3 +105,73 @@ func TestQueryURLParametersFromScenePath(t *testing.T) {
 		t.Errorf("filename = %q, want %q", params["filename"], "clip 1.mp4")
 	}
 }
+
+func TestConstructFragmentURL(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		params    queryURLParameters
+		urls      []string
+		fragment  ByFragmentDefinition
+		patterns  []*ByURLDefinition
+		want      string
+		wantError string
+	}{
+		{
+			name:     "no URL patterns required",
+			params:   queryURLParameters{},
+			urls:     []string{"", "https://example.com/page"},
+			fragment: ByFragmentDefinition{QueryURL: "{url}"},
+			want:     "https://example.com/page",
+		},
+		{
+			name:     "legacy fragment URL",
+			params:   queryURLParametersFromScrapedScene(models.ScrapedSceneInput{URL: strPtr("https://example.com/page")}),
+			fragment: ByFragmentDefinition{QueryURL: "{url}"},
+			patterns: []*ByURLDefinition{{URL: []string{"example.com/page"}}},
+			want:     "https://example.com/page",
+		},
+		{
+			name:   "match before URL replacements",
+			params: queryURLParameters{},
+			urls:   []string{"https://other.example/", "https://example.com/page/1"},
+			fragment: ByFragmentDefinition{
+				QueryURL:             "{url}",
+				QueryURLReplacements: queryURLReplacements{"url": {makeReplaceRegex("example.com/page", "api.example.com/item")}},
+			},
+			patterns: []*ByURLDefinition{{URL: []string{"example.com/page"}}},
+			want:     "https://api.example.com/item/1",
+		},
+		{
+			name:   "empty replacement value",
+			params: queryURLParameters{"title": "Title"},
+			fragment: ByFragmentDefinition{
+				QueryURL:             "https://example.com/?q={title}",
+				QueryURLReplacements: queryURLReplacements{"title": {makeReplaceRegex("Title", "")}},
+			},
+			wantError: "missing fields for queryURL: title",
+		},
+		{
+			name:     "braces in a supplied value are not missing fields",
+			params:   queryURLParameters{"title": "A {title}"},
+			fragment: ByFragmentDefinition{QueryURL: "https://example.com/?q={title}"},
+			want:     "https://example.com/?q=A%20{title}",
+		},
+		{
+			name:      "explicitly empty fragment field",
+			params:    queryURLParametersFromScrapedScene(models.ScrapedSceneInput{Title: strPtr("")}),
+			fragment:  ByFragmentDefinition{QueryURL: "https://example.com/?q={title}"},
+			wantError: "missing fields for queryURL: title",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := constructFragmentURL(tc.params, tc.urls, tc.fragment, Definition{SceneByURL: tc.patterns}, ScrapeContentTypeScene)
+			if tc.wantError != "" {
+				if err == nil || err.Error() != tc.wantError {
+					t.Fatalf("error = %v, want %q", err, tc.wantError)
+				}
+			} else if err != nil || got != tc.want {
+				t.Fatalf("URL = %q, error = %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+}

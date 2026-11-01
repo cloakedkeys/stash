@@ -388,12 +388,30 @@ func (s *scriptScraper) scrape(ctx context.Context, command []string, input stri
 		err := s.runScraperScript(ctx, command, input, &movie)
 		return movie, err
 	case ScrapeContentTypeImage:
-		var image *models.ScrapedImage
-		err := s.runScraperScript(ctx, command, input, &image)
-		return image, err
+		image, err := s.scrapeImage(ctx, command, input)
+		if err != nil || image == nil {
+			return nil, err
+		}
+		return image, nil
 	}
 
 	return nil, ErrNotSupported
+}
+
+func (s *scriptScraper) scrapeImage(ctx context.Context, command []string, input string) (*models.ScrapedImage, error) {
+	var image *models.ScrapedImage
+	if err := s.runScraperScript(ctx, command, input, &image); err != nil {
+		return nil, err
+	}
+
+	// Like mapped image scrapers, return no result when no fields or relationships are populated.
+	if image == nil || (image.Title == nil && image.Code == nil && image.Details == nil &&
+		image.Photographer == nil && image.Date == nil && image.Studio == nil &&
+		len(image.URLs) == 0 && len(image.Tags) == 0 && len(image.Performers) == 0) {
+		return nil, nil
+	}
+
+	return image, nil
 }
 
 type scriptNameScraper struct {
@@ -507,11 +525,7 @@ func (s *scriptFragmentScraper) scrapeImageByImage(ctx context.Context, image *m
 		return nil, err
 	}
 
-	var ret *models.ScrapedImage
-
-	err = s.runScraperScript(ctx, s.definition.Script, string(inString), &ret)
-
-	return ret, err
+	return s.scrapeImage(ctx, s.definition.Script, string(inString))
 }
 
 func handleScraperStderr(name string, scraperOutputReader io.ReadCloser) {

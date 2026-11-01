@@ -4,8 +4,29 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 )
+
+func TestJSONPerformerAliasList(t *testing.T) {
+	var c Definition
+	require.NoError(t, yaml.Unmarshal([]byte(`name: Test
+jsonScrapers:
+  performer:
+    performer:
+      Name: name
+      Aliases: legacy
+      AliasList: aliases
+`), &c))
+	p, err := c.JsonScrapers["performer"].scrapePerformer(context.Background(), &jsonQuery{
+		doc: `{"name":"Jane","legacy":"Old alias","aliases":["Alice","Alice, Alina"]}`,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	assert.Equal(t, []string{"Alice", "Alice, Alina"}, p.AliasList)
+	assert.Equal(t, "Old alias", *p.Aliases)
+}
 
 func TestJsonPerformerScraper(t *testing.T) {
 	const yamlStr = `name: Test
