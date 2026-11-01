@@ -255,6 +255,7 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
     try {
       const result = await queryScrapeGroupURL(url);
       if (!result.data?.scrapeGroupURL) {
+        Toast.success("No groups found");
         return;
       }
 

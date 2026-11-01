@@ -64,7 +64,7 @@ fragment SelectTagData on Tag {
   }
 }
 
-# Optimized fragment for tag list page - excludes expensive recursive *_count_all fields
+# Tag list counts recurse only when requested by the list query.
 fragment TagListData on Tag {
   id
   name
@@ -80,8 +80,7 @@ fragment TagListData on Tag {
     updated_at
   }
   image_path
-  # Direct counts only - no recursive depth queries
-  scene_count
+  scene_count(depth: $sceneCountDepth)
   audio_count
   scene_marker_count
   image_count

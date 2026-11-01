@@ -901,12 +901,26 @@ var tagSortOptions = sortOptions{
 	"random",
 	"scene_markers_count",
 	"scenes_count",
+	"scenes_count_all",
 	"scenes_duration",
 	"scenes_size",
 	"audios_count",
 	"audios_duration",
 	"audios_size",
 	"updated_at",
+}
+
+func (qb *TagStore) sortByScenesCountAll(direction string) string {
+	return fmt.Sprintf(` ORDER BY (
+		WITH RECURSIVE sub_tags AS (
+			SELECT t.id FROM tags t WHERE t.id = tags.id
+			UNION
+			SELECT tr.child_id FROM tags_relations tr
+			INNER JOIN sub_tags st ON tr.parent_id = st.id
+		)
+		SELECT COUNT(DISTINCT scene_id) FROM scenes_tags
+		WHERE tag_id IN (SELECT id FROM sub_tags)
+	) %s`, getSortDirection(direction))
 }
 
 func (qb *TagStore) sortByScenesDuration(direction string) string {
@@ -980,6 +994,8 @@ func (qb *TagStore) getTagSort(ctx context.Context, query *queryBuilder, findFil
 		sortQuery += fmt.Sprintf(" ORDER BY COALESCE(tags.sort_name, tags.name) COLLATE \"natural_ci\" %s", getSortDirection(direction))
 	case "scenes_count":
 		sortQuery += getCountSort(tagTable, scenesTagsTable, tagIDColumn, direction)
+	case "scenes_count_all":
+		sortQuery += qb.sortByScenesCountAll(direction)
 	case "scenes_duration":
 		sortQuery += qb.sortByScenesDuration(direction)
 	case "scenes_size":

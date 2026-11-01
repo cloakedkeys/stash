@@ -457,6 +457,7 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     try {
       const result = await queryScrapePerformerURL(url);
       if (!result.data?.scrapePerformerURL) {
+        Toast.success("No performers found");
         return;
       }
 

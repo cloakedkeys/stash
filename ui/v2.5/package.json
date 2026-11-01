@@ -10,7 +10,7 @@
     "start": "vite",
     "build": "vite build",
     "build-ci": "pnpm run validate && pnpm run build",
-    "test": "vitest run src/models/audioQueue.test.ts",
+    "test": "vitest run src/models/audioQueue.test.ts src/core/tagList.test.ts",
     "validate": "pnpm run lint && pnpm run check && pnpm run format-check",
     "lint": "pnpm run lint:js && pnpm run lint:css",
     "lint:css": "stylelint --cache \"src/**/*.scss\"",
