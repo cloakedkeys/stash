@@ -77,6 +77,16 @@ Saved filters are sorted alphabetically by title with capitalized titles sorted 
 
 The default filter for the top-level pages may be set to the current filter by clicking the `Set as default` button in the `Saved filters` section of the filter sidebar. An existing saved filter may be made the default by selecting `Set as default` from its operations menu.
 
+## Performer images
+
+The performer page shows the main image and any other images. Select an image to open the lightbox and browse all of them. Other images load in pages of 12.
+
+If you can edit performers, use **Add performer image** to add a URL or select one or more files. Files are added one at a time; a failed file shows an error and the remaining files continue. Use **Make main image** to swap an image with the current main image. The previous main image takes its place among the others. The main image is also used on performer cards.
+
+Use the left and right buttons to reorder the other images, or **Remove** to remove one after confirmation.
+
+The **Images** tab still shows library images. Its **Set as performer image** action replaces the main image without saving the old main image among the others.
+
 ## Reveal file in file manager
 
 The `Reveal in file manager` action is available for file-based scenes, galleries and images in the `File Info` tab. This action will open the file manager to the location of the file on disk. The file will be selected if supported by the file manager.

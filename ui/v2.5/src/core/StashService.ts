@@ -2462,12 +2462,62 @@ export const usePerformerCreate = () =>
 
 export const usePerformerUpdate = () =>
   GQL.usePerformerUpdateMutation({
-    update(cache, result) {
+    update(cache, result, { variables }) {
       if (!result.data?.performerUpdate) return;
 
+      // Replacing the main portrait can also remove a duplicate alternate.
+      if (variables?.input.image !== undefined) {
+        cache.evict({
+          id: cache.identify(result.data.performerUpdate),
+          fieldName: "alternate_images",
+        });
+      }
       evictTypeFields(cache, performerMutationImpactedTypeFields);
       evictQueries(cache, performerMutationImpactedQueries);
     },
+  });
+
+// The mutation response updates the normalized main image used by headers and
+// cards. Only detail queries fetch alternates, after their cached field expires.
+function performerImagesUpdated(
+  cache: ApolloCache<unknown>,
+  performer: { __typename?: "Performer"; id: string } | null | undefined
+) {
+  if (!performer) return;
+  cache.evict({ id: cache.identify(performer), fieldName: "alternate_images" });
+  evictQueries(cache, [GQL.FindPerformersDocument]);
+}
+
+export const usePerformerImageAdd = () =>
+  GQL.usePerformerImageAddMutation({
+    update: (cache, result) =>
+      performerImagesUpdated(cache, result.data?.performerImageAdd),
+    refetchQueries: [GQL.FindPerformerDocument],
+    awaitRefetchQueries: true,
+  });
+
+export const usePerformerImageRemove = () =>
+  GQL.usePerformerImageRemoveMutation({
+    update: (cache, result) =>
+      performerImagesUpdated(cache, result.data?.performerImageRemove),
+    refetchQueries: [GQL.FindPerformerDocument],
+    awaitRefetchQueries: true,
+  });
+
+export const usePerformerImageSetPrimary = () =>
+  GQL.usePerformerImageSetPrimaryMutation({
+    update: (cache, result) =>
+      performerImagesUpdated(cache, result.data?.performerImageSetPrimary),
+    refetchQueries: [GQL.FindPerformerDocument],
+    awaitRefetchQueries: true,
+  });
+
+export const usePerformerImagesReorder = () =>
+  GQL.usePerformerImagesReorderMutation({
+    update: (cache, result) =>
+      performerImagesUpdated(cache, result.data?.performerImagesReorder),
+    refetchQueries: [GQL.FindPerformerDocument],
+    awaitRefetchQueries: true,
   });
 
 export const usePerformerUserDataUpdate = () =>

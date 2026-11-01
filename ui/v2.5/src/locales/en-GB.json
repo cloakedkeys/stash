@@ -1502,6 +1502,17 @@
     "update": "Update",
     "version": "Version"
   },
+  "performer_portraits": {
+    "title": "Performer images",
+    "saving": "Saving performer images…",
+    "add": "Add performer image",
+    "make_main": "Make main image",
+    "move_left": "Move image left",
+    "move_right": "Move image right",
+    "image": "{name}: other image {number}",
+    "confirm_remove": "Remove this image from the performer?",
+    "file_error": "Could not add {name}: {error}"
+  },
   "pagination": {
     "current_total": "{current} of {total}",
     "first": "First",
