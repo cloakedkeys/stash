@@ -4,7 +4,7 @@ This is a private copy of Stash. The default branch is `develop`. Agents read th
 
 ## Who does what
 
-One agent writes and another reviews. The reviewer reads the diff and reports findings. It doesn't edit unless explicitly asked.
+One agent writes and another reviews. Usually Codex writes and Claude reviews, and several Claude sessions may be working at once. The reviewer reads the diff and reports findings. It doesn't edit unless explicitly asked.
 
 - Each piece of work has its own branch and its own worktree. Never edit a worktree another agent is using.
 - Keep context where the next agent can find it: commit messages, PR descriptions, and review comments on the PR.
