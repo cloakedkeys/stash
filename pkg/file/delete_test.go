@@ -158,7 +158,7 @@ func TestDeleter_RenameForDeleteOtherError(t *testing.T) {
 	want := &os.LinkError{Op: "rename", Old: "video.mp4", New: "video.mp4.delete", Err: fs.ErrPermission}
 	rr.RenameFn = func(_, _ string) error { return want }
 	d.RenamerRemover = rr
-	if err := d.renameForDelete("video.mp4", false); err != want {
+	if err := d.renameForDelete("video.mp4", false); !errors.Is(err, want) {
 		t.Errorf("expected unchanged permission error, got %v", err)
 	}
 }
