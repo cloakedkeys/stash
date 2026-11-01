@@ -1,3 +1,5 @@
+import { FavoriteIcon } from "../Shared/FavoriteIcon";
+import { useImageUserDataUpdate } from "src/core/StashService";
 import React, { MouseEvent, useMemo } from "react";
 import { Button, ButtonGroup } from "react-bootstrap";
 import cx from "classnames";
@@ -148,11 +150,23 @@ const ImageCardDetails = PatchComponent(
 const ImageCardOverlays = PatchComponent(
   "ImageCard.Overlays",
   (props: IImageCardProps) => {
-    const ret = useMemo(() => {
-      return (
+    const [setUserData] = useImageUserDataUpdate();
+    const ret = (
+      <>
+        <FavoriteIcon
+          favorite={props.image.favorite}
+          onToggleFavorite={(favorite) => {
+            setUserData({
+              variables: { input: { id: props.image.id, favorite } },
+            });
+          }}
+          size="2x"
+          className="hide-not-favorite"
+        />
+
         <StudioOverlay studio={props.image.studio} disabled={props.selecting} />
-      );
-    }, [props.image.studio, props.selecting]);
+      </>
+    );
 
     return ret;
   }

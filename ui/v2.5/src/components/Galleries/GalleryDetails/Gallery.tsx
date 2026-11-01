@@ -1,3 +1,4 @@
+import { FavoriteIcon } from "src/components/Shared/FavoriteIcon";
 import { Button, Tab, Nav, Dropdown } from "react-bootstrap";
 import React, { useEffect, useMemo, useState } from "react";
 import { useHistory, RouteComponentProps, Redirect } from "react-router-dom";
@@ -496,6 +497,14 @@ export const GalleryPage: React.FC<IProps> = ({ gallery, add }) => {
 
           <div className="gallery-toolbar">
             <span className="gallery-toolbar-group">
+              <FavoriteIcon
+                favorite={gallery.favorite}
+                onToggleFavorite={(favorite) => {
+                  setGalleryUserData({
+                    variables: { input: { id: gallery.id, favorite } },
+                  }).catch(Toast.error);
+                }}
+              />
               <RatingSystem
                 value={gallery.rating100}
                 onSetRating={setRating}

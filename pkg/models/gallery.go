@@ -1,6 +1,7 @@
 package models
 
 type GalleryFilterType struct {
+	Favorite *bool `json:"favorite"`
 	OperatorFilter[GalleryFilterType]
 	ID           *IntCriterionInput    `json:"id"`
 	Title        *StringCriterionInput `json:"title"`
@@ -81,6 +82,7 @@ type GalleryFilterType struct {
 }
 
 type GalleryUpdateInput struct {
+	Favorite         *bool    `json:"favorite"`
 	ClientMutationID *string  `json:"clientMutationId"`
 	ID               string   `json:"id"`
 	Title            *string  `json:"title"`

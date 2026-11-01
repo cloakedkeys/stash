@@ -1,4 +1,5 @@
 fragment SlimGalleryData on Gallery {
+  favorite
   id
   title
   code

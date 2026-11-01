@@ -1,4 +1,5 @@
 fragment SceneData on Scene {
+  favorite
   voice_actors {
     id
     name

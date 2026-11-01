@@ -1,3 +1,4 @@
+import { FavoriteStudioCriterionOption } from "./criteria/favorite";
 import {
   createMandatoryNumberCriterionOption,
   createMandatoryStringCriterionOption,
@@ -49,6 +50,7 @@ const sortByOptions = [
 ]
   .map(ListFilterOptions.createSortBy)
   .concat([
+    { messageID: "favourite", value: "favorite" },
     {
       messageID: "o_count",
       value: "o_counter",
@@ -79,6 +81,7 @@ export const AudioDurationCriterionOption =
   createDurationCriterionOption("duration");
 
 const criterionOptions = [
+  FavoriteStudioCriterionOption,
   createStringCriterionOption("title"),
   createStringCriterionOption("code", "audio_code"),
   PathCriterionOption,

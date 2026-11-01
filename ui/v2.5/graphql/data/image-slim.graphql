@@ -1,4 +1,5 @@
 fragment SlimImageData on Image {
+  favorite
   id
   title
   code

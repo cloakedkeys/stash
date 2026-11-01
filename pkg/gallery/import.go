@@ -86,6 +86,8 @@ func (i *Importer) galleryJSONToGallery(galleryJSON jsonschema.Gallery) models.G
 			newGallery.Date = &d
 		}
 	}
+	newGallery.Favorite = galleryJSON.Favorite
+
 	if galleryJSON.Rating != 0 {
 		newGallery.Rating = &galleryJSON.Rating
 	}

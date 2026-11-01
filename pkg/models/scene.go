@@ -27,6 +27,7 @@ type FileDuplicationCriterionInput struct {
 }
 
 type SceneFilterType struct {
+	Favorite *bool `json:"favorite"`
 	OperatorFilter[SceneFilterType]
 	ID       *IntCriterionInput    `json:"id"`
 	Title    *StringCriterionInput `json:"title"`
@@ -176,6 +177,7 @@ type SceneGroupInput struct {
 }
 
 type SceneCreateInput struct {
+	Favorite       *bool             `json:"favorite"`
 	Title          *string           `json:"title"`
 	Code           *string           `json:"code"`
 	Details        *string           `json:"details"`
@@ -204,6 +206,7 @@ type SceneCreateInput struct {
 }
 
 type SceneUpdateInput struct {
+	Favorite         *bool             `json:"favorite"`
 	ClientMutationID *string           `json:"clientMutationId"`
 	ID               string            `json:"id"`
 	Title            *string           `json:"title"`

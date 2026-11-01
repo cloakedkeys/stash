@@ -1,5 +1,7 @@
+import { FavoriteIcon } from "../Shared/FavoriteIcon";
+import { useGalleryUserDataUpdate } from "src/core/StashService";
 import { Button, ButtonGroup, OverlayTrigger, Tooltip } from "react-bootstrap";
-import React, { MouseEvent, useMemo, useState } from "react";
+import React, { MouseEvent, useState } from "react";
 import * as GQL from "src/core/generated-graphql";
 import { GridCard } from "../Shared/GridCard/GridCard";
 import { HoverPopover } from "../Shared/HoverPopover";
@@ -215,14 +217,26 @@ const GalleryCardDetails = React.memo(
 
 const GalleryCardOverlays = React.memo(
   PatchComponent("GalleryCard.Overlays", (props: IGalleryCardProps) => {
-    const ret = useMemo(() => {
-      return (
+    const [setUserData] = useGalleryUserDataUpdate();
+    const ret = (
+      <>
+        <FavoriteIcon
+          favorite={props.gallery.favorite}
+          onToggleFavorite={(favorite) => {
+            setUserData({
+              variables: { input: { id: props.gallery.id, favorite } },
+            });
+          }}
+          size="2x"
+          className="hide-not-favorite"
+        />
+
         <StudioOverlay
           studio={props.gallery.studio}
           disabled={props.selecting}
         />
-      );
-    }, [props.gallery.studio, props.selecting]);
+      </>
+    );
 
     return ret;
   })
