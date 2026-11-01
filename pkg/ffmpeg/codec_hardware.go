@@ -62,6 +62,7 @@ func (f *FFMpeg) InitHWSupport(ctx context.Context) {
 
 func (f *FFMpeg) initHWSupport(ctx context.Context) {
 	var hwCodecSupport []VideoCodec
+	var failures []string
 
 	// Note that the first compatible codec is returned, so order is important
 	for _, codec := range []VideoCodec{
@@ -117,7 +118,9 @@ func (f *FFMpeg) initHWSupport(ctx context.Context) {
 
 		if err := cmd.Run(); err != nil {
 			if testCtx.Err() != nil {
-				logger.Debugf("[InitHWSupport] Codec %s test timed out after %s", codec, hwTestTimeout)
+				message := fmt.Sprintf("[InitHWSupport] Codec %s test timed out after %s", codec, hwTestTimeout)
+				logger.Debug(message)
+				failures = append(failures, message)
 				continue
 			}
 
@@ -127,7 +130,9 @@ func (f *FFMpeg) initHWSupport(ctx context.Context) {
 				errOutput = err.Error()
 			}
 
-			logger.Debugf("[InitHWSupport] Codec %s not supported. Error output:\n%s", codec, errOutput)
+			message := fmt.Sprintf("[InitHWSupport] Codec %s not supported. Error output:\n%s", codec, errOutput)
+			logger.Debug(message)
+			failures = append(failures, message)
 		} else {
 			hwCodecSupport = append(hwCodecSupport, codec)
 		}
@@ -138,6 +143,12 @@ func (f *FFMpeg) initHWSupport(ctx context.Context) {
 		outstr += fmt.Sprintf("\t%s - %s\n", codec.Name, codec.CodeName)
 	}
 	logger.Info(outstr)
+	// If no hardware encoder works, expose the reasons without requiring Debug logs.
+	if len(hwCodecSupport) == 0 {
+		for _, message := range failures {
+			logger.Info(message)
+		}
+	}
 
 	f.hwCodecSupportMutex.Lock()
 	defer f.hwCodecSupportMutex.Unlock()

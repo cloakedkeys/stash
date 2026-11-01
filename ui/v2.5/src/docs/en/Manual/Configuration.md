@@ -121,7 +121,16 @@ Setting this to `0` indicates there is no maximum.
 
 ## Hardware accelerated live transcoding
 
-Hardware accelerated live transcoding can be enabled by setting the `FFmpeg hardware encoding` setting. Stash outputs the supported hardware encoders to the log file on startup at the Info log level. If a given hardware encoder is not supported, it's error message is logged to the Debug log level for debugging purposes.
+Hardware accelerated live transcoding can be enabled by setting the `FFmpeg hardware encoding` setting. Stash outputs the supported hardware encoders to the log file on startup at the Info log level. If no hardware encoders are supported, Stash also logs each encoder's failure reason at Info, including FFmpeg error output or probe timeouts. Otherwise, failure reasons for unsupported encoders are logged at Debug.
+
+On Linux, systemd device sandboxing can prevent VAAPI from accessing the GPU even when encoding works outside the service. If the service uses `DevicePolicy=closed`, allow the DRM device class with the following service setting:
+
+```ini
+[Service]
+DeviceAllow=char-drm rw
+```
+
+A single `/dev/dri` path grant may not cover all the DRM nodes needed by the driver, particularly with SR-IOV virtual functions exposing both `card*` and `renderD*` nodes. Check the service's device rules if the startup log reports `No VA display found`.
 
 ## HLS/DASH streaming
 

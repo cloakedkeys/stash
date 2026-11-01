@@ -14,6 +14,7 @@ import { useTableColumns } from "src/hooks/useTableColumns";
 import cx from "classnames";
 import { IColumn, ListTable } from "../List/ListTable";
 import { RatingSystem } from "../Shared/Rating/RatingSystem";
+import { useConfigurationContext } from "src/hooks/Config";
 
 interface ITagListTableProps {
   tags: GQL.TagListDataFragment[];
@@ -30,6 +31,7 @@ export const TagListTable: React.FC<ITagListTableProps> = (
   props: ITagListTableProps
 ) => {
   const intl = useIntl();
+  const { configuration } = useConfigurationContext();
 
   const [setTagUserData] = useTagUserDataUpdate();
 
@@ -105,7 +107,12 @@ export const TagListTable: React.FC<ITagListTableProps> = (
   );
 
   const SceneCountCell = (tag: GQL.TagListDataFragment) => (
-    <Link to={NavUtils.makeTagScenesUrl(tag)}>
+    <Link
+      to={NavUtils.makeTagScenesUrl(
+        tag,
+        configuration?.ui.showChildTagContent ? -1 : 0
+      )}
+    >
       <span>{tag.scene_count}</span>
     </Link>
   );
