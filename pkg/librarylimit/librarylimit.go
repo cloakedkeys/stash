@@ -28,6 +28,7 @@ const (
 	Studios
 	Groups
 	VoiceActors
+	Stories
 )
 
 var tables = map[Kind]string{
@@ -35,6 +36,7 @@ var tables = map[Kind]string{
 	Images:       "images",
 	Galleries:    "galleries",
 	Audios:       "audios",
+	Stories:      "stories",
 	SceneMarkers: "scene_markers",
 	Performers:   "performers",
 	Tags:         "tags",
@@ -158,6 +160,12 @@ func visibleScenes(l *models.LibraryLimit) string {
 	return content(l, "scenes", "scene_id", "scenes_files", "scenes_tags")
 }
 
+func visibleStories(l *models.LibraryLimit) string {
+	copyLimit := *l
+	copyLimit.StudioIDs = nil
+	return content(&copyLimit, "stories", "story_id", "stories_files", "stories_tags")
+}
+
 func visibleAudios(l *models.LibraryLimit) string {
 	return content(l, "audios", "audio_id", "audios_files", "audios_tags")
 }
@@ -229,6 +237,7 @@ func visibleTags(l *models.LibraryLimit) string {
 		fmt.Sprintf(`SELECT "tag_id" FROM "images_tags" WHERE "image_id" IN (%s)`, visibleImages(l)),
 		fmt.Sprintf(`SELECT "tag_id" FROM "galleries_tags" WHERE "gallery_id" IN (%s)`, visibleGalleries(l)),
 		fmt.Sprintf(`SELECT "tag_id" FROM "audios_tags" WHERE "audio_id" IN (%s)`, visibleAudios(l)),
+		fmt.Sprintf(`SELECT "tag_id" FROM "stories_tags" WHERE "story_id" IN (%s)`, visibleStories(l)),
 		fmt.Sprintf(`SELECT "primary_tag_id" FROM "scene_markers" WHERE "id" IN (%s)`, visibleSceneMarkers(l)),
 		fmt.Sprintf(`SELECT "tag_id" FROM "scene_markers_tags" WHERE "scene_marker_id" IN (%s)`, visibleSceneMarkers(l)),
 		fmt.Sprintf(`SELECT "tag_id" FROM "performers_tags" WHERE "performer_id" IN (%s)`, visiblePerformers(l)),
@@ -250,6 +259,8 @@ func visible(l *models.LibraryLimit, kind Kind) string {
 		return visibleImages(l)
 	case Galleries:
 		return visibleGalleries(l)
+	case Stories:
+		return visibleStories(l)
 	case Audios:
 		return visibleAudios(l)
 	case SceneMarkers:

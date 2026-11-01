@@ -299,8 +299,10 @@ func TestResetKeepsAccounts(t *testing.T) {
 	db := NewDatabase()
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())
-		_, err := admin.Exec("DROP DATABASE " + name + " WITH (FORCE)")
-		require.NoError(t, err)
+		dropTestDatabase(t, name, func() error {
+			_, err := admin.Exec("DROP DATABASE " + name + " WITH (FORCE)")
+			return err
+		})
 		require.NoError(t, admin.Close())
 	})
 	require.NoError(t, db.Open(ctx, u.String()))

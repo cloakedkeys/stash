@@ -1,15 +1,20 @@
 package utils
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/stashapp/stash/pkg/logger"
 )
 
 // Timeout to get the image. Includes transfer time. May want to make this
@@ -45,9 +50,9 @@ func ProcessImageInput(ctx context.Context, imageInput string) ([]byte, error) {
 	return d, nil
 }
 
-// validateImageData rejects HTML content, which is not a valid image and would
-// execute as a document if served back to a browser. SVG (detected as XML or
-// plain text) is still accepted and sandboxed on output by ServeImage.
+var errNonSVGImageText = errors.New("image text must have an <svg> root element")
+
+// validateImageData rejects HTML and non-SVG text. Binary formats are left alone.
 func validateImageData(data []byte) error {
 	if len(data) == 0 {
 		return nil
@@ -56,6 +61,36 @@ func validateImageData(data []byte) error {
 	contentType := http.DetectContentType(data)
 	if strings.HasPrefix(contentType, "text/html") {
 		return fmt.Errorf("unsupported image content type %q", contentType)
+	}
+	if contentType == "text/plain; charset=utf-8" || contentType == "text/xml; charset=utf-8" {
+		// Attribute text may use the declared encoding. Replace invalid UTF-8
+		// only in the parser's input, since attribute values do not affect the root name.
+		text := bytes.ToValidUTF8(bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf}), []byte("\uFFFD"))
+		decoder := xml.NewDecoder(bytes.NewReader(text))
+		// Only the root name matters; leave declared encodings and image bytes alone.
+		decoder.CharsetReader = func(_ string, input io.Reader) (io.Reader, error) {
+			return input, nil
+		}
+		for {
+			token, err := decoder.RawToken()
+			if err != nil {
+				return fmt.Errorf("%w (%s): %v", errNonSVGImageText, contentType, err)
+			}
+			switch token := token.(type) {
+			case xml.StartElement:
+				if token.Name.Local == "svg" {
+					return nil
+				}
+				return fmt.Errorf("%w (%s)", errNonSVGImageText, contentType)
+			case xml.CharData:
+				if len(bytes.TrimSpace(token)) != 0 {
+					return fmt.Errorf("%w (%s)", errNonSVGImageText, contentType)
+				}
+			}
+		}
+	}
+	if strings.HasPrefix(contentType, "text/") {
+		return fmt.Errorf("%w (%s)", errNonSVGImageText, contentType)
 	}
 
 	return nil
@@ -128,6 +163,19 @@ func ProcessBase64Image(imageString string) ([]byte, error) {
 	}
 
 	return imageData, nil
+}
+
+// ProcessBase64ImageForImport skips text images accepted by older versions so
+// restoring an old backup still keeps the object's other metadata.
+// A skipped image returns nil data and no error.
+// Existing base64 and HTML errors continue to be reported to the importer.
+func ProcessBase64ImageForImport(imageString string) ([]byte, error) {
+	data, err := ProcessBase64Image(imageString)
+	if errors.Is(err, errNonSVGImageText) {
+		logger.Warnf("Skipping image during metadata import: %v", err)
+		return nil, nil
+	}
+	return data, err
 }
 
 // GetDataFromBase64String returns the given base64 encoded string as a byte slice

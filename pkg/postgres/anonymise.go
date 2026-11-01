@@ -44,6 +44,11 @@ func (db *Anonymiser) FetchAll(ctx context.Context) error {
 	for _, table := range []exp.IdentifierExpression{
 		goqu.I(audioFileTable),
 		goqu.I(audioTable),
+		goqu.I(storyTable),
+		goqu.I(storiesFilesTable),
+		goqu.I(storiesTagsTable),
+		goqu.I(storiesURLsTable),
+		goqu.I(storiesUserDataTable),
 		goqu.I(audiosCustomFieldsTable.GetTable()),
 		goqu.I(audiosFilesTable),
 		goqu.I(audiosGalleriesTable),

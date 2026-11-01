@@ -63,9 +63,9 @@ var names = []string{
 	"name2",
 }
 
-var imageBytes = []byte("imageBytes")
+var imageBytes = []byte(`<svg><title>imageBytes</title></svg>`)
 
-const imageBase64 = "aW1hZ2VCeXRlcw=="
+const imageBase64 = "PHN2Zz48dGl0bGU+aW1hZ2VCeXRlczwvdGl0bGU+PC9zdmc+"
 
 const (
 	path = "path"

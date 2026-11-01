@@ -61,7 +61,7 @@ var (
 	}
 )
 
-var imageBytes = []byte("imageBytes")
+var imageBytes = []byte(`<svg><title>imageBytes</title></svg>`)
 
 var stashID = models.StashID{
 	StashID:  "StashID",
@@ -71,7 +71,7 @@ var stashIDs = []models.StashID{
 	stashID,
 }
 
-const image = "aW1hZ2VCeXRlcw=="
+const image = "PHN2Zz48dGl0bGU+aW1hZ2VCeXRlczwvdGl0bGU+PC9zdmc+"
 
 var birthDate, _ = models.ParseDate("2001-01-01")
 var deathDate, _ = models.ParseDate("2021-02-02")
