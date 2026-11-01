@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18
         env:
           POSTGRES_USER: username
           POSTGRES_PASSWORD: password
@@ -45,14 +45,14 @@ jobs:
     - name: Install plperl in postgres container
       run: |
         docker exec postgres-db apt-get update
-        docker exec postgres-db apt-get install -y postgresql-plperl-17
+        docker exec postgres-db apt-get install -y postgresql-plperl-18
 
     # backup tests run pg_dump and pg_restore, which must be as new as the server
     - name: Install PostgreSQL client tools
       run: |
         sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-        sudo apt-get install -y postgresql-client-17
-        echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+        sudo apt-get install -y postgresql-client-18
+        echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
 
     # one package at a time, since they share the database
     - name: Test

@@ -6,10 +6,19 @@ Stash keeps its library in an SQLite file by default. It can use a PostgreSQL se
 
 ## What the server needs
 
-- PostgreSQL 17 is the version Stash is tested with.
-- The `plperl` extension. On Debian and Ubuntu it is the `postgresql-plperl-17` package. Stash creates the extension itself, so its account must be allowed to: the owner of the database can, since `plperl` is a trusted extension.
+- PostgreSQL 18 is the version Stash is tested with.
+- The `plperl` extension. On Debian and Ubuntu it is the `postgresql-plperl-18` package, from the [PostgreSQL project's apt repository](https://www.postgresql.org/download/linux/debian/) if your system doesn't include version 18. Stash creates the extension itself, so its account must be allowed to: the owner of the database can, since `plperl` is a trusted extension.
 - ICU support, which PostgreSQL packages and the official Docker images include.
 - An empty database, owned by the account Stash connects with.
+- Permission for that account to change the `session_replication_role` setting, which Stash does every time it starts. Superuser accounts already have it, including the one the Docker example below creates.
+
+To create the account and database, run these as a PostgreSQL superuser. On Linux that is usually the `postgres` system user. Elsewhere, add `-U` and the superuser's name to each command, and `-h` and the address for a server on another computer.
+
+```shell
+createuser --pwprompt stash
+createdb -E UTF8 -T template0 -O stash stash
+psql -c "GRANT SET ON PARAMETER session_replication_role TO stash"
+```
 
 Backups and database upgrades also need `pg_dump` and `pg_restore` on the computer that runs Stash, at least as new as the database server. The Stash Docker images include them. Without them, upgrades go ahead with a warning and no backup.
 
@@ -34,9 +43,9 @@ services:
     # the official postgres image doesn't include plperl, so add it
     build:
       dockerfile_inline: |
-        FROM postgres:17
+        FROM postgres:18
         RUN apt-get update \
-          && apt-get install -y --no-install-recommends postgresql-plperl-17 \
+          && apt-get install -y --no-install-recommends postgresql-plperl-18 \
           && rm -rf /var/lib/apt/lists/*
     restart: unless-stopped
     environment:
@@ -44,12 +53,13 @@ services:
       POSTGRES_PASSWORD: change-me
       POSTGRES_DB: stash
     volumes:
-      - ./pgdata:/var/lib/postgresql/data
+      - ./pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U stash -d stash"]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 60s
   stash:
     # an image built from this version of Stash; stashapp/stash doesn't support PostgreSQL
     image: stash-local/build:v0.32.1
