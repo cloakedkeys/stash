@@ -1,3 +1,4 @@
+import { useListOperationShortcuts } from "../List/keyboardShortcuts";
 import React, { useCallback, useEffect } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import cloneDeep from "lodash-es/cloneDeep";
@@ -270,24 +271,7 @@ export const FilteredGroupList = PatchComponent(
       setShowSidebar,
     });
 
-    useEffect(() => {
-      Mousetrap.bind("e", () => {
-        if (hasSelection) {
-          onEdit?.();
-        }
-      });
-
-      Mousetrap.bind("d d", () => {
-        if (hasSelection) {
-          onDelete?.();
-        }
-      });
-
-      return () => {
-        Mousetrap.unbind("e");
-        Mousetrap.unbind("d d");
-      };
-    });
+    useListOperationShortcuts({ hasSelection, onEdit, onDelete });
 
     const onCloseEditDelete = useCloseEditDelete({
       closeModal,

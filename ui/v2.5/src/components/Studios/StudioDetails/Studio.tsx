@@ -1,3 +1,7 @@
+import {
+  PageListShortcutsContext,
+  usePageListShortcuts,
+} from "../../List/keyboardShortcuts";
 import { useCanModify } from "src/hooks/CurrentUser";
 import { Tabs, Tab, Form } from "react-bootstrap";
 import React, { useEffect, useMemo, useState } from "react";
@@ -373,22 +377,18 @@ const StudioPage: React.FC<IProps> = PatchComponent(
 
     const canModify = useCanModify();
 
+    const pageListShortcuts = usePageListShortcuts({
+      onEdit: canModify ? () => toggleEditing() : undefined,
+      onDelete: canModify ? () => setIsDeleteAlertOpen(true) : undefined,
+      onFavorite: () => setFavorite(!studio.favorite),
+    });
+
     // set up hotkeys
     useEffect(() => {
-      if (canModify) {
-        Mousetrap.bind("e", () => toggleEditing());
-        Mousetrap.bind("d d", () => {
-          setIsDeleteAlertOpen(true);
-        });
-      }
       Mousetrap.bind(",", () => setCollapsed(!collapsed));
-      Mousetrap.bind("f", () => setFavorite(!studio.favorite));
 
       return () => {
-        Mousetrap.unbind("e");
-        Mousetrap.unbind("d d");
         Mousetrap.unbind(",");
-        Mousetrap.unbind("f");
       };
     });
 
@@ -595,12 +595,14 @@ const StudioPage: React.FC<IProps> = PatchComponent(
           <div className="studio-body">
             <div className="studio-tabs">
               {!isEditing && (
-                <StudioTabs
-                  studio={studio}
-                  tabKey={tabKey}
-                  abbreviateCounter={abbreviateCounter}
-                  showAllCounts={showAllCounts}
-                />
+                <PageListShortcutsContext.Provider value={pageListShortcuts}>
+                  <StudioTabs
+                    studio={studio}
+                    tabKey={tabKey}
+                    abbreviateCounter={abbreviateCounter}
+                    showAllCounts={showAllCounts}
+                  />
+                </PageListShortcutsContext.Provider>
               )}
             </div>
           </div>

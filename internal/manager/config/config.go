@@ -259,6 +259,7 @@ const (
 	ImageLightboxScaleUp                    = "image_lightbox.scale_up"
 	ImageLightboxResetZoomOnNav             = "image_lightbox.reset_zoom_on_nav"
 	ImageLightboxScrollModeKey              = "image_lightbox.scroll_mode"
+	ImageLightboxScrollToChangeImage        = "image_lightbox.scroll_to_change_image"
 	ImageLightboxScrollAttemptsBeforeChange = "image_lightbox.scroll_attempts_before_change"
 	ImageLightboxDisableAnimation           = "image_lightbox.disable_animation"
 
@@ -1539,7 +1540,8 @@ func (i *Config) GetImageLightboxOptions() ConfigImageLightboxResult {
 	delay := i.getSlideshowDelay()
 
 	ret := ConfigImageLightboxResult{
-		SlideshowDelay: &delay,
+		SlideshowDelay:      &delay,
+		ScrollToChangeImage: true,
 	}
 
 	if v := i.with(ImageLightboxDisplayModeKey); v != nil {
@@ -1557,6 +1559,9 @@ func (i *Config) GetImageLightboxOptions() ConfigImageLightboxResult {
 	if v := i.with(ImageLightboxScrollModeKey); v != nil {
 		mode := ImageLightboxScrollMode(v.String(ImageLightboxScrollModeKey))
 		ret.ScrollMode = &mode
+	}
+	if v := i.with(ImageLightboxScrollToChangeImage); v != nil {
+		ret.ScrollToChangeImage = v.Bool(ImageLightboxScrollToChangeImage)
 	}
 	if v := i.with(ImageLightboxScrollAttemptsBeforeChange); v != nil {
 		ret.ScrollAttemptsBeforeChange = v.Int(ImageLightboxScrollAttemptsBeforeChange)

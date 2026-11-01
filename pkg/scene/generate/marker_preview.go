@@ -85,9 +85,7 @@ type sceneMarkerOptions struct {
 
 func (g Generator) markerPreviewVideo(path string, width, height int, codec ffmpeg.VideoCodec, fullhw bool, options sceneMarkerOptions) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
-		targetHeight := ffmpeg.ScaledShortSide(width, height, markerPreviewWidth)
-
-		videoFilter := g.Encoder.HWMaxResFilter(codec, width, height, targetHeight, fullhw)
+		videoFilter, fullhw := g.previewVideoFilter(codec, width, height, markerPreviewWidth, fullhw)
 
 		videoArgs := codec.ExtraArgsHQ("veryslow", markerPreviewCRF)
 		videoArgs = videoArgs.VideoFilter(videoFilter)
@@ -146,6 +144,7 @@ func (g Generator) SceneMarkerWebp(ctx context.Context, path string, hash string
 func (g Generator) sceneMarkerWebp(path string, options sceneMarkerOptions) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
 		var videoFilter ffmpeg.VideoFilter
+		videoFilter = videoFilter.SquarePixels(g.SampleAspectRatio)
 		videoFilter = videoFilter.ScaleWidth(markerPreviewWidth)
 		videoFilter = videoFilter.Fps(markerWebpFPS)
 
@@ -205,10 +204,11 @@ type SceneMarkerScreenshotOptions struct {
 func (g Generator) sceneMarkerScreenshot(input string, options SceneMarkerScreenshotOptions) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
 		ssOptions := transcoder.ScreenshotOptions{
-			OutputPath: tmpFn,
-			OutputType: transcoder.ScreenshotOutputTypeImage2,
-			Quality:    markerScreenshotQuality,
-			Width:      options.Width,
+			SampleAspectRatio: g.SampleAspectRatio,
+			OutputPath:        tmpFn,
+			OutputType:        transcoder.ScreenshotOutputTypeImage2,
+			Quality:           markerScreenshotQuality,
+			Width:             options.Width,
 		}
 
 		args := transcoder.ScreenshotTime(input, options.Seconds, ssOptions)

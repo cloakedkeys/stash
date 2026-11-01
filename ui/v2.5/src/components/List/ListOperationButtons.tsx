@@ -136,33 +136,12 @@ export const ListOperationButtons: React.FC<IListOperationButtonsProps> = ({
     Mousetrap.bind("s n", () => onSelectNone?.());
     Mousetrap.bind("s i", () => onInvertSelection?.());
 
-    Mousetrap.bind("e", () => {
-      if (itemsSelected) {
-        onEdit?.();
-      }
-    });
-
-    Mousetrap.bind("d d", () => {
-      if (itemsSelected) {
-        onDelete?.();
-      }
-    });
-
     return () => {
       Mousetrap.unbind("s a");
       Mousetrap.unbind("s n");
       Mousetrap.unbind("s i");
-      Mousetrap.unbind("e");
-      Mousetrap.unbind("d d");
     };
-  }, [
-    onSelectAll,
-    onSelectNone,
-    onInvertSelection,
-    itemsSelected,
-    onEdit,
-    onDelete,
-  ]);
+  }, [onSelectAll, onSelectNone, onInvertSelection]);
 
   const buttons = useMemo(() => {
     const ret = (otherOperations ?? []).filter((o) => {
