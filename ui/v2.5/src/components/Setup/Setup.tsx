@@ -513,7 +513,15 @@ const SetPathsStep: React.FC<IWizardStep> = ({ goBack, next }) => {
   const [showStashAlert, setShowStashAlert] = useState(false);
 
   const [stashes, setStashes] = useState<GQL.StashConfig[]>(
-    setupState.stashes ?? []
+    setupState.stashes ??
+      configuration.general.stashes.map(
+        ({ path, excludeVideo, excludeAudio, excludeImage }) => ({
+          path,
+          excludeVideo,
+          excludeAudio,
+          excludeImage,
+        })
+      )
   );
   const [sfwContentMode, setSfwContentMode] = useState(
     setupState.sfwContentMode ?? false
