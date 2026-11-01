@@ -1357,7 +1357,7 @@ func Test_imageQueryBuilder_FindByGalleryID(t *testing.T) {
 		{
 			"none",
 			galleryIDs[galleryIdx1WithPerformer],
-			nil,
+			[]*models.Image{},
 			false,
 		},
 	}

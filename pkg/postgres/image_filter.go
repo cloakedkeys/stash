@@ -261,6 +261,20 @@ func (qb *imageFilterHandler) galleriesCriterionHandler(galleries *models.MultiC
 		if galleries.Modifier == models.CriterionModifierIncludes || galleries.Modifier == models.CriterionModifierIncludesAll {
 			f.addInnerJoin(galleriesImagesTable, "", "galleries_images.image_id = images.id")
 			f.addInnerJoin(galleryTable, "", "galleries_images.gallery_id = galleries.id")
+			if len(galleries.Value) == 1 {
+				// Prefer the copy in this gallery. Manually added images without a
+				// local copy (including fileless images) retain their usual ordering.
+				imageRepository.addFilesTable(f, joinTypeLeft)
+				localFile := func(file string) string {
+					return fmt.Sprintf(`(%[1]s.zip_file_id IN (SELECT file_id FROM galleries_files WHERE gallery_id = galleries.id)
+						OR (%[1]s.zip_file_id IS NULL AND %[1]s.parent_folder_id = galleries.folder_id))`, file)
+				}
+				f.addWhere(fmt.Sprintf(`(%s OR NOT EXISTS (
+					SELECT 1 FROM images_files AS gallery_images_files
+					JOIN files AS gallery_image_files ON gallery_image_files.id = gallery_images_files.file_id
+					WHERE gallery_images_files.image_id = images.id AND %s
+				))`, localFile("files"), localFile("gallery_image_files")))
+			}
 		}
 	}
 	h := qb.getMultiCriterionHandlerBuilder(galleryTable, galleriesImagesTable, galleryIDColumn, addJoinsFunc)
