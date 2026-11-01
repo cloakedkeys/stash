@@ -173,6 +173,7 @@ interface IProps {
   scrollMode: GQL.ImageLightboxScrollMode;
   resetPosition?: boolean;
   zoom: number;
+  scrollToChangeImage?: boolean;
   scrollAttemptsBeforeChange: number;
   // these refs must be outside of LightboxImage,
   // since they need to be shared between all LightboxImages
@@ -206,6 +207,7 @@ export const LightboxImage: React.FC<IProps> = ({
   scrollMode,
   resetPosition,
   zoom,
+  scrollToChangeImage = true,
   scrollAttemptsBeforeChange,
   firstScroll,
   inScrollGroup,
@@ -621,9 +623,13 @@ export const LightboxImage: React.FC<IProps> = ({
 
     // #2389 - if scroll up and at top, then go to previous image
     // if scroll down and at bottom, then go to next image
-    if (newPositionY > maxY && positionY === maxY) {
+    if (scrollToChangeImage && newPositionY > maxY && positionY === maxY) {
       onLeftScroll(ev, scrollable, infinite);
-    } else if (newPositionY < minY && positionY === minY) {
+    } else if (
+      scrollToChangeImage &&
+      newPositionY < minY &&
+      positionY === minY
+    ) {
       onRightScroll(ev, scrollable, infinite);
     } else {
       scrollAttempts.current = 0;

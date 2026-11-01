@@ -1,3 +1,4 @@
+import { useListOperationShortcuts } from "../List/keyboardShortcuts";
 import cloneDeep from "lodash-es/cloneDeep";
 import React, { useCallback, useEffect, useMemo } from "react";
 import { useHistory } from "react-router-dom";
@@ -351,24 +352,7 @@ export const FilteredSceneMarkerList = PatchComponent(
       );
     }, [showModal, selectedItems, onCloseEditDelete]);
 
-    useEffect(() => {
-      Mousetrap.bind("e", () => {
-        if (hasSelection) {
-          onEdit?.();
-        }
-      });
-
-      Mousetrap.bind("d d", () => {
-        if (hasSelection) {
-          onDelete?.();
-        }
-      });
-
-      return () => {
-        Mousetrap.unbind("e");
-        Mousetrap.unbind("d d");
-      };
-    }, [hasSelection, onEdit, onDelete]);
+    useListOperationShortcuts({ hasSelection, onEdit, onDelete });
 
     useZoomKeybinds({
       zoomIndex: filter.zoomIndex,

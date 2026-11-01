@@ -512,14 +512,15 @@ const SetPathsStep: React.FC<IWizardStep> = ({ goBack, next }) => {
 
   const [showStashAlert, setShowStashAlert] = useState(false);
 
-  const [stashes, setStashes] = useState<GQL.StashConfig[]>(
+  const [stashes, setStashes] = useState<GQL.StashConfigInput[]>(
     setupState.stashes ??
       configuration.general.stashes.map(
-        ({ path, excludeVideo, excludeAudio, excludeImage }) => ({
+        ({ path, excludeVideo, excludeAudio, excludeImage, includeStory }) => ({
           path,
           excludeVideo,
           excludeAudio,
           excludeImage,
+          includeStory,
         })
       )
   );
@@ -661,9 +662,12 @@ const SetPathsStep: React.FC<IWizardStep> = ({ goBack, next }) => {
   );
 };
 
-const StashExclusions: React.FC<{ stash: GQL.StashConfig }> = ({ stash }) => {
+const StashExclusions: React.FC<{ stash: GQL.StashConfigInput }> = ({
+  stash,
+}) => {
+  const includes = stash.includeStory ? " (includes stories)" : "";
   if (!stash.excludeImage && !stash.excludeVideo && !stash.excludeAudio) {
-    return null;
+    return includes ? <span>{includes.trim()}</span> : null;
   }
 
   const excludes = [];
@@ -677,7 +681,7 @@ const StashExclusions: React.FC<{ stash: GQL.StashConfig }> = ({ stash }) => {
     excludes.push("images");
   }
 
-  return <span>{`(excludes ${excludes.join(" and ")})`}</span>;
+  return <span>{`(excludes ${excludes.join(" and ")})${includes}`}</span>;
 };
 
 function validateUsername(username: string) {

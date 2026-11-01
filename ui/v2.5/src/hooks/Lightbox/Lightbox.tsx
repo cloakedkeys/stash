@@ -167,6 +167,21 @@ export const LightboxComponent: React.FC<IProps> = ({
   const switchFromPage = useRef<number | undefined>(page);
   const switchFromImages = useRef<ILightboxImage[]>(images);
 
+  const [previousImages, setPreviousImages] = useState(images);
+  if (images !== previousImages) {
+    setPreviousImages(images);
+    // Reconcile before rendering controls or binding shortcuts to the new list.
+    // Explicit page switches own their landing index instead.
+    if (!isSwitchingPageRef.current && index !== null) {
+      const imageId = previousImages[index]?.id;
+      const nextIndex =
+        imageId === undefined
+          ? -1
+          : images.findIndex((image) => image.id === imageId);
+      if (nextIndex !== -1) setIndex(nextIndex);
+    }
+  }
+
   // The ref and the state must never disagree, so they are only written
   // through this setter.
   const setSwitching = useCallback((v: boolean) => {
@@ -281,6 +296,11 @@ export const LightboxComponent: React.FC<IProps> = ({
 
   const slideshowDelay =
     savedDelay ?? configuredDelay ?? DEFAULT_SLIDESHOW_DELAY;
+
+  const scrollToChangeImage =
+    lightboxSettings?.scrollToChangeImage ??
+    config?.interface.imageLightbox.scrollToChangeImage ??
+    true;
 
   const scrollAttemptsBeforeChange = Math.max(
     0,
@@ -908,6 +928,20 @@ export const LightboxComponent: React.FC<IProps> = ({
             })}
           </Form.Text>
         </Form.Group>
+        <Form.Group controlId="scrollToChangeImage">
+          <Form.Check
+            type="checkbox"
+            label={intl.formatMessage({
+              id: "dialogs.lightbox.scroll_to_change_image",
+            })}
+            checked={scrollToChangeImage}
+            onChange={(e) =>
+              setLightboxSettings({
+                scrollToChangeImage: e.currentTarget.checked,
+              })
+            }
+          />
+        </Form.Group>
       </>
     );
   }
@@ -1073,6 +1107,7 @@ export const LightboxComponent: React.FC<IProps> = ({
                     scrollMode={scrollMode}
                     resetPosition={resetPosition}
                     zoom={i === currentIndex ? zoom : 1}
+                    scrollToChangeImage={scrollToChangeImage}
                     scrollAttemptsBeforeChange={scrollAttemptsBeforeChange}
                     firstScroll={firstScroll}
                     inScrollGroup={inScrollGroup}

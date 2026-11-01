@@ -27,6 +27,7 @@ import (
 	"github.com/stashapp/stash/pkg/models/paths"
 	"github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/scene/generate"
+	"github.com/stashapp/stash/pkg/story"
 	"github.com/stashapp/stash/pkg/txn"
 	"github.com/stashapp/stash/pkg/utils"
 )
@@ -490,6 +491,10 @@ type sceneFinder interface {
 	FindByPrimaryFileID(ctx context.Context, fileID models.FileID) ([]*models.Scene, error)
 }
 
+type storyFinder interface {
+	fileCounter
+}
+
 type audioFinder interface {
 	fileCounter
 	FindByPrimaryFileID(ctx context.Context, fileID models.FileID) ([]*models.Audio, error)
@@ -501,6 +506,7 @@ type handlerRequiredFilter struct {
 	txnManager    txn.Manager
 	SceneFinder   sceneFinder
 	AudioFinder   audioFinder
+	StoryFinder   storyFinder
 	ImageFinder   fileCounter
 	GalleryFinder galleryFinder
 
@@ -517,6 +523,7 @@ func newHandlerRequiredFilter(c *config.Config, repo models.Repository) *handler
 		txnManager:               repo.TxnManager,
 		SceneFinder:              repo.Scene,
 		AudioFinder:              repo.Audio,
+		StoryFinder:              repo.Story,
 		ImageFinder:              repo.Image,
 		GalleryFinder:            repo.Gallery,
 		FolderCache:              lru.New[bool](processes * 2),
@@ -530,6 +537,7 @@ func (f *handlerRequiredFilter) Accept(ctx context.Context, ff models.File) bool
 	isAudioFile := useAsAudio(path)
 	isImageFile := useAsImage(path)
 	isZipFile := fsutil.MatchExtension(path, f.zipExt)
+	isStoryFile := UseAsStory(path)
 
 	var counter fileCounter
 
@@ -543,6 +551,8 @@ func (f *handlerRequiredFilter) Accept(ctx context.Context, ff models.File) bool
 		counter = f.ImageFinder
 	case isZipFile:
 		counter = f.GalleryFinder
+	case isStoryFile:
+		counter = f.StoryFinder
 	}
 
 	if counter == nil {
@@ -657,8 +667,9 @@ func (f *scanFilter) Accept(ctx context.Context, path string, info fs.FileInfo, 
 	isAudioFile := useAsAudio(path)
 	isImageFile := useAsImage(path)
 	isZipFile := fsutil.MatchExtension(path, f.zipExt)
+	isStoryFile := IsStoryFile(path)
 
-	if !info.IsDir() && !isVideoFile && !isAudioFile && !isImageFile && !isZipFile {
+	if !info.IsDir() && !isVideoFile && !isAudioFile && !isImageFile && !isZipFile && !isStoryFile {
 		logger.Debugf("Skipping %s as it does not match any known file extensions", path)
 		return false
 	}
@@ -672,7 +683,7 @@ func (f *scanFilter) Accept(ctx context.Context, path string, info fs.FileInfo, 
 	// shortcut: skip the directory entirely if it matches both exclusion patterns
 	// add a trailing separator so that it correctly matches against patterns like path/.*
 	pathExcludeTest := path + string(filepath.Separator)
-	if (matchFileRegex(pathExcludeTest, f.videoExcludeRegex)) &&
+	if !s.IncludeStory && (matchFileRegex(pathExcludeTest, f.videoExcludeRegex)) &&
 		(s.ExcludeAudio || matchFileRegex(pathExcludeTest, f.audioExcludeRegex)) &&
 		(s.ExcludeImage || matchFileRegex(pathExcludeTest, f.imageExcludeRegex)) {
 		logger.Debugf("Skipping directory %s as it matches video, audio, and image exclusion patterns", path)
@@ -688,6 +699,9 @@ func (f *scanFilter) Accept(ctx context.Context, path string, info fs.FileInfo, 
 		return false
 	case (isImageFile || isZipFile) && (s.ExcludeImage || matchFileRegex(path, f.imageExcludeRegex)):
 		logger.Debugf("Skipping %s as it matches image exclusion patterns", path)
+		return false
+	case isStoryFile && !isVideoFile && !isAudioFile && !isImageFile && !isZipFile && !s.IncludeStory:
+		logger.Debugf("Skipping %s as its library doesn't include stories", path)
 		return false
 	}
 
@@ -712,6 +726,10 @@ func audioFileFilter(ctx context.Context, f models.File) bool {
 
 func imageFileFilter(ctx context.Context, f models.File) bool {
 	return useAsImage(f.Base().Path)
+}
+
+func storyFileFilter(ctx context.Context, f models.File) bool {
+	return UseAsStory(f.Base().Path)
 }
 
 func galleryFileFilter(ctx context.Context, f models.File) bool {
@@ -760,6 +778,12 @@ func getScanHandlers(options ScanGenerateOptions, taskQueue *job.TaskQueue, prog
 				},
 				PluginCache: pluginCache,
 				Paths:       mgr.Paths,
+			},
+		},
+		&file.FilteredHandler{
+			Filter: file.FilterFunc(storyFileFilter),
+			Handler: &story.ScanHandler{
+				CreatorUpdater: r.Story,
 			},
 		},
 		&file.FilteredHandler{
