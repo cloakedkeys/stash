@@ -92,10 +92,44 @@ func TestWithTxnPreCommitHookPanics(t *testing.T) {
 	m := &fakeManager{}
 	assert.Panics(t, func() {
 		_ = WithTxn(context.Background(), m, func(ctx context.Context) error {
+			m.addHooks(ctx)
 			AddPreCommitHook(ctx, func(ctx context.Context) error { panic("hook panicked") })
 			return nil
 		})
 	})
+	assert.Equal(t, []string{"begin", "rollback", "post-rollback", "post-complete"}, m.calls)
+}
+
+func TestWithTxnFunctionPanics(t *testing.T) {
+	m := &fakeManager{}
+	assert.PanicsWithValue(t, "panicked", func() {
+		_ = WithTxn(context.Background(), m, func(ctx context.Context) error {
+			m.addHooks(ctx)
+			panic("panicked")
+		})
+	})
+	assert.Equal(t, []string{"begin", "rollback", "post-rollback", "post-complete"}, m.calls)
+}
+
+// Nothing is lost when a read can't be ended cleanly, so the results still count.
+func TestWithReadTxnCommitFails(t *testing.T) {
+	m := &fakeManager{commitErr: errors.New("connection closed")}
+	err := WithReadTxn(context.Background(), m, func(ctx context.Context) error {
+		m.addHooks(ctx)
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"begin", "commit", "post-commit", "post-complete"}, m.calls)
+}
+
+func TestWithReadTxnPreCommitHookFails(t *testing.T) {
+	want := errors.New("hook failed")
+	m := &fakeManager{}
+	err := WithReadTxn(context.Background(), m, func(ctx context.Context) error {
+		AddPreCommitHook(ctx, func(ctx context.Context) error { return want })
+		return nil
+	})
+	require.ErrorIs(t, err, want)
 	assert.Equal(t, []string{"begin", "rollback"}, m.calls)
 }
 

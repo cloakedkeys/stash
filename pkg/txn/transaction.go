@@ -3,7 +3,11 @@ package txn
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+
+	"github.com/stashapp/stash/pkg/logger"
 )
 
 type Manager interface {
@@ -62,6 +66,11 @@ func withTxn(ctx context.Context, m Manager, fn TxnFunc, writable bool, execComp
 		if p := recover(); p != nil {
 			// a panic occurred, rollback and repanic
 			rollback(txnCtx, m)
+
+			// undo what was done outside the database, such as files marked for deletion
+			hookMgr.executePostRollbackHooks(ctx)
+			hookMgr.executePostCompleteHooks(ctx)
+
 			panic(p)
 		}
 
@@ -86,7 +95,7 @@ func withTxn(ctx context.Context, m Manager, fn TxnFunc, writable bool, execComp
 	err = fn(txnCtx)
 	if err == nil {
 		// a failed commit is handled the same as any other failure, in the function above
-		err = commit(txnCtx, m)
+		err = commit(txnCtx, m, writable)
 	}
 	return err
 }
@@ -104,22 +113,29 @@ func begin(ctx context.Context, m Manager, writable bool) (context.Context, erro
 	return ctx, nil
 }
 
-func commit(ctx context.Context, m Manager) error {
+func commit(ctx context.Context, m Manager, writable bool) error {
 	hookMgr := hookManagerCtx(ctx)
 	if err := hookMgr.executePreCommitHooks(ctx); err != nil {
 		return err
 	}
 
 	if err := m.Commit(ctx); err != nil {
-		return err
+		if !writable {
+			// nothing was being saved, and what was read is still good. This is
+			// routine when a client disconnects as its request finishes.
+			logger.Debugf("Error ending read transaction: %v", err)
+			return nil
+		}
+		return fmt.Errorf("saving changes: %w", err)
 	}
 
 	return nil
 }
 
 func rollback(ctx context.Context, m Manager) {
-	if err := m.Rollback(ctx); err != nil {
-		return
+	// a transaction that's already over has nothing to roll back: a failed commit ends it
+	if err := m.Rollback(ctx); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		logger.Warnf("Error rolling back transaction: %v", err)
 	}
 }
 
