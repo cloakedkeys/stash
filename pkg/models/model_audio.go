@@ -17,6 +17,7 @@ type Audio struct {
 	Date    *Date  `json:"date"`
 	// Rating expressed in 1-100 scale
 	Rating    *int `json:"rating"`
+	Favorite  bool `json:"favorite"`
 	Organized bool `json:"organized"`
 	StudioID  *int `json:"studio_id"`
 
@@ -72,6 +73,7 @@ type AudioPartial struct {
 	Date    OptionalDate
 	// Rating expressed in 1-100 scale
 	Rating       OptionalInt
+	Favorite     OptionalBool
 	Organized    OptionalBool
 	StudioID     OptionalInt
 	CreatedAt    OptionalTime
@@ -198,6 +200,7 @@ func (s AudioPartial) UpdateInput(id int) AudioUpdateInput {
 		Urls:         s.URLs.Strings(),
 		Date:         dateStr,
 		Rating100:    s.Rating.Ptr(),
+		Favorite:     s.Favorite.Ptr(),
 		Organized:    s.Organized.Ptr(),
 		StudioID:     s.StudioID.StringPtr(),
 		GalleryIds:   s.GalleryIDs.IDStrings(),

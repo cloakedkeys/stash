@@ -1,3 +1,4 @@
+import { FavoriteIcon } from "src/components/Shared/FavoriteIcon";
 import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useEffect, useMemo, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -437,6 +438,14 @@ const GroupPage: React.FC<IProps> = PatchComponent(
                 </DetailTitle>
 
                 <AliasList aliases={aliases} />
+                <FavoriteIcon
+                  favorite={group.favorite}
+                  onToggleFavorite={(favorite) => {
+                    setGroupUserData({
+                      variables: { input: { id: group.id, favorite } },
+                    }).catch(Toast.error);
+                  }}
+                />
                 <RatingSystem
                   value={group.rating100}
                   onSetRating={(value) => setRating(value)}

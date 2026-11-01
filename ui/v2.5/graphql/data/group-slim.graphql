@@ -1,4 +1,5 @@
 fragment SlimGroupData on Group {
+  favorite
   id
   name
   front_image_path

@@ -1,3 +1,4 @@
+import { IndeterminateCheckbox } from "../Shared/IndeterminateCheckbox";
 import React, { useEffect, useMemo, useState } from "react";
 import { Form } from "react-bootstrap";
 import { useIntl } from "react-intl";
@@ -67,7 +68,7 @@ function getAggregateContainingGroupInput(
   return undefined;
 }
 
-const groupFields = ["rating100", "synopsis", "director", "date"];
+const groupFields = ["favorite", "rating100", "synopsis", "director", "date"];
 
 export const EditGroupsDialog: React.FC<IListOperationProps> = (
   props: IListOperationProps
@@ -195,6 +196,13 @@ export const EditGroupsDialog: React.FC<IListOperationProps> = (
         isRunning={isUpdating}
       >
         <Form>
+          <Form.Group controlId="favorite">
+            <IndeterminateCheckbox
+              setChecked={(checked) => setUpdateField({ favorite: checked })}
+              checked={updateInput.favorite ?? undefined}
+              label={intl.formatMessage({ id: "favourite" })}
+            />
+          </Form.Group>
           <BulkUpdateFormGroup name="rating">
             <RatingSystem
               value={updateInput.rating100}

@@ -50,6 +50,9 @@ func (r *mutationResolver) SceneCreate(ctx context.Context, input models.SceneCr
 	newScene.Details = translator.string(input.Details)
 	newScene.Director = translator.string(input.Director)
 	newScene.Rating = input.Rating100
+	if input.Favorite != nil {
+		newScene.Favorite = *input.Favorite
+	}
 	newScene.Organized = translator.bool(input.Organized)
 	newScene.StashIDs = models.NewRelatedStashIDs(models.StashIDInputs(input.StashIds).ToStashIDs())
 
@@ -202,6 +205,7 @@ func scenePartialFromInput(input models.SceneUpdateInput, translator changesetTr
 	updatedScene.Details = translator.optionalString(input.Details, "details")
 	updatedScene.Director = translator.optionalString(input.Director, "director")
 	updatedScene.Rating = translator.optionalInt(input.Rating100, "rating100")
+	updatedScene.Favorite = translator.optionalBool(input.Favorite, "favorite")
 
 	if input.OCounter != nil {
 		logger.Warnf("o_counter is deprecated and no longer supported, use sceneIncrementO/sceneDecrementO instead")
@@ -399,6 +403,7 @@ func (r *mutationResolver) BulkSceneUpdate(ctx context.Context, input BulkSceneU
 	updatedScene.Details = translator.optionalString(input.Details, "details")
 	updatedScene.Director = translator.optionalString(input.Director, "director")
 	updatedScene.Rating = translator.optionalInt(input.Rating100, "rating100")
+	updatedScene.Favorite = translator.optionalBool(input.Favorite, "favorite")
 	updatedScene.Organized = translator.optionalBool(input.Organized, "organized")
 
 	updatedScene.Date, err = translator.optionalDate(input.Date, "date")

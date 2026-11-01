@@ -12,6 +12,7 @@ type Group struct {
 	Date     *Date  `json:"date"`
 	// Rating expressed in 1-100 scale
 	Rating    *int      `json:"rating"`
+	Favorite  bool      `json:"favorite"`
 	StudioID  *int      `json:"studio_id"`
 	Director  string    `json:"director"`
 	Synopsis  string    `json:"synopsis"`
@@ -78,6 +79,7 @@ type GroupPartial struct {
 	Date     OptionalDate
 	// Rating expressed in 1-100 scale
 	Rating    OptionalInt
+	Favorite  OptionalBool
 	StudioID  OptionalInt
 	Director  OptionalString
 	Synopsis  OptionalString

@@ -90,19 +90,22 @@ func (r *groupRow) resolve() *models.Group {
 
 // groupUserDataRow is a row of a user's data for a group.
 type groupUserDataRow struct {
-	GroupID int `db:"group_id"`
-	UserID  int `db:"user_id"`
+	Favorite bool `db:"favorite"`
+	GroupID  int  `db:"group_id"`
+	UserID   int  `db:"user_id"`
 	// expressed as 1-100
 	Rating null.Int `db:"rating"`
 }
 
 func (r groupUserDataRow) apply(g *models.Group) {
+	g.Favorite = r.Favorite
 	g.Rating = nullIntPtr(r.Rating)
 }
 
 func groupUserDataRecord(o models.Group) goqu.Record {
 	return goqu.Record{
-		"rating": intFromPtr(o.Rating),
+		"favorite": o.Favorite,
+		"rating":   intFromPtr(o.Rating),
 	}
 }
 
@@ -111,6 +114,7 @@ func groupUserDataPartialRecord(o models.GroupPartial) goqu.Record {
 		Record: make(exp.Record),
 	}
 	r.setNullInt("rating", o.Rating)
+	r.setBool("favorite", o.Favorite)
 	return goqu.Record(r.Record)
 }
 
@@ -606,6 +610,7 @@ var groupSortOptions = sortOptions{
 	"name",
 	"random",
 	"rating",
+	"favorite",
 	"scenes_count",
 	"audios_count",
 	"o_counter",
@@ -660,6 +665,9 @@ func (qb *GroupStore) setGroupSort(ctx context.Context, query *queryBuilder, fin
 		query.sortAndPagination += getCountSort(groupTable, groupsAudiosTable, groupIDColumn, direction)
 	case "o_counter":
 		query.sortAndPagination += qb.sortByOCounter(ctx, direction)
+	case "favorite":
+		groupUserData.joinSort(ctx, query)
+		query.sortAndPagination += " ORDER BY " + groupUserData.columnOrDefault(sort, "0") + " " + getSortDirection(direction)
 	case "rating":
 		groupUserData.joinSort(ctx, query)
 		query.sortAndPagination += getSort(sort, direction, groupsUserDataTable)

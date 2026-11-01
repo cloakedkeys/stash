@@ -1,3 +1,5 @@
+import { FavoriteIcon } from "../Shared/FavoriteIcon";
+import { useSceneUserDataUpdate } from "src/core/StashService";
 import React, {
   useCallback,
   useEffect,
@@ -380,11 +382,23 @@ const SceneCardDetails = React.memo(
 
 const SceneCardOverlays = React.memo(
   PatchComponent("SceneCard.Overlays", (props: ISceneCardProps) => {
-    const ret = useMemo(() => {
-      return (
+    const [setUserData] = useSceneUserDataUpdate();
+    const ret = (
+      <>
+        <FavoriteIcon
+          favorite={props.scene.favorite}
+          onToggleFavorite={(favorite) => {
+            setUserData({
+              variables: { input: { id: props.scene.id, favorite } },
+            });
+          }}
+          size="2x"
+          className="hide-not-favorite"
+        />
+
         <StudioOverlay studio={props.scene.studio} disabled={props.selecting} />
-      );
-    }, [props.scene.studio, props.selecting]);
+      </>
+    );
 
     return ret;
   })

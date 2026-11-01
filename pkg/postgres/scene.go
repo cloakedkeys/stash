@@ -95,8 +95,9 @@ func (r *sceneRow) fromScene(o models.Scene) {
 
 // sceneUserDataRow is a row of a user's data for a scene.
 type sceneUserDataRow struct {
-	SceneID int `db:"scene_id"`
-	UserID  int `db:"user_id"`
+	Favorite bool `db:"favorite"`
+	SceneID  int  `db:"scene_id"`
+	UserID   int  `db:"user_id"`
 	// expressed as 1-100
 	Rating       null.Int `db:"rating"`
 	ResumeTime   float64  `db:"resume_time"`
@@ -104,6 +105,7 @@ type sceneUserDataRow struct {
 }
 
 func (r sceneUserDataRow) apply(s *models.Scene) {
+	s.Favorite = r.Favorite
 	s.Rating = nullIntPtr(r.Rating)
 	s.ResumeTime = r.ResumeTime
 	s.PlayDuration = r.PlayDuration
@@ -111,6 +113,7 @@ func (r sceneUserDataRow) apply(s *models.Scene) {
 
 func sceneUserDataRecord(o models.Scene) goqu.Record {
 	return goqu.Record{
+		"favorite":      o.Favorite,
 		"rating":        intFromPtr(o.Rating),
 		"resume_time":   o.ResumeTime,
 		"play_duration": o.PlayDuration,
@@ -122,6 +125,7 @@ func sceneUserDataPartialRecord(o models.ScenePartial) goqu.Record {
 		Record: make(exp.Record),
 	}
 	r.setNullInt("rating", o.Rating)
+	r.setBool("favorite", o.Favorite)
 	r.setFloat64("resume_time", o.ResumeTime)
 	r.setFloat64("play_duration", o.PlayDuration)
 	return goqu.Record(r.Record)
@@ -1317,6 +1321,7 @@ var sceneSortOptions = sortOptions{
 	"perceptual_similarity",
 	"random",
 	"rating",
+	"favorite",
 	"resolution",
 	"studio",
 	"tag_count",
@@ -1486,6 +1491,9 @@ func (qb *SceneStore) setSceneSort(ctx context.Context, query *queryBuilder, fin
 		add, agg := getSort("name", direction, studioTable)
 		query.sort += add
 		query.addGroupBy(agg...)
+	case "favorite":
+		sceneUserData.joinSort(ctx, query)
+		query.sort += " ORDER BY " + sceneUserData.columnOrDefault(sort, "false") + " " + getSortDirection(direction)
 	case "rating":
 		sceneUserData.joinSort(ctx, query)
 		add, agg := getSort(sort, direction, scenesUserDataTable)

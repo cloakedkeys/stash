@@ -310,11 +310,11 @@ type Query {
 
 type Mutation {
   # Set the current user's own rating and favourite. These need no permission to edit the library.
-  sceneUserDataUpdate(input: UserRatingInput!): Scene @hasRole(role: READ)
-  audioUserDataUpdate(input: UserRatingInput!): Audio @hasRole(role: READ)
-  imageUserDataUpdate(input: UserRatingInput!): Image @hasRole(role: READ)
-  galleryUserDataUpdate(input: UserRatingInput!): Gallery @hasRole(role: READ)
-  groupUserDataUpdate(input: UserRatingInput!): Group @hasRole(role: READ)
+  sceneUserDataUpdate(input: UserRatingFavoriteInput!): Scene @hasRole(role: READ)
+  audioUserDataUpdate(input: UserRatingFavoriteInput!): Audio @hasRole(role: READ)
+  imageUserDataUpdate(input: UserRatingFavoriteInput!): Image @hasRole(role: READ)
+  galleryUserDataUpdate(input: UserRatingFavoriteInput!): Gallery @hasRole(role: READ)
+  groupUserDataUpdate(input: UserRatingFavoriteInput!): Group @hasRole(role: READ)
   performerUserDataUpdate(input: UserRatingFavoriteInput!): Performer @hasRole(role: READ)
   studioUserDataUpdate(input: UserRatingFavoriteInput!): Studio @hasRole(role: READ)
   tagUserDataUpdate(input: UserRatingFavoriteInput!): Tag @hasRole(role: READ)

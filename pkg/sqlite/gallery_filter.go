@@ -86,6 +86,7 @@ func (qb *galleryFilterHandler) criterionHandler() criterionHandler {
 		qb.pathCriterionHandler(filter.Path),
 		qb.parentFolderCriterionHandler(filter.ParentFolder),
 		qb.fileCountCriterionHandler(filter.FileCount),
+		galleryUserData.boolCriterionHandler(filter.Favorite, galleryUserData.columnOrDefault("favorite", "0")),
 		galleryUserData.intCriterionHandler(filter.Rating100, galleryUserData.column("rating")),
 		galleryUserData.intCriterionHandler(filter.OCounter, galleryUserData.columnOrDefault("o_counter", "0")),
 		qb.urlsCriterionHandler(filter.URL),

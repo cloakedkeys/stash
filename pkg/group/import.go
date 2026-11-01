@@ -167,6 +167,8 @@ func (i *Importer) groupJSONToGroup(groupJSON jsonschema.Group) models.Group {
 			newGroup.Date = &d
 		}
 	}
+	newGroup.Favorite = groupJSON.Favorite
+
 	if groupJSON.Rating != 0 {
 		newGroup.Rating = &groupJSON.Rating
 	}

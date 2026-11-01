@@ -1,6 +1,7 @@
 package models
 
 type GroupFilterType struct {
+	Favorite *bool `json:"favorite"`
 	OperatorFilter[GroupFilterType]
 	Name     *StringCriterionInput `json:"name"`
 	Aliases  *StringCriterionInput `json:"aliases"`

@@ -68,20 +68,23 @@ func (r *imageRow) fromImage(i models.Image) {
 
 // imageUserDataRow is a row of a user's data for an image.
 type imageUserDataRow struct {
-	ImageID int `db:"image_id"`
-	UserID  int `db:"user_id"`
+	Favorite bool `db:"favorite"`
+	ImageID  int  `db:"image_id"`
+	UserID   int  `db:"user_id"`
 	// expressed as 1-100
 	Rating   null.Int `db:"rating"`
 	OCounter int      `db:"o_counter"`
 }
 
 func (r imageUserDataRow) apply(i *models.Image) {
+	i.Favorite = r.Favorite
 	i.Rating = nullIntPtr(r.Rating)
 	i.OCounter = r.OCounter
 }
 
 func imageUserDataRecord(i models.Image) goqu.Record {
 	return goqu.Record{
+		"favorite":  i.Favorite,
 		"rating":    intFromPtr(i.Rating),
 		"o_counter": i.OCounter,
 	}
@@ -92,6 +95,7 @@ func imageUserDataPartialRecord(i models.ImagePartial) goqu.Record {
 		Record: make(exp.Record),
 	}
 	r.setNullInt("rating", i.Rating)
+	r.setBool("favorite", i.Favorite)
 	r.setInt("o_counter", i.OCounter)
 	return goqu.Record(r.Record)
 }
@@ -1110,6 +1114,7 @@ var imageSortOptions = sortOptions{
 	"performer_count",
 	"random",
 	"rating",
+	"favorite",
 	"resolution",
 	"tag_count",
 	"title",
@@ -1180,6 +1185,9 @@ func (qb *ImageStore) setImageSortAndPagination(ctx context.Context, q *queryBui
 				onClause: "images_files.file_id = image_files.file_id",
 			})
 			sortClause = " ORDER BY MIN(image_files.width, image_files.height) " + direction
+		case "favorite":
+			imageUserData.joinSort(ctx, q)
+			sortClause = " ORDER BY " + imageUserData.columnOrDefault(sort, "0") + " " + getSortDirection(direction)
 		case "rating":
 			imageUserData.joinSort(ctx, q)
 			sortClause = getSort(sort, direction, imagesUserDataTable)

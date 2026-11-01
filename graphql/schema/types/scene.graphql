@@ -38,6 +38,8 @@ type VideoCaption {
 }
 
 type Scene {
+  "The current user's favourite"
+  favorite: Boolean!
   id: ID!
   title: String
   code: String
@@ -99,6 +101,7 @@ input SceneGroupInput {
 }
 
 input SceneCreateInput {
+  favorite: Boolean
   title: String
   code: String
   details: String
@@ -132,6 +135,7 @@ input SceneCreateInput {
 }
 
 input SceneUpdateInput {
+  favorite: Boolean
   clientMutationId: String
   id: ID!
   title: String
@@ -185,6 +189,7 @@ input BulkUpdateIds {
 }
 
 input BulkSceneUpdateInput {
+  favorite: Boolean
   clientMutationId: String
   ids: [ID!]
   title: String

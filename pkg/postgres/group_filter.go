@@ -67,6 +67,7 @@ func (qb *groupFilterHandler) criterionHandler() criterionHandler {
 		qb.aliasCriterionHandler(groupFilter.Aliases),
 		stringCriterionHandler(groupFilter.Director, "groups.director"),
 		stringCriterionHandler(groupFilter.Synopsis, "groups.description"),
+		groupUserData.boolCriterionHandler(groupFilter.Favorite, groupUserData.columnOrDefault("favorite", "false")),
 		groupUserData.intCriterionHandler(groupFilter.Rating100, groupUserData.column("rating")),
 		floatIntCriterionHandler(groupFilter.Duration, "groups.duration", nil),
 		qb.missingCriterionHandler(groupFilter.IsMissing),

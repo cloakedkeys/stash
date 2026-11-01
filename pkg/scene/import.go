@@ -131,6 +131,8 @@ func (i *Importer) sceneJSONToScene(sceneJSON jsonschema.Scene) models.Scene {
 	newScene.Date = parseImportedDate(sceneJSON.Date, "date", sceneJSON.Title)
 	newScene.ProductionDate = parseImportedDate(sceneJSON.ProductionDate, "production date", sceneJSON.Title)
 
+	newScene.Favorite = sceneJSON.Favorite
+
 	if sceneJSON.Rating != 0 {
 		newScene.Rating = &sceneJSON.Rating
 	}

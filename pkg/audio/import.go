@@ -103,6 +103,8 @@ func (i *Importer) audioJSONToAudio(audioJSON jsonschema.Audio) models.Audio {
 			newAudio.Date = &d
 		}
 	}
+	newAudio.Favorite = audioJSON.Favorite
+
 	if audioJSON.Rating != 0 {
 		newAudio.Rating = &audioJSON.Rating
 	}

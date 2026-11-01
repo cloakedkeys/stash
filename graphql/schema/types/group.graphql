@@ -5,6 +5,8 @@ type GroupDescription {
 }
 
 type Group {
+  "The current user's favourite"
+  favorite: Boolean!
   id: ID!
   name: String!
   aliases: String @deprecated(reason: "Use alias_list")
@@ -43,6 +45,7 @@ input GroupDescriptionInput {
 }
 
 input GroupCreateInput {
+  favorite: Boolean
   name: String!
   aliases: String @deprecated(reason: "Use alias_list")
   "Duplicate aliases and those equal to name will be ignored (case-insensitive)"
@@ -70,6 +73,7 @@ input GroupCreateInput {
 }
 
 input GroupUpdateInput {
+  favorite: Boolean
   id: ID!
   name: String
   aliases: String @deprecated(reason: "Use alias_list")
@@ -102,6 +106,7 @@ input BulkUpdateGroupDescriptionsInput {
 }
 
 input BulkGroupUpdateInput {
+  favorite: Boolean
   clientMutationId: String
   ids: [ID!]
   # rating expressed as 1-100
