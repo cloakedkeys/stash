@@ -67,6 +67,10 @@ jobs:
     - name: Generate
       run: make generate
 
+    - name: Test UI
+      working-directory: ui/v2.5
+      run: pnpm run test
+
     - name: Cache UI build
       uses: actions/cache@v5
       id: cache-ui

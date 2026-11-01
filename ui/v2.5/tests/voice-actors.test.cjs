@@ -26,6 +26,7 @@ function render(location) {
       data: { findVoiceActors: { count: 1, voice_actors: [actor] } },
     }),
     useFindVoiceActorQuery: () => ({ data: { findVoiceActor: actor } }),
+    useVoiceActorUserDataUpdateMutation: () => [() => {}, {}],
     useVoiceActorCreateMutation: () => [() => {}, {}],
     useVoiceActorUpdateMutation: () => [() => {}, {}],
     useVoiceActorDestroyMutation: () => [() => {}, {}],
@@ -50,6 +51,12 @@ function render(location) {
       if (name === "src/core/generated-graphql") return hooks;
       if (name === "../Shared/LoadingIndicator")
         return { LoadingIndicator: () => null };
+      if (name === "../Shared/FavoriteIcon")
+        return { FavoriteIcon: () => null };
+      if (name === "../Shared/ModifyRoute")
+        return { ModifyRoute: require("react-router-dom").Route };
+      if (name === "src/hooks/CurrentUser")
+        return { useCanModify: () => true };
       return require(name);
     },
   });
