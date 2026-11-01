@@ -862,3 +862,12 @@ func (_m *ImageReaderWriter) UpdateTags(ctx context.Context, imageID int, tagIDs
 
 	return r0
 }
+
+func (_m *ImageReaderWriter) FindDuplicates(ctx context.Context, distance int, filter *models.ImageFilterType) ([][]*models.Image, error) {
+	ret := _m.Called(ctx, distance, filter)
+	var images [][]*models.Image
+	if ret.Get(0) != nil {
+		images = ret.Get(0).([][]*models.Image)
+	}
+	return images, ret.Error(1)
+}

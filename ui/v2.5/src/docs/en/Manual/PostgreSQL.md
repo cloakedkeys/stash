@@ -118,6 +118,82 @@ The copy happens all at once. If it fails, the PostgreSQL database stays empty, 
 - **Files outside the database:** generated files, and images if blobs are kept on the filesystem, stay where they are. Stash finds them the same way, as long as the settings still point to them.
 - **Regex filters and raw SQL:** plugins that use raw SQL may need changes, because SQLite and PostgreSQL differ. Tables a plugin added to the SQLite database aren't copied, and the copy names them.
 
+## Upgrading to a new PostgreSQL version
+
+PostgreSQL 19 isn't out yet. These steps were tested going from 18.6 to 19 RC1. Wait for the final release, planned for 19 November 2026, before doing this on a library you care about. PostgreSQL 18 is still the version Stash is tested with.
+
+A new major version can't open an older version's data folder. `pg_upgrade` converts it.
+
+Stash's backups use `pg_dump`, which must be at least as new as the server. The Stash Docker images use Alpine's PostgreSQL client, which is still 18, with no 19 package yet. On a PostgreSQL 19 server, those images can't make backups until they have a 19 client. Database upgrades go ahead with a warning and no backup, as described in "What the server needs". You may want to wait until the images have a 19 client.
+
+With the Docker example above, run these commands from the folder holding `docker-compose.yml`:
+
+1. Stop everything and keep a copy of the data. The copy is the way back:
+
+   ```shell
+   docker compose down
+   sudo cp -a pgdata pgdata-backup
+   ```
+
+2. Build an image holding both versions. Save this as `Dockerfile.pg-upgrade`:
+
+   ```dockerfile
+   FROM postgres:19
+   RUN apt-get update && apt-get install -y --no-install-recommends postgresql-18
+   ```
+
+   ```shell
+   docker build -t stash-pg-upgrade -f Dockerfile.pg-upgrade .
+   ```
+
+3. Save this as `pg-upgrade.sh`:
+
+   ```bash
+   #!/bin/bash
+   set -euo pipefail
+   OLD=/var/lib/postgresql/18/docker
+   NEW=/var/lib/postgresql/19/docker
+   B18=/usr/lib/postgresql/18/bin
+   B19=/usr/lib/postgresql/19/bin
+   mkdir -p "$NEW"
+   chown -R postgres:postgres /var/lib/postgresql/19
+   chmod 700 "$NEW"
+   cd /var/lib/postgresql/19
+   gosu postgres "$B19/initdb" -D "$NEW" -U "$SUPERUSER" -E UTF8 --locale=en_US.utf8
+   gosu postgres "$B19/pg_upgrade" -b "$B18" -B "$B19" -d "$OLD" -D "$NEW" -U "$SUPERUSER" --link --check
+   gosu postgres "$B19/pg_upgrade" -b "$B18" -B "$B19" -d "$OLD" -D "$NEW" -U "$SUPERUSER" --link
+   cp "$OLD/pg_hba.conf" "$NEW/pg_hba.conf"
+   chown postgres:postgres "$NEW/pg_hba.conf"
+   ```
+
+   Then run it. `SUPERUSER` is the `POSTGRES_USER` from the Compose file, `stash` in the example:
+
+   ```shell
+   docker run --rm -e SUPERUSER=stash -v "$PWD/pgdata:/var/lib/postgresql" -v "$PWD/pg-upgrade.sh:/pg-upgrade.sh:ro" stash-pg-upgrade bash /pg-upgrade.sh
+   ```
+
+   The `--check` line stops before anything has changed if the data can't be upgraded.
+
+4. In `docker-compose.yml`, change the database image to `postgres:19`. It finds its data in `19/docker` by itself. Start the database and rebuild its statistics, then start the rest:
+
+   ```shell
+   docker compose up -d db
+   docker compose exec db vacuumdb -U stash --all --analyze-in-stages --missing-stats-only
+   docker compose exec db vacuumdb -U stash --all --analyze-only
+   docker compose up -d
+   ```
+
+5. Once Stash looks right, remove the old data and the copy. This needs root because the `18` folder belongs to root, so `pg_upgrade`'s own `delete_old_cluster.sh` can't finish it:
+
+   ```shell
+   docker run --rm -v "$PWD/pgdata:/var/lib/postgresql" stash-pg-upgrade rm -rf /var/lib/postgresql/18
+   sudo rm -rf pgdata-backup
+   ```
+
+- **Space and the way back:** `--link` is quick and uses no extra space, but after the new server has started, the old folder can't be used. That is why step 1 keeps a copy. `pgdata` must be on one filesystem. Removing `--link` from both lines copies the data instead, which is slower and needs room for a second copy. The `--link` route was tested; the copying route wasn't.
+- **An ordinary account:** if Stash connects with an ordinary account as described in "What the server needs", `SUPERUSER` and `-U` are the actual superuser, often `postgres`, instead of `stash`. The account, its password, its permissions and the `session_replication_role` grant all carry over and do not need redoing. This was tested.
+- **A server outside Docker:** use the same `pg_upgrade` steps with your system's paths, and see PostgreSQL's [`pg_upgrade` documentation](https://www.postgresql.org/docs/current/pgupgrade.html). This wasn't tested.
+
 ## Regular expressions
 
 Regex filters accept the same [syntax](https://github.com/google/re2/wiki/Syntax) and give the same results on PostgreSQL as on SQLite, including for plugins that use them.
