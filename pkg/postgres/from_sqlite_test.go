@@ -38,7 +38,8 @@ func newSQLiteLibrary(t *testing.T) (string, *sqlx.DB) {
 
 const sqliteLibraryRows = `
 INSERT INTO folders (id, path, basename, parent_folder_id, mod_time, created_at, updated_at) VALUES
-  (101, '/data', 'data', NULL, '2024-01-02T03:04:05+01:00', '2024-01-02T03:04:05Z', '2024-01-02 03:04:05.5+00:00');
+  (101, '/data', 'data', NULL, '2024-01-02T03:04:05+01:00', '2024-01-02T03:04:05Z', '2024-01-02 03:04:05.5+00:00'),
+  (102, '/unix', 'unix', NULL, 1700000000, 1700000000000, '2024-01-02T03:04:05Z');
 INSERT INTO files (id, basename, zip_file_id, parent_folder_id, size, mod_time, created_at, updated_at) VALUES
   (7, '日本語 é.mp4', NULL, 101, 5000000000, '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
 INSERT INTO files_fingerprints (file_id, type, fingerprint) VALUES
@@ -48,7 +49,7 @@ INSERT INTO scenes (id, title, date, date_precision, organized, created_at, upda
   (6, 'No date', NULL, NULL, 0, '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z'),
   (900, 'Blank date', '', NULL, 0, '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
 INSERT INTO scene_custom_fields (scene_id, field, value) VALUES
-  (5, 'text', 'hello "world"'), (5, 'number', 42), (5, 'decimal', 1.5), (5, 'looks like a number', '42');
+  (5, 'text', 'hello "world"'), (5, 'number', 42), (5, 'decimal', 1.5), (5, 'looks like a number', '42'), (5, 'big', 9007199254740993);
 INSERT INTO tags (id, name, created_at, updated_at) VALUES (3, 'A tag', '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
 INSERT INTO scenes_tags (scene_id, tag_id) VALUES (5, 3);
 INSERT INTO blobs (checksum, blob) VALUES ('sum', X'00FF10');
@@ -139,6 +140,12 @@ func TestMigrateFromSQLite(t *testing.T) {
 	get(&created, "SELECT mod_time FROM folders WHERE id = 101")
 	assert.True(t, created.Equal(time.Date(2024, 1, 2, 2, 4, 5, 0, time.UTC)), "keeps the time zone offset: %s", created)
 
+	// numbers in a date column are read the way the SQLite driver reads them
+	get(&created, "SELECT mod_time FROM folders WHERE id = 102")
+	assert.True(t, created.Equal(time.Unix(1700000000, 0)), "seconds: %s", created)
+	get(&created, "SELECT created_at FROM folders WHERE id = 102")
+	assert.True(t, created.Equal(time.Unix(1700000000, 0)), "milliseconds: %s", created)
+
 	var blob []byte
 	get(&blob, "SELECT blob FROM blobs WHERE checksum = 'sum'")
 	assert.Equal(t, []byte{0x00, 0xFF, 0x10}, blob)
@@ -165,6 +172,7 @@ func TestMigrateFromSQLite(t *testing.T) {
 			"number":              int64(42),
 			"decimal":             1.5,
 			"looks like a number": "42",
+			"big":                 int64(9007199254740993),
 		}, fields)
 
 		f, err := db.File().Find(ctx, models.FileID(7))
@@ -225,6 +233,37 @@ func TestMigrateFromSQLiteReportsBadValues(t *testing.T) {
 	assert.Equal(t, 2, count)
 }
 
+// What only PostgreSQL's own rules catch still can't hide the problems already found.
+func TestMigrateFromSQLiteReportsRequiredValues(t *testing.T) {
+	dsn := migrationFixture(t)
+	_ = config.InitializeEmpty()
+	ctx := context.Background()
+
+	target := NewDatabase()
+	require.NoError(t, target.Open(ctx, dsn))
+	_, err := target.writeDB.Exec("ALTER TABLE tags ADD CONSTRAINT zz_short CHECK (length(name) < 3)")
+	require.NoError(t, err)
+	_, err = target.writeDB.Exec("ALTER TABLE performers ALTER COLUMN details SET NOT NULL")
+	require.NoError(t, err)
+	require.NoError(t, target.Close())
+
+	path, raw := newSQLiteLibrary(t)
+	_, err = raw.Exec(`
+		INSERT INTO performers (id, name, created_at, updated_at) VALUES (8, 'No details', '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
+		INSERT INTO scenes (id, title, date, created_at, updated_at) VALUES (5, 'Bad date', '2020-13-45', '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
+		INSERT INTO tags (id, name, created_at, updated_at) VALUES (3, 'A long tag', '2024-01-02T03:04:05Z', '2024-01-02T03:04:05Z');
+	`)
+	require.NoError(t, err)
+
+	var out bytes.Buffer
+	err = MigrateFromSQLite(ctx, path, dsn, &out)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "copying tags")
+	assert.Contains(t, err.Error(), "zz_short")
+	assert.Contains(t, err.Error(), "performers, row with id = 8, column details")
+	assert.Contains(t, err.Error(), "scenes, row with id = 5, column date")
+}
+
 func TestMigrateFromSQLiteRefuses(t *testing.T) {
 	_ = config.InitializeEmpty()
 	ctx := context.Background()
@@ -259,6 +298,28 @@ func TestMigrateFromSQLiteRefuses(t *testing.T) {
 			path, raw := newSQLiteLibrary(t)
 			_, err := raw.Exec(c.q)
 			require.NoError(t, err)
+			err = MigrateFromSQLite(ctx, path, dsn, &out)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), c.want)
+		})
+	}
+
+	for name, c := range map[string]struct {
+		q    string
+		want string
+	}{
+		"older PostgreSQL database":      {"UPDATE schema_migrations SET version = version - 1", "isn't at the version this build needs"},
+		"unfinished PostgreSQL database": {"UPDATE schema_migrations SET dirty = true", "didn't finish"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dsn := migrationFixture(t)
+			target := NewDatabase()
+			require.NoError(t, target.Open(ctx, dsn))
+			_, err := target.writeDB.Exec(c.q)
+			require.NoError(t, err)
+			require.NoError(t, target.Close())
+
+			path, _ := newSQLiteLibrary(t)
 			err = MigrateFromSQLite(ctx, path, dsn, &out)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), c.want)

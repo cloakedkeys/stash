@@ -66,8 +66,12 @@ func MigrateFromSQLite(ctx context.Context, sqlitePath string, postgresPath stri
 	if err := target.Open(ctx, dsn); err != nil {
 		return fmt.Errorf("opening PostgreSQL database: %w", err)
 	}
+	ready := target.Ready()
 	if err := target.Close(); err != nil {
 		return fmt.Errorf("closing PostgreSQL database: %w", err)
+	}
+	if ready != nil {
+		return fmt.Errorf("the PostgreSQL database isn't at the version this build needs, so this can't copy into it. Use a new, empty database: %w", ready)
 	}
 
 	conn, err := pgx.Connect(ctx, dsn)
@@ -76,11 +80,16 @@ func MigrateFromSQLite(ctx context.Context, sqlitePath string, postgresPath stri
 	}
 	defer func() { _ = conn.Close(ctx) }()
 
+	var dirty bool
+	if err := conn.QueryRow(ctx, "SELECT COALESCE(bool_or(dirty), false) FROM "+sqliteMigrationsTable).Scan(&dirty); err != nil {
+		return fmt.Errorf("reading the PostgreSQL database's version: %w", err)
+	}
+	if dirty {
+		return errors.New("an upgrade of the PostgreSQL database didn't finish, so this can't copy into it. Use a new, empty database")
+	}
+
 	plans, err := planSQLiteCopy(ctx, sourceTx, conn, out)
 	if err != nil {
-		return err
-	}
-	if err := checkTargetEmpty(ctx, conn, plans); err != nil {
 		return err
 	}
 
@@ -90,17 +99,26 @@ func MigrateFromSQLite(ctx context.Context, sqlitePath string, postgresPath stri
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// locked first, so that nothing can arrive between the check and clearing the tables
+	names := make([]string, len(plans))
+	for i, plan := range plans {
+		names[i] = quoteIdent(plan.table)
+	}
+	tables := strings.Join(names, ", ")
+	if _, err := tx.Exec(ctx, "LOCK TABLE "+tables+" IN ACCESS EXCLUSIVE MODE"); err != nil {
+		return fmt.Errorf("locking the PostgreSQL database: %w", err)
+	}
+	if err := checkTargetEmpty(ctx, tx, plans); err != nil {
+		return err
+	}
+
 	// rows go in table by table, so a row can arrive before one it refers to
 	if _, err := tx.Exec(ctx, "SET LOCAL session_replication_role = replica"); err != nil {
 		return fmt.Errorf("preparing to copy, which needs the same permission Stash needs to start: %w", err)
 	}
 
 	// the starter account goes, and the library's accounts replace it
-	names := make([]string, len(plans))
-	for i, plan := range plans {
-		names[i] = quoteIdent(plan.table)
-	}
-	if _, err := tx.Exec(ctx, "TRUNCATE "+strings.Join(names, ", ")); err != nil {
+	if _, err := tx.Exec(ctx, "TRUNCATE "+tables); err != nil {
 		return fmt.Errorf("clearing the PostgreSQL database: %w", err)
 	}
 
@@ -108,10 +126,13 @@ func MigrateFromSQLite(ctx context.Context, sqlitePath string, postgresPath stri
 	var totalRows int64
 	for _, plan := range plans {
 		n, tableIssues, err := plan.copy(ctx, sourceTx, tx)
+		issues = append(issues, tableIssues...)
 		if err != nil {
+			if len(issues) > 0 {
+				return fmt.Errorf("copying %s: %w\n%w", plan.table, err, issuesError(issues))
+			}
 			return fmt.Errorf("copying %s: %w", plan.table, err)
 		}
-		issues = append(issues, tableIssues...)
 		totalRows += n
 		if n > 0 {
 			fmt.Fprintf(out, "Copied %s: %d rows\n", plan.table, n)
@@ -132,7 +153,7 @@ func MigrateFromSQLite(ctx context.Context, sqlitePath string, postgresPath stri
 
 	fmt.Fprintln(out, "Updating PostgreSQL's statistics")
 	if _, err := conn.Exec(ctx, "ANALYZE"); err != nil {
-		return fmt.Errorf("analyzing: %w", err)
+		fmt.Fprintf(out, "WARNING: the library was copied, but updating PostgreSQL's statistics failed, so some pages may be slow until it next runs: %v\n", err)
 	}
 
 	fmt.Fprintf(out, "Finished: copied %d rows from %d tables. The SQLite file wasn't changed.\n", totalRows, len(plans))
@@ -192,18 +213,19 @@ func checkSQLiteVersion(source *sqlx.Tx) error {
 }
 
 type copyColumn struct {
-	name      string
-	dataType  string
-	maxLen    int // characters, or 0 for no limit
-	nullable  bool
-	serial    bool
-	inSource  bool
-	asRawText bool // read as text, because the SQLite driver turns dates it can't read into year 1
+	name     string
+	dataType string
+	maxLen   int // characters, or 0 for no limit
+	nullable bool
+	serial   bool
+	inSource bool
 }
 
 type copyPlan struct {
 	table   string
 	columns []copyColumn
+	// the column holding a custom field's Go type, or -1 if this isn't a custom field table
+	typeColumn int
 }
 
 func planSQLiteCopy(ctx context.Context, source *sqlx.Tx, conn *pgx.Conn, out io.Writer) ([]copyPlan, error) {
@@ -259,10 +281,13 @@ func planTable(table string, columns []copyColumn, inSource map[string]bool) (co
 		}
 	}
 
+	typeColumn := -1
 	for i := range columns {
 		c := &columns[i]
 		c.inSource = inSource[c.name]
-		c.asRawText = isTimeType(c.dataType)
+		if isCustomFieldType(table, c.name) {
+			typeColumn = i
+		}
 		if !c.inSource && !isCustomFieldType(table, c.name) && !c.nullable {
 			return copyPlan{}, fmt.Errorf("the PostgreSQL column %s.%s is required, but SQLite doesn't have it", table, c.name)
 		}
@@ -270,7 +295,7 @@ func planTable(table string, columns []copyColumn, inSource map[string]bool) (co
 			return copyPlan{}, fmt.Errorf("the PostgreSQL column %s.%s has the type %s, which can't be copied into", table, c.name, c.dataType)
 		}
 	}
-	return copyPlan{table: table, columns: columns}, nil
+	return copyPlan{table: table, columns: columns, typeColumn: typeColumn}, nil
 }
 
 func isCustomFieldType(table, column string) bool {
@@ -323,7 +348,7 @@ func loadSQLiteColumns(source *sqlx.Tx) (map[string]map[string]bool, error) {
 	return ret, nil
 }
 
-func checkTargetEmpty(ctx context.Context, conn *pgx.Conn, plans []copyPlan) error {
+func checkTargetEmpty(ctx context.Context, conn pgx.Tx, plans []copyPlan) error {
 	var used []string
 	for _, plan := range plans {
 		if slices.Contains(seededTables, plan.table) {
@@ -361,8 +386,9 @@ func (p copyPlan) copy(ctx context.Context, source *sqlx.Tx, target pgx.Tx) (int
 		switch {
 		case !c.inSource:
 			continue
-		case c.asRawText:
-			selects = append(selects, "CAST("+quoteIdent(c.name)+" AS TEXT)")
+		case isTimeType(c.dataType):
+			// an expression, because the SQLite driver turns dates it can't read into year 1
+			selects = append(selects, "CASE typeof("+quoteIdent(c.name)+") WHEN 'integer' THEN "+quoteIdent(c.name)+" ELSE CAST("+quoteIdent(c.name)+" AS TEXT) END")
 		default:
 			selects = append(selects, quoteIdent(c.name))
 		}
@@ -382,15 +408,15 @@ func (p copyPlan) copy(ctx context.Context, source *sqlx.Tx, target pgx.Tx) (int
 
 	n, err := target.CopyFrom(ctx, pgx.Identifier{p.table}, names, src)
 	if err != nil {
-		return 0, nil, err
+		return 0, src.issues, err
 	}
 	if err := rows.Err(); err != nil {
-		return 0, nil, err
+		return 0, src.issues, err
 	}
 
 	// rows with a problem were left out, and fail the whole copy
-	if want := int64(src.read - len(src.issues)); n != want && len(src.issues) == 0 {
-		return 0, nil, fmt.Errorf("read %d rows, but PostgreSQL received %d", want, n)
+	if n != int64(src.read) && len(src.issues) == 0 {
+		return 0, nil, fmt.Errorf("read %d rows, but PostgreSQL received %d", src.read, n)
 	}
 	return n, src.issues, nil
 }
@@ -432,7 +458,6 @@ func (s *sqliteRowSource) Err() error { return s.err }
 func (p copyPlan) convertRow(values []any) ([]any, []string) {
 	ret := make([]any, len(p.columns))
 	var problems []string
-	customField := strings.HasSuffix(p.table, customFieldsSuffix)
 
 	src := 0
 	for i, c := range p.columns {
@@ -443,16 +468,8 @@ func (p copyPlan) convertRow(values []any) ([]any, []string) {
 		src++
 
 		var err error
-		if customField && c.name == "value" {
-			var value any
-			var goType string
-			value, goType, err = convertCustomFieldValue(v)
-			if err == nil {
-				ret[i] = value
-				if t := slices.IndexFunc(p.columns, func(c copyColumn) bool { return isCustomFieldType(p.table, c.name) }); t >= 0 {
-					ret[t] = goType
-				}
-			}
+		if p.typeColumn >= 0 && c.name == "value" {
+			ret[i], ret[p.typeColumn], err = convertCustomFieldValue(v)
 		} else {
 			ret[i], err = convertValue(v, c)
 		}
@@ -466,7 +483,7 @@ func (p copyPlan) convertRow(values []any) ([]any, []string) {
 
 // convertCustomFieldValue returns a custom field as PostgreSQL holds it: as JSON, along with the
 // name of its Go type, which is how it knows what to turn the JSON back into.
-func convertCustomFieldValue(v any) (any, string, error) {
+func convertCustomFieldValue(v any) (any, any, error) {
 	var value any
 	switch t := v.(type) {
 	case []byte:
@@ -493,11 +510,11 @@ func convertCustomFieldValue(v any) (any, string, error) {
 		return nil, "", errors.New("not a number that can be stored")
 	}
 
-	encoded, err := json.Marshal(value)
+	encoded, err := getSQLValueFromCustomFieldInput(value)
 	if err != nil {
 		return nil, "", err
 	}
-	return string(encoded), fmt.Sprintf("%T", value), nil
+	return encoded, getSQLTypeFromInput(value), nil
 }
 
 func isTimeType(dataType string) bool {
@@ -514,6 +531,9 @@ func supportedTargetType(dataType string) bool {
 
 func convertValue(v any, c copyColumn) (any, error) {
 	if v == nil {
+		if !c.nullable {
+			return nil, errors.New("is empty, and PostgreSQL requires a value here")
+		}
 		return nil, nil
 	}
 
@@ -565,7 +585,7 @@ func convertInt(v any, lo, hi int64) (any, error) {
 			i = 1
 		}
 	case float64:
-		if t != math.Trunc(t) || t < float64(lo) || t > float64(hi) {
+		if t != math.Trunc(t) || t < float64(lo) || t >= -float64(lo) {
 			return nil, fmt.Errorf("%v isn't a whole number in range", t)
 		}
 		i = int64(t)
@@ -629,17 +649,57 @@ func convertJSON(v any, c copyColumn) (any, error) {
 	if strings.TrimSpace(s) == "" && c.nullable {
 		return nil, nil
 	}
+	if err := checkText(s, 0); err != nil {
+		return nil, err
+	}
 	if !json.Valid([]byte(s)) {
 		return nil, errors.New("isn't valid JSON")
 	}
-	if strings.Contains(s, `\u0000`) {
-		return nil, errors.New("contains a null character")
+	if err := checkJSONEscapes(s); err != nil {
+		return nil, err
 	}
 	return s, nil
 }
 
-// convertTime parses a date or timestamp, using the same formats as the SQLite driver. Unlike the
-// driver, it reports what it can't read, instead of turning it into year 1.
+// checkJSONEscapes refuses what JSON can hold and PostgreSQL's jsonb can't: an escaped null
+// character, or half of a surrogate pair. s must be valid JSON, so a backslash is always an escape.
+func checkJSONEscapes(s string) error {
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' {
+			continue
+		}
+		i++
+		if s[i] != 'u' {
+			continue
+		}
+		code, err := strconv.ParseUint(s[i+1:i+5], 16, 16)
+		if err != nil {
+			return errors.New("isn't valid JSON")
+		}
+		i += 4
+
+		switch {
+		case code == 0:
+			return errors.New("contains a null character")
+		case code >= 0xDC00 && code <= 0xDFFF:
+			return errors.New("contains half of a character")
+		case code >= 0xD800 && code <= 0xDBFF:
+			rest := s[i+1:]
+			if len(rest) < 6 || rest[0] != '\\' || rest[1] != 'u' {
+				return errors.New("contains half of a character")
+			}
+			low, err := strconv.ParseUint(rest[2:6], 16, 16)
+			if err != nil || low < 0xDC00 || low > 0xDFFF {
+				return errors.New("contains half of a character")
+			}
+			i += 6
+		}
+	}
+	return nil
+}
+
+// convertTime reads a date or timestamp the way the SQLite driver does. Unlike the driver, it
+// reports what it can't read, instead of turning it into year 1.
 func convertTime(v any, c copyColumn) (any, error) {
 	var s string
 	switch t := v.(type) {
@@ -647,6 +707,12 @@ func convertTime(v any, c copyColumn) (any, error) {
 		s = t
 	case []byte:
 		s = string(t)
+	case int64:
+		// the driver reads a large number as milliseconds, and any other as seconds
+		if t > 1e12 || t < -1e12 {
+			return time.UnixMilli(t).UTC(), nil
+		}
+		return time.Unix(t, 0).UTC(), nil
 	default:
 		return nil, fmt.Errorf("can't read a value of type %T as a date", v)
 	}
