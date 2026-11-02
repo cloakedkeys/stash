@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -131,6 +132,33 @@ func writeStoryText(dir, title, text string, held func(path string) (bool, error
 	return "", fmt.Errorf("saving the story's text: too many files named %q", name+storyFileExt)
 }
 
+// nameHeld reports whether path's name is one of names, ignoring case as some
+// filesystems do. It folds every alphabet, which the database's own comparison doesn't.
+func nameHeld(names []string, path string) bool {
+	base := filepath.Base(path)
+	return slices.ContainsFunc(names, func(name string) bool { return strings.EqualFold(name, base) })
+}
+
+// storyFolderFileNames lists the names of the files in the library that are in dir,
+// including ones that have gone missing.
+func (s *Manager) storyFolderFileNames(ctx context.Context, dir string) (names []string, err error) {
+	err = s.Repository.WithReadTxn(ctx, func(ctx context.Context) error {
+		folder, err := s.Repository.Folder.FindByPath(ctx, dir, false)
+		if err != nil || folder == nil {
+			return err
+		}
+		files, err := s.Repository.File.FindByFolderID(ctx, folder.ID)
+		for _, f := range files {
+			names = append(names, f.Base().Basename)
+		}
+		return err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing the library's files in %s: %w", dir, err)
+	}
+	return names, nil
+}
+
 // SaveStoryText saves a scraped story's text as a text file in the folder for
 // downloaded stories and adds the file to the library. It returns nil when that
 // folder isn't set, or when the file turns out to be one already in the library, so
@@ -145,15 +173,11 @@ func (s *Manager) SaveStoryText(ctx context.Context, title, text string) (models
 		return nil, err
 	}
 
-	held := func(path string) (isHeld bool, err error) {
-		err = s.Repository.WithReadTxn(ctx, func(ctx context.Context) error {
-			// not case sensitive, so as to be safe on filesystems that aren't
-			f, err := s.Repository.File.FindByPath(ctx, path, false)
-			isHeld = f != nil
-			return err
-		})
-		return isHeld, err
+	inLibrary, err := s.storyFolderFileNames(ctx, dir)
+	if err != nil {
+		return nil, err
 	}
+	held := func(path string) (bool, error) { return nameHeld(inLibrary, path), nil }
 	path, err := writeStoryText(dir, title, text, held)
 	if err != nil {
 		return nil, err

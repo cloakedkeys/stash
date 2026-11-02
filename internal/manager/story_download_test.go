@@ -66,6 +66,17 @@ func TestWriteStoryText(t *testing.T) {
 	}
 }
 
+func TestNameHeld(t *testing.T) {
+	names := []string{"Été.txt", "Plain.txt", "ΣΟΦΊΑ.txt"}
+	dir := t.TempDir()
+	assert.True(t, nameHeld(names, filepath.Join(dir, "Été.txt")))
+	assert.True(t, nameHeld(names, filepath.Join(dir, "plain.TXT")), "ASCII case")
+	assert.True(t, nameHeld(names, filepath.Join(dir, "été.txt")), "case outside ASCII")
+	assert.True(t, nameHeld(names, filepath.Join(dir, "σοφία.txt")), "Greek case")
+	assert.False(t, nameHeld(names, filepath.Join(dir, "Ete.txt")), "accents still count")
+	assert.False(t, nameHeld(nil, filepath.Join(dir, "Été.txt")))
+}
+
 func TestCheckStoryDownloadPath(t *testing.T) {
 	root := t.TempDir()
 	stories := filepath.Join(root, "stories")
