@@ -1,6 +1,7 @@
 package imagephash
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -41,7 +42,19 @@ func loadImage(encoder *ffmpeg.FFMpeg, imageFile models.File) (image.Image, erro
 	}
 	defer reader.Close()
 
-	img, _, err := image.Decode(reader)
+	// Animated WebP keeps its image chunks inside ANMF frames. Decode the
+	// first frame directly; ffmpeg builds may not support this container.
+	buffered := bufio.NewReader(reader)
+	header, _ := buffered.Peek(21)
+	if len(header) == 21 && string(header[:4]) == "RIFF" && string(header[8:16]) == "WEBPVP8X" && header[20]&2 != 0 {
+		img, err := loadAnimatedWebP(buffered)
+		if err != nil {
+			return nil, fmt.Errorf("decoding image: %w", err)
+		}
+		return img, nil
+	}
+
+	img, _, err := image.Decode(buffered)
 	if errors.Is(err, image.ErrFormat) {
 		// try ffmpeg as a fallback for unsupported formats
 		// ffmpeg cannot read files inside zips
