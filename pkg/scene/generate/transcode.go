@@ -84,6 +84,7 @@ func (g Generator) transcode(path string, width, height int, options TranscodeOp
 
 		videoArgs := codec.ExtraArgsHQ("superfast", transcodeCRF)
 		videoArgs = videoArgs.VideoFilter(videoFilter)
+		videoArgs = videoArgs.MovieTimescale(g.Encoder.Version())
 
 		extraInputArgs := g.Encoder.HWDeviceInit(g.FFMpegConfig.GetTranscodeInputArgs(), codec, fullhw)
 
@@ -118,6 +119,7 @@ func (g Generator) transcodeVideo(path string, width, height int, options Transc
 
 		videoArgs := codec.ExtraArgsHQ("superfast", transcodeCRF)
 		videoArgs = videoArgs.VideoFilter(videoFilter)
+		videoArgs = videoArgs.MovieTimescale(g.Encoder.Version())
 
 		var audioArgs ffmpeg.Args
 		audioArgs = audioArgs.SkipAudio()
@@ -143,6 +145,7 @@ func (g Generator) transcodeAudio(input string) generateFn {
 		args := transcoder.Transcode(input, transcoder.TranscodeOptions{
 			OutputPath: tmpFn,
 			VideoCodec: ffmpeg.VideoCodecCopy,
+			VideoArgs:  ffmpeg.Args{}.MovieTimescale(g.Encoder.Version()),
 			AudioCodec: ffmpeg.AudioCodecAAC,
 		})
 
@@ -159,6 +162,7 @@ func (g Generator) transcodeCopyVideo(input string) generateFn {
 		args := transcoder.Transcode(input, transcoder.TranscodeOptions{
 			OutputPath: tmpFn,
 			VideoCodec: ffmpeg.VideoCodecCopy,
+			VideoArgs:  ffmpeg.Args{}.MovieTimescale(g.Encoder.Version()),
 			AudioArgs:  audioArgs,
 		})
 

@@ -93,6 +93,7 @@ func (g Generator) markerPreviewVideo(path string, width, height int, codec ffmp
 			"-movflags", "+faststart",
 			"-strict", "-2",
 		)
+		videoArgs = videoArgs.MovieTimescale(g.Encoder.Version())
 
 		extraInputArgs := g.Encoder.HWDeviceInit(ffmpeg.Args{}, codec, fullhw)
 

@@ -93,6 +93,17 @@ func (a Args) VSync(m VSyncMethod, v Version) Args {
 	return append(a, m.Args()...)
 }
 
+// MovieTimescale keeps an mp4 file's movie timescale at 1000, as ffmpeg chose before
+// version 9, for ffmpeg version v, and returns the result. Version 9 chooses its own,
+// often a large one such as 384000, and Firefox skips frames of previews made with it
+// (#1655). Only for mp4 output.
+func (a Args) MovieTimescale(v Version) Args {
+	if v.Gteq(movieTimescaleVersion) {
+		return append(a, "-movie_timescale", "1000")
+	}
+	return a
+}
+
 // AudioBitrate adds the -b:a argument with b and returns the result.
 func (a Args) AudioBitrate(b string) Args {
 	return append(a, "-b:a", b)
@@ -179,6 +190,10 @@ func (m VSyncMethod) Args() []string {
 // fpsModeVersion is the ffmpeg version that replaced -vsync with -fps_mode.
 // -vsync was removed in ffmpeg 9.
 var fpsModeVersion = Version{major: 5, minor: 1}
+
+// movieTimescaleVersion is the ffmpeg version whose mp4 muxer stopped using a movie
+// timescale of 1000 by default.
+var movieTimescaleVersion = Version{major: 9}
 
 var fpsModes = map[VSyncMethod]string{
 	VSyncMethodPassthrough: "passthrough",

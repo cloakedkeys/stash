@@ -188,6 +188,7 @@ func (g Generator) previewVideoChunk(lockCtx *fsutil.LockContext, path string, w
 	videoArgs := codec.ExtraArgsHQ(options.Preset, scenePreviewCRF)
 	videoArgs = videoArgs.VideoFilter(videoFilter)
 	videoArgs = append(videoArgs, "-strict", "-2")
+	videoArgs = videoArgs.MovieTimescale(g.Encoder.Version())
 
 	extraInputArgs := g.Encoder.HWDeviceInit(g.FFMpegConfig.GetTranscodeInputArgs(), codec, fullhw)
 
@@ -267,6 +268,7 @@ func (g Generator) generateConcatFile(chunkFiles []string) (fn string, err error
 func (g Generator) previewVideoChunkCombine(lockCtx *fsutil.LockContext, concatFilePath string, outputPath string) error {
 	spliceOptions := transcoder.SpliceOptions{
 		OutputPath: outputPath,
+		VideoArgs:  ffmpeg.Args{}.MovieTimescale(g.Encoder.Version()),
 	}
 
 	args := transcoder.Splice(concatFilePath, spliceOptions)
