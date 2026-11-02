@@ -5,6 +5,31 @@ import (
 	"testing"
 )
 
+func TestArgs_MovieTimescale(t *testing.T) {
+	tests := []struct {
+		name    string
+		version Version
+		want    []string
+	}{
+		// before 9 the muxer already uses 1000, and versions before 4.2 lack the option
+		{"version not detected", Version{}, nil},
+		{"8.1", Version{8, 1, 3}, nil},
+		{"9.0", Version{9, 0, 2}, []string{"-movie_timescale", "1000"}},
+		{"10.0", Version{10, 0, 0}, []string{"-movie_timescale", "1000"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Args{}.MovieTimescale(tt.version)
+			if len(got) == 0 && len(tt.want) == 0 {
+				return
+			}
+			if !reflect.DeepEqual([]string(got), tt.want) {
+				t.Errorf("MovieTimescale() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestArgs_VSync(t *testing.T) {
 	tests := []struct {
 		name    string
