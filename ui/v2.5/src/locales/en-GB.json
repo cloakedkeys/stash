@@ -533,6 +533,8 @@
       "use_custom_sprite_interval_desc": "Enable the custom sprite interval according to the settings below.",
       "audio_ext_desc": "Comma-delimited list of file extensions that will be identified as audio.",
       "audio_ext_head": "Audio extensions",
+      "story_ext_desc": "Comma-delimited list of file extensions that will be identified as stories, in libraries that include stories.",
+      "story_ext_head": "Story extensions",
       "video_ext_desc": "Comma-delimited list of file extensions that will be identified as videos.",
       "video_ext_head": "Video extensions",
       "video_head": "Video"
@@ -1067,7 +1069,7 @@
     "studios": "{count, plural, one {Studio} other {Studios}}",
     "tags": "{count, plural, one {Tag} other {Tags}}"
   },
-  "country": "Country",
+  "country": "Country/Region",
   "cover_image": "Cover Image",
   "created_at": "Created At",
   "criterion": {
@@ -1160,6 +1162,7 @@
       },
       "options": "Options",
       "reset_zoom_on_nav": "Reset zoom level when changing image",
+      "scroll_to_change_image": "Scroll past image edges to change images (Pan Y)",
       "scale_up": {
         "description": "Scale smaller images up to fill screen.",
         "label": "Scale up to fit"
@@ -1757,6 +1760,7 @@
     "total_play_duration": "Total Play Duration"
   },
   "status": "Status: {statusText}",
+  "stories": "Stories",
   "studio": "Studio",
   "studio_and_parent": "Studio & Parent",
   "studio_count": "Studio Count",
@@ -1859,7 +1863,7 @@
     },
     "performers": {
       "birthdate": "Matched performer has a different birthdate.",
-      "country": "Matched performer is from a different country.",
+      "country": "Matched performer is from a different country or region.",
       "ethnicity": "Matched performer has a different ethnicity.",
       "gender": "Matched performer has a different gender.",
       "stash_mismatch": "Matched performer already has a different stash-id."

@@ -1,3 +1,4 @@
+import { useListOperationShortcuts } from "../List/keyboardShortcuts";
 import React, { useCallback, useEffect, useMemo } from "react";
 import cloneDeep from "lodash-es/cloneDeep";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -403,24 +404,7 @@ export const FilteredAudioList = PatchComponent(
       );
     }, [showModal, selectedItems, onCloseEditDelete]);
 
-    useEffect(() => {
-      Mousetrap.bind("e", () => {
-        if (hasSelection) {
-          onEdit?.();
-        }
-      });
-
-      Mousetrap.bind("d d", () => {
-        if (hasSelection) {
-          onDelete?.();
-        }
-      });
-
-      return () => {
-        Mousetrap.unbind("e");
-        Mousetrap.unbind("d d");
-      };
-    }, [hasSelection, onEdit, onDelete]);
+    useListOperationShortcuts({ hasSelection, onEdit, onDelete });
 
     useZoomKeybinds({
       zoomIndex: filter.zoomIndex,

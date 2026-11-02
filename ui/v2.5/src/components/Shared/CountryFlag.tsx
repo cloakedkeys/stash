@@ -16,9 +16,9 @@ export const CountryFlag: React.FC<ICountryFlag> = ({
   includeName,
   includeOverlay,
 }) => {
-  const { locale } = useIntl();
+  const intl = useIntl();
 
-  const country = getCountryByISO(isoCountry, locale);
+  const country = getCountryByISO(isoCountry, intl.locale, intl);
 
   if (!isoCountry || !country) return null;
 

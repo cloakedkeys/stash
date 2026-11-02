@@ -4,6 +4,7 @@ fragment ConfigGeneralData on ConfigGeneralResult {
     excludeVideo
     excludeAudio
     excludeImage
+    includeStory
   }
   databasePath
   backupDirectoryPath
@@ -55,6 +56,7 @@ fragment ConfigGeneralData on ConfigGeneralResult {
   audioExtensions
   imageExtensions
   galleryExtensions
+  storyExtensions
   excludes
   imageExcludes
   customPerformerImageLocation
@@ -112,6 +114,7 @@ fragment ConfigInterfaceData on ConfigInterfaceResult {
     scaleUp
     resetZoomOnNav
     scrollMode
+    scrollToChangeImage
     scrollAttemptsBeforeChange
     disableAnimation
   }

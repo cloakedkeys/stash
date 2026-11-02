@@ -1,3 +1,4 @@
+import { useListOperationShortcuts } from "../List/keyboardShortcuts";
 import React, {
   useCallback,
   useState,
@@ -638,24 +639,7 @@ export const FilteredImageList = PatchComponent(
       );
     }, [showModal, selectedItems, onCloseEditDelete]);
 
-    useEffect(() => {
-      Mousetrap.bind("e", () => {
-        if (hasSelection) {
-          onEdit?.();
-        }
-      });
-
-      Mousetrap.bind("d d", () => {
-        if (hasSelection) {
-          onDelete?.();
-        }
-      });
-
-      return () => {
-        Mousetrap.unbind("e");
-        Mousetrap.unbind("d d");
-      };
-    }, [hasSelection, onEdit, onDelete]);
+    useListOperationShortcuts({ hasSelection, onEdit, onDelete });
 
     const convertedExtraOperations: IListFilterOperation[] =
       providedOperations.map((o) => ({

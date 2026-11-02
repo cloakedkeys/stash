@@ -18,6 +18,9 @@ type ScreenshotOptions struct {
 	// Verbosity is the logging verbosity. Defaults to LogLevelError if not set.
 	Verbosity ffmpeg.LogLevel
 
+	// SampleAspectRatio is the pixel ratio after automatic rotation; zero means unknown.
+	SampleAspectRatio float64
+
 	UseSelectFilter bool
 
 	// SlowSeek uses accurate seek by placing -ss after the input.
@@ -81,14 +84,15 @@ func ScreenshotTime(input string, t float64, options ScreenshotOptions) ffmpeg.A
 	}
 
 	var vf ffmpeg.VideoFilter
+	vf = vf.SquarePixels(options.SampleAspectRatio)
 
 	if options.Width > 0 {
 		vf = vf.ScaleWidth(options.Width)
-		args = args.VideoFilter(vf)
 	} else if options.Height > 0 {
 		vf = vf.ScaleHeight(options.Height)
-		args = args.VideoFilter(vf)
 	}
+
+	args = args.VideoFilter(vf)
 
 	args = args.AppendArgs(options.OutputType)
 	args = args.Output(options.OutputPath)
@@ -113,6 +117,7 @@ func ScreenshotFrame(input string, frame int, options ScreenshotOptions) ffmpeg.
 	var vf ffmpeg.VideoFilter
 	// keep only frame number options.Frame)
 	vf = vf.Select(frame)
+	vf = vf.SquarePixels(options.SampleAspectRatio)
 
 	if options.Width > 0 {
 		vf = vf.ScaleWidth(options.Width)

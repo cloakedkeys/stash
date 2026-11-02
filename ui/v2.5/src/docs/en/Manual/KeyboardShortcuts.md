@@ -45,6 +45,10 @@
 | `e` | Edit selected |
 | `d d` | Delete selected |
 
+On tag, studio, group and performer detail pages, `e` and `d d` act on selected list items when there are any. With nothing selected, they use the detail page action, where available.
+
+On tag, studio and performer detail pages, `f` toggles favourite. Use the Add Filter button to filter the list on these pages.
+
 ## Scenes page shortcuts
 
 | Keyboard sequence | Action |
@@ -115,10 +119,17 @@
 [//]: # "(| `v` | Focus Groups selector |)"
 [//]: # "(| `t` | Focus Tags selector |)"
 
+## Gallery page shortcuts
+
+| Keyboard sequence | Action |
+|-------------------|--------|
+| `i` | File info tab |
+
 ## Image page shortcuts
 
 | Keyboard sequence | Action |
 |-------------------|--------|
+| `i` | File info tab |
 | `e` | Edit tab |
 | `o` | Increment O-Counter |
 | Ratings ||

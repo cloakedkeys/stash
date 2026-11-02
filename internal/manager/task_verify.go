@@ -129,7 +129,7 @@ func (f *verifyFilter) Accept(ctx context.Context, path string, info fs.FileInfo
 func (f *verifyFilter) shouldCleanFolder(path string, s *config.StashConfig) bool {
 	// only delete folders where it is excluded from everything
 	pathExcludeTest := path + string(filepath.Separator)
-	if (s.ExcludeVideo || matchFileRegex(pathExcludeTest, f.videoExcludeRegex)) && (s.ExcludeAudio || matchFileRegex(pathExcludeTest, f.audioExcludeRegex)) && (s.ExcludeImage || matchFileRegex(pathExcludeTest, f.imageExcludeRegex)) {
+	if !s.IncludeStory && (s.ExcludeVideo || matchFileRegex(pathExcludeTest, f.videoExcludeRegex)) && (s.ExcludeAudio || matchFileRegex(pathExcludeTest, f.audioExcludeRegex)) && (s.ExcludeImage || matchFileRegex(pathExcludeTest, f.imageExcludeRegex)) {
 		logger.Infof("Folder is excluded from video, audio, and image. Marking as missing: \"%s\"", path)
 		return true
 	}
@@ -147,6 +147,12 @@ func (f *verifyFilter) shouldCleanFile(path string, info fs.FileInfo, stash *con
 		return f.shouldCleanAudioFile(path, stash)
 	case useAsImage(path):
 		return f.shouldCleanImage(path, stash)
+	case IsStoryFile(path):
+		if !stash.IncludeStory {
+			logger.Infof("File in stash library that doesn't include stories. Marking as missing: \"%s\"", path)
+			return true
+		}
+		return false
 	default:
 		logger.Infof("File extension does not match any media extensions. Marking as missing: \"%s\"", path)
 		return true
