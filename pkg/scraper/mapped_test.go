@@ -89,7 +89,9 @@ func Test_postProcessParseDate_Apply(t *testing.T) {
 			"yesterday",
 			"",
 			"yesterday",
-			time.Now().Add(-24 * time.Hour).Format(internalDateFormat),
+			// the day before, not 24 hours before: on the day the clocks change, 24
+			// hours before can be the same day or two days back
+			time.Now().AddDate(0, 0, -1).Format(internalDateFormat),
 		},
 		{
 			"unix",
