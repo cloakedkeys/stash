@@ -437,14 +437,14 @@
 .loading-indicator {
   opacity: 50%;
   position: fixed;
-  right: 30px;
+  right: calc(30px + env(safe-area-inset-right));
   z-index: 1051;
 
   @include media-breakpoint-down(xs) {
     top: 30px;
   }
   @include media-breakpoint-up(sm) {
-    bottom: 30px;
+    bottom: calc(30px + env(safe-area-inset-bottom));
   }
 
   .fa-icon {
@@ -494,8 +494,8 @@
 }
 
 .troubleshooting-mode-button {
-  bottom: 1rem;
-  left: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  left: calc(1rem + env(safe-area-inset-left));
   position: fixed;
   z-index: 100;
 

@@ -205,6 +205,9 @@ export const GalleryReader: React.FC<{ galleryId: string }> = ({
       style={{
         position: "fixed",
         inset: 0,
+        // clear of a phone's notch and home bar; the pages are sized to what's left
+        padding:
+          "env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)",
         zIndex: 1050,
         display: "flex",
         flexDirection: "column",

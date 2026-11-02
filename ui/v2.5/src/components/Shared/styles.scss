@@ -905,7 +905,8 @@ button.btn.favorite-button {
     flex: $sidebar-width;
     flex-grow: 0;
     flex-shrink: 0;
-    padding-left: 15px;
+    // clear of a phone's notch, which the page now reaches
+    padding-left: calc(15px + env(safe-area-inset-left));
     transition: margin-left 0.1s;
   }
 
@@ -918,12 +919,12 @@ button.btn.favorite-button {
     position: fixed;
     scrollbar-gutter: stable;
     top: 0;
-    width: $sidebar-width;
+    width: calc($sidebar-width + env(safe-area-inset-left));
     z-index: 100;
   }
 
   &.hide-sidebar .sidebar {
-    margin-left: -$sidebar-width;
+    margin-left: calc(-1 * ($sidebar-width + env(safe-area-inset-left)));
   }
 
   &.hide-sidebar .sidebar + div {
@@ -1080,7 +1081,10 @@ $sticky-header-height: calc(50px + 3.3rem);
 
   .sidebar-pane.hide-sidebar .sidebar {
     left: -$sidebar-width;
-    margin-left: calc(-15px - $sidebar-width);
+    // the page starts after a notch, so go that much further to stay hidden,
+    // and give it back on the right so the content stays clear of the notch
+    margin-left: calc(-15px - $sidebar-width - env(safe-area-inset-left));
+    margin-right: env(safe-area-inset-left);
   }
 
   // on smaller viewports we want the sidebar to overlap content
