@@ -123,15 +123,13 @@ func (s mappedConfig) processAttributes(ctx context.Context, q mappedQuery, comm
 				logger.Warnf("key '%v': %v", k, err)
 			}
 
-			// a story's text is the whole of every match, such as a selector that
-			// matches each paragraph, in order and with any repeats. They're joined
-			// before post-processing, which would drop a repeated paragraph.
-			if k == storyTextKey && !attrConfig.hasConcat() && len(found) > 1 {
-				found = []string{strings.Join(sliceutil.Delete(found, ""), "\n\n")}
-			}
-
 			if len(found) > 0 {
-				result := s.postProcess(ctx, fieldQuery, attrConfig, found, preservePositions)
+				var result []string
+				if k == storyTextKey && !attrConfig.hasConcat() && !attrConfig.hasSplit() {
+					result = storyTextResult(ctx, fieldQuery, attrConfig, found)
+				} else {
+					result = s.postProcess(ctx, fieldQuery, attrConfig, found, preservePositions)
+				}
 
 				// HACK - if the key is URLs, then we need to set the value as a multi-value
 				isMulti := isMulti != nil && isMulti(k)
@@ -147,6 +145,23 @@ func (s mappedConfig) processAttributes(ctx context.Context, q mappedQuery, comm
 	}
 
 	return ret
+}
+
+// storyTextResult is a story's text: the whole of every match, such as a selector
+// that matches each paragraph or page. Each match is post-processed on its own, as
+// any other field's are, then they're joined in order. Repeats are kept, since a
+// story can say the same thing twice.
+func storyTextResult(ctx context.Context, q mappedQuery, attrConfig mappedScraperAttrConfig, found []string) []string {
+	var parts []string
+	for _, text := range found {
+		if text = attrConfig.postProcess(ctx, text, q); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return []string{strings.Join(parts, "\n\n")}
 }
 
 func (s mappedConfig) postProcess(ctx context.Context, q mappedQuery, attrConfig mappedScraperAttrConfig, found []string, preservePositions bool) []string {

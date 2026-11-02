@@ -330,6 +330,10 @@ xPathScrapers:
 	for _, tc := range []struct{ name, body, text, want string }{
 		{"text nodes", `<div class="story">Once upon &lt;a&gt; time.</div>`, `//div[@class="story"]/text()`, "Once upon <a> time."},
 		{"repeated paragraphs", `<div class="story"><p>No.</p><p>Again.</p><p>No.</p></div>`, `//div[@class="story"]/p`, "No.\n\nAgain.\n\nNo."},
+		// each match is post-processed on its own, as a sub-scraper fetching each
+		// page needs; here a replace that only matches at the start of a value
+		{"post-processed one match at a time", `<div class="story"><p>Page 1: One.</p><p>Page 2: Two.</p></div>`,
+			"\n        selector: //div[@class=\"story\"]/p\n        postProcess:\n          - replace:\n              - regex: '^Page \\d+: '\n                with: ''", "One.\n\nTwo."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, err := loadConfigFromYAML("test", strings.NewReader("name: Test\nxPathScrapers:\n  s:\n    story:\n      Text: "+tc.text+"\n"))
