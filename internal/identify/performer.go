@@ -6,11 +6,13 @@ import (
 	"strings"
 
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/performer"
 )
 
 type PerformerCreator interface {
 	models.PerformerCreator
 	UpdateImage(ctx context.Context, performerID int, image []byte) error
+	performer.AlternateImageAdder
 }
 
 func getPerformerID(ctx context.Context, endpoint string, w PerformerCreator, p *models.ScrapedPerformer, createMissing bool, skipSingleNamePerformers bool) (*int, error) {
@@ -39,6 +41,7 @@ func createMissingPerformer(ctx context.Context, endpoint string, w PerformerCre
 	if err != nil {
 		return nil, err
 	}
+	otherImages := performer.ScrapedOtherImages(ctx, p, nil)
 
 	err = w.Create(ctx, &models.CreatePerformerInput{Performer: newPerformer})
 	if err != nil {
@@ -48,6 +51,10 @@ func createMissingPerformer(ctx context.Context, endpoint string, w PerformerCre
 	// update image table
 	if len(performerImage) > 0 {
 		if err := w.UpdateImage(ctx, newPerformer.ID, performerImage); err != nil {
+			return nil, err
+		}
+
+		if err := performer.AddAlternateImages(ctx, w, newPerformer.ID, otherImages); err != nil {
 			return nil, err
 		}
 	}

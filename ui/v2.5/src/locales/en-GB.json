@@ -165,6 +165,7 @@
     "set_image": "Set image…",
     "show": "Show",
     "show_configuration": "Show Configuration",
+    "show_other_image": "Show other image",
     "show_results": "Show results",
     "show_count_results": "Show {count} results",
     "sidebar": {
@@ -1069,7 +1070,7 @@
     "studios": "{count, plural, one {Studio} other {Studios}}",
     "tags": "{count, plural, one {Tag} other {Tags}}"
   },
-  "country": "Country",
+  "country": "Country/Region",
   "cover_image": "Cover Image",
   "created_at": "Created At",
   "criterion": {
@@ -1863,7 +1864,7 @@
     },
     "performers": {
       "birthdate": "Matched performer has a different birthdate.",
-      "country": "Matched performer is from a different country.",
+      "country": "Matched performer is from a different country or region.",
       "ethnicity": "Matched performer has a different ethnicity.",
       "gender": "Matched performer has a different gender.",
       "stash_mismatch": "Matched performer already has a different stash-id."
