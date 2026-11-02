@@ -22,7 +22,6 @@ fragment PerformerDetails on Performer {
   ignore_auto_tag
   image_path
   performer_count
-  o_counter
 
   tags {
     ...SlimTagData
@@ -44,6 +43,7 @@ fragment PerformerDetails on Performer {
 
 fragment PerformerData on Performer {
   ...PerformerDetails
+  o_counter
   scene_count
   audio_count
   image_count
@@ -53,6 +53,7 @@ fragment PerformerData on Performer {
 
 fragment PerformerListData on Performer {
   ...PerformerDetails
+  o_counter(studio_scope: $studio_scope)
   scene_count(studio_scope: $studio_scope)
   audio_count(studio_scope: $studio_scope)
   image_count(studio_scope: $studio_scope)
