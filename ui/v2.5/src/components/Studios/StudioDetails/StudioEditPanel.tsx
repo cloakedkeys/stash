@@ -17,8 +17,16 @@ import isEqual from "lodash-es/isEqual";
 import { useToast } from "src/hooks/Toast";
 import { useConfigurationContext } from "src/hooks/Config";
 import { useIsAdmin } from "src/hooks/CurrentUser";
+<<<<<<< HEAD
 import { handleUnsavedChanges } from "src/utils/navigation";
 import { formikUtils, useValidateAfterChange } from "src/utils/form";
+=======
+import {
+  handleUnsavedChanges,
+  isRedirectAfterCreate,
+} from "src/utils/navigation";
+import { formikUtils } from "src/utils/form";
+>>>>>>> private/develop
 import { yupFormikValidate, yupRequiredStringArray } from "src/utils/yup";
 import { Studio, StudioSelect } from "../StudioSelect";
 import { useTagsEdit } from "src/hooks/tagsEdit";
@@ -490,7 +498,9 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
         when={formik.dirty}
         message={(location, action) => {
           // Check if it's a redirect after studio creation
-          if (action === "PUSH" && location.pathname.startsWith("/studios/"))
+          if (
+            isRedirectAfterCreate(isNew, action, location.pathname, "studios")
+          )
             return true;
 
           return handleUnsavedChanges(

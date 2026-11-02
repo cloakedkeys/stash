@@ -6,6 +6,7 @@ import { StashIDPill } from "src/components/Shared/StashID";
 import { PatchComponent } from "src/patch";
 import { CustomFields } from "src/components/Shared/CustomFields";
 import { Link } from "react-router-dom";
+import { ExternalLink } from "src/components/Shared/ExternalLink";
 
 interface IStudioDetailsPanel {
   studio: GQL.StudioDataFragment;
@@ -56,9 +57,7 @@ export const StudioDetailsPanel: React.FC<IStudioDetailsPanel> = PatchComponent(
         <ul className="pl-0">
           {studio.urls.map((url) => (
             <li key={url}>
-              <a href={url} target="_blank" rel="noreferrer">
-                {url}
-              </a>
+              <ExternalLink href={url}>{url}</ExternalLink>
             </li>
           ))}
         </ul>

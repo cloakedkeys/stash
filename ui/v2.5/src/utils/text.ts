@@ -534,6 +534,17 @@ const stripQuotes = (text: string) => {
  */
 const addQuotes = (text: string) => `"${text}"`;
 
+// Whether following this link would run code rather than open a page. Browsers
+// ignore spaces and control characters when reading a link's scheme, so they're
+// ignored here too. Other schemes are left alone, since a library can hold file:
+// and magnet: links.
+const isScriptURL = (url: string) =>
+  /^(javascript|vbscript|data):/i.test(
+    Array.from(url)
+      .filter((c) => c > " ")
+      .join("")
+  );
+
 const TextUtils = {
   fileSize,
   formatFileSizeUnit,
@@ -551,6 +562,7 @@ const TextUtils = {
   bitRate,
   resolution,
   sanitiseURL,
+  isScriptURL,
   domainFromURL,
   formatDate,
   formatFuzzyDate,

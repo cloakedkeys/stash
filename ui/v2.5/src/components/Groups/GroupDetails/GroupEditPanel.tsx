@@ -17,8 +17,16 @@ import { useFormik } from "formik";
 import { Prompt, useLocation } from "react-router-dom";
 import { GroupScrapeDialog } from "./GroupScrapeDialog";
 import isEqual from "lodash-es/isEqual";
+<<<<<<< HEAD
 import { handleUnsavedChanges } from "src/utils/navigation";
 import { formikUtils, useValidateAfterChange } from "src/utils/form";
+=======
+import {
+  handleUnsavedChanges,
+  isRedirectAfterCreate,
+} from "src/utils/navigation";
+import { formikUtils } from "src/utils/form";
+>>>>>>> private/develop
 import {
   yupDateString,
   yupFormikValidate,
@@ -471,7 +479,7 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
         when={formik.dirty}
         message={(location, action) => {
           // Check if it's a redirect after group creation
-          if (action === "PUSH" && location.pathname.startsWith("/groups/"))
+          if (isRedirectAfterCreate(isNew, action, location.pathname, "groups"))
             return true;
 
           return handleUnsavedChanges(
