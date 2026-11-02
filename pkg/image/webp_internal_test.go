@@ -1,6 +1,9 @@
 package image
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 func Test_isWebPAnimated(t *testing.T) {
 	tests := []struct {
@@ -27,22 +30,44 @@ func Test_isWebPAnimated(t *testing.T) {
 			false,
 		},
 		{
-			"false animated bit",
+			"unset animation flag with ANIM bytes",
 			[]byte{
 				0x52, 0x49, 0x46, 0x46, 0xb2, 0x3a, 0x17, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x58,
-				0x09, 0x00, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 0x7f, 0x02, 0x00, 0x55, 0x01, 0x00, 0x41, 0x4e,
+				0x0a, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x7f, 0x02, 0x00, 0x55, 0x01, 0x00, 0x41, 0x4e,
 				0x49, 0x4d, 0x06, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x41, 0x4e, 0x4d, 0x46,
 			},
 			false,
 		},
 		{
-			"ANIM out of range",
-			[]byte{
-				0x52, 0x49, 0x46, 0x46, 0xb2, 0x3a, 0x17, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x58,
-				0x0a, 0x00, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 0x7f, 0x02, 0x00, 0x55, 0x01, 0x00, 0x3e, 0xd5,
-				0x4e, 0x97, 0x43, 0xa2, 0x06, 0x16, 0xd1, 0xb4, 0x88, 0x03, 0x51, 0x39, 0xb7, 0x13, 0x33, 0x75,
-				0x41, 0x4e, 0x49, 0x4d, 0x41, 0x4e, 0x49, 0x4d, 0x41, 0x4e, 0x49, 0x4d, 0x41, 0x4e, 0x49, 0x4d,
-			},
+			"animated with ICCP before ANIM",
+			bytes.Join([][]byte{
+				[]byte("RIFF\x4c\x00\x00\x00WEBPVP8X\x0a\x00\x00\x00"),
+				{0x22, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				[]byte("ICCP\x20\x00\x00\x00"),
+				make([]byte, 32),
+				[]byte("ANIM\x06\x00\x00\x00"),
+				make([]byte, 6),
+			}, nil),
+			true,
+		},
+		{
+			"animation flag without ANIM in prefix",
+			[]byte("RIFF\x00\x00\x00\x00WEBPVP8X\x0a\x00\x00\x00\x02"),
+			true,
+		},
+		{
+			"lossy still with incidental flag and ANIM bytes",
+			[]byte("RIFF\x00\x00\x00\x00WEBPVP8 \x0a\x00\x00\x00\x02ANIM"),
+			false,
+		},
+		{
+			"lossless still with incidental flag and ANIM bytes",
+			[]byte("RIFF\x00\x00\x00\x00WEBPVP8L\x0a\x00\x00\x00\x02ANIM"),
+			false,
+		},
+		{
+			"not RIFF",
+			[]byte("XXXX\x00\x00\x00\x00WEBPVP8X\x0a\x00\x00\x00\x02ANIM"),
 			false,
 		},
 		{
@@ -56,11 +81,21 @@ func Test_isWebPAnimated(t *testing.T) {
 			false,
 		},
 	}
+	// The detector only needs the header prefix, not a complete image.
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := isWebPAnimated(tt.buf); got != tt.want {
 				t.Errorf("isWebPAnimated() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func Test_isWebPAnimatedShortBuffer(t *testing.T) {
+	buf := []byte("RIFF\x00\x00\x00\x00WEBPVP8X\x0a\x00\x00\x00\x02")
+	for size := 0; size < len(buf); size++ {
+		if isWebPAnimated(buf[:size]) {
+			t.Errorf("isWebPAnimated() = true for %d-byte prefix", size)
+		}
 	}
 }
