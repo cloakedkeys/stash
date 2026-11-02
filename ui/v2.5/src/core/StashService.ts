@@ -3450,6 +3450,7 @@ export const scraperMutationImpactedQueries = [
   GQL.ListPerformerScrapersDocument,
   GQL.ListSceneScrapersDocument,
   GQL.ListImageScrapersDocument,
+  GQL.ListStoryScrapersDocument,
   GQL.InstalledScraperPackagesDocument,
   GQL.InstalledScraperPackagesStatusDocument,
   GQL.ScraperUrlConflictsDocument,

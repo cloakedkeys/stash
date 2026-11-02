@@ -8,19 +8,24 @@ import (
 
 var manyBlankLines = regexp.MustCompile(`\n{3,}`)
 
-// attribute is one attribute with a value, such as href="x", class=y or title='t'.
-const attribute = `\s+[^\s"'=<>/]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>` + "`" + `]+)`
+// attribute is one attribute with a value, such as href="x", class=y or title='t', or
+// one of HTML's attributes that needs no value, such as async or nowrap. Any other bare
+// word, as in <Style is everything>, means it isn't a tag.
+const attribute = `\s+(?:[^\s"'=<>/]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>` + "`" + `]+)|` + booleanAttributes + `)`
+
+// booleanAttributes are HTML attributes that are written without a value.
+const booleanAttributes = `(?:allowfullscreen|async|autofocus|autoplay|checked|controls|crossorigin|default|defer|disabled|formnovalidate|hidden|inert|ismap|itemscope|loop|multiple|muted|nomodule|novalidate|nowrap|open|playsinline|readonly|required|reversed|scoped|selected)\b`
 
 // markup finds what is clearly markup, and nothing else:
 //   - group 1: a comment that closes, or a script, style, SVG or maths drawing whose
 //     opening tag has a tag's shape and whose closing tag exists. These are dropped
 //     with what's inside them.
-//   - group 2: the name of a tag whose attributes all have values, such as <i>, </p>
-//     or <a href="x">.
+//   - group 2: the name of a tag whose attributes are all attributes, such as <i>,
+//     </p>, <a href="x"> or <td nowrap>.
 //
-// A tag with bare words after its name, such as <I know what you did>, <Style is
-// everything> or <td nowrap>, doesn't match, so it stays as written: showing a real
-// tag as text is the better mistake in a story than losing the story's own words.
+// A tag with other bare words after its name, such as <I know what you did> or
+// <Style is everything>, doesn't match, so it stays as written: showing a real tag as
+// text is the better mistake in a story than losing the story's own words.
 var markup = regexp.MustCompile(`(?is)(<!--.*?-->` +
 	`|<script(?:` + attribute + `)*\s*>.*?</script\s*>` +
 	`|<style(?:` + attribute + `)*\s*>.*?</style\s*>` +
@@ -47,10 +52,17 @@ func init() {
 		template textarea tfoot th thead time title tr track tt u ul var video wbr`) {
 		htmlElements[name] = true
 	}
-	for _, name := range strings.Fields(`p div blockquote h1 h2 h3 h4 h5 h6 li hr tr pre`) {
+	// HTML's elements that a browser shows on their own lines
+	for _, name := range strings.Fields(`address article aside blockquote caption center
+		dd details dialog dir div dl dt fieldset figcaption figure footer form h1 h2 h3 h4
+		h5 h6 header hgroup hr legend li main menu nav ol p pre search section summary
+		table tbody tfoot thead tr ul`) {
 		blockElements[name] = true
 	}
 }
+
+// cellElements are table cells: the end of one is a space, so cells don't run together.
+var cellElements = map[string]bool{"td": true, "th": true}
 
 // PlainText turns a story's text from a website into plain text, since the reader
 // shows plain text. Only what is clearly markup is removed, and everything else is
@@ -81,6 +93,8 @@ func PlainText(s string) string {
 				lineBreak = "\n"
 			case blockElements[name]:
 				lineBreak = "\n\n"
+			case cellElements[name] && s[m[0]+1] == '/':
+				lineBreak = " "
 			}
 		}
 		b.WriteString(html.UnescapeString(s[text:m[0]]))

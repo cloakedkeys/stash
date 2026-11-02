@@ -46,6 +46,9 @@ func extractHostname(urlStr string) string {
 
 type isMultiFunc func(key string) bool
 
+// storyTextKey is a story scraper's field for the story's text.
+const storyTextKey = "Text"
+
 func (s mappedConfig) process(ctx context.Context, q mappedQuery, common commonMappedConfig, isMulti isMultiFunc) mappedResults {
 	return s.processAttributes(ctx, q, common, isMulti, false)
 }
@@ -104,6 +107,8 @@ func (s mappedConfig) processAttributes(ctx context.Context, q mappedQuery, comm
 				// Keep multiline Details without changing normalization for other fields.
 				xpathField := *xpath
 				xpathField.preserveNewlines = k == "Details"
+				// a story's text keeps its markup, so its paragraphs survive
+				xpathField.keepHTML = k == storyTextKey
 				fieldQuery = &xpathField
 			}
 
@@ -120,6 +125,12 @@ func (s mappedConfig) processAttributes(ctx context.Context, q mappedQuery, comm
 
 			if len(found) > 0 {
 				result := s.postProcess(ctx, fieldQuery, attrConfig, found, preservePositions)
+
+				// a story's text is the whole of every match, such as a selector that
+				// matches each paragraph, never only the first
+				if k == storyTextKey && len(result) > 1 {
+					result = []string{strings.Join(result, "\n\n")}
+				}
 
 				// HACK - if the key is URLs, then we need to set the value as a multi-value
 				isMulti := isMulti != nil && isMulti(k)

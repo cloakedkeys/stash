@@ -60,18 +60,26 @@ func TestPlainText(t *testing.T) {
 			"link\n\npara\n\nspan\nend",
 		},
 		{
-			// the better mistake: a real tag with a bare attribute shows as text, though
-			// its closing tag is still markup
-			"a bare attribute",
-			"<td nowrap>cell</td>",
-			"<td nowrap>cell",
+			// HTML's attributes that need no value are markup; any other bare word isn't
+			"bare attributes",
+			"<td nowrap>cell</td><a hidden voice> <I hidden door>",
+			"cell <a hidden voice> <I hidden door>",
 		},
 		{
-			// like any tag with a bare attribute, it isn't clearly markup, so it shows as
-			// text; the reader shows plain text, so it can't run
-			"a script with a bare attribute",
-			"Before<script async>alert(1)</script><style scoped>p{}</style> after",
-			"Before<script async>alert(1)<style scoped>p{} after",
+			"a script or style with a bare attribute",
+			`Before<script async>alert(1)</script><style scoped>p{}</style> after A<script async src="a.js">track();</script>B`,
+			"Before after AB",
+		},
+		{
+			// blocks a browser shows on their own lines don't run together
+			"other blocks",
+			"<section>The end.</section><section>Chapter 2</section><article>A</article><ul><li>B</li></ul><dl><dt>C</dt><dd>D</dd></dl>",
+			"The end.\n\nChapter 2\n\nA\n\nB\n\nC\n\nD",
+		},
+		{
+			"table cells",
+			"<table><tr><td>a</td><td>b</td></tr><tr><th>c</th><td>d</td></tr></table>",
+			"a b\n\nc d",
 		},
 		{
 			"drawings are dropped with what's inside them",

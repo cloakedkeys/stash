@@ -135,11 +135,13 @@ func (i *Importer) populateTags(ctx context.Context) error {
 }
 
 // PostImport sets the story's stored text. A story with a text file shows the file's
-// text, so it's left alone. Otherwise the import's text replaces any stored text,
-// the same as the other fields. The import's files decide it, since creating the story
-// replaces i.story with what was saved, without its files loaded.
+// text, so it's left alone. Otherwise the import's text replaces any stored text. An
+// import with no text, such as an export from before stories had text, leaves stored
+// text as it is: an empty field can't be told apart from a missing one, and losing a
+// story's text is the worse mistake. The import's files decide it, since creating the
+// story replaces i.story with what was saved, without its files loaded.
 func (i *Importer) PostImport(ctx context.Context, id int) error {
-	if len(i.Input.Files) > 0 {
+	if len(i.Input.Files) > 0 || i.Input.Text == "" {
 		return nil
 	}
 	if err := i.ReaderWriter.UpdateText(ctx, id, i.Input.Text); err != nil {

@@ -129,7 +129,9 @@ export const StoryEditPanel: React.FC<IProps> = ({
       formik.setFieldValue(field, value);
     }
     if (data.urls) formik.setFieldValue("urls", data.urls);
-    if (data.text && !hasFile) formik.setFieldValue("text", data.text);
+    // keeping the stored text also drops text from an earlier scrape that wasn't
+    // saved, so Save does what this dialog showed
+    formik.setFieldValue("text", data.text && !hasFile ? data.text : undefined);
     updateTagsStateFromScraper(data.tags ?? undefined);
   }
 

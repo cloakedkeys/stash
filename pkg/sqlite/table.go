@@ -1315,7 +1315,7 @@ func exec(ctx context.Context, stmt sqler) (sql.Result, error) {
 		return nil, fmt.Errorf("generating sql: %w", err)
 	}
 
-	logger.Tracef("SQL: %s [%v]", sql, args)
+	logger.Tracef("SQL: %s [%v]", sql, logArgs(args))
 	ret, err := tx.ExecContext(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("executing `%s` [%v]: %w", sql, args, err)

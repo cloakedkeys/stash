@@ -288,24 +288,41 @@ func TestLiteroticaStoryText(t *testing.T) {
 	assert.NotContains(t, asked, "/api/3/stories/parallel-tracks page 2")
 }
 
-// Any scraper file's story mapping can give the text, as one value. Joining several
-// paragraphs into one is up to the mapping, with concat.
+// Any scraper file's story mapping can give the text: the whole story in one element,
+// each paragraph matched on its own, or paragraphs joined with concat. Paragraphs and
+// line breaks are kept, and nothing is left out.
 func TestStoryScraperText(t *testing.T) {
-	c, err := loadConfigFromYAML("test", strings.NewReader(`name: Test
+	page := `<html><body><h1>A Title</h1><div class="story">
+<p>First paragraph,<br>on two lines.</p>
+<p>Second &amp; last.</p>
+</div></body></html>`
+	want := "First paragraph,\non two lines.\n\nSecond & last."
+
+	for _, text := range []string{
+		`//div[@class="story"]`,
+		`//div[@class="story"]/p`,
+		"\n        selector: //div[@class=\"story\"]/p\n        concat: \"\\n\\n\"",
+	} {
+		t.Run(text, func(t *testing.T) {
+			c, err := loadConfigFromYAML("test", strings.NewReader(`name: Test
 xPathScrapers:
   s:
     story:
       Title: //h1
-      Text:
-        selector: //div[@class="story"]/p
-        concat: "\n\n"
+      Text: `+text+`
 `))
-	require.NoError(t, err)
+			require.NoError(t, err)
 
-	page := `<html><body><h1>A Title</h1><div class="story"><p>First paragraph.</p><p>Second &amp; last.</p></div></body></html>`
-	s, err := c.XPathScrapers["s"].scrapeStory(context.Background(), &xpathQuery{doc: mustParseHTML(t, page)})
-	require.NoError(t, err)
-	require.NotNil(t, s)
-	require.NotNil(t, s.Text)
-	assert.Equal(t, "First paragraph.\n\nSecond & last.", *s.Text)
+			s, err := c.XPathScrapers["s"].scrapeStory(context.Background(), &xpathQuery{doc: mustParseHTML(t, page)})
+			require.NoError(t, err)
+			require.NotNil(t, s)
+			out, err := (&postScraper{}).postScrapeStory(context.Background(), *s)
+			require.NoError(t, err)
+			got := out.(models.ScrapedStory)
+			require.NotNil(t, got.Text)
+			assert.Equal(t, want, *got.Text)
+			require.NotNil(t, got.Title)
+			assert.Equal(t, "A Title", *got.Title, "other fields are still plain text")
+		})
+	}
 }

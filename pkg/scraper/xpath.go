@@ -293,6 +293,8 @@ type xpathQuery struct {
 	queryType        QueryType
 	url              string
 	preserveNewlines bool
+	// keepHTML returns each match's HTML instead of its text, for a story's text
+	keepHTML bool
 }
 
 func (q *xpathQuery) getType() QueryType {
@@ -342,6 +344,12 @@ func (q *xpathQuery) runQueryWithPositions(selector string) ([]string, error) {
 }
 
 func (q *xpathQuery) nodeText(n *html.Node) string {
+	if q.keepHTML && n != nil {
+		// a story's text: its paragraphs and line breaks are kept as markup, which
+		// story.PlainText turns into plain text
+		return strings.TrimSpace(htmlquery.OutputHTML(n, false))
+	}
+
 	var ret string
 	if n != nil && n.Type == html.CommentNode {
 		ret = htmlquery.OutputHTML(n, true)
@@ -372,5 +380,6 @@ func (q *xpathQuery) subScrape(ctx context.Context, value string) mappedQuery {
 
 	ret := q.scraper.getXPathQuery(doc, value)
 	ret.preserveNewlines = q.preserveNewlines
+	ret.keepHTML = q.keepHTML
 	return ret
 }

@@ -291,8 +291,8 @@ func TestAddText(t *testing.T) {
 	db.Story.AssertNotCalled(t, "GetText", ctx, 3)
 }
 
-// An imported story without a file gets the import's text, replacing what it had,
-// and one with a file is left alone.
+// An imported story without a file gets the import's text, replacing what it had. One
+// with a file, or an import with no text, leaves stored text alone.
 func TestImporterPostImportText(t *testing.T) {
 	ctx := context.Background()
 
@@ -312,12 +312,13 @@ func TestImporterPostImportText(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, i.PostImport(ctx, *id))
 
-	// no text in the import removes stored text, as for any other field
-	db.Story.On("UpdateText", ctx, 6, "").Return(nil).Once()
+	db.Story.AssertExpectations(t)
+
+	// no text in the import, as in an older export, leaves stored text alone
 	i = newImporter(db, jsonschema.Story{Title: "t"}, models.ImportMissingRefEnumFail)
 	require.NoError(t, i.PreImport(ctx))
 	require.NoError(t, i.PostImport(ctx, 6))
-	db.Story.AssertExpectations(t)
+	db.Story.AssertNotCalled(t, "UpdateText", ctx, 6, mock.Anything)
 
 	file := &models.BaseFile{ID: 2, Path: "/stories/a.txt"}
 	db = mocks.NewDatabase()
