@@ -220,3 +220,10 @@
     }
   }
 }
+
+// The window can be shorter than the options. The positioning keeps 5px clear on
+// each side.
+.Lightbox-options-popover {
+  max-height: calc(100vh - 10px);
+  overflow-y: auto;
+}
