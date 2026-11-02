@@ -38,6 +38,10 @@ func TestSameOnDisk(t *testing.T) {
 	if ok, err := fsys.IsPathCaseSensitive(filepath.Join(root, "One")); err == nil && !ok {
 		// a case-only rename of a folder above, as on Windows and macOS
 		assert.True(t, sameOnDisk(fsys, filepath.Join(root, "One", "123"), filepath.Join(root, "one", "123")))
+
+		// a library path can be relative to where Stash runs
+		t.Chdir(root)
+		assert.True(t, sameOnDisk(fsys, filepath.Join("ONE", "123"), filepath.Join("One", "123")))
 	}
 }
 

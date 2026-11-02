@@ -973,6 +973,14 @@ func (s *Scanner) onUnchangedFile(ctx context.Context, f ScannedFile, existing m
 // Each name that is spelled differently is checked on its own, inside the
 // folder path leads to. Drive letters never depend on case.
 func sameOnDisk(fsys models.FS, storedPath, path string) bool {
+	// a library path can be relative to where Stash runs
+	var err error
+	if storedPath, err = filepath.Abs(storedPath); err != nil {
+		return false
+	}
+	if path, err = filepath.Abs(path); err != nil {
+		return false
+	}
 	vol, storedVol := filepath.VolumeName(path), filepath.VolumeName(storedPath)
 	if !strings.EqualFold(vol, storedVol) {
 		return false
@@ -1010,14 +1018,16 @@ func renamedInFolder(fsys models.FS, parent, oldName, newName string) bool {
 	if err != nil || !os.SameFile(a, b) {
 		return false
 	}
+	// a folder Stash may enter but not list, above a library, can't show two
+	// names, so both opening the same entry is all there is to go on
 	dir, err := fsys.Open(parent)
 	if err != nil {
-		return false
+		return true
 	}
 	defer dir.Close()
 	entries, err := dir.ReadDir(-1)
 	if err != nil {
-		return false
+		return true
 	}
 	listed := 0
 	for _, e := range entries {
