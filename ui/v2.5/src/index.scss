@@ -1150,6 +1150,12 @@ div.dropdown-menu {
     display: flex;
   }
 
+  // not Bootstrap's d-flex, whose !important would beat the rule below that
+  // hides it from the bar on a phone, where it's in the menu instead
+  .logout-form {
+    display: flex;
+  }
+
   @include media-breakpoint-down(xs) {
     .navbar-buttons .nav-utility {
       display: none;
