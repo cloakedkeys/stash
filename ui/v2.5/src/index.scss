@@ -635,6 +635,13 @@ div.react-select__control {
     background-color: $muted-gray;
     color: $text-color;
   }
+
+  // the text box fills the rest of the line after the chosen values, rather than only
+  // the width of what's typed, so a right-click there lands on it and the browser
+  // offers Paste
+  .react-select__value-container--is-multi .react-select__input-container {
+    grid-template-columns: 0 minmax(min-content, 1fr);
+  }
 }
 
 div.react-select__menu-portal {
