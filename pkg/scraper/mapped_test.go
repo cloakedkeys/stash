@@ -67,23 +67,25 @@ func Test_postProcessParseDate_Apply(t *testing.T) {
 
 	unixDate := time.Date(2021, 9, 4, 1, 2, 3, 4, time.Local)
 
+	// want is the expected date for a given time now
+	fixed := func(s string) func(time.Time) string { return func(time.Time) string { return s } }
 	tests := []struct {
 		name  string
 		arg   postProcessParseDate
 		value string
-		want  string
+		want  func(now time.Time) string
 	}{
 		{
 			"simple",
 			"2006=01=02",
 			"2001=03=23",
-			"2001-03-23",
+			fixed("2001-03-23"),
 		},
 		{
 			"today",
 			"",
 			"today",
-			time.Now().Format(internalDateFormat),
+			func(now time.Time) string { return now.Format(internalDateFormat) },
 		},
 		{
 			"yesterday",
@@ -91,19 +93,19 @@ func Test_postProcessParseDate_Apply(t *testing.T) {
 			"yesterday",
 			// the day before, not 24 hours before: on the day the clocks change, 24
 			// hours before can be the same day or two days back
-			time.Now().AddDate(0, 0, -1).Format(internalDateFormat),
+			func(now time.Time) string { return now.AddDate(0, 0, -1).Format(internalDateFormat) },
 		},
 		{
 			"unix",
 			"unix",
 			strconv.FormatInt(unixDate.Unix(), 10),
-			unixDate.Format(internalDateFormat),
+			fixed(unixDate.Format(internalDateFormat)),
 		},
 		{
 			"invalid",
 			"invalid",
 			"2001=03=23",
-			"2001=03=23",
+			fixed("2001=03=23"),
 		},
 	}
 
@@ -111,8 +113,12 @@ func Test_postProcessParseDate_Apply(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.arg.Apply(ctx, tt.value, nil); got != tt.want {
-				t.Errorf("postProcessParseDate.Apply() = %v, want %v", got, tt.want)
+			// Apply reads the clock itself, so either side of midnight is right
+			before := time.Now()
+			got := tt.arg.Apply(ctx, tt.value, nil)
+			after := time.Now()
+			if got != tt.want(before) && got != tt.want(after) {
+				t.Errorf("postProcessParseDate.Apply() = %v, want %v", got, tt.want(after))
 			}
 		})
 	}
