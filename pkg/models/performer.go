@@ -107,7 +107,14 @@ type CircumcisionCriterionInput struct {
 	Modifier CriterionModifier `json:"modifier"`
 }
 
+// StudioScopeInput limits a performer's media statistics to a studio and its descendants.
+type StudioScopeInput struct {
+	ID    string `json:"id"`
+	Depth *int   `json:"depth"`
+}
+
 type PerformerFilterType struct {
+	StudioScope *StudioScopeInput `json:"studio_scope"`
 	OperatorFilter[PerformerFilterType]
 	Name           *StringCriterionInput `json:"name"`
 	Disambiguation *StringCriterionInput `json:"disambiguation"`

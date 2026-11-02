@@ -171,7 +171,23 @@ func (r *performerResolver) Tags(ctx context.Context, obj *models.Performer) (re
 	return withoutNil(ret), firstError(errs)
 }
 
-func (r *performerResolver) SceneCount(ctx context.Context, obj *models.Performer) (ret int, err error) {
+func (r *performerResolver) SceneCount(ctx context.Context, obj *models.Performer, studioScope *models.StudioScopeInput) (ret int, err error) {
+	if studioScope != nil {
+		studios := &models.HierarchicalMultiCriterionInput{
+			Value:    []string{studioScope.ID},
+			Modifier: models.CriterionModifierIncludes,
+			Depth:    studioScope.Depth,
+		}
+		performers := &models.MultiCriterionInput{
+			Value:    []string{strconv.Itoa(obj.ID)},
+			Modifier: models.CriterionModifierIncludes,
+		}
+		err = r.withReadTxn(ctx, func(ctx context.Context) error {
+			ret, err = r.repository.Scene.QueryCount(ctx, &models.SceneFilterType{Studios: studios, Performers: performers}, nil)
+			return err
+		})
+		return ret, err
+	}
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		ret, err = r.performerSceneCount(ctx, obj.ID)
 		return err
@@ -181,7 +197,23 @@ func (r *performerResolver) SceneCount(ctx context.Context, obj *models.Performe
 
 	return ret, nil
 }
-func (r *performerResolver) AudioCount(ctx context.Context, obj *models.Performer) (ret int, err error) {
+func (r *performerResolver) AudioCount(ctx context.Context, obj *models.Performer, studioScope *models.StudioScopeInput) (ret int, err error) {
+	if studioScope != nil {
+		studios := &models.HierarchicalMultiCriterionInput{
+			Value:    []string{studioScope.ID},
+			Modifier: models.CriterionModifierIncludes,
+			Depth:    studioScope.Depth,
+		}
+		performers := &models.MultiCriterionInput{
+			Value:    []string{strconv.Itoa(obj.ID)},
+			Modifier: models.CriterionModifierIncludes,
+		}
+		err = r.withReadTxn(ctx, func(ctx context.Context) error {
+			ret, err = r.repository.Audio.QueryCount(ctx, &models.AudioFilterType{Studios: studios, Performers: performers}, nil)
+			return err
+		})
+		return ret, err
+	}
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		ret, err = r.performerAudioCount(ctx, obj.ID)
 		return err
@@ -192,7 +224,23 @@ func (r *performerResolver) AudioCount(ctx context.Context, obj *models.Performe
 	return ret, nil
 }
 
-func (r *performerResolver) ImageCount(ctx context.Context, obj *models.Performer) (ret int, err error) {
+func (r *performerResolver) ImageCount(ctx context.Context, obj *models.Performer, studioScope *models.StudioScopeInput) (ret int, err error) {
+	if studioScope != nil {
+		studios := &models.HierarchicalMultiCriterionInput{
+			Value:    []string{studioScope.ID},
+			Modifier: models.CriterionModifierIncludes,
+			Depth:    studioScope.Depth,
+		}
+		performers := &models.MultiCriterionInput{
+			Value:    []string{strconv.Itoa(obj.ID)},
+			Modifier: models.CriterionModifierIncludes,
+		}
+		err = r.withReadTxn(ctx, func(ctx context.Context) error {
+			ret, err = r.repository.Image.QueryCount(ctx, &models.ImageFilterType{Studios: studios, Performers: performers}, nil)
+			return err
+		})
+		return ret, err
+	}
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		ret, err = image.CountByPerformerID(ctx, r.repository.Image, obj.ID)
 		return err
@@ -203,7 +251,23 @@ func (r *performerResolver) ImageCount(ctx context.Context, obj *models.Performe
 	return ret, nil
 }
 
-func (r *performerResolver) GalleryCount(ctx context.Context, obj *models.Performer) (ret int, err error) {
+func (r *performerResolver) GalleryCount(ctx context.Context, obj *models.Performer, studioScope *models.StudioScopeInput) (ret int, err error) {
+	if studioScope != nil {
+		studios := &models.HierarchicalMultiCriterionInput{
+			Value:    []string{studioScope.ID},
+			Modifier: models.CriterionModifierIncludes,
+			Depth:    studioScope.Depth,
+		}
+		performers := &models.MultiCriterionInput{
+			Value:    []string{strconv.Itoa(obj.ID)},
+			Modifier: models.CriterionModifierIncludes,
+		}
+		err = r.withReadTxn(ctx, func(ctx context.Context) error {
+			ret, err = r.repository.Gallery.QueryCount(ctx, &models.GalleryFilterType{Studios: studios, Performers: performers}, nil)
+			return err
+		})
+		return ret, err
+	}
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		ret, err = gallery.CountByPerformerID(ctx, r.repository.Gallery, obj.ID)
 		return err
@@ -214,7 +278,23 @@ func (r *performerResolver) GalleryCount(ctx context.Context, obj *models.Perfor
 	return ret, nil
 }
 
-func (r *performerResolver) GroupCount(ctx context.Context, obj *models.Performer) (ret int, err error) {
+func (r *performerResolver) GroupCount(ctx context.Context, obj *models.Performer, studioScope *models.StudioScopeInput) (ret int, err error) {
+	if studioScope != nil {
+		studios := &models.HierarchicalMultiCriterionInput{
+			Value:    []string{studioScope.ID},
+			Modifier: models.CriterionModifierIncludes,
+			Depth:    studioScope.Depth,
+		}
+		performers := &models.MultiCriterionInput{
+			Value:    []string{strconv.Itoa(obj.ID)},
+			Modifier: models.CriterionModifierIncludes,
+		}
+		err = r.withReadTxn(ctx, func(ctx context.Context) error {
+			ret, err = r.repository.Group.QueryCount(ctx, &models.GroupFilterType{Studios: studios, Performers: performers}, nil)
+			return err
+		})
+		return ret, err
+	}
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		ret, err = r.performerGroupCount(ctx, obj.ID)
 		return err
@@ -227,7 +307,7 @@ func (r *performerResolver) GroupCount(ctx context.Context, obj *models.Performe
 
 // deprecated
 func (r *performerResolver) MovieCount(ctx context.Context, obj *models.Performer) (ret int, err error) {
-	return r.GroupCount(ctx, obj)
+	return r.GroupCount(ctx, obj, nil)
 }
 
 func (r *performerResolver) PerformerCount(ctx context.Context, obj *models.Performer) (ret int, err error) {

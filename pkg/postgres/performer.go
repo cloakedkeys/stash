@@ -771,7 +771,7 @@ func (qb *PerformerStore) makeQuery(ctx context.Context, performerFilter *models
 
 	var err error
 	var agg []string
-	query.sort, agg, err = qb.getPerformerSort(ctx, findFilter)
+	query.sort, agg, err = qb.getPerformerSort(ctx, findFilter, performerFilter.StudioScope)
 	if err != nil {
 		return nil, err
 	}
@@ -1035,7 +1035,7 @@ var performerSortOptions = sortOptions{
 	"weight",
 }
 
-func (qb *PerformerStore) getPerformerSort(ctx context.Context, findFilter *models.FindFilterType) (string, []string, error) {
+func (qb *PerformerStore) getPerformerSort(ctx context.Context, findFilter *models.FindFilterType, studioScope *models.StudioScopeInput) (string, []string, error) {
 	var sort string
 	var direction string
 	if findFilter == nil {
@@ -1057,21 +1057,37 @@ func (qb *PerformerStore) getPerformerSort(ctx context.Context, findFilter *mode
 	case "tag_count":
 		sortQuery += getCountSort(performerTable, performersTagsTable, performerIDColumn, direction)
 	case "scenes_count":
-		sortQuery += getCountSort(performerTable, performersScenesTable, performerIDColumn, direction)
+		lhs, err := performerMediaCountSQL(ctx, sceneTable, performersScenesTable, sceneIDColumn, studioScope)
+		if err != nil {
+			return "", nil, err
+		}
+		sortQuery += " ORDER BY " + lhs + " " + getSortDirection(direction)
 	case "scenes_duration":
 		sortQuery += qb.sortByScenesDuration(direction)
 	case "scenes_size":
 		sortQuery += qb.sortByScenesSize(direction)
 	case "audios_count":
-		sortQuery += getCountSort(performerTable, performersAudiosTable, performerIDColumn, direction)
+		lhs, err := performerMediaCountSQL(ctx, audioTable, performersAudiosTable, audioIDColumn, studioScope)
+		if err != nil {
+			return "", nil, err
+		}
+		sortQuery += " ORDER BY " + lhs + " " + getSortDirection(direction)
 	case "audios_duration":
 		sortQuery += qb.sortByAudiosDuration(direction)
 	case "audios_size":
 		sortQuery += qb.sortByAudiosSize(direction)
 	case "images_count":
-		sortQuery += getCountSort(performerTable, performersImagesTable, performerIDColumn, direction)
+		lhs, err := performerMediaCountSQL(ctx, imageTable, performersImagesTable, imageIDColumn, studioScope)
+		if err != nil {
+			return "", nil, err
+		}
+		sortQuery += " ORDER BY " + lhs + " " + getSortDirection(direction)
 	case "galleries_count":
-		sortQuery += getCountSort(performerTable, performersGalleriesTable, performerIDColumn, direction)
+		lhs, err := performerMediaCountSQL(ctx, galleryTable, performersGalleriesTable, galleryIDColumn, studioScope)
+		if err != nil {
+			return "", nil, err
+		}
+		sortQuery += " ORDER BY " + lhs + " " + getSortDirection(direction)
 	case "play_count":
 		sortQuery += qb.sortByPlayCount(ctx, direction)
 	case "o_counter":

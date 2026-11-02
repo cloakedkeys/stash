@@ -209,6 +209,7 @@ const performerColumnSortMap: Record<string, string> = {
 const performerSortColumnMap = reverseMap(performerColumnSortMap);
 
 interface IPerformerList {
+  studioScope?: GQL.StudioScopeInput;
   filterHook?: (filter: ListFilterModel) => ListFilterModel;
   view?: View;
   alterQuery?: boolean;
@@ -364,7 +365,11 @@ const SidebarContent: React.FC<{
   );
 };
 
-function useViewRandom(filter: ListFilterModel, count: number) {
+function useViewRandom(
+  filter: ListFilterModel,
+  count: number,
+  studioScope?: GQL.StudioScopeInput
+) {
   const history = useHistory();
 
   const viewRandom = useCallback(async () => {
@@ -377,19 +382,23 @@ function useViewRandom(filter: ListFilterModel, count: number) {
     const filterCopy = cloneDeep(filter);
     filterCopy.itemsPerPage = 1;
     filterCopy.currentPage = index + 1;
-    const singleResult = await queryFindPerformers(filterCopy);
+    const singleResult = await queryFindPerformers(filterCopy, studioScope);
     if (singleResult.data.findPerformers.performers.length === 1) {
       const { id } = singleResult.data.findPerformers.performers[0];
       // navigate to the image player page
       history.push(`/performers/${id}`);
     }
-  }, [history, filter, count]);
+  }, [history, filter, count, studioScope]);
 
   return viewRandom;
 }
 
-function useAddKeybinds(filter: ListFilterModel, count: number) {
-  const viewRandom = useViewRandom(filter, count);
+function useAddKeybinds(
+  filter: ListFilterModel,
+  count: number,
+  studioScope?: GQL.StudioScopeInput
+) {
+  const viewRandom = useViewRandom(filter, count, studioScope);
 
   useEffect(() => {
     Mousetrap.bind("p r", () => {
@@ -413,6 +422,7 @@ export const FilteredPerformerList = PatchComponent(
     const {
       filterHook,
       view,
+      studioScope,
       alterQuery,
       extraCriteria,
       extraOperations = [],
@@ -435,7 +445,7 @@ export const FilteredPerformerList = PatchComponent(
           useURL: alterQuery,
         },
         queryResultProps: {
-          useResult: useFindPerformers,
+          useResult: (filter) => useFindPerformers(filter, studioScope),
           getCount: (r) => r.data?.findPerformers.count ?? 0,
           getItems: (r) => r.data?.findPerformers.performers ?? [],
           filterHook,
@@ -484,7 +494,7 @@ export const FilteredPerformerList = PatchComponent(
       setFilter,
     });
 
-    useAddKeybinds(effectiveFilter, totalCount);
+    useAddKeybinds(effectiveFilter, totalCount, studioScope);
     useFilteredSidebarKeybinds({
       showSidebar,
       setShowSidebar,
@@ -498,7 +508,7 @@ export const FilteredPerformerList = PatchComponent(
       result,
     });
 
-    const viewRandom = useViewRandom(effectiveFilter, totalCount);
+    const viewRandom = useViewRandom(effectiveFilter, totalCount, studioScope);
 
     function onExport(all: boolean) {
       showModal(

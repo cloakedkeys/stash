@@ -1,4 +1,4 @@
-fragment PerformerData on Performer {
+fragment PerformerDetails on Performer {
   id
   name
   disambiguation
@@ -21,11 +21,6 @@ fragment PerformerData on Performer {
   favorite
   ignore_auto_tag
   image_path
-  scene_count
-  audio_count
-  image_count
-  gallery_count
-  group_count
   performer_count
   o_counter
 
@@ -45,4 +40,22 @@ fragment PerformerData on Performer {
   weight
 
   custom_fields
+}
+
+fragment PerformerData on Performer {
+  ...PerformerDetails
+  scene_count
+  audio_count
+  image_count
+  gallery_count
+  group_count
+}
+
+fragment PerformerListData on Performer {
+  ...PerformerDetails
+  scene_count(studio_scope: $studio_scope)
+  audio_count(studio_scope: $studio_scope)
+  image_count(studio_scope: $studio_scope)
+  gallery_count(studio_scope: $studio_scope)
+  group_count(studio_scope: $studio_scope)
 }
