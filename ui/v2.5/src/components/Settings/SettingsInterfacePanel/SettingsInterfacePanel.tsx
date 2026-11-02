@@ -21,7 +21,6 @@ import {
   imageLightboxDisplayModeIntlMap,
   imageLightboxScrollModeIntlMap,
 } from "src/core/enums";
-import { useInterfaceLocalForage } from "src/hooks/LocalForage";
 import {
   ConnectionState,
   connectionStateLabel,
@@ -51,6 +50,7 @@ import { faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
 
 const allMenuItems = [
   { id: "scenes", headingID: "scenes" },
+  { id: "audios", headingID: "audios" },
   { id: "images", headingID: "images" },
   { id: "groups", headingID: "groups" },
   { id: "markers", headingID: "markers" },
@@ -104,7 +104,6 @@ export const SettingsInterfacePanel: React.FC = PatchComponent(
       sync: interactiveSync,
     } = React.useContext(InteractiveContext);
 
-    const [, setInterfaceLocalForage] = useInterfaceLocalForage();
     const { data: savedFilterData, loading: loadingSavedFilters } =
       useFindSavedFilters(GQL.FilterMode.Galleries);
     const savedGalleryFilters = savedFilterData?.findSavedFilters ?? [];
@@ -120,15 +119,6 @@ export const SettingsInterfacePanel: React.FC = PatchComponent(
     );
 
     function saveLightboxSettings(v: Partial<GQL.ConfigImageLightboxInput>) {
-      // save in local forage as well for consistency
-      setInterfaceLocalForage((prev) => ({
-        ...prev,
-        imageLightbox: {
-          ...prev.imageLightbox,
-          ...v,
-        },
-      }));
-
       saveInterface({
         imageLightbox: {
           ...iface.imageLightbox,
