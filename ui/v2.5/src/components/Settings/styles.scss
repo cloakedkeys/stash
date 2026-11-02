@@ -61,6 +61,10 @@
 
     > div:first-child {
       flex-grow: 0;
+      // so a long word or link in the description wraps, rather than pushing the
+      // setting's control off a narrow screen
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
 
     > div:last-child {
@@ -168,6 +172,8 @@
   }
 
   .stash-row .setting > div:last-child {
+    // each switch's column is narrower than that on a phone
+    min-width: 0;
     text-align: left;
   }
 }
