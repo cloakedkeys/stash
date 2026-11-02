@@ -20,7 +20,7 @@ export const StudioPerformersPanel: React.FC<IStudioPerformersPanel> = ({
   studioCriterion.value = {
     items: [{ id: studio.id!, label: studio.name || `Studio ${studio.id}` }],
     excluded: [],
-    depth: 0,
+    depth: showChildStudioContent ? -1 : 0,
   };
 
   const extraCriteria = {
@@ -34,6 +34,7 @@ export const StudioPerformersPanel: React.FC<IStudioPerformersPanel> = ({
 
   return (
     <FilteredPerformerList
+      studioScope={{ id: studio.id, depth: showChildStudioContent ? -1 : 0 }}
       filterHook={filterHook}
       extraCriteria={extraCriteria}
       alterQuery={active}

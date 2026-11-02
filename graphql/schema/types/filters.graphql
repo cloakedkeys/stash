@@ -123,7 +123,14 @@ input CustomFieldCriterionInput {
   modifier: CriterionModifier!
 }
 
+"Limits performer media counts and count sorting to this studio. Depth 0 means this studio only; -1 includes all descendants."
+input StudioScopeInput {
+  id: ID!
+  depth: Int
+}
+
 input PerformerFilterType {
+  studio_scope: StudioScopeInput
   AND: PerformerFilterType
   OR: PerformerFilterType
   NOT: PerformerFilterType
