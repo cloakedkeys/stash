@@ -60,6 +60,7 @@ func TestScreenshotSquarePixels(t *testing.T) {
 		{"cover", 0, 0, ""},
 		{"sprite width", 160, 0, ",scale=160:-2"},
 		{"sprite height", 0, 160, ",scale=-2:160"},
+		{"width takes precedence", 160, 90, ",scale=160:-2"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, slowSeek := range []bool{false, true} {
@@ -75,10 +76,8 @@ func TestScreenshotSquarePixels(t *testing.T) {
 				want := "scale=trunc(iw*sar/2)*2:ih,setsar=1" + tt.scale
 				assertScreenshotFilter(t, args, want)
 
-				if tt.height == 0 {
-					args = ScreenshotFrame("input.mp4", 3, options)
-					assertScreenshotFilter(t, args, "select=eq(n\\,3),"+want)
-				}
+				args = ScreenshotFrame("input.mp4", 3, options)
+				assertScreenshotFilter(t, args, "select=eq(n\\,3),"+want)
 
 				// Explicit square pixels must produce exactly the unknown-SAR command.
 				options.SampleAspectRatio = 1

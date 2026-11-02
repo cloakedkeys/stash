@@ -121,6 +121,8 @@ func ScreenshotFrame(input string, frame int, options ScreenshotOptions) ffmpeg.
 
 	if options.Width > 0 {
 		vf = vf.ScaleWidth(options.Width)
+	} else if options.Height > 0 {
+		vf = vf.ScaleHeight(options.Height)
 	}
 
 	args = args.VideoFilter(vf)
