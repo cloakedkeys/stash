@@ -17,6 +17,13 @@ type sceneFilesTable struct {
 	relatedFilesTable
 }
 
+// sceneUsesWholeFileWhere matches the links from scenes to the files they use the whole of.
+const sceneUsesWholeFileWhere = "scenes_files.start_time IS NULL AND scenes_files.end_time IS NULL"
+
+// sceneFileDurationSQL is how long a scene is in a linked file: its part of it, or the
+// whole of it.
+const sceneFileDurationSQL = "COALESCE(scenes_files.end_time, video_files.duration) - COALESCE(scenes_files.start_time, 0)"
+
 type sceneFileRange struct {
 	FileID    models.FileID `db:"file_id"`
 	StartTime null.Float    `db:"start_time"`

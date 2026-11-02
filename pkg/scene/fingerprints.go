@@ -7,6 +7,22 @@ import (
 	"github.com/stashapp/stash/pkg/models"
 )
 
+// Fingerprints returns the fingerprints that identify the scene: those of its files.
+// A scene that's part of a file has none, since its file's fingerprints are those of
+// the whole of it. The scene's files must be loaded.
+func Fingerprints(s *models.Scene) models.Fingerprints {
+	if HasRange(s) {
+		return nil
+	}
+
+	var ret models.Fingerprints
+	for _, f := range s.Files.List() {
+		ret = append(ret, f.Fingerprints...)
+	}
+
+	return ret
+}
+
 // GetFingerprints returns the fingerprints for the given scene ids.
 func (s *Service) GetScenesFingerprints(ctx context.Context, ids []int) ([]models.Fingerprints, error) {
 	fingerprints := make([]models.Fingerprints, len(ids))
@@ -27,13 +43,7 @@ func (s *Service) GetScenesFingerprints(ctx context.Context, ids []int) ([]model
 			return nil, err
 		}
 
-		var sceneFPs models.Fingerprints
-
-		for _, f := range scene.Files.List() {
-			sceneFPs = append(sceneFPs, f.Fingerprints...)
-		}
-
-		fingerprints[i] = sceneFPs
+		fingerprints[i] = Fingerprints(scene)
 	}
 
 	return fingerprints, nil

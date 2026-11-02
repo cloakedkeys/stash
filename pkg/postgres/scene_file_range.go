@@ -17,6 +17,13 @@ type sceneFilesTable struct {
 	relatedFilesTable
 }
 
+// sceneUsesWholeFileWhere matches the links from scenes to the files they use the whole of.
+const sceneUsesWholeFileWhere = "scenes_files.start_time IS NULL AND scenes_files.end_time IS NULL"
+
+// sceneFileDurationSQL is how long a scene is in a linked file: its part of it, or the
+// whole of it.
+const sceneFileDurationSQL = "COALESCE(scenes_files.end_time, video_files.duration) - COALESCE(scenes_files.start_time, 0)"
+
 type sceneFileRange struct {
 	FileID    models.FileID `db:"file_id"`
 	StartTime null.Float    `db:"start_time"`
@@ -53,6 +60,16 @@ func (t *sceneFilesTable) primaryRange(ctx context.Context, id int) (*sceneFileR
 	}
 
 	return &ret[0], nil
+}
+
+// LockFile holds the file's row until the transaction ends. Changes to which scenes use
+// the whole of a file lock it first, so that two at once can't both see it as unused.
+func (qb *SceneStore) LockFile(ctx context.Context, fileID models.FileID) error {
+	var ids []int
+	if err := dbWrapper.Select(ctx, &ids, "SELECT id FROM files WHERE id = ? FOR UPDATE", fileID); err != nil {
+		return fmt.Errorf("locking file %d: %w", fileID, err)
+	}
+	return nil
 }
 
 // replaceJoins keeps the scene's range when its primary file stays the same.

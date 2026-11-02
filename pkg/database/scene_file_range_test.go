@@ -21,15 +21,20 @@ import (
 
 func rangeVideoFile(ctx context.Context, t *testing.T, name string, duration float64) *models.VideoFile {
 	t.Helper()
+	return rangeVideoFileWith(ctx, t, name, duration, models.Fingerprints{
+		{Type: models.FingerprintTypeOshash, Fingerprint: "oshash-" + name},
+	})
+}
+
+func rangeVideoFileWith(ctx context.Context, t *testing.T, name string, duration float64, fps models.Fingerprints) *models.VideoFile {
+	t.Helper()
 	f := &models.VideoFile{
 		BaseFile: &models.BaseFile{
 			Basename:       name,
 			ParentFolderID: folderIDs[folderIdxWithSceneFiles],
 			Size:           100,
 			DirEntry:       models.DirEntry{ModTime: time.Now()},
-			Fingerprints: models.Fingerprints{
-				{Type: models.FingerprintTypeOshash, Fingerprint: "oshash-" + name},
-			},
+			Fingerprints:   fps,
 		},
 		Format:     "mp4",
 		Duration:   duration,
@@ -78,7 +83,8 @@ func TestSceneFileRanges(t *testing.T) {
 
 		got, err := db.Scene().Find(ctx, first.ID)
 		require.NoError(t, err)
-		assert.Equal(t, f64(0), got.StartTime)
+		// a start at 0 is stored as the start of the file
+		assert.Nil(t, got.StartTime)
 		assert.Equal(t, f64(100), got.EndTime)
 		assert.Equal(t, &f.ID, got.PrimaryFileID)
 		got, err = db.Scene().Find(ctx, second.ID)
@@ -101,7 +107,8 @@ func TestSceneFileRanges(t *testing.T) {
 		_, err = newRangeScene(ctx, t, svc, "another whole", nil, nil, f.ID)
 		require.Error(t, err)
 		require.NoError(t, first.LoadFiles(ctx, db.Scene()))
-		assert.ErrorIs(t, svc.ValidateRangeUpdate(ctx, first, nil, nil), scene.ErrWholeFileInUse)
+		_, _, err = svc.ValidateRangeUpdate(ctx, first, nil, nil)
+		assert.ErrorIs(t, err, scene.ErrWholeFileInUse)
 
 		// a part of a file has only that file
 		_, err = newRangeScene(ctx, t, svc, "two files", f64(1), f64(2), f.ID, other.ID)
@@ -112,7 +119,8 @@ func TestSceneFileRanges(t *testing.T) {
 		extra := rangeVideoFile(ctx, t, "extra.mp4", 600)
 		require.NoError(t, svc.AssignFile(ctx, lone.ID, extra.ID))
 		require.NoError(t, lone.LoadFiles(ctx, db.Scene()))
-		assert.ErrorIs(t, svc.ValidateRangeUpdate(ctx, lone, f64(1), f64(2)), scene.ErrRangeNeedsOneFile)
+		_, _, err = svc.ValidateRangeUpdate(ctx, lone, f64(1), f64(2))
+		assert.ErrorIs(t, err, scene.ErrRangeNeedsOneFile)
 
 		// a shared file can't be taken by another scene
 		assert.Error(t, svc.AssignFile(ctx, lone.ID, f.ID))
@@ -197,7 +205,8 @@ func TestSceneFileRanges(t *testing.T) {
 
 		// with the whole-file scene removed, the part can become the whole file
 		require.NoError(t, db.Scene().Destroy(ctx, whole.ID))
-		require.NoError(t, svc.ValidateRangeUpdate(ctx, got, nil, nil))
+		_, _, err = svc.ValidateRangeUpdate(ctx, got, nil, nil)
+		require.NoError(t, err)
 		partial = models.NewScenePartial()
 		partial.StartTime = models.NewOptionalFloat64Ptr(nil)
 		partial.EndTime = models.NewOptionalFloat64Ptr(nil)

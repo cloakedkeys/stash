@@ -107,19 +107,30 @@ func AddGallery(ctx context.Context, qb models.SceneUpdater, o *models.Scene, ga
 // whole of one that only parts of are used, is shared with the scenes using it. Otherwise
 // the file is moved to the new scene, as AssignFile does.
 func (s *Service) addFileToNewScene(ctx context.Context, sceneID int, fileID models.FileID, ranged bool) error {
+	if err := s.lockFile(ctx, fileID); err != nil {
+		return err
+	}
+
 	others, err := s.otherScenes(ctx, sceneID, fileID)
 	if err != nil {
 		return err
 	}
 
-	wholeInUse := false
+	wholeInUse, parts := false, false
 	for _, o := range others {
 		if usesWholeFile(o, fileID) {
 			wholeInUse = true
+		} else {
+			parts = true
 		}
 	}
 
-	if ranged || (len(others) > 0 && !wholeInUse) {
+	if !ranged && wholeInUse && parts {
+		// moving the file to this scene would take it from the scenes that are parts of it
+		return ErrWholeFileInUse
+	}
+
+	if ranged || (parts && !wholeInUse) {
 		if _, err := s.findVideoFile(ctx, fileID); err != nil {
 			return err
 		}

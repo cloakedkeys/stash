@@ -138,13 +138,7 @@ func (s *Service) Destroy(ctx context.Context, scene *models.Scene, fileDeleter 
 	}
 
 	for _, m := range markers {
-		if shared {
-			if err := mqb.Destroy(ctx, m.ID); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := DestroyMarker(ctx, scene, m, mqb, fileDeleter); err != nil {
+		if err := s.DestroyMarker(ctx, scene, m, fileDeleter); err != nil {
 			return err
 		}
 	}
@@ -184,7 +178,7 @@ func (s *Service) deleteFiles(ctx context.Context, scene *models.Scene, fileDele
 
 	for _, f := range scene.Files.List() {
 		// only delete files where there is no other associated scene
-		otherScenes, err := s.Repository.FindByFileID(ctx, f.ID)
+		otherScenes, err := s.Repository.FindByFileID(allScenes(ctx), f.ID)
 		if err != nil {
 			return err
 		}
@@ -224,7 +218,7 @@ func (s *Service) destroyFileEntries(ctx context.Context, scene *models.Scene) e
 
 	for _, f := range scene.Files.List() {
 		// only destroy file entries where there is no other associated scene
-		otherScenes, err := s.Repository.FindByFileID(ctx, f.ID)
+		otherScenes, err := s.Repository.FindByFileID(allScenes(ctx), f.ID)
 		if err != nil {
 			return err
 		}
@@ -244,15 +238,27 @@ func (s *Service) destroyFileEntries(ctx context.Context, scene *models.Scene) e
 	return nil
 }
 
-// DestroyMarker deletes the scene marker from the database and returns a
-// function that removes the generated files, to be executed after the
-// transaction is successfully committed.
-func DestroyMarker(ctx context.Context, scene *models.Scene, sceneMarker *models.SceneMarker, qb models.SceneMarkerDestroyer, fileDeleter *FileDeleter) error {
-	if err := qb.Destroy(ctx, sceneMarker.ID); err != nil {
+// DestroyMarker deletes the scene marker from the database and marks its generated
+// files for deletion after the transaction is successfully committed.
+func (s *Service) DestroyMarker(ctx context.Context, scene *models.Scene, sceneMarker *models.SceneMarker, fileDeleter *FileDeleter) error {
+	if err := s.MarkerRepository.Destroy(ctx, sceneMarker.ID); err != nil {
 		return err
 	}
 
-	// delete the preview for the marker
+	return s.MarkMarkerFiles(ctx, scene, sceneMarker, fileDeleter)
+}
+
+// MarkMarkerFiles marks for deletion the generated files of the marker, at the second
+// it was at on the scene, unless another marker uses them.
+func (s *Service) MarkMarkerFiles(ctx context.Context, scene *models.Scene, sceneMarker *models.SceneMarker, fileDeleter *FileDeleter) error {
 	seconds := int(sceneMarker.Seconds)
+	inUse, err := s.markerFilesInUse(ctx, scene, seconds, sceneMarker.ID)
+	if err != nil {
+		return err
+	}
+	if inUse {
+		return nil
+	}
+
 	return fileDeleter.MarkMarkerFiles(scene, seconds)
 }

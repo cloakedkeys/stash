@@ -16,8 +16,14 @@ func (s *Service) Create(ctx context.Context, input models.CreateSceneInput) (*m
 		return nil, errors.New("title must be set if scene has no files")
 	}
 
-	ranged := HasRange(input.Scene)
-	if ranged {
+	now := time.Now()
+	newScene := *input.Scene
+	newScene.CreatedAt = now
+	newScene.UpdatedAt = now
+
+	// the scene's part of its file, which is stored with its link to the file
+	start, end := input.Scene.StartTime, input.Scene.EndTime
+	if start != nil || end != nil {
 		if len(input.FileIDs) != 1 {
 			return nil, ErrRangeNeedsOneFile
 		}
@@ -25,15 +31,13 @@ func (s *Service) Create(ctx context.Context, input models.CreateSceneInput) (*m
 		if err != nil {
 			return nil, err
 		}
-		if err := ValidateRange(f, input.Scene.StartTime, input.Scene.EndTime); err != nil {
+		start, end, err = checkRange(f, start, end)
+		if err != nil {
 			return nil, err
 		}
 	}
-
-	now := time.Now()
-	newScene := *input.Scene
-	newScene.CreatedAt = now
-	newScene.UpdatedAt = now
+	ranged := start != nil || end != nil
+	newScene.StartTime, newScene.EndTime = nil, nil
 
 	// don't pass the file ids since they may be already assigned
 	// assign them afterwards
@@ -61,8 +65,8 @@ func (s *Service) Create(ctx context.Context, input models.CreateSceneInput) (*m
 			PrimaryFileID: &input.FileIDs[0],
 		}
 		if ranged {
-			partial.StartTime = models.NewOptionalFloat64Ptr(input.Scene.StartTime)
-			partial.EndTime = models.NewOptionalFloat64Ptr(input.Scene.EndTime)
+			partial.StartTime = models.NewOptionalFloat64Ptr(start)
+			partial.EndTime = models.NewOptionalFloat64Ptr(end)
 		}
 		if _, err := s.Repository.UpdatePartial(ctx, newScene.ID, partial); err != nil {
 			return nil, fmt.Errorf("setting primary file on new scene: %w", err)

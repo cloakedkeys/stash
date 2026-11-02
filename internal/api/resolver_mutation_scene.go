@@ -338,9 +338,12 @@ func (r *mutationResolver) sceneUpdate(ctx context.Context, input models.SceneUp
 		if updatedScene.EndTime.Set {
 			end = updatedScene.EndTime.Ptr()
 		}
-		if err := r.sceneService.ValidateRangeUpdate(ctx, originalScene, start, end); err != nil {
+		start, end, err := r.sceneService.ValidateRangeUpdate(ctx, originalScene, start, end)
+		if err != nil {
 			return nil, err
 		}
+		updatedScene.StartTime = models.NewOptionalFloat64Ptr(start)
+		updatedScene.EndTime = models.NewOptionalFloat64Ptr(end)
 	}
 
 	var coverImageData []byte
@@ -923,8 +926,7 @@ func (r *mutationResolver) SceneMarkerUpdate(ctx context.Context, input SceneMar
 
 		// remove the marker preview if the scene changed or if the timestamp was changed
 		if existingMarker.SceneID != newMarker.SceneID || existingMarker.Seconds != newMarker.Seconds || float64OrZero(existingMarker.EndSeconds) != float64OrZero(newMarker.EndSeconds) {
-			seconds := int(existingMarker.Seconds)
-			if err := fileDeleter.MarkMarkerFiles(existingScene, seconds); err != nil {
+			if err := r.sceneService.MarkMarkerFiles(ctx, existingScene, existingMarker, fileDeleter); err != nil {
 				return err
 			}
 		}
@@ -1115,7 +1117,7 @@ func (r *mutationResolver) SceneMarkersDestroy(ctx context.Context, markerIDs []
 
 			markers = append(markers, marker)
 
-			if err := scene.DestroyMarker(ctx, s, marker, qb, fileDeleter); err != nil {
+			if err := r.sceneService.DestroyMarker(ctx, s, marker, fileDeleter); err != nil {
 				return err
 			}
 		}

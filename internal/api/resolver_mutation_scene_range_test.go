@@ -22,10 +22,10 @@ type rangeSceneService struct {
 	start, end *float64
 }
 
-func (s *rangeSceneService) ValidateRangeUpdate(ctx context.Context, scene *models.Scene, start, end *float64) error {
+func (s *rangeSceneService) ValidateRangeUpdate(ctx context.Context, scene *models.Scene, start, end *float64) (*float64, *float64, error) {
 	s.called = true
 	s.start, s.end = start, end
-	return errRangeRefused
+	return nil, nil, errRangeRefused
 }
 
 func TestSceneUpdateChecksResultingRange(t *testing.T) {

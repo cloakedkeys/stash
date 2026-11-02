@@ -43,7 +43,7 @@ func (s *Service) Merge(ctx context.Context, sourceIDs []int, destinationID int,
 	}
 
 	if dest != nil {
-		if err := s.checkMergeable(ctx, dest, sources); err != nil {
+		if err := s.checkMergeable(ctx, dest, sources, scenePartial); err != nil {
 			return err
 		}
 	}

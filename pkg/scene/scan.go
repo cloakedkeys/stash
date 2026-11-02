@@ -13,6 +13,7 @@ import (
 	"github.com/stashapp/stash/pkg/models/paths"
 	"github.com/stashapp/stash/pkg/plugin"
 	"github.com/stashapp/stash/pkg/plugin/hook"
+	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/txn"
 )
 
@@ -104,6 +105,12 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 		if err != nil {
 			return fmt.Errorf("finding existing scene by fingerprints: %w", err)
 		}
+
+		// a copy of a file joins the scenes that use the whole of it. A scene that's part
+		// of a file has only that file.
+		existing = sliceutil.Filter(existing, func(s *models.Scene) bool {
+			return !HasRange(s)
+		})
 	}
 
 	if len(existing) > 0 {

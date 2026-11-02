@@ -15,9 +15,11 @@ import (
 type SceneService interface {
 	Create(ctx context.Context, input models.CreateSceneInput) (*models.Scene, error)
 	AssignFile(ctx context.Context, sceneID int, fileID models.FileID) error
-	ValidateRangeUpdate(ctx context.Context, scene *models.Scene, start, end *float64) error
+	ValidateRangeUpdate(ctx context.Context, scene *models.Scene, start, end *float64) (*float64, *float64, error)
 	Merge(ctx context.Context, sourceIDs []int, destinationID int, fileDeleter *scene.FileDeleter, options scene.MergeOptions) error
 	Destroy(ctx context.Context, scene *models.Scene, fileDeleter *scene.FileDeleter, deleteGenerated, deleteFile, destroyFileEntry bool) error
+	DestroyMarker(ctx context.Context, scene *models.Scene, sceneMarker *models.SceneMarker, fileDeleter *scene.FileDeleter) error
+	MarkMarkerFiles(ctx context.Context, scene *models.Scene, sceneMarker *models.SceneMarker, fileDeleter *scene.FileDeleter) error
 
 	FindByIDs(ctx context.Context, ids []int, load ...scene.LoadRelationshipOption) ([]*models.Scene, error)
 	sceneFingerprintGetter

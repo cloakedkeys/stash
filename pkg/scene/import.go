@@ -142,6 +142,8 @@ func (i *Importer) sceneJSONToScene(sceneJSON jsonschema.Scene) models.Scene {
 	newScene.UpdatedAt = sceneJSON.UpdatedAt.GetTime()
 	newScene.ResumeTime = sceneJSON.ResumeTime
 	newScene.PlayDuration = sceneJSON.PlayDuration
+	newScene.StartTime = sceneJSON.StartTime
+	newScene.EndTime = sceneJSON.EndTime
 
 	return newScene
 }
@@ -514,13 +516,34 @@ func (i *Importer) FindExistingID(ctx context.Context) (*int, error) {
 			return nil, err
 		}
 
-		if len(existing) > 0 {
-			id := existing[0].ID
-			return &id, nil
+		// several scenes can share a file, each using a different part of it
+		for _, e := range existing {
+			if sameFileRange(e, &i.scene, f.ID) {
+				id := e.ID
+				return &id, nil
+			}
 		}
 	}
 
 	return nil, nil
+}
+
+// sameFileRange reports whether an existing scene uses the same part of the file as
+// the imported one.
+func sameFileRange(existing, imported *models.Scene, fileID models.FileID) bool {
+	if !HasRange(imported) {
+		return usesWholeFile(existing, fileID)
+	}
+
+	return existing.PrimaryFileID != nil && *existing.PrimaryFileID == fileID &&
+		sameSeconds(existing.StartTime, imported.StartTime) && sameSeconds(existing.EndTime, imported.EndTime)
+}
+
+func sameSeconds(a, b *float64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 func (i *Importer) Create(ctx context.Context) (*int, error) {

@@ -66,9 +66,12 @@ type Scene struct {
 	Tags        []string      `json:"tags,omitempty"`
 	Markers     []SceneMarker `json:"markers,omitempty"`
 	Files       []string      `json:"files,omitempty"`
-	Cover       string        `json:"cover,omitempty"`
-	CreatedAt   json.JSONTime `json:"created_at,omitempty"`
-	UpdatedAt   json.JSONTime `json:"updated_at,omitempty"`
+	// where the scene starts and ends in its file, in seconds, when it's part of it
+	StartTime *float64      `json:"start_time,omitempty"`
+	EndTime   *float64      `json:"end_time,omitempty"`
+	Cover     string        `json:"cover,omitempty"`
+	CreatedAt json.JSONTime `json:"created_at,omitempty"`
+	UpdatedAt json.JSONTime `json:"updated_at,omitempty"`
 
 	// deprecated - for import only
 	LastPlayedAt json.JSONTime `json:"last_played_at,omitempty"`
@@ -93,11 +96,15 @@ func (s Scene) Filename(id int, basename string, hash string) string {
 		ret = basename
 	}
 
-	if hash != "" {
-		ret += "." + hash
-	} else {
+	switch {
+	case hash == "":
 		// scenes may have no file and therefore no hash
 		ret += "." + strconv.Itoa(id)
+	case s.StartTime != nil || s.EndTime != nil:
+		// scenes that are parts of one file share its hash
+		ret += "." + hash + "." + strconv.Itoa(id)
+	default:
+		ret += "." + hash
 	}
 
 	return ret + ".json"
