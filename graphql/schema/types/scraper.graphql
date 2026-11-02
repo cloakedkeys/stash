@@ -196,6 +196,8 @@ type ScrapedStory {
   details: String
   tagline: String
   tags: [ScrapedTag!]
+  "The story's text, as plain text"
+  text: String
 }
 
 input ScrapedImageInput {

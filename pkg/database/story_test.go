@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -334,5 +335,57 @@ func TestStoryWithoutFiles(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, got.LoadRelationships(ctx, store))
 		assert.Empty(t, got.Files.List())
+	})
+}
+
+func TestStoryText(t *testing.T) {
+	runWithRollbackTxn(t, "stored text is kept, replaced, removed and deleted with its story", func(t *testing.T, ctx context.Context) {
+		store := db.Story()
+		s := models.NewStory()
+		s.Title = "Scraped"
+		require.NoError(t, store.Create(ctx, &s, nil))
+		other := models.NewStory()
+		other.Title = "Other"
+		require.NoError(t, store.Create(ctx, &other, nil))
+
+		text, err := store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		assert.Nil(t, text, "a new story has no text")
+		has, err := store.HasText(ctx, s.ID)
+		require.NoError(t, err)
+		assert.False(t, has)
+
+		// long text with markup-looking characters and non-ASCII is kept exactly
+		long := strings.Repeat("Il était une fois <b>&amp;</b> 'quoted'\n\n", 5000)
+		require.NoError(t, store.UpdateText(ctx, s.ID, long))
+		text, err = store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		require.NotNil(t, text)
+		assert.Equal(t, long, *text)
+		has, err = store.HasText(ctx, s.ID)
+		require.NoError(t, err)
+		assert.True(t, has)
+
+		require.NoError(t, store.UpdateText(ctx, s.ID, "Replaced."))
+		text, err = store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		require.NotNil(t, text)
+		assert.Equal(t, "Replaced.", *text)
+
+		otherText, err := store.GetText(ctx, other.ID)
+		require.NoError(t, err)
+		assert.Nil(t, otherText, "another story's text is untouched")
+
+		require.NoError(t, store.UpdateText(ctx, s.ID, ""))
+		text, err = store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		assert.Nil(t, text, "empty text removes it")
+		require.NoError(t, store.UpdateText(ctx, s.ID, ""), "removing text that isn't there is fine")
+
+		require.NoError(t, store.UpdateText(ctx, other.ID, "Gone with its story."))
+		require.NoError(t, store.Destroy(ctx, other.ID))
+		otherText, err = store.GetText(ctx, other.ID)
+		require.NoError(t, err)
+		assert.Nil(t, otherText, "a deleted story's text is deleted too")
 	})
 }

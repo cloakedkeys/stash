@@ -324,6 +324,7 @@ fragment ScrapedStoryData on ScrapedStory {
   language
   details
   tagline
+  text
 
   tags {
     ...ScrapedSceneTagData

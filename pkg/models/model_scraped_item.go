@@ -747,6 +747,8 @@ type ScrapedStory struct {
 	Details       *string       `json:"details"`
 	Tagline       *string       `json:"tagline"`
 	Tags          []*ScrapedTag `json:"tags"`
+	// Text is the story's text, as plain text.
+	Text *string `json:"text"`
 }
 
 func (ScrapedStory) IsScrapedContent() {}

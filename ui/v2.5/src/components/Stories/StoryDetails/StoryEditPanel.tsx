@@ -42,6 +42,7 @@ export const StoryEditPanel: React.FC<IProps> = ({
   const scrapers = useListStoryScrapers();
   const [scrapedStory, setScrapedStory] =
     useState<GQL.ScrapedStoryDataFragment>();
+  const hasFile = story.files.length > 0;
 
   const schema = yup.object({
     title: yup.string().ensure(),
@@ -53,6 +54,9 @@ export const StoryEditPanel: React.FC<IProps> = ({
     tagline: yup.string().ensure(),
     details: yup.string().ensure(),
     tag_ids: yup.array(yup.string().required()).defined(),
+    // text chosen in the scrape dialog. It's too long to edit here, so it has
+    // no input, and it's only sent when it's been chosen.
+    text: yup.string().optional(),
   });
 
   type InputValues = yup.InferType<typeof schema>;
@@ -125,6 +129,7 @@ export const StoryEditPanel: React.FC<IProps> = ({
       formik.setFieldValue(field, value);
     }
     if (data.urls) formik.setFieldValue("urls", data.urls);
+    if (data.text && !hasFile) formik.setFieldValue("text", data.text);
     updateTagsStateFromScraper(data.tags ?? undefined);
   }
 
@@ -172,6 +177,8 @@ export const StoryEditPanel: React.FC<IProps> = ({
         <StoryScrapeDialog
           story={formik.values}
           storyTags={tags}
+          hasFile={hasFile}
+          hasText={!hasFile && !!story.paths.text}
           scraped={scrapedStory}
           onClose={onScrapeDialogClosed}
         />

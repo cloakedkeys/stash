@@ -120,7 +120,8 @@ const StoryPage: React.FC<{ story: GQL.StoryDataFragment }> = ({ story }) => {
   const [updateStory] = useStoryUpdate();
   const [updateUserData] = useStoryUserDataUpdate();
   const title = objectTitle(story);
-  const hasText = story.files.length > 0 && !!story.paths.text;
+  // the text of its file, or else text stored with it, such as a scraper's
+  const hasText = !!story.paths.text;
 
   const [activeTab, setActiveTab] = useState(
     hasText ? "story-read-panel" : "story-details-panel"

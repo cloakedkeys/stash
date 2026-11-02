@@ -24,3 +24,15 @@ export function scrapedStoryTextFields(
   }
   return ret;
 }
+
+// How long a story's text is, to show in place of the text itself, which is
+// too long to show in the scrape dialog.
+export function storyTextLength(text: string): {
+  words: number;
+  characters: number;
+} {
+  const words = text.split(/\s+/).filter((w) => w !== "").length;
+  // counted by character, not by UTF-16 unit, so "é" or an emoji is one
+  const characters = Array.from(text).length;
+  return { words, characters };
+}

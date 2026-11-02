@@ -1767,6 +1767,12 @@
   "status": "Status: {statusText}",
   "stories": "Stories",
   "story": "Story",
+  "story_text": {
+    "length": "{words, plural, one {# word} other {# words}}, {characters, plural, one {# character} other {# characters}}",
+    "none": "No text",
+    "stored": "Has text",
+    "title": "Text"
+  },
   "studio": "Studio",
   "studio_and_parent": "Studio & Parent",
   "studio_count": "Studio Count",

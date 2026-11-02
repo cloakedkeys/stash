@@ -2,8 +2,10 @@ package scraper
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -209,4 +211,101 @@ func TestStoryScrapeByURL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, content)
 	assert.False(t, s.supportsURL("https://www.literotica.com/s/parallel-tracks", ScrapeContentTypeScene))
+}
+
+// A story's text is every page of it, fetched from the API one page at a time and
+// joined in order.
+func TestLiteroticaStoryText(t *testing.T) {
+	pages := map[string]string{
+		"1": "<i>Page one.</i>\n\nStill page one.",
+		"2": "Page <strong>two</strong>.",
+		"3": "Page three.",
+	}
+	failPage := ""
+	pagesCount := 3
+	var asked []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// like the site, a request without a page gets the first
+		params := struct {
+			ContentPage int `json:"contentPage"`
+		}{ContentPage: 1}
+		if p := r.URL.Query().Get("params"); p != "" {
+			require.NoError(t, json.Unmarshal([]byte(p), &params))
+		}
+		n := strconv.Itoa(params.ContentPage)
+		asked = append(asked, r.URL.Path+" page "+n)
+		if n == failPage {
+			http.Error(w, "busy", http.StatusServiceUnavailable)
+			return
+		}
+		text, ok := pages[n]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"meta":       map[string]any{"pages_count": pagesCount},
+			"submission": map[string]any{"title": "Parallel Tracks", "authorname": "Voboy"},
+			"pageText":   text,
+		})
+	}))
+	defer ts.Close()
+
+	yml := strings.Replace(literoticaScraperConfig, "https://literotica.com/api/3/stories/{url}", ts.URL+"/api/3/stories/{url}", 1)
+	c, err := loadConfigFromYAML("test", strings.NewReader(yml))
+	require.NoError(t, err)
+	s := literoticaScraper{scraperFromDefinition(*c, mockGlobalConfig{})}
+	scrape := func() (*models.ScrapedStory, error) {
+		asked = nil
+		content, err := s.viaURL(context.Background(), ts.Client(), "https://german.literotica.com/s/parallel-tracks?page=2", ScrapeContentTypeStory)
+		if content == nil {
+			return nil, err
+		}
+		return content.(*models.ScrapedStory), err
+	}
+
+	story, err := scrape()
+	require.NoError(t, err)
+	assert.Equal(t, "Parallel Tracks", *story.Title)
+	require.NotNil(t, story.Text)
+	assert.Equal(t, "<i>Page one.</i>\n\nStill page one.\n\nPage <strong>two</strong>.\n\nPage three.", *story.Text)
+	assert.Contains(t, asked, "/api/3/stories/parallel-tracks page 3", "every page comes from the story's API address")
+
+	// a page that fails partway gives no story, not part of one
+	failPage = "2"
+	story, err = scrape()
+	assert.Nil(t, story)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "page 2 of 3")
+
+	// a page count that can't be right isn't followed
+	failPage = ""
+	pagesCount = literoticaMaxPages + 1
+	story, err = scrape()
+	assert.Nil(t, story)
+	require.Error(t, err)
+	assert.NotContains(t, asked, "/api/3/stories/parallel-tracks page 2")
+}
+
+// Any scraper file's story mapping can give the text, as one value. Joining several
+// paragraphs into one is up to the mapping, with concat.
+func TestStoryScraperText(t *testing.T) {
+	c, err := loadConfigFromYAML("test", strings.NewReader(`name: Test
+xPathScrapers:
+  s:
+    story:
+      Title: //h1
+      Text:
+        selector: //div[@class="story"]/p
+        concat: "\n\n"
+`))
+	require.NoError(t, err)
+
+	page := `<html><body><h1>A Title</h1><div class="story"><p>First paragraph.</p><p>Second &amp; last.</p></div></body></html>`
+	s, err := c.XPathScrapers["s"].scrapeStory(context.Background(), &xpathQuery{doc: mustParseHTML(t, page)})
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	require.NotNil(t, s.Text)
+	assert.Equal(t, "First paragraph.\n\nSecond & last.", *s.Text)
 }

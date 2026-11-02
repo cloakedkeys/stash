@@ -207,6 +207,7 @@ func (r mappedResult) scrapedStory() *models.ScrapedStory {
 		Language:      r.stringPtr("Language"),
 		Details:       r.stringPtr("Details"),
 		Tagline:       r.stringPtr("Tagline"),
+		Text:          r.stringPtr("Text"),
 	}
 	// a single URL is kept with the others
 	if url := r.stringPtr("URL"); url != nil {
