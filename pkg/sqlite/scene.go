@@ -1423,8 +1423,9 @@ func (qb *SceneStore) setSceneSort(ctx context.Context, query *queryBuilder, fin
 	case "filesize":
 		query.sortAndPagination += getFileSizeSort(sceneTable, scenesFilesTable, sceneIDColumn, direction)
 	case "duration":
+		// a part of a file sorts by the part's length
 		addVideoFileTable()
-		query.sortAndPagination += getSort(sort, direction, videoFileTable)
+		query.sortAndPagination += " ORDER BY " + sceneFileDurationSQL + " " + getSortDirection(direction)
 	case "interactive", "interactive_speed":
 		addVideoFileTable()
 		query.sortAndPagination += getSort(sort, direction, videoFileTable)

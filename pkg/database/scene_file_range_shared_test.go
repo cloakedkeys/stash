@@ -312,6 +312,35 @@ func TestSceneFileRangesShared(t *testing.T) {
 		}
 	})
 
+	runWithRollbackTxn(t, "a file with only parts isn't a duplicate of its copy", func(t *testing.T, ctx context.Context) {
+		svc := rangeService()
+		phash := models.Fingerprint{Type: models.FingerprintTypePhash, Fingerprint: int64(0x0ba987654321)}
+		f := rangeVideoFileWith(ctx, t, "parts-only.mp4", 600, models.Fingerprints{phash})
+		var parts []int
+		for _, r := range [][2]float64{{0, 100}, {100, 300}} {
+			s, err := newRangeScene(ctx, t, svc, "parts only", f64(r[0]), f64(r[1]), f.ID)
+			require.NoError(t, err)
+			parts = append(parts, s.ID)
+		}
+		copyFile := rangeVideoFileWith(ctx, t, "parts-only-copy.mp4", 600, models.Fingerprints{phash})
+		copyScene, err := newRangeScene(ctx, t, svc, "parts only copy", nil, nil, copyFile.ID)
+		require.NoError(t, err)
+
+		// a part is a piece of the file, so it's never a duplicate of a whole copy of it
+		for _, distance := range []int{0, 1} {
+			groups, err := db.Scene().FindDuplicates(ctx, distance, -1, nil)
+			require.NoError(t, err)
+			for _, g := range groups {
+				for _, s := range g {
+					assert.NotContains(t, parts, s.ID, "a part is listed as a duplicate at distance %d", distance)
+					if s.ID == copyScene.ID {
+						assert.Len(t, g, 1, "the copy is grouped with something at distance %d", distance)
+					}
+				}
+			}
+		}
+	})
+
 	runWithRollbackTxn(t, "totals count a shared file once and a part by its length", func(t *testing.T, ctx context.Context) {
 		svc := rangeService()
 		sizeBefore, err := db.Scene().Size(ctx)
@@ -358,6 +387,136 @@ func TestSceneFileRangesShared(t *testing.T) {
 		for _, fp := range fps[1:] {
 			assert.Empty(t, fp, "a part isn't looked up as the whole file")
 		}
+	})
+}
+
+// Everywhere a scene's length is used, a part counts as its own length, not the file's.
+func TestSceneFileRangeDurations(t *testing.T) {
+	// "long" has one scene that's a whole 100-second file. "parts" has two 30-second
+	// parts of a 600-second file: 60 seconds in all, though the file is longer.
+	setup := func(ctx context.Context, t *testing.T, name string) (whole *models.Scene, parts []*models.Scene) {
+		t.Helper()
+		svc := rangeService()
+		var err error
+		whole, err = newRangeScene(ctx, t, svc, name+" whole", nil, nil, rangeVideoFile(ctx, t, name+"-whole.mp4", 100).ID)
+		require.NoError(t, err)
+		f := rangeVideoFile(ctx, t, name+"-parts.mp4", 600)
+		for _, r := range [][2]float64{{10, 40}, {40, 70}} {
+			s, err := newRangeScene(ctx, t, svc, name+" part", f64(r[0]), f64(r[1]), f.ID)
+			require.NoError(t, err)
+			parts = append(parts, s)
+		}
+		return whole, parts
+	}
+	link := func(ctx context.Context, t *testing.T, s *models.Scene, set func(p *models.ScenePartial)) {
+		t.Helper()
+		p := models.NewScenePartial()
+		set(&p)
+		_, err := db.Scene().UpdatePartial(ctx, s.ID, p)
+		require.NoError(t, err)
+	}
+	ascending := func(sort string) *models.FindFilterType {
+		dir := models.SortDirectionEnumAsc
+		perPage := -1
+		return &models.FindFilterType{Sort: &sort, Direction: &dir, PerPage: &perPage}
+	}
+	named := func(name string) *models.StringCriterionInput {
+		return &models.StringCriterionInput{Value: name, Modifier: models.CriterionModifierIncludes}
+	}
+
+	runWithRollbackTxn(t, "performers, studios and tags sort by their parts' lengths", func(t *testing.T, ctx context.Context) {
+		whole, parts := setup(ctx, t, "dursort")
+
+		var performers [2]models.Performer
+		var studios [2]models.Studio
+		var tags [2]models.Tag
+		for i, name := range []string{"dursort long", "dursort parts"} {
+			performers[i] = models.NewPerformer()
+			performers[i].Name = name
+			require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &performers[i]}))
+			studios[i] = models.NewStudio()
+			studios[i].Name = name
+			require.NoError(t, db.Studio().Create(ctx, &models.CreateStudioInput{Studio: &studios[i]}))
+			tags[i] = models.NewTag()
+			tags[i].Name = name
+			require.NoError(t, db.Tag().Create(ctx, &models.CreateTagInput{Tag: &tags[i]}))
+		}
+		for i, scenes := range [][]*models.Scene{{whole}, parts} {
+			for _, s := range scenes {
+				link(ctx, t, s, func(p *models.ScenePartial) {
+					p.StudioID = models.NewOptionalInt(studios[i].ID)
+					p.PerformerIDs = &models.UpdateIDs{IDs: []int{performers[i].ID}, Mode: models.RelationshipUpdateModeSet}
+					p.TagIDs = &models.UpdateIDs{IDs: []int{tags[i].ID}, Mode: models.RelationshipUpdateModeSet}
+				})
+			}
+		}
+		// 60 seconds of parts is shorter than 100 seconds of a whole file
+		want := []string{"dursort parts", "dursort long"}
+
+		ps, _, err := db.Performer().Query(ctx, &models.PerformerFilterType{Name: named("dursort")}, ascending("scenes_duration"))
+		require.NoError(t, err)
+		var got []string
+		for _, p := range ps {
+			got = append(got, p.Name)
+		}
+		assert.Equal(t, want, got, "performers")
+
+		ss, _, err := db.Studio().Query(ctx, &models.StudioFilterType{Name: named("dursort")}, ascending("scenes_duration"))
+		require.NoError(t, err)
+		got = nil
+		for _, s := range ss {
+			got = append(got, s.Name)
+		}
+		assert.Equal(t, want, got, "studios")
+
+		ts, _, err := db.Tag().Query(ctx, &models.TagFilterType{Name: named("dursort")}, ascending("scenes_duration"))
+		require.NoError(t, err)
+		got = nil
+		for _, tg := range ts {
+			got = append(got, tg.Name)
+		}
+		assert.Equal(t, want, got, "tags")
+	})
+
+	runWithRollbackTxn(t, "the scene list sorts and filters a part by its length", func(t *testing.T, ctx context.Context) {
+		whole, parts := setup(ctx, t, "dursceneq")
+
+		r, err := db.Scene().Query(ctx, models.SceneQueryOptions{
+			QueryOptions: models.QueryOptions{FindFilter: ascending("duration")},
+			SceneFilter:  &models.SceneFilterType{Title: named("dursceneq")},
+		})
+		require.NoError(t, err)
+		require.Len(t, r.IDs, 3)
+		assert.Equal(t, whole.ID, r.IDs[2], "the 100-second scene sorts after the 30-second parts")
+
+		r, err = db.Scene().Query(ctx, models.SceneQueryOptions{
+			SceneFilter: &models.SceneFilterType{
+				Title:    named("dursceneq"),
+				Duration: &models.IntCriterionInput{Value: 50, Modifier: models.CriterionModifierLessThan},
+			},
+		})
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []int{parts[0].ID, parts[1].ID}, r.IDs, "scenes under 50 seconds")
+	})
+
+	runWithRollbackTxn(t, "a file whose length isn't known yet", func(t *testing.T, ctx context.Context) {
+		svc := rangeService()
+		// a file is 0 seconds long until it's been read, for example a partial download
+		f := rangeVideoFile(ctx, t, "unknown-length.mp4", 0)
+
+		bounded, err := newRangeScene(ctx, t, svc, "unknown length", f64(10), f64(20), f.ID)
+		require.NoError(t, err, "times can be set before the length is known")
+		assert.Equal(t, f64(10), bounded.StartTime)
+		assert.Equal(t, f64(20), bounded.EndTime, "the end isn't taken as the end of the file")
+		_, err = newRangeScene(ctx, t, svc, "unknown length", f64(30), nil, f.ID)
+		require.NoError(t, err)
+
+		r, err := db.Scene().Query(ctx, models.SceneQueryOptions{
+			SceneFilter:   &models.SceneFilterType{Title: named("unknown length")},
+			TotalDuration: true,
+		})
+		require.NoError(t, err)
+		assert.InDelta(t, 10, r.TotalDuration, 0.001, "the open-ended part adds nothing, rather than less than nothing")
 	})
 }
 

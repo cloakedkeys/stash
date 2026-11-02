@@ -711,7 +711,7 @@ func (qb *StudioStore) QueryCount(ctx context.Context, studioFilter *models.Stud
 
 func (qb *StudioStore) sortByScenesDuration(direction string) string {
 	return fmt.Sprintf(` ORDER BY (
-		SELECT COALESCE(SUM(video_files.duration), 0)
+		SELECT COALESCE(SUM(`+sceneFileDurationSQL+`), 0)
 		FROM %s
 		LEFT JOIN %s ON %s.%s = %s.id
 		LEFT JOIN video_files ON video_files.file_id = %s.file_id
