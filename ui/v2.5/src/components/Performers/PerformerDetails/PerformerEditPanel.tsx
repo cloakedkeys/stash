@@ -347,8 +347,15 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     setEncodingImage(encodingImage);
   }, [setEncodingImage, encodingImage]);
 
+  // An image chosen here, or cleared, replaces a scraped one, so the other
+  // images from that scrape aren't added either. One update, so validation
+  // sees both changes.
   function onImageLoad(imageData: string | null) {
-    formik.setFieldValue("image", imageData);
+    formik.setValues((values) => ({
+      ...values,
+      image: imageData,
+      add_images: undefined,
+    }));
   }
 
   function onImageChange(event: React.FormEvent<HTMLInputElement>) {
@@ -625,7 +632,7 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
           <Button
             className="mr-2"
             variant="danger"
-            onClick={() => formik.setFieldValue("image", null)}
+            onClick={() => onImageLoad(null)}
           >
             <FormattedMessage id="actions.clear_image" />
           </Button>
