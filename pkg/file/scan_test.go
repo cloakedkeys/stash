@@ -39,6 +39,9 @@ func (f scanTestFS) Lstat(name string) (fs.FileInfo, error) {
 }
 
 func (f scanTestFS) Open(name string) (fs.ReadDirFile, error) {
+	if f.onePath != "" {
+		return os.Open(filepath.Dir(f.onePath))
+	}
 	return nil, fs.ErrNotExist
 }
 

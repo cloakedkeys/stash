@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,6 +26,15 @@ func TestSameOnDisk(t *testing.T) {
 	assert.False(t, sameOnDisk(fsys, filepath.Join(root, "Gone", "123"), filepath.Join(root, "One", "123")))
 	assert.False(t, sameOnDisk(fsys, filepath.Join(root, "One"), filepath.Join(root, "One", "123")))
 
+	if vol := filepath.VolumeName(root); len(vol) == 2 {
+		// a drive letter spelled in the other case is the same drive
+		other := strings.ToLower(vol)
+		if other == vol {
+			other = strings.ToUpper(vol)
+		}
+		otherRoot := other + root[2:]
+		assert.True(t, sameOnDisk(fsys, filepath.Join(otherRoot, "One", "123"), filepath.Join(root, "One", "123")))
+	}
 	if ok, err := fsys.IsPathCaseSensitive(filepath.Join(root, "One")); err == nil && !ok {
 		// a case-only rename of a folder above, as on Windows and macOS
 		assert.True(t, sameOnDisk(fsys, filepath.Join(root, "One", "123"), filepath.Join(root, "one", "123")))
@@ -55,4 +65,15 @@ func TestSameOnDiskLinks(t *testing.T) {
 
 	assert.False(t, sameOnDisk(fsys, filepath.Join(root, "First"), filepath.Join(root, "Second")))
 	assert.False(t, sameOnDisk(fsys, filepath.Join(root, "First", "123"), filepath.Join(root, "Second", "123")))
+}
+
+// Two names for one file are two entries, though both open the same file.
+func TestSameOnDiskHardLinks(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "First.txt")
+	require.NoError(t, os.WriteFile(first, []byte("One file."), 0600))
+	if err := os.Link(first, filepath.Join(root, "Second.txt")); err != nil {
+		t.Skipf("can't make hard links here: %v", err)
+	}
+	assert.False(t, sameOnDisk(&OsFS{}, first, filepath.Join(root, "Second.txt")))
 }

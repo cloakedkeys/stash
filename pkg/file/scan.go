@@ -966,18 +966,20 @@ func (s *Scanner) onUnchangedFile(ctx context.Context, f ScannedFile, existing m
 }
 
 // sameOnDisk reports whether storedPath, which differs from path only in case,
-// still leads to the same file or folder as path. That is how a filesystem that
-// ignores case shows a case-only rename. Where case matters, the two can be
-// separate files that both exist, even when the case check above can't tell.
+// is a case-only rename of path on a filesystem that ignores case. Where case
+// matters, the two can be separate files that both exist, even when the case
+// check above can't tell.
 //
 // Each name that is spelled differently is checked on its own, inside the
-// folder path already leads to, and links are compared themselves rather than
-// what they point to. Comparing only where the two paths end would join É/123
-// and é/123 when É and é are two links to one folder.
+// folder path leads to. Drive letters never depend on case.
 func sameOnDisk(fsys models.FS, storedPath, path string) bool {
+	vol, storedVol := filepath.VolumeName(path), filepath.VolumeName(storedPath)
+	if !strings.EqualFold(vol, storedVol) {
+		return false
+	}
 	sep := string(filepath.Separator)
-	stored := strings.Split(storedPath, sep)
-	current := strings.Split(path, sep)
+	stored := strings.Split(storedPath[len(storedVol):], sep)
+	current := strings.Split(path[len(vol):], sep)
 	if len(stored) != len(current) {
 		return false
 	}
@@ -985,15 +987,43 @@ func sameOnDisk(fsys models.FS, storedPath, path string) bool {
 		if stored[i] == current[i] {
 			continue
 		}
-		parent := strings.Join(current[:i], sep) + sep
-		a, err := fsys.Lstat(parent + stored[i])
-		if err != nil {
-			return false
-		}
-		b, err := fsys.Lstat(parent + current[i])
-		if err != nil || !os.SameFile(a, b) {
+		parent := vol + strings.Join(current[:i], sep) + sep
+		if !renamedInFolder(fsys, parent, stored[i], current[i]) {
 			return false
 		}
 	}
 	return true
+}
+
+// renamedInFolder reports whether, in the folder parent, oldName and newName
+// are two spellings of one entry: the filesystem opens both as the same entry,
+// and the folder lists at most one of them (the one on disk, which may be
+// either, as when only the library path's spelling changed). If both names are
+// listed, they are two entries, whatever they point to: two links, or two
+// names for one file.
+func renamedInFolder(fsys models.FS, parent, oldName, newName string) bool {
+	a, err := fsys.Lstat(parent + oldName)
+	if err != nil {
+		return false
+	}
+	b, err := fsys.Lstat(parent + newName)
+	if err != nil || !os.SameFile(a, b) {
+		return false
+	}
+	dir, err := fsys.Open(parent)
+	if err != nil {
+		return false
+	}
+	defer dir.Close()
+	entries, err := dir.ReadDir(-1)
+	if err != nil {
+		return false
+	}
+	listed := 0
+	for _, e := range entries {
+		if e.Name() == oldName || e.Name() == newName {
+			listed++
+		}
+	}
+	return listed < 2
 }
