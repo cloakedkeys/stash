@@ -41,6 +41,24 @@ func TestPlainText(t *testing.T) {
 			"\r\n\r\nFirst  \r\n\r\n\r\n\r\nSecond\rThird\n\n",
 			"First\n\nSecond\nThird",
 		},
+		{
+			// a story's own use of angle brackets, for thoughts or messages, is kept
+			"words in angle brackets that aren't HTML",
+			"<whispers>quietly</whispers> and <Message received> <i>then</i> <3",
+			"<whispers>quietly</whispers> and <Message received> then <3",
+		},
+		{
+			// looks like a <b> tag with attributes, so it's taken as one
+			"the one case that can't be told from markup",
+			"a<b and c>d",
+			"ad",
+		},
+		{
+			"drawings are dropped with what's inside them",
+			"Before<svg><rect width='1'/><text>x</text></svg> after<math><mi>y</mi></math>.",
+			"Before after.",
+		},
+		{"zero bytes are dropped", "before\x00 after\x00", "before after"},
 		{"empty", "", ""},
 		{"only markup", "<p> </p><br>", ""},
 	} {

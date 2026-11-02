@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/doug-martin/goqu/v9"
 )
@@ -37,8 +39,13 @@ func (qb *StoryStore) HasText(ctx context.Context, storyID int) (bool, error) {
 	return found.Valid, nil
 }
 
-// UpdateText stores the story's text. An empty text removes it.
+// UpdateText stores the story's text. An empty text removes it. Zero bytes are taken
+// out, since PostgreSQL can't store them in text, whichever way the text arrived.
 func (qb *StoryStore) UpdateText(ctx context.Context, storyID int, text string) error {
+	text = strings.ReplaceAll(text, "\x00", "")
+	if strings.TrimSpace(text) == "" {
+		text = ""
+	}
 	if text == "" {
 		stmt := dialect.Delete(storiesTextJoinTable).Where(storiesTextJoinTable.Col(storyIDColumn).Eq(storyID))
 		if _, err := exec(ctx, stmt); err != nil {
@@ -47,12 +54,26 @@ func (qb *StoryStore) UpdateText(ctx context.Context, storyID int, text string) 
 		return nil
 	}
 
-	stmt := dialect.Insert(storiesTextJoinTable).Rows(goqu.Record{
+	// the text is sent apart from the query, and an error leaves out the query and its
+	// values, which hold the whole story
+	stmt := dialect.Insert(storiesTextJoinTable).Prepared(true).Rows(goqu.Record{
 		storyIDColumn: storyID,
 		"text":        text,
 	}).OnConflict(goqu.DoUpdate(storyIDColumn, goqu.Record{"text": goqu.I("excluded.text")}))
 	if _, err := exec(ctx, stmt); err != nil {
-		return fmt.Errorf("storing text of story %d: %w", storyID, err)
+		return fmt.Errorf("storing text of story %d: %w", storyID, databaseError(err))
 	}
 	return nil
+}
+
+// databaseError is the database's own error inside err, without the query that exec
+// adds around it.
+func databaseError(err error) error {
+	for {
+		inner := errors.Unwrap(err)
+		if inner == nil {
+			return err
+		}
+		err = inner
+	}
 }
