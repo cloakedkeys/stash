@@ -2,6 +2,22 @@ import Countries from "i18n-iso-countries";
 import { IntlShape } from "react-intl";
 import { getLocaleCode } from "src/locales";
 
+const countryCodes = Countries.getAlpha2Codes();
+const localeCollators = new Map<string, Intl.Collator>();
+
+const getCollator = (locale: string) => {
+  let collator = localeCollators.get(locale);
+  if (!collator) {
+    try {
+      collator = new Intl.Collator(locale);
+    } catch {
+      collator = new Intl.Collator("en");
+    }
+    localeCollators.set(locale, collator);
+  }
+  return collator;
+};
+
 const getCountryName = (
   code: string,
   name: string | undefined,
@@ -18,26 +34,27 @@ export const getCountryByISO = (
 ): string | undefined => {
   if (!iso) return;
 
-  const ret = Countries.getName(iso, getLocaleCode(locale));
-  if (ret) {
-    return getCountryName(iso, ret, intl);
+  const code = Countries.toAlpha2(iso);
+  if (!code || !Object.hasOwn(countryCodes, code)) {
+    return;
   }
 
-  // fallback to english if locale is not en
-  if (locale !== "en") {
-    return getCountryName(iso, Countries.getName(iso, "en"), intl);
-  }
+  const name =
+    Countries.getName(code, getLocaleCode(locale)) ??
+    Countries.getName(code, "en");
+  return getCountryName(code, name, intl);
 };
 
 export const getCountries = (locale: string = "en", intl?: IntlShape) => {
-  let countries = Countries.getNames(getLocaleCode(locale));
-
-  if (!countries.length) {
-    countries = Countries.getNames("en");
-  }
-
-  return Object.entries(countries).map(([code, name]) => ({
-    label: getCountryName(code, name, intl) ?? name,
-    value: code,
-  }));
+  const localeCode = getLocaleCode(locale);
+  const countries = Countries.getNames(
+    Countries.langs().includes(localeCode) ? localeCode : "en"
+  );
+  const collator = getCollator(locale);
+  return Object.entries(countries)
+    .map(([code, name]) => ({
+      label: getCountryName(code, name, intl) ?? name,
+      value: code,
+    }))
+    .sort((a, b) => collator.compare(a.label, b.label));
 };

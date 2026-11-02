@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"runtime"
+	"strings"
 
 	stashExec "github.com/stashapp/stash/pkg/exec"
 	"github.com/stashapp/stash/pkg/fsutil"
@@ -25,6 +27,7 @@ func New(path string) *Python {
 
 // Resolve tries to find the python executable in the system.
 // It first checks for python3, then python.
+// On Windows, WindowsApps aliases are tried only as a last resort.
 // Returns nil and an exec.ErrNotFound error if not found.
 func Resolve(configuredPythonPath string) (*Python, error) {
 	if configuredPythonPath != "" {
@@ -40,19 +43,36 @@ func Resolve(configuredPythonPath string) (*Python, error) {
 		}
 	}
 
-	python3, err := exec.LookPath("python3")
-
+	path, err := resolvePath(runtime.GOOS, exec.LookPath)
 	if err != nil {
-		python, err := exec.LookPath("python")
-		if err != nil {
-			return nil, fmt.Errorf("python executable not in PATH: %w", err)
-		}
-		ret := Python(python)
-		return &ret, nil
+		return nil, err
 	}
+	return New(path), nil
+}
 
-	ret := Python(python3)
-	return &ret, nil
+func resolvePath(goos string, lookPath func(string) (string, error)) (string, error) {
+	var fallback string
+	var err error
+	for _, name := range []string{"python3", "python"} {
+		var path string
+		path, err = lookPath(name)
+		if err != nil {
+			continue
+		}
+		if goos == "windows" && strings.Contains(strings.ToLower(strings.ReplaceAll(path, `\`, "/")), "/windowsapps/") {
+			// An alias may launch a Store install or just prompt to install Python.
+			// Prefer another interpreter, but keep the first alias as a fallback.
+			if fallback == "" {
+				fallback = path
+			}
+			continue
+		}
+		return path, nil
+	}
+	if fallback != "" {
+		return fallback, nil
+	}
+	return "", fmt.Errorf("python executable not in PATH: %w", err)
 }
 
 // IsPythonCommand returns true if arg is "python" or "python3"

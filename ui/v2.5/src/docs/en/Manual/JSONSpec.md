@@ -262,7 +262,7 @@ For those preferring the json-format, defined [here](https://json-schema.org/), 
       "type": "string"
     },
     "country": {
-      "description": "Country of the performer",
+      "description": "Country or region of the performer",
       "type": "string"
     },
     "hair_color": {
