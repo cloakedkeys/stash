@@ -57,3 +57,8 @@ it("has no return location when the first page is Settings", () => {
   expect(visit("/settings?tab=interface")).toBeUndefined();
   expect(visit("/settings?tab=about")).toBeUndefined();
 });
+
+it("treats Settings in any case as Settings, as the router does", () => {
+  expect(visit("/Settings?tab=interface")).toBeUndefined();
+  expect(visit("/SETTINGS?tab=about")).toBeUndefined();
+});

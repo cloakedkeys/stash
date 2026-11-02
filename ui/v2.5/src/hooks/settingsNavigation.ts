@@ -8,7 +8,8 @@ export function useSettingsReturnLocation() {
   const returnLocation = useRef<ReturnType<typeof useLocation>>();
 
   useLayoutEffect(() => {
-    if (!/^\/settings(?:\/|$)/.test(location.pathname)) {
+    // the router matches paths whatever their case, so /Settings is settings too
+    if (!/^\/settings(?:\/|$)/i.test(location.pathname)) {
       returnLocation.current = location;
     }
   }, [location]);
