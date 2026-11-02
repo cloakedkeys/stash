@@ -483,8 +483,8 @@
 }
 
 .troubleshooting-mode-button {
-  bottom: 1rem;
-  left: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  left: calc(1rem + env(safe-area-inset-left));
   position: fixed;
   z-index: 100;
 

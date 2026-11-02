@@ -905,7 +905,8 @@ button.btn.favorite-button {
     flex: $sidebar-width;
     flex-grow: 0;
     flex-shrink: 0;
-    padding-left: 15px;
+    // clear of a phone's notch, which the page now reaches
+    padding-left: calc(15px + env(safe-area-inset-left));
     transition: margin-left 0.1s;
   }
 
@@ -918,12 +919,12 @@ button.btn.favorite-button {
     position: fixed;
     scrollbar-gutter: stable;
     top: 0;
-    width: $sidebar-width;
+    width: calc($sidebar-width + env(safe-area-inset-left));
     z-index: 100;
   }
 
   &.hide-sidebar .sidebar {
-    margin-left: -$sidebar-width;
+    margin-left: calc(-1 * ($sidebar-width + env(safe-area-inset-left)));
   }
 
   &.hide-sidebar .sidebar + div {

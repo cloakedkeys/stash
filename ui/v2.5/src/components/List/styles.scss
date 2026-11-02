@@ -1077,7 +1077,7 @@ ul.selectable-list {
   z-index: 10;
 
   @include media-breakpoint-up(sm) {
-    bottom: 0;
+    bottom: env(safe-area-inset-bottom);
   }
 }
 
