@@ -357,6 +357,46 @@ func (s *mappedImageScraperConfig) UnmarshalYAML(unmarshal func(interface{}) err
 	return nil
 }
 
+type mappedStoryScraperConfig struct {
+	mappedConfig
+
+	Tags mappedConfig `yaml:"Tags"`
+}
+type _mappedStoryScraperConfig mappedStoryScraperConfig
+
+func (s *mappedStoryScraperConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// unmarshal to a map first, move the Tags sub-field out, then pass the
+	// rest down to the base map, the same way as the other configs
+	parentMap := make(map[string]interface{})
+	if err := unmarshal(parentMap); err != nil {
+		return err
+	}
+
+	thisMap := make(map[string]interface{})
+	thisMap[mappedScraperConfigSceneTags] = parentMap[mappedScraperConfigSceneTags]
+	delete(parentMap, mappedScraperConfigSceneTags)
+
+	yml, err := yaml.Marshal(thisMap)
+	if err != nil {
+		return err
+	}
+
+	// needs to be a different type to prevent infinite recursion
+	c := _mappedStoryScraperConfig{}
+	if err := yaml.Unmarshal(yml, &c); err != nil {
+		return err
+	}
+
+	*s = mappedStoryScraperConfig(c)
+
+	yml, err = yaml.Marshal(parentMap)
+	if err != nil {
+		return err
+	}
+
+	return yaml.Unmarshal(yml, &s.mappedConfig)
+}
+
 type mappedPerformerScraperConfig struct {
 	mappedConfig
 

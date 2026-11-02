@@ -197,6 +197,24 @@ func (r mappedResult) scrapedImage() *models.ScrapedImage {
 	return ret
 }
 
+func (r mappedResult) scrapedStory() *models.ScrapedStory {
+	ret := &models.ScrapedStory{
+		Title:         r.stringPtr("Title"),
+		Author:        r.stringPtr("Author"),
+		SourceWebsite: r.stringPtr("SourceWebsite"),
+		URLs:          r.stringSlice("URLs"),
+		Date:          r.stringPtr("Date"),
+		Language:      r.stringPtr("Language"),
+		Details:       r.stringPtr("Details"),
+		Tagline:       r.stringPtr("Tagline"),
+	}
+	// a single URL is kept with the others
+	if url := r.stringPtr("URL"); url != nil {
+		ret.URLs = append([]string{*url}, ret.URLs...)
+	}
+	return ret
+}
+
 func (r mappedResult) scrapedGallery() *models.ScrapedGallery {
 	ret := &models.ScrapedGallery{
 		Title:        r.stringPtr("Title"),

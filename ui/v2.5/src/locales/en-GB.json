@@ -1881,6 +1881,7 @@
   "time_end": "End Time",
   "title": "Title",
   "toast": {
+    "story_not_found": "No story details found at that URL",
     "added_entity": "Added {count, plural, one {{singularEntity}} other {{pluralEntity}}}",
     "added_generation_job_to_queue": "Added generation job to queue",
     "clipboard_access_denied": "Clipboard access denied. Check your browser permissions",

@@ -16,6 +16,11 @@ import {
 } from "src/utils/yup";
 import { formikUtils } from "src/utils/form";
 import { useTagsEdit } from "src/hooks/tagsEdit";
+import {
+  queryScrapeStoryURL,
+  useListStoryScrapers,
+} from "src/core/StashService";
+import { StoryScrapeDialog } from "./StoryScrapeDialog";
 
 interface IProps {
   story: GQL.StoryDataFragment;
@@ -33,6 +38,9 @@ export const StoryEditPanel: React.FC<IProps> = ({
   const intl = useIntl();
   const Toast = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const scrapers = useListStoryScrapers();
+  const [scrapedStory, setScrapedStory] =
+    useState<GQL.ScrapedStoryDataFragment>();
 
   const schema = yup.object({
     title: yup.string().ensure(),
@@ -81,9 +89,53 @@ export const StoryEditPanel: React.FC<IProps> = ({
     onSubmit: (values) => onSave(schema.cast(values)),
   });
 
-  const { tagsControl } = useTagsEdit(story.tags, (ids) =>
-    formik.setFieldValue("tag_ids", ids)
+  const { tags, tagsControl, updateTagsStateFromScraper } = useTagsEdit(
+    story.tags,
+    (ids) => formik.setFieldValue("tag_ids", ids)
   );
+
+  function urlScrapable(url: string) {
+    return (scrapers.data?.listScrapers ?? []).some((s) =>
+      (s.story?.urls ?? []).some((u) => url.includes(u))
+    );
+  }
+
+  async function onScrapeStoryURL(url: string) {
+    if (!url) return;
+    setIsLoading(true);
+    try {
+      const result = await queryScrapeStoryURL(url);
+      if (!result.data?.scrapeStoryURL) {
+        Toast.success(intl.formatMessage({ id: "toast.story_not_found" }));
+        return;
+      }
+      setScrapedStory(result.data.scrapeStoryURL);
+    } catch (e) {
+      Toast.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function onScrapeDialogClosed(data?: GQL.ScrapedStoryDataFragment) {
+    setScrapedStory(undefined);
+    if (!data) return;
+    const fields = [
+      "title",
+      "author",
+      "source_website",
+      "date",
+      "language",
+      "tagline",
+      "details",
+    ] as const;
+    for (const field of fields) {
+      const value = data[field];
+      if (value) formik.setFieldValue(field, value);
+    }
+    if (data.urls) formik.setFieldValue("urls", data.urls);
+    updateTagsStateFromScraper(data.tags ?? undefined);
+  }
 
   useEffect(() => {
     if (isVisible) {
@@ -125,6 +177,15 @@ export const StoryEditPanel: React.FC<IProps> = ({
         message={intl.formatMessage({ id: "dialogs.unsaved_changes" })}
       />
 
+      {scrapedStory && (
+        <StoryScrapeDialog
+          story={formik.values}
+          storyTags={tags}
+          scraped={scrapedStory}
+          onClose={onScrapeDialogClosed}
+        />
+      )}
+
       <Form noValidate onSubmit={formik.handleSubmit}>
         <Row className="form-container edit-buttons-container px-3 pt-3">
           <div className="edit-buttons mb-3 pl-0">
@@ -152,10 +213,16 @@ export const StoryEditPanel: React.FC<IProps> = ({
             {renderInputField("title")}
             {renderInputField("author")}
             {renderInputField("source_website")}
-            {renderURLListField("urls", undefined, undefined, "urls", {
-              labelProps: { column: true, md: 3, lg: 12 },
-              fieldProps: { md: 9, lg: 12 },
-            })}
+            {renderURLListField(
+              "urls",
+              onScrapeStoryURL,
+              urlScrapable,
+              "urls",
+              {
+                labelProps: { column: true, md: 3, lg: 12 },
+                fieldProps: { md: 9, lg: 12 },
+              }
+            )}
             {renderDateField("date")}
             {renderInputField("language")}
             {renderField(

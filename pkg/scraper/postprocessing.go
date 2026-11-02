@@ -65,6 +65,12 @@ func (c *postScraper) postScrape(ctx context.Context, content ScrapedContent) (_
 		}
 	case models.ScrapedGroup:
 		return c.postScrapeGroup(ctx, v, related)
+	case *models.ScrapedStory:
+		if v != nil {
+			return c.postScrapeStory(ctx, *v)
+		}
+	case models.ScrapedStory:
+		return c.postScrapeStory(ctx, v)
 	}
 
 	// If nothing matches, pass the content through
@@ -520,6 +526,17 @@ func (c *postScraper) postScrapeImage(ctx context.Context, image models.ScrapedI
 	}
 
 	return image, nil
+}
+
+// postScrapeStory matches the story's tags to existing tags.
+func (c *postScraper) postScrapeStory(ctx context.Context, story models.ScrapedStory) (_ ScrapedContent, err error) {
+	tags, err := postProcessTags(ctx, c.repository.TagFinder, story.Tags)
+	if err != nil {
+		return nil, err
+	}
+	story.Tags = c.filterTags(tags)
+
+	return story, nil
 }
 
 // postScrapeSingle handles post-processing of a single scraped content item.

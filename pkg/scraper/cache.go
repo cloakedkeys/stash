@@ -182,6 +182,8 @@ func (c *Cache) ReloadScrapers() {
 	freeOnes := getFreeonesScraper(c.globalConfig)
 	autoTag := getAutoTagScraper(c.repository, c.globalConfig)
 	scrapers[freeOnes.spec().ID] = freeOnes
+	literotica := getLiteroticaScraper(c.globalConfig)
+	scrapers[literotica.spec().ID] = literotica
 	scrapers[autoTag.spec().ID] = autoTag
 
 	logger.Debugf("Reading scraper configs from %s", path)

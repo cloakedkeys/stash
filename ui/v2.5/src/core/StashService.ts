@@ -3355,6 +3355,15 @@ export const queryScrapeImage = (scraperId: string, imageId: string) =>
     fetchPolicy: "network-only",
   });
 
+export const useListStoryScrapers = () => GQL.useListStoryScrapersQuery();
+
+export const queryScrapeStoryURL = (url: string) =>
+  client.query<GQL.ScrapeStoryUrlQuery>({
+    query: GQL.ScrapeStoryUrlDocument,
+    variables: { url },
+    fetchPolicy: "network-only",
+  });
+
 export const queryScrapeImageURL = (url: string) =>
   client.query<GQL.ScrapeImageUrlQuery>({
     query: GQL.ScrapeImageUrlDocument,

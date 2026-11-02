@@ -15,6 +15,7 @@ enum ScrapeContentType {
   GROUP
   PERFORMER
   SCENE
+  STORY
 }
 
 "Scraped Content is the forming union over the different scrapers"
@@ -27,6 +28,7 @@ union ScrapedContent =
   | ScrapedMovie
   | ScrapedGroup
   | ScrapedPerformer
+  | ScrapedStory
 
 type ScraperSpec {
   "URLs matching these can be scraped with"
@@ -49,6 +51,8 @@ type Scraper {
   movie: ScraperSpec @deprecated(reason: "use group")
   "Details for group scraper"
   group: ScraperSpec
+  "Details for story scraper"
+  story: ScraperSpec
 }
 
 "An installed package that may provide a scraper involved in a ScraperURLConflict"
@@ -180,6 +184,18 @@ type ScrapedImage {
   studio: ScrapedStudio
   tags: [ScrapedTag!]
   performers: [ScrapedPerformer!]
+}
+
+type ScrapedStory {
+  title: String
+  author: String
+  source_website: String
+  urls: [String!]
+  date: String
+  language: String
+  details: String
+  tagline: String
+  tags: [ScrapedTag!]
 }
 
 input ScrapedImageInput {

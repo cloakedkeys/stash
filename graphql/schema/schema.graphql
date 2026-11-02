@@ -248,6 +248,8 @@ type Query {
   scrapeGalleryURL(url: String!): ScrapedGallery @hasRole(role: MODIFY)
   "Scrapes a complete image record based on a URL"
   scrapeImageURL(url: String!): ScrapedImage @hasRole(role: MODIFY)
+  "Scrapes a story's details based on a URL"
+  scrapeStoryURL(url: String!): ScrapedStory @hasRole(role: MODIFY)
   "Scrapes a complete movie record based on a URL"
   scrapeMovieURL(url: String!): ScrapedMovie @hasRole(role: MODIFY)
     @deprecated(reason: "Use scrapeGroupURL instead")

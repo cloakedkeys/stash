@@ -32,6 +32,8 @@ func urlsForType(spec Scraper, ty ScrapeContentType) []string {
 		s = spec.Image
 	case ScrapeContentTypeGroup, ScrapeContentTypeMovie:
 		s = spec.Group
+	case ScrapeContentTypeStory:
+		s = spec.Story
 	}
 
 	if s == nil {
