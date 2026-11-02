@@ -37,6 +37,12 @@ func basenameFn(str string) (string, error) {
 	return filepath.Base(str), nil
 }
 
+// upper_unicode is used with lower_unicode to compare file and folder names
+// whatever their case (see pathEqNoCase).
+func upperUnicodeFn(str string) string {
+	return strings.ToUpper(str)
+}
+
 // custom SQLite function to enable case-insensitive searches
 // that properly handle unicode characters
 func lowerUnicodeFn(str interface{}) (string, error) {

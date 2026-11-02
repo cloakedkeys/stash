@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,17 +19,29 @@ import (
 
 type scanTestFS struct {
 	caseSensitive bool
+	// onePath, when set, is a real file that every path leads to, as all the
+	// case spellings of a name do on a filesystem that ignores case
+	onePath string
 }
 
 func (f scanTestFS) Stat(name string) (fs.FileInfo, error) {
+	if f.onePath != "" {
+		return os.Stat(f.onePath)
+	}
 	return nil, fs.ErrNotExist
 }
 
 func (f scanTestFS) Lstat(name string) (fs.FileInfo, error) {
+	if f.onePath != "" {
+		return os.Lstat(f.onePath)
+	}
 	return nil, fs.ErrNotExist
 }
 
 func (f scanTestFS) Open(name string) (fs.ReadDirFile, error) {
+	if f.onePath != "" {
+		return os.Open(filepath.Dir(f.onePath))
+	}
 	return nil, fs.ErrNotExist
 }
 
@@ -150,8 +163,12 @@ func TestScannerScanFileMatchesCaseOnlyRenameOnCaseInsensitiveFilesystem(t *test
 		{Type: models.FingerprintTypeMD5, Fingerprint: "new-md5"},
 	}
 
+	onePath := filepath.Join(t.TempDir(), "clip.mp4")
+	require.NoError(t, os.WriteFile(onePath, nil, 0600))
+	testFS := scanTestFS{caseSensitive: false, onePath: onePath}
+
 	scanner := Scanner{
-		FS: scanTestFS{caseSensitive: false},
+		FS: testFS,
 		Repository: Repository{
 			TxnManager: db.Repository().TxnManager,
 			File:       db.File,
@@ -169,7 +186,7 @@ func TestScannerScanFileMatchesCaseOnlyRenameOnCaseInsensitiveFilesystem(t *test
 				ModTime: newModTime,
 			},
 		},
-		FS: scanTestFS{caseSensitive: false},
+		FS: testFS,
 		Info: scanTestFileInfo{
 			name:    "Allcaps.mp4",
 			size:    90,

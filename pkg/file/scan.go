@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -174,6 +175,9 @@ func (s *Scanner) ScanFolder(ctx context.Context, file ScannedFile) (*models.Fol
 				f, err = s.Repository.Folder.FindByPath(ctx, path, false)
 				if err != nil {
 					return fmt.Errorf("checking for existing folder %q: %w", path, err)
+				}
+				if f != nil && !sameOnDisk(file.FS, f.Path, path) {
+					f = nil
 				}
 			}
 		}
@@ -389,6 +393,9 @@ func (s *Scanner) ScanFile(ctx context.Context, f ScannedFile) (*ScanFileResult,
 				ff, err = s.Repository.File.FindByPath(ctx, f.Path, false)
 				if err != nil {
 					return fmt.Errorf("checking for existing file %q: %w", f.Path, err)
+				}
+				if ff != nil && !sameOnDisk(f.FS, ff.Base().Path, f.Path) {
+					ff = nil
 				}
 			}
 		}
@@ -631,7 +638,7 @@ func (s *Scanner) handleRename(ctx context.Context, f models.File, fp []models.F
 			// original filename, and the filesystem is case-insensitive
 			// then treat it as a move
 			// #6326 - this should now be handled earlier, and this shouldn't be necessary
-			if caseSensitive, _ := fs.IsPathCaseSensitive(other.Base().Path); !caseSensitive {
+			if caseSensitive, _ := fs.IsPathCaseSensitive(other.Base().Path); !caseSensitive && sameOnDisk(fs, other.Base().Path, f.Base().Path) {
 				// treat as a move
 				missing = append(missing, other)
 			}
@@ -956,4 +963,77 @@ func (s *Scanner) onUnchangedFile(ctx context.Context, f ScannedFile, existing m
 		Updated:         true,
 		HandlerRequired: true,
 	}, nil
+}
+
+// sameOnDisk reports whether storedPath, which differs from path only in case,
+// is a case-only rename of path on a filesystem that ignores case. Where case
+// matters, the two can be separate files that both exist, even when the case
+// check above can't tell.
+//
+// Each name that is spelled differently is checked on its own, inside the
+// folder path leads to. Drive letters never depend on case.
+func sameOnDisk(fsys models.FS, storedPath, path string) bool {
+	// a library path can be relative to where Stash runs
+	var err error
+	if storedPath, err = filepath.Abs(storedPath); err != nil {
+		return false
+	}
+	if path, err = filepath.Abs(path); err != nil {
+		return false
+	}
+	vol, storedVol := filepath.VolumeName(path), filepath.VolumeName(storedPath)
+	if !strings.EqualFold(vol, storedVol) {
+		return false
+	}
+	sep := string(filepath.Separator)
+	stored := strings.Split(storedPath[len(storedVol):], sep)
+	current := strings.Split(path[len(vol):], sep)
+	if len(stored) != len(current) {
+		return false
+	}
+	for i := range current {
+		if stored[i] == current[i] {
+			continue
+		}
+		parent := vol + strings.Join(current[:i], sep) + sep
+		if !renamedInFolder(fsys, parent, stored[i], current[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// renamedInFolder reports whether, in the folder parent, oldName and newName
+// are two spellings of one entry: the filesystem opens both as the same entry,
+// and the folder lists at most one of them (the one on disk, which may be
+// either, as when only the library path's spelling changed). If both names are
+// listed, they are two entries, whatever they point to: two links, or two
+// names for one file.
+func renamedInFolder(fsys models.FS, parent, oldName, newName string) bool {
+	a, err := fsys.Lstat(parent + oldName)
+	if err != nil {
+		return false
+	}
+	b, err := fsys.Lstat(parent + newName)
+	if err != nil || !os.SameFile(a, b) {
+		return false
+	}
+	// a folder Stash may enter but not list, above a library, can't show two
+	// names, so both opening the same entry is all there is to go on
+	dir, err := fsys.Open(parent)
+	if err != nil {
+		return true
+	}
+	defer dir.Close()
+	entries, err := dir.ReadDir(-1)
+	if err != nil {
+		return true
+	}
+	listed := 0
+	for _, e := range entries {
+		if e.Name() == oldName || e.Name() == newName {
+			listed++
+		}
+	}
+	return listed < 2
 }

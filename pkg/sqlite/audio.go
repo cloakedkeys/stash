@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
@@ -755,20 +754,25 @@ func (qb *AudioStore) FindByPath(ctx context.Context, p string) ([]*models.Audio
 	basename := filepath.Base(p)
 	dir := filepath.Dir(p)
 
-	// replace wildcards
-	basename = strings.ReplaceAll(basename, "*", "%")
-	dir = strings.ReplaceAll(dir, "*", "%")
-
 	sq := dialect.From(audiosFilesJoinTable).InnerJoin(
 		filesTable,
 		goqu.On(filesTable.Col(idColumn).Eq(audiosFilesJoinTable.Col(fileIDColumn))),
 	).InnerJoin(
 		foldersTable,
 		goqu.On(foldersTable.Col(idColumn).Eq(filesTable.Col("parent_folder_id"))),
-	).Select(audiosFilesJoinTable.Col(audioIDColumn)).Where(
-		foldersTable.Col("path").Like(dir),
-		filesTable.Col("basename").Like(basename),
-	)
+	).Select(audiosFilesJoinTable.Col(audioIDColumn))
+
+	if pathHasWildcard(basename) || pathHasWildcard(dir) {
+		sq = sq.Where(
+			pathLike(foldersTable.Col("path"), dir),
+			pathLike(filesTable.Col("basename"), basename),
+		)
+	} else {
+		sq = sq.Where(
+			pathEqNoCase(foldersTable.Col("path"), dir),
+			pathEqNoCase(filesTable.Col("basename"), basename),
+		)
+	}
 
 	ret, err := qb.findBySubquery(ctx, sq)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
