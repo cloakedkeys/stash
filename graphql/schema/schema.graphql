@@ -420,6 +420,12 @@ type Mutation {
 
   storyCreate(input: StoryCreateInput!): Story @hasRole(role: MODIFY)
   storyUpdate(input: StoryUpdateInput!): Story @hasRole(role: MODIFY)
+  """
+  Moves a text file onto a story, such as from the story a scan made for it onto one
+  scraped from a website. The story then shows the file's text, so text stored with it
+  is removed. A story left with no file and no title is removed.
+  """
+  storyAssignFile(input: AssignStoryFileInput!): Boolean! @hasRole(role: MODIFY)
   "Removes stories from the library. Their files stay on disk."
   storiesDestroy(input: StoriesDestroyInput!): Boolean! @hasRole(role: MODIFY)
 

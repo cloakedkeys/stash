@@ -1194,6 +1194,10 @@
     "reassign_files": {
       "destination": "Reassign to"
     },
+    "reassign_story_file": {
+      "story_removed": "This story has no title, so it's removed once its file moves.",
+      "text_replaced": "The story you choose will show this file's text. Any text stored with it is removed."
+    },
     "scene_gen": {
       "clip_previews": "Image clip previews",
       "covers": "Scene covers",

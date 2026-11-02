@@ -304,6 +304,27 @@ func (qb *StoryStore) Destroy(ctx context.Context, id int) error {
 	return qb.tableMgr.destroyExisting(ctx, []int{id})
 }
 
+// DestroyIfEmpty removes a story that has no title and no files, as a scan makes, and
+// reports whether it did. The check and the removal are one statement, so a title or
+// file another session adds at the same time keeps the story.
+func (qb *StoryStore) DestroyIfEmpty(ctx context.Context, id int) (bool, error) {
+	table := qb.table()
+	q := dialect.Delete(table).Where(
+		table.Col(idColumn).Eq(id),
+		goqu.Or(table.Col("title").IsNull(), table.Col("title").Eq("")),
+		goqu.L("NOT EXISTS (SELECT 1 FROM "+storiesFilesTable+" WHERE "+storiesFilesTable+".story_id = "+storyTable+".id)"),
+	)
+	result, err := exec(ctx, q)
+	if err != nil {
+		return false, fmt.Errorf("destroying empty story %d: %w", id, err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 func (qb *StoryStore) Find(ctx context.Context, id int) (*models.Story, error) {
 	ret, err := qb.find(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -74,6 +74,11 @@ input StoryUpdateInput {
   primary_file_id: ID
 }
 
+input AssignStoryFileInput {
+  story_id: ID!
+  file_id: ID!
+}
+
 input StoriesDestroyInput {
   "Removes the stories from the library. Their files are kept unless delete_file is set, so the next scan adds them again."
   ids: [ID!]!
