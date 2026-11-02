@@ -110,7 +110,11 @@ func (qb *performerFilterHandler) handle(ctx context.Context, f *filterBuilder) 
 
 	sf := filter.SubFilter()
 	if sf != nil {
-		sub := &performerFilterHandler{sf}
+		sfCopy := *sf
+		if filter.StudioScope != nil {
+			sfCopy.StudioScope = filter.StudioScope
+		}
+		sub := &performerFilterHandler{&sfCopy}
 		handleSubFilter(ctx, sub, f, filter.OperatorFilter)
 	}
 }
@@ -122,6 +126,48 @@ func (qb *performerFilterHandler) criterionHandler() criterionHandler {
 	heightCmCrit := filter.HeightCm
 
 	convertLegacyCareerLengthFilter(&filter)
+
+	// Apply the studio outside the user's related-media expression, so OR and
+	// NOT cannot match media from another studio.
+	if scope := filter.StudioScope; scope != nil {
+		studios := &models.HierarchicalMultiCriterionInput{
+			Value:    []string{scope.ID},
+			Modifier: models.CriterionModifierIncludes,
+			Depth:    scope.Depth,
+		}
+		if filter.ScenesFilter != nil {
+			filter.ScenesFilter = &models.SceneFilterType{
+				Studios:        studios,
+				OperatorFilter: models.OperatorFilter[models.SceneFilterType]{And: filter.ScenesFilter},
+			}
+		}
+		if filter.AudiosFilter != nil {
+			filter.AudiosFilter = &models.AudioFilterType{
+				Studios:        studios,
+				OperatorFilter: models.OperatorFilter[models.AudioFilterType]{And: filter.AudiosFilter},
+			}
+		}
+		if filter.ImagesFilter != nil {
+			filter.ImagesFilter = &models.ImageFilterType{
+				Studios:        studios,
+				OperatorFilter: models.OperatorFilter[models.ImageFilterType]{And: filter.ImagesFilter},
+			}
+		}
+		if filter.GalleriesFilter != nil {
+			filter.GalleriesFilter = &models.GalleryFilterType{
+				Studios:        studios,
+				OperatorFilter: models.OperatorFilter[models.GalleryFilterType]{And: filter.GalleriesFilter},
+			}
+		}
+		if filter.MarkersFilter != nil {
+			markers := *filter.MarkersFilter
+			markers.SceneFilter = &models.SceneFilterType{
+				Studios:        studios,
+				OperatorFilter: models.OperatorFilter[models.SceneFilterType]{And: markers.SceneFilter},
+			}
+			filter.MarkersFilter = &markers
+		}
+	}
 
 	return compoundHandler{
 		stringCriterionHandler(filter.Name, tableName+".name"),
@@ -444,13 +490,18 @@ func (qb *performerFilterHandler) tagCountCriterionHandler(count *models.IntCrit
 }
 
 func (qb *performerFilterHandler) sceneCountCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
-	h := countCriterionHandlerBuilder{
-		primaryTable: performerTable,
-		joinTable:    performersScenesTable,
-		primaryFK:    performerIDColumn,
+	return func(ctx context.Context, f *filterBuilder) {
+		if count == nil {
+			return
+		}
+		lhs, err := performerMediaCountSQL(ctx, sceneTable, performersScenesTable, sceneIDColumn, qb.performerFilter.StudioScope)
+		if err != nil {
+			f.setError(err)
+			return
+		}
+		clause, args := getIntCriterionWhereClause(lhs, *count)
+		f.addWhere(clause, args...)
 	}
-
-	return h.handler(count)
 }
 
 func (qb *performerFilterHandler) markerCountCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
@@ -461,42 +512,62 @@ func (qb *performerFilterHandler) markerCountCriterionHandler(count *models.IntC
 			const query = `(SELECT COUNT(*) FROM scene_markers
   INNER JOIN scenes ON scene_markers.scene_id = scenes.id
   INNER JOIN performers_scenes ON performers_scenes.scene_id = scenes.id
-  WHERE performers_scenes.performer_id = performers.id)`
+  WHERE performers_scenes.performer_id = performers.id`
 
-			clause, args := getIntCriterionWhereClause(query, *count)
+			scope, err := performerStudioScopeSQL(ctx, sceneTable, qb.performerFilter.StudioScope)
+			if err != nil {
+				f.setError(err)
+				return
+			}
+			clause, args := getIntCriterionWhereClause(query+scope+")", *count)
 			f.addWhere(clause, args...)
 		}
 	}
 }
 
 func (qb *performerFilterHandler) audioCountCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
-	h := countCriterionHandlerBuilder{
-		primaryTable: performerTable,
-		joinTable:    performersAudiosTable,
-		primaryFK:    performerIDColumn,
+	return func(ctx context.Context, f *filterBuilder) {
+		if count == nil {
+			return
+		}
+		lhs, err := performerMediaCountSQL(ctx, audioTable, performersAudiosTable, audioIDColumn, qb.performerFilter.StudioScope)
+		if err != nil {
+			f.setError(err)
+			return
+		}
+		clause, args := getIntCriterionWhereClause(lhs, *count)
+		f.addWhere(clause, args...)
 	}
-
-	return h.handler(count)
 }
 
 func (qb *performerFilterHandler) imageCountCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
-	h := countCriterionHandlerBuilder{
-		primaryTable: performerTable,
-		joinTable:    performersImagesTable,
-		primaryFK:    performerIDColumn,
+	return func(ctx context.Context, f *filterBuilder) {
+		if count == nil {
+			return
+		}
+		lhs, err := performerMediaCountSQL(ctx, imageTable, performersImagesTable, imageIDColumn, qb.performerFilter.StudioScope)
+		if err != nil {
+			f.setError(err)
+			return
+		}
+		clause, args := getIntCriterionWhereClause(lhs, *count)
+		f.addWhere(clause, args...)
 	}
-
-	return h.handler(count)
 }
 
 func (qb *performerFilterHandler) galleryCountCriterionHandler(count *models.IntCriterionInput) criterionHandlerFunc {
-	h := countCriterionHandlerBuilder{
-		primaryTable: performerTable,
-		joinTable:    performersGalleriesTable,
-		primaryFK:    performerIDColumn,
+	return func(ctx context.Context, f *filterBuilder) {
+		if count == nil {
+			return
+		}
+		lhs, err := performerMediaCountSQL(ctx, galleryTable, performersGalleriesTable, galleryIDColumn, qb.performerFilter.StudioScope)
+		if err != nil {
+			f.setError(err)
+			return
+		}
+		clause, args := getIntCriterionWhereClause(lhs, *count)
+		f.addWhere(clause, args...)
 	}
-
-	return h.handler(count)
 }
 
 // used for sorting and filtering on performer o-count.
