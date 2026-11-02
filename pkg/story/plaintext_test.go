@@ -48,10 +48,29 @@ func TestPlainText(t *testing.T) {
 			"<whispers>quietly</whispers> and <Message received> then <3",
 		},
 		{
-			// looks like a <b> tag with attributes, so it's taken as one
-			"the one case that can't be told from markup",
-			"a<b and c>d",
-			"ad",
+			// starts with a tag name, but has bare words after it, so it's the story's
+			"words in angle brackets that start with a tag name",
+			"<I know what you did> she thought.\n<a quiet voice> called.\n<Is anyone there?>\na<b and c>d",
+			"<I know what you did> she thought.\n<a quiet voice> called.\n<Is anyone there?>\na<b and c>d",
+		},
+		{
+			// tags whose attributes all have values are markup
+			"tags with attributes",
+			`<a href="x">link</a> <p class=y>para</p><span title='t' data-x = "1">span</span><br/>end`,
+			"link\n\npara\n\nspan\nend",
+		},
+		{
+			// the better mistake: a real tag with a bare attribute shows as text, though
+			// its closing tag is still markup
+			"a bare attribute",
+			"<td nowrap>cell</td>",
+			"<td nowrap>cell",
+		},
+		{
+			// a script is dropped whatever follows its name, as the browser would run it
+			"a script with a bare attribute",
+			"Before<script async>alert(1)</script><style scoped>p{}</style> after",
+			"Before after",
 		},
 		{
 			"drawings are dropped with what's inside them",

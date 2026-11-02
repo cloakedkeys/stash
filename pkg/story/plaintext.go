@@ -9,7 +9,18 @@ import (
 
 var manyBlankLines = regexp.MustCompile(`\n{3,}`)
 
-// htmlElements are the names of HTML's elements. Only these are taken as markup, so
+// tagShape is a tag whose attributes all have values, such as <i>, </p> or
+// <a href="x">. A tag with bare words after its name, such as <I know what you did>
+// or <a quiet voice>, is taken as part of the story, even though a real tag can
+// have a bare attribute, such as <td nowrap>: showing that as text is the better
+// mistake in a story.
+var tagShape = regexp.MustCompile(`^</?[A-Za-z][A-Za-z0-9]*(\s+[^\s"'=<>/]+\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>` + "`" + `]+))*\s*/?>$`)
+
+// rawTextElements are dropped with what's inside them. The browser treats them as
+// markup whatever follows the name, as in <script async>, so they always are here.
+var rawTextElements = map[string]bool{"script": true, "style": true, "svg": true, "math": true}
+
+// htmlElements are the names of HTML's elements. Only these can be markup, so
 // a story that writes <whispers> or <Message received> keeps those words.
 var htmlElements = map[string]bool{}
 
@@ -57,7 +68,7 @@ func PlainText(s string) string {
 			// copied first, since reading the name lowercases it in place
 			raw := append([]byte(nil), z.Raw()...)
 			name, _ := z.TagName()
-			if !htmlElements[string(name)] {
+			if !htmlElements[string(name)] || (!rawTextElements[string(name)] && !tagShape.Match(raw)) {
 				// not markup: it's part of the story, so it's kept as written
 				if skip == 0 {
 					b.Write(raw)
@@ -65,7 +76,7 @@ func PlainText(s string) string {
 				continue
 			}
 			switch string(name) {
-			case "script", "style", "svg", "math":
+			case "script", "style", "svg", "math": // rawTextElements
 				if tt == html.StartTagToken {
 					skip++
 				} else if tt == html.EndTagToken && skip > 0 {

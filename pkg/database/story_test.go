@@ -393,6 +393,13 @@ func TestStoryText(t *testing.T) {
 		require.NoError(t, err)
 		assert.Nil(t, text, "text that's only zero bytes is no text")
 
+		// bytes that aren't UTF-8, as from a hand-edited import file, become U+FFFD
+		require.NoError(t, store.UpdateText(ctx, s.ID, "caf\xe9 good \xff\xfe"))
+		text, err = store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		require.NotNil(t, text)
+		assert.Equal(t, "caf� good �", *text)
+
 		require.NoError(t, store.UpdateText(ctx, other.ID, "Gone with its story."))
 		require.NoError(t, store.Destroy(ctx, other.ID))
 		otherText, err = store.GetText(ctx, other.ID)

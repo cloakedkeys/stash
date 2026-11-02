@@ -40,9 +40,10 @@ func (qb *StoryStore) HasText(ctx context.Context, storyID int) (bool, error) {
 }
 
 // UpdateText stores the story's text. An empty text removes it. Zero bytes are taken
-// out, since PostgreSQL can't store them in text, whichever way the text arrived.
+// out and bytes that aren't UTF-8 become "�", whichever way the text arrived,
+// such as a hand-edited import file, since PostgreSQL can store neither in text.
 func (qb *StoryStore) UpdateText(ctx context.Context, storyID int, text string) error {
-	text = strings.ReplaceAll(text, "\x00", "")
+	text = strings.ToValidUTF8(strings.ReplaceAll(text, "\x00", ""), "\uFFFD")
 	if strings.TrimSpace(text) == "" {
 		text = ""
 	}
