@@ -136,10 +136,12 @@ func (f *zipFS) Close() error {
 	return f.zipFileCloser.Close()
 }
 
-// openOnly returns a ReadCloser where calling Close will close the zip fs as well.
+// OpenOnly returns a ReadCloser whose Close also closes the zip fs.
+// If opening the entry fails, it closes the zip fs before returning the error.
 func (f *zipFS) OpenOnly(name string) (io.ReadCloser, error) {
 	r, err := f.Open(name)
 	if err != nil {
+		_ = f.Close()
 		return nil, err
 	}
 
