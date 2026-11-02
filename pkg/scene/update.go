@@ -103,7 +103,60 @@ func AddGallery(ctx context.Context, qb models.SceneUpdater, o *models.Scene, ga
 	return err
 }
 
+// addFileToNewScene adds a file to a scene being created. A part of a file, or the
+// whole of one that only parts of are used, is shared with the scenes using it. Otherwise
+// the file is moved to the new scene, as AssignFile does.
+func (s *Service) addFileToNewScene(ctx context.Context, sceneID int, fileID models.FileID, ranged bool) error {
+	if err := s.lockFile(ctx, fileID); err != nil {
+		return err
+	}
+
+	others, err := s.otherScenes(ctx, sceneID, fileID)
+	if err != nil {
+		return err
+	}
+
+	wholeInUse, parts := false, false
+	for _, o := range others {
+		if usesWholeFile(o, fileID) {
+			wholeInUse = true
+		} else {
+			parts = true
+		}
+	}
+
+	if !ranged && wholeInUse && parts {
+		// moving the file to this scene would take it from the scenes that are parts of it
+		return ErrWholeFileInUse
+	}
+
+	if ranged || (parts && !wholeInUse) {
+		if _, err := s.findVideoFile(ctx, fileID); err != nil {
+			return err
+		}
+		return s.Repository.AddFileID(ctx, sceneID, fileID)
+	}
+
+	err = s.AssignFile(ctx, sceneID, fileID)
+	if errors.Is(err, errPrimaryFile) && wholeInUse {
+		// say why, rather than what the file is to the other scene
+		return ErrWholeFileInUse
+	}
+	return err
+}
+
+var errPrimaryFile = errors.New("cannot reassign primary file")
+
 func (s *Service) AssignFile(ctx context.Context, sceneID int, fileID models.FileID) error {
+	// a scene that's part of a file has only that file
+	sc, err := s.Repository.Find(ctx, sceneID)
+	if err != nil {
+		return err
+	}
+	if sc != nil && HasRange(sc) {
+		return ErrRangeNeedsOneFile
+	}
+
 	// ensure file isn't a primary file and that it is a video file
 	f, err := s.File.Find(ctx, fileID)
 	if err != nil {
@@ -121,7 +174,7 @@ func (s *Service) AssignFile(ctx context.Context, sceneID int, fileID models.Fil
 	}
 
 	if isPrimary {
-		return errors.New("cannot reassign primary file")
+		return errPrimaryFile
 	}
 
 	return s.Repository.AssignFiles(ctx, sceneID, []models.FileID{fileID})

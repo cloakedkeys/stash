@@ -45,12 +45,12 @@ func TestStoryTextMigration(t *testing.T) {
 	m, err := NewMigrator(db)
 	require.NoError(t, err)
 	defer m.Close()
-	for version := uint(1); version < 23; version++ {
+	for version := uint(1); version < 24; version++ {
 		require.NoErrorf(t, m.RunMigration(ctx, version), "schema %d", version)
 	}
 	_, err = m.conn.Exec("INSERT INTO stories (id,title,created_at,updated_at) VALUES (5,'Existing story',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)")
 	require.NoError(t, err)
-	require.NoError(t, m.RunMigration(ctx, 23))
+	require.NoError(t, m.RunMigration(ctx, 24))
 
 	var title string
 	require.NoError(t, m.conn.Get(&title, "SELECT title FROM stories WHERE id=5"))
