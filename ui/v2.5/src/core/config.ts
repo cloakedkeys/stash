@@ -51,6 +51,8 @@ export interface IUIConfig {
   showChildTagContent?: boolean;
   showChildStudioContent?: boolean;
   showLinksOnPerformerCard?: boolean;
+  // show a random one of the performer's images on each card
+  performerCardRandomImage?: boolean;
   showTagCardOnHover?: boolean;
 
   showStudioText?: boolean;

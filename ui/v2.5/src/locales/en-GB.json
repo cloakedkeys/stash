@@ -1029,6 +1029,10 @@
       "performer_list": {
         "heading": "Performer List",
         "options": {
+          "random_image": {
+            "description": "For performers with more than one image, each card shows a different one each time the list is opened.",
+            "heading": "Show a random image on performer cards"
+          },
           "show_links_on_grid_card": {
             "heading": "Display links on performer grid cards"
           }

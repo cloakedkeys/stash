@@ -770,6 +770,13 @@ export const SettingsInterfacePanel: React.FC = PatchComponent(
             checked={ui.showLinksOnPerformerCard ?? undefined}
             onChange={(v) => saveUI({ showLinksOnPerformerCard: v })}
           />
+          <BooleanSetting
+            id="performer-card-random-image"
+            headingID="config.ui.performer_list.options.random_image.heading"
+            subHeadingID="config.ui.performer_list.options.random_image.description"
+            checked={ui.performerCardRandomImage ?? undefined}
+            onChange={(v) => saveUI({ performerCardRandomImage: v })}
+          />
         </SettingSection>
 
         <SettingSection headingID="config.ui.image_wall.heading">
