@@ -24,6 +24,7 @@ import cx from "classnames";
 import { useConfigurationContext } from "src/hooks/Config";
 import { PatchContainerComponent } from "src/patch";
 import { View } from "./views";
+import { CriterionLabel } from "./CriterionLabel";
 
 type TagItemProps = PropsWithChildren<
   ReplaceProps<"span", BsPrefixProps<"span"> & BadgeProps>
@@ -307,7 +308,9 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
     return (
       <FilterTag
         key={criterion.getId()}
-        label={criterion.getLabel(intl, sfwContentMode)}
+        label={
+          <CriterionLabel criterion={criterion} sfwContentMode={sfwContentMode} />
+        }
         unsupported={unsupported}
         onClick={() => onClickCriterionTag(criterion)}
         onRemove={($event) => onRemoveCriterionTag(criterion, $event)}
