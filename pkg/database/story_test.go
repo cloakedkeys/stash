@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -412,5 +413,99 @@ func TestStoryWithoutFiles(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, got.LoadRelationships(ctx, store))
 		assert.Empty(t, got.Files.List())
+	})
+}
+
+func TestStoryText(t *testing.T) {
+	runWithRollbackTxn(t, "stored text is kept, replaced, removed and deleted with its story", func(t *testing.T, ctx context.Context) {
+		store := db.Story()
+		s := models.NewStory()
+		s.Title = "Scraped"
+		require.NoError(t, store.Create(ctx, &s, nil))
+		other := models.NewStory()
+		other.Title = "Other"
+		require.NoError(t, store.Create(ctx, &other, nil))
+
+		text, err := store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		assert.Nil(t, text, "a new story has no text")
+		has, err := store.HasText(ctx, s.ID)
+		require.NoError(t, err)
+		assert.False(t, has)
+
+		// long text with markup-looking characters and non-ASCII is kept exactly
+		long := strings.Repeat("Il était une fois <b>&amp;</b> 'quoted'\n\n", 5000)
+		require.NoError(t, store.UpdateText(ctx, s.ID, long))
+		text, err = store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		require.NotNil(t, text)
+		assert.Equal(t, long, *text)
+		has, err = store.HasText(ctx, s.ID)
+		require.NoError(t, err)
+		assert.True(t, has)
+
+		require.NoError(t, store.UpdateText(ctx, s.ID, "Replaced."))
+		text, err = store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		require.NotNil(t, text)
+		assert.Equal(t, "Replaced.", *text)
+
+		otherText, err := store.GetText(ctx, other.ID)
+		require.NoError(t, err)
+		assert.Nil(t, otherText, "another story's text is untouched")
+
+		require.NoError(t, store.UpdateText(ctx, s.ID, ""))
+		text, err = store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		assert.Nil(t, text, "empty text removes it")
+		require.NoError(t, store.UpdateText(ctx, s.ID, ""), "removing text that isn't there is fine")
+
+		// zero bytes, which PostgreSQL can't store in text, are taken out
+		require.NoError(t, store.UpdateText(ctx, s.ID, "before\x00 after"))
+		text, err = store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		require.NotNil(t, text)
+		assert.Equal(t, "before after", *text)
+		require.NoError(t, store.UpdateText(ctx, s.ID, "\x00"))
+		text, err = store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		assert.Nil(t, text, "text that's only zero bytes is no text")
+
+		// bytes that aren't UTF-8, as from a hand-edited import file, become U+FFFD
+		require.NoError(t, store.UpdateText(ctx, s.ID, "caf\xe9 good \xff\xfe"))
+		text, err = store.GetText(ctx, s.ID)
+		require.NoError(t, err)
+		require.NotNil(t, text)
+		assert.Equal(t, "caf� good �", *text)
+
+		require.NoError(t, store.UpdateText(ctx, other.ID, "Gone with its story."))
+		require.NoError(t, store.Destroy(ctx, other.ID))
+		otherText, err = store.GetText(ctx, other.ID)
+		require.NoError(t, err)
+		assert.Nil(t, otherText, "a deleted story's text is deleted too")
+	})
+
+	runWithRollbackTxn(t, "a failure names the story, but doesn't repeat its text", func(t *testing.T, ctx context.Context) {
+		// there's no such story, so the database refuses it
+		err := db.Story().UpdateText(ctx, invalidID, "The whole text of a story that can't be saved.")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "story "+strconv.Itoa(invalidID))
+		assert.NotContains(t, err.Error(), "can't be saved")
+		assert.NotContains(t, err.Error(), "INSERT")
+	})
+
+	runWithRollbackTxn(t, "a failure to read or remove text doesn't show the query", func(t *testing.T, ctx context.Context) {
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		store := db.Story()
+		_, getErr := store.GetText(cancelled, invalidID)
+		_, hasErr := store.HasText(cancelled, invalidID)
+		removeErr := store.UpdateText(cancelled, invalidID, "")
+		for name, err := range map[string]error{"get": getErr, "has": hasErr, "remove": removeErr} {
+			require.Error(t, err, name)
+			assert.Contains(t, err.Error(), "story "+strconv.Itoa(invalidID), name)
+			assert.NotContains(t, err.Error(), "SELECT", name)
+			assert.NotContains(t, err.Error(), "DELETE", name)
+		}
 	})
 }

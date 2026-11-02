@@ -8,6 +8,7 @@ import {
   useListSceneScrapers,
   useListGalleryScrapers,
   useListImageScrapers,
+  useListStoryScrapers,
   useScraperURLConflicts,
 } from "src/core/StashService";
 import * as GQL from "src/core/generated-graphql";
@@ -224,6 +225,8 @@ const ScrapersSection: React.FC = () => {
     useListImageScrapers();
   const { data: groupScrapers, loading: loadingGroups } =
     useListGroupScrapers();
+  const { data: storyScrapers, loading: loadingStories } =
+    useListStoryScrapers();
   const { data: conflictsData } = useScraperURLConflicts();
 
   const scraperNames = useMemo(() => {
@@ -234,6 +237,7 @@ const ScrapersSection: React.FC = () => {
       galleryScrapers?.listScrapers,
       imageScrapers?.listScrapers,
       groupScrapers?.listScrapers,
+      storyScrapers?.listScrapers,
     ]) {
       list?.forEach((s) => {
         m.set(s.id, s.name);
@@ -246,6 +250,7 @@ const ScrapersSection: React.FC = () => {
     galleryScrapers,
     imageScrapers,
     groupScrapers,
+    storyScrapers,
   ]);
 
   const conflictsByType = useMemo(() => {
@@ -260,6 +265,7 @@ const ScrapersSection: React.FC = () => {
       ),
       images: conflicts.filter((c) => c.type === GQL.ScrapeContentType.Image),
       groups: conflicts.filter((c) => c.type === GQL.ScrapeContentType.Group),
+      stories: conflicts.filter((c) => c.type === GQL.ScrapeContentType.Story),
     };
   }, [conflictsData]);
 
@@ -281,6 +287,9 @@ const ScrapersSection: React.FC = () => {
       groups: groupScrapers?.listScrapers.filter((s) =>
         filterFn(s.name, s.group?.urls)
       ),
+      stories: storyScrapers?.listScrapers.filter((s) =>
+        filterFn(s.name, s.story?.urls)
+      ),
     };
   }, [
     performerScrapers,
@@ -288,6 +297,7 @@ const ScrapersSection: React.FC = () => {
     galleryScrapers,
     imageScrapers,
     groupScrapers,
+    storyScrapers,
     filter,
   ]);
 
@@ -304,7 +314,8 @@ const ScrapersSection: React.FC = () => {
     loadingGalleries ||
     loadingPerformers ||
     loadingGroups ||
-    loadingImages
+    loadingImages ||
+    loadingStories
   )
     return (
       <SettingSection headingID="config.scraping.scrapers">
@@ -426,6 +437,26 @@ const ScrapersSection: React.FC = () => {
                 supportedScrapes={scraper.group?.supported_scrapes ?? []}
                 urls={scraper.group?.urls ?? []}
                 conflicts={conflictsByType.groups}
+                scraperNames={scraperNames}
+              />
+            ))}
+          </ScraperTable>
+        )}
+
+        {!!filteredScrapers.stories?.length && (
+          <ScraperTable
+            entityType="story"
+            count={filteredScrapers.stories?.length}
+          >
+            {filteredScrapers.stories?.map((scraper) => (
+              <ScraperTableRow
+                key={scraper.id}
+                id={scraper.id}
+                name={scraper.name}
+                entityType="story"
+                supportedScrapes={scraper.story?.supported_scrapes ?? []}
+                urls={scraper.story?.urls ?? []}
+                conflicts={conflictsByType.stories}
                 scraperNames={scraperNames}
               />
             ))}

@@ -200,3 +200,20 @@ query AvailableScraperPackages($source: String!) {
     }
   }
 }
+
+query ListStoryScrapers {
+  listScrapers(types: [STORY]) {
+    id
+    name
+    story {
+      urls
+      supported_scrapes
+    }
+  }
+}
+
+query ScrapeStoryURL($url: String!) {
+  scrapeStoryURL(url: $url) {
+    ...ScrapedStoryData
+  }
+}

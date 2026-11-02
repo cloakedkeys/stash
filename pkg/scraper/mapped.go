@@ -25,6 +25,7 @@ type mappedScraper struct {
 	Image     *mappedImageScraperConfig     `yaml:"image"`
 	Performer *mappedPerformerScraperConfig `yaml:"performer"`
 	Group     *mappedMovieScraperConfig     `yaml:"group"`
+	Story     *mappedStoryScraperConfig     `yaml:"story"`
 
 	// deprecated
 	Movie *mappedMovieScraperConfig `yaml:"movie"`
@@ -348,6 +349,33 @@ func (s mappedScraper) scrapeGroup(ctx context.Context, q mappedQuery) (*models.
 	}
 
 	if len(results) == 0 && ret.Studio == nil && len(ret.Tags) == 0 {
+		return nil, nil
+	}
+
+	return &ret, nil
+}
+
+func (s mappedScraper) scrapeStory(ctx context.Context, q mappedQuery) (*models.ScrapedStory, error) {
+	var ret models.ScrapedStory
+
+	storyScraperConfig := s.Story
+	if storyScraperConfig == nil {
+		return nil, nil
+	}
+
+	logger.Debug(`Processing story:`)
+	results := storyScraperConfig.mappedConfig.process(ctx, q, s.Common, urlsIsMulti)
+	if len(results) > 0 {
+		ret = *results[0].scrapedStory()
+	}
+
+	if storyScraperConfig.Tags != nil {
+		logger.Debug(`Processing story tags:`)
+		ret.Tags = storyScraperConfig.Tags.process(ctx, q, s.Common, nil).scrapedTags()
+	}
+
+	// if no basic fields are populated, and no tags, then return nil
+	if len(results) == 0 && len(ret.Tags) == 0 {
 		return nil, nil
 	}
 

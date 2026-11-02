@@ -16,6 +16,7 @@ type ImporterReaderWriter interface {
 	Update(ctx context.Context, updatedStory *models.Story) error
 	FindByFileID(ctx context.Context, fileID models.FileID) ([]*models.Story, error)
 	Query(ctx context.Context, options models.StoryQueryOptions) (*models.StoryQueryResult, error)
+	UpdateText(ctx context.Context, id int, text string) error
 }
 
 type Importer struct {
@@ -133,7 +134,19 @@ func (i *Importer) populateTags(ctx context.Context) error {
 	return nil
 }
 
+// PostImport sets the story's stored text. A story with a text file shows the file's
+// text, so it's left alone. Otherwise the import's text replaces any stored text. An
+// import with no text, such as an export from before stories had text, leaves stored
+// text as it is: an empty field can't be told apart from a missing one, and losing a
+// story's text is the worse mistake. The import's files decide it, since creating the
+// story replaces i.story with what was saved, without its files loaded.
 func (i *Importer) PostImport(ctx context.Context, id int) error {
+	if len(i.Input.Files) > 0 || i.Input.Text == "" {
+		return nil
+	}
+	if err := i.ReaderWriter.UpdateText(ctx, id, i.Input.Text); err != nil {
+		return fmt.Errorf("error setting the story's text: %w", err)
+	}
 	return nil
 }
 

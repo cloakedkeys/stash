@@ -183,6 +183,102 @@ func TestStoryUpdateChecksPrimaryFile(t *testing.T) {
 	require.NotContains(t, body, "errors")
 }
 
+// A story without a file can be given text, such as text from a scraper. A story
+// with a text file always shows the file's text, so it can't.
+func TestStoryTextMutations(t *testing.T) {
+	db := mocks.NewDatabase()
+	r := newResolver(db)
+	gql := newTestGraphQLServer(r)
+	editor := models.User{ID: 3, Username: "editor", Roles: models.Roles{models.RoleEnumModify}}
+	reader := models.User{ID: 2, Username: "reader", Roles: models.Roles{models.RoleEnumRead}}
+
+	root := t.TempDir()
+	config.InitializeEmpty()
+	config.GetInstance().SetInterface(config.Stash, config.StashConfigs{{Path: root, IncludeStory: true}})
+	free := &models.BaseFile{ID: 8, Path: filepath.Join(root, "free.txt")}
+	db.File.On("Find", mock.Anything, models.FileID(8)).Return([]models.File{free}, nil)
+	db.File.On("IsPrimary", mock.Anything, models.FileID(8)).Return(false, nil)
+	db.Story.On("CountByFileID", mock.Anything, models.FileID(8)).Return(0, nil)
+
+	// a reader can't give a story text
+	body := storyRequest(t, gql, reader, `mutation { storyCreate(input:{title:"new",text:"Once"}) { id } }`)
+	require.Contains(t, body, "unauthorized")
+
+	// not with a file
+	body = storyRequest(t, gql, editor, `mutation { storyCreate(input:{title:"new",file_ids:["8"],text:"Once"}) { id } }`)
+	require.Contains(t, body, "shows the file's text")
+	db.Story.AssertNotCalled(t, "Create", mock.Anything, mock.Anything, mock.Anything)
+
+	db.Story.On("Create", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		args.Get(1).(*models.Story).ID = 10
+	}).Return(nil)
+	db.Story.On("Find", mock.Anything, 10).Return(&models.Story{ID: 10, Title: "new"}, nil)
+	db.Story.On("UpdateText", mock.Anything, 10, "Once upon a time").Return(nil).Once()
+
+	body = storyRequest(t, gql, editor, `mutation { storyCreate(input:{title:"new",text:"Once upon a time"}) { id } }`)
+	require.Equal(t, `{"data":{"storyCreate":{"id":"10"}}}`, body)
+
+	// blank text, or a file with blank text, stores nothing
+	body = storyRequest(t, gql, editor, `mutation { storyCreate(input:{title:"new",text:"  \n "}) { id } }`)
+	require.NotContains(t, body, "errors")
+	body = storyRequest(t, gql, editor, `mutation { storyCreate(input:{file_ids:["8"],text:""}) { id } }`)
+	require.NotContains(t, body, "errors")
+	db.Story.AssertNumberOfCalls(t, "UpdateText", 1)
+
+	// updating
+	db.Story.On("Find", mock.Anything, 1).Return(&models.Story{ID: 1, Title: "Scraped"}, nil)
+	db.Story.On("GetFiles", mock.Anything, 1).Return([]models.File{}, nil)
+	db.Story.On("UpdatePartial", mock.Anything, 1, mock.Anything).Return(&models.Story{ID: 1}, nil)
+	db.Story.On("UpdateText", mock.Anything, 1, "Changed").Return(nil).Once()
+	db.Story.On("UpdateText", mock.Anything, 1, "").Return(nil).Once()
+	body = storyRequest(t, gql, editor, `mutation { storyUpdate(input:{id:"1",text:"Changed"}) { id } }`)
+	require.NotContains(t, body, "errors")
+	body = storyRequest(t, gql, editor, `mutation { storyUpdate(input:{id:"1",text:" "}) { id } }`)
+	require.NotContains(t, body, "errors", "blank text removes it")
+	body = storyRequest(t, gql, reader, `mutation { storyUpdate(input:{id:"1",text:"Changed"}) { id } }`)
+	require.Contains(t, body, "unauthorized")
+
+	// a story with a file can't be given text, but leftover text can be removed
+	db.Story.On("Find", mock.Anything, 2).Return(&models.Story{ID: 2, Title: "From a file"}, nil)
+	db.Story.On("GetFiles", mock.Anything, 2).Return([]models.File{free}, nil)
+	db.Story.On("UpdatePartial", mock.Anything, 2, mock.Anything).Return(&models.Story{ID: 2}, nil)
+	db.Story.On("UpdateText", mock.Anything, 2, "").Return(nil).Once()
+	body = storyRequest(t, gql, editor, `mutation { storyUpdate(input:{id:"2",text:"Text"}) { id } }`)
+	require.Contains(t, body, "shows the file's text")
+	db.Story.AssertNotCalled(t, "UpdatePartial", mock.Anything, 2, mock.Anything)
+	body = storyRequest(t, gql, editor, `mutation { storyUpdate(input:{id:"2",text:""}) { id } }`)
+	require.NotContains(t, body, "errors")
+
+	// leaving text out leaves it alone
+	body = storyRequest(t, gql, editor, `mutation { storyUpdate(input:{id:"1",title:"Renamed"}) { id } }`)
+	require.NotContains(t, body, "errors")
+	db.Story.AssertExpectations(t)
+	db.Story.AssertNumberOfCalls(t, "UpdateText", 4)
+}
+
+// A story has text to read if it has a text file or stored text, and only then.
+func TestStoryPathsText(t *testing.T) {
+	db := mocks.NewDatabase()
+	r := newResolver(db)
+	gql := newTestGraphQLServer(r)
+	reader := models.User{ID: 2, Username: "reader", Roles: models.Roles{models.RoleEnumRead}}
+
+	fileID := models.FileID(5)
+	db.Story.On("Find", mock.Anything, 1).Return(&models.Story{ID: 1, PrimaryFileID: &fileID}, nil)
+	db.Story.On("Find", mock.Anything, 2).Return(&models.Story{ID: 2}, nil)
+	db.Story.On("Find", mock.Anything, 3).Return(&models.Story{ID: 3}, nil)
+	db.Story.On("HasText", mock.Anything, 2).Return(true, nil)
+	db.Story.On("HasText", mock.Anything, 3).Return(false, nil)
+
+	text := func(id string) string {
+		return storyRequest(t, gql, reader, `{ findStory(id:"`+id+`") { paths { text } } }`)
+	}
+	require.Contains(t, text("1"), `/story/1/text`)
+	require.Contains(t, text("2"), `/story/2/text`)
+	require.Equal(t, `{"data":{"findStory":{"paths":{"text":null}}}}`, text("3"))
+	db.Story.AssertNotCalled(t, "HasText", mock.Anything, 1)
+}
+
 func TestStoriesDestroyKeepsFile(t *testing.T) {
 	db := mocks.NewDatabase()
 	r := newResolver(db)
@@ -220,6 +316,7 @@ func TestStoryTextRoute(t *testing.T) {
 	db.Story.On("Find", mock.Anything, 1).Return(&models.Story{ID: 1, PrimaryFileID: &fileID}, nil)
 	db.Story.On("Find", mock.Anything, 2).Return(nil, nil)
 	db.Story.On("Find", mock.Anything, 3).Return(&models.Story{ID: 3}, nil)
+	db.Story.On("GetText", mock.Anything, 3).Return(nil, nil)
 	db.File.On("Find", mock.Anything, fileID).Return([]models.File{&models.BaseFile{ID: fileID, Path: path, Basename: "story.html", DirEntry: models.DirEntry{ModTime: time.Now()}}}, nil)
 
 	get := func(url string) *httptest.ResponseRecorder {
@@ -243,6 +340,43 @@ func TestStoryTextRoute(t *testing.T) {
 	require.Equal(t, missing.Body.String(), noFile.Body.String())
 
 	require.Equal(t, http.StatusBadRequest, get("/x/text").Code)
+	// the file's text is served without looking for stored text
+	db.Story.AssertNotCalled(t, "GetText", mock.Anything, 1)
+}
+
+// Text stored with a story without a file, such as a scraped one, is served the same
+// way as a file's: as plain text that the browser never runs.
+func TestStoryTextRouteStoredText(t *testing.T) {
+	db := mocks.NewDatabase()
+	rs := storyRoutes{routes: routes{txnManager: db.Repository().TxnManager}, storyFinder: db.Story, fileGetter: db.File}
+	router := rs.Routes()
+
+	text := "<script>alert(1)</script>\n\nIl était une fois."
+	db.Story.On("Find", mock.Anything, 4).Return(&models.Story{ID: 4}, nil)
+	db.Story.On("GetText", mock.Anything, 4).Return(&text, nil)
+
+	get := func(header, value string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/4/text", nil)
+		if header != "" {
+			req.Header.Set(header, value)
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	w := get("", "")
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, text, w.Body.String())
+	require.Equal(t, "text/plain; charset=utf-8", w.Header().Get("Content-Type"))
+	require.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"))
+	require.Equal(t, "sandbox", w.Header().Get("Content-Security-Policy"))
+	require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+
+	// a range of it is a range of its bytes, as for a file
+	part := get("Range", "bytes=0-7")
+	require.Equal(t, http.StatusPartialContent, part.Code)
+	require.Equal(t, "<script>", part.Body.String())
 }
 
 // A story saved in an older encoding, on disk or inside a zip, is sent as
@@ -303,7 +437,8 @@ func TestStoryTextRouteDecodes(t *testing.T) {
 func TestStoryTextURL(t *testing.T) {
 	db := mocks.NewDatabase()
 	r := newResolver(db)
-	paths, err := r.Story().Paths(testCtx, &models.Story{ID: 4})
+	fileID := models.FileID(9)
+	paths, err := r.Story().Paths(testCtx, &models.Story{ID: 4, PrimaryFileID: &fileID})
 	require.NoError(t, err)
 	require.Equal(t, "/story/4/text", *paths.Text)
 }

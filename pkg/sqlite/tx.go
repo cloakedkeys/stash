@@ -29,9 +29,9 @@ type stmt struct {
 func logSQL(start time.Time, query string, args ...interface{}) {
 	since := time.Since(start)
 	if since >= slowLogTime {
-		logger.Debugf("SLOW SQL [%v]: %s, args: %v", since, query, args)
+		logger.Debugf("SLOW SQL [%v]: %s, args: %v", since, query, logArgs(args))
 	} else {
-		logger.Tracef("SQL [%v]: %s, args: %v", since, query, args)
+		logger.Tracef("SQL [%v]: %s, args: %v", since, query, logArgs(args))
 	}
 }
 
