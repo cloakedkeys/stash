@@ -165,6 +165,7 @@
     "set_image": "Set image…",
     "show": "Show",
     "show_configuration": "Show Configuration",
+    "show_other_image": "Show other image",
     "show_results": "Show results",
     "show_count_results": "Show {count} results",
     "sidebar": {
