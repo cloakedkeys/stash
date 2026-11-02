@@ -144,6 +144,41 @@ func Test_getPerformerID(t *testing.T) {
 	}
 }
 
+// A new performer gets the first image as the main one and the rest as other
+// images, in order.
+func Test_createMissingPerformerKeepsAllImages(t *testing.T) {
+	name := "Someone"
+	main := "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnLz4="
+	second := "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIGlkPSdiJy8+"
+	third := "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIGlkPSdjJy8+"
+
+	db := mocks.NewDatabase()
+	db.Performer.On("Create", testCtx, mock.Anything).Run(func(args mock.Arguments) {
+		args.Get(1).(*models.CreatePerformerInput).ID = 7
+	}).Return(nil)
+	db.Performer.On("UpdateImage", testCtx, 7, []byte("<svg xmlns='http://www.w3.org/2000/svg'/>")).Return(nil).Once()
+	var added []string
+	db.Performer.On("AddAlternateImage", testCtx, 7, mock.Anything).Run(func(args mock.Arguments) {
+		added = append(added, string(args.Get(2).([]byte)))
+	}).Return(true, nil)
+
+	got, err := createMissingPerformer(testCtx, "", db.Performer, &models.ScrapedPerformer{
+		Name:   &name,
+		Images: []string{main, second, "data:image/png;base64,%%%%", third},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *got != 7 {
+		t.Errorf("createMissingPerformer() = %d, want 7", *got)
+	}
+	want := []string{"<svg xmlns='http://www.w3.org/2000/svg' id='b'/>", "<svg xmlns='http://www.w3.org/2000/svg' id='c'/>"}
+	if !reflect.DeepEqual(added, want) {
+		t.Errorf("other images = %q, want %q", added, want)
+	}
+	db.AssertExpectations(t)
+}
+
 func Test_createMissingPerformer(t *testing.T) {
 	emptyEndpoint := ""
 	validEndpoint := "validEndpoint"
