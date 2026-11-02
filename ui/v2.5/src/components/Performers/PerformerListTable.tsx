@@ -146,10 +146,10 @@ export const PerformerListTable: React.FC<IPerformerListTableProps> = (
   );
 
   const CountryCell = (performer: GQL.PerformerDataFragment) => {
-    const { locale } = useIntl();
+    const intl = useIntl();
     return (
       <span className="ellips-data">
-        {getCountryByISO(performer.country, locale)}
+        {getCountryByISO(performer.country, intl.locale, intl)}
       </span>
     );
   };

@@ -19,7 +19,7 @@ export class CountryCriterion extends StringCriterion {
       this.modifier === CriterionModifier.Equals ||
       this.modifier === CriterionModifier.NotEquals
     ) {
-      return getCountryByISO(this.value, intl.locale) ?? this.value;
+      return getCountryByISO(this.value, intl.locale, intl) ?? this.value;
     }
 
     return super.getLabelValue(intl);

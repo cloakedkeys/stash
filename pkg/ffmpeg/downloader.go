@@ -19,7 +19,8 @@ func GetFFmpegURL() []string {
 			urls = []string{"https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffmpeg-6.1-linux-arm-64.zip", "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffprobe-6.1-linux-arm-64.zip"}
 		}
 	case "windows":
-		urls = []string{"https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"}
+		// BtbN drops old release branches from latest; move this URL to a newer branch when 9.0 goes away.
+		urls = []string{"https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-9.0.zip"}
 	default:
 		urls = []string{""}
 	}

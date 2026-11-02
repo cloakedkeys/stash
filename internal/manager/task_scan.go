@@ -874,15 +874,12 @@ func (g *imageGenerators) Generate(ctx context.Context, i *models.Image, f model
 	if t.GenerateImagePhashes != nil {
 		phashFn := func(ctx context.Context) {
 			mgr := GetInstance()
-			// Only generate phash for image files, not video files
-			if imageFile, ok := f.(*models.ImageFile); ok {
-				taskPhash := GenerateImagePhashTask{
-					repository: mgr.Repository,
-					File:       imageFile,
-					Overwrite:  overwrite,
-				}
-				taskPhash.Start(ctx)
+			taskPhash := GenerateImagePhashTask{
+				repository: mgr.Repository,
+				File:       f,
+				Overwrite:  overwrite,
 			}
+			taskPhash.Start(ctx)
 		}
 
 		g.generate(ctx, fmt.Sprintf("Generating phash for %s", path), phashFn, *t.GenerateImagePhashes)
@@ -940,6 +937,7 @@ func (g *sceneGenerators) Generate(ctx context.Context, s *models.Scene, f *mode
 
 			generator := &generate.Generator{
 				Encoder:      mgr.FFMpeg,
+				FFProbe:      mgr.FFProbe,
 				FFMpegConfig: mgr.Config,
 				LockManager:  mgr.ReadLockManager,
 				MarkerPaths:  g.paths.SceneMarkers,

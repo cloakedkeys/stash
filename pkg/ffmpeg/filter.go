@@ -17,6 +17,24 @@ func (f VideoFilter) Args() []string {
 	return []string{"-vf", string(f)}
 }
 
+// SquarePixels normalizes known non-square pixels before subsequent scaling.
+// A zero ratio means unknown and leaves the filter unchanged.
+func (f VideoFilter) SquarePixels(sampleAspectRatio float64) VideoFilter {
+	if sampleAspectRatio <= 0 || sampleAspectRatio == 1 {
+		return f
+	}
+	return f.Append("scale=trunc(iw*sar/2)*2:ih,setsar=1")
+}
+
+// SquarePixelDimensions returns the dimensions after SquarePixels, without
+// changing the stored dimensions of the source.
+func SquarePixelDimensions(width, height int, sampleAspectRatio float64) (int, int) {
+	if sampleAspectRatio > 0 && sampleAspectRatio != 1 {
+		width = int(float64(width)*sampleAspectRatio/2) * 2
+	}
+	return width, height
+}
+
 // ScaleWidth returns a VideoFilter scaling the width to the given width, maintaining aspect ratio and a height as a multiple of 2.
 func (f VideoFilter) ScaleWidth(w int) VideoFilter {
 	return f.ScaleDimensions(w, -2)

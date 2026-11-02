@@ -12,11 +12,13 @@ export const CountryLabel: React.FC<IProps> = ({
   country,
   showFlag = true,
 }) => {
-  const { locale } = useIntl();
+  const intl = useIntl();
 
   // #3063 - use alpha2 values only
   const fromISO =
-    country?.length === 2 ? getCountryByISO(country, locale) : undefined;
+    country?.length === 2
+      ? getCountryByISO(country, intl.locale, intl)
+      : undefined;
 
   return (
     <div>

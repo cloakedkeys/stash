@@ -86,7 +86,17 @@ const usePasteImage = (
   return false;
 };
 
+// Preserve the screenshot URL's timestamp, API key and base path.
+const getThumbnailUrl = (url: string | null | undefined) => {
+  if (!url) return undefined;
+  const [base, hash] = url.split("#", 2);
+  const separator = base.includes("?") ? "&" : "?";
+  const fragment = hash === undefined ? "" : `#${hash}`;
+  return `${base}${separator}thumbnail=true${fragment}`;
+};
+
 const ImageUtils = {
+  getThumbnailUrl,
   onImageChange,
   usePasteImage,
   imageToDataURL,

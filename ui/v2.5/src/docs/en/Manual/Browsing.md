@@ -85,6 +85,8 @@ If you can edit performers, use **Add performer image** to add a URL or select o
 
 Use the left and right buttons to reorder the other images, or **Remove** to remove one after confirmation.
 
+Performer cards in lists show the main image. Hover over a card to see the first of the other images. On a touch screen, tap the images button at the bottom of the card to switch between them.
+
 The **Images** tab still shows library images. Its **Set as performer image** action replaces the main image without saving the old main image among the others.
 
 ## Reveal file in file manager

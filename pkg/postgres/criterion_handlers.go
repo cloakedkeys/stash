@@ -938,26 +938,20 @@ func (m *joinedHierarchicalMultiCriterionHandlerBuilder) handler(c *models.Hiera
 					return
 				}
 
-				joinTable := utils.StrFormat(`(
-		SELECT j2.*, e.column1 AS root_id, e.column2 AS item_id FROM {joinTable} AS j2
-		INNER JOIN ({valuesClause}) AS e ON j2.{foreignFK} = e.column2
-	)
-	`, utils.StrFormatMap{
+				// Check this object's associations instead of materializing every
+				// association with an excluded tag before joining to the objects.
+				f.addWhere(utils.StrFormat(`NOT EXISTS (
+		SELECT 1 FROM {joinTable} AS j2
+		WHERE j2.{primaryFK} = {primaryTable}.{primaryKey}
+		AND j2.{foreignFK} IN (SELECT column2 FROM ({valuesClause}) AS e)
+	)`, utils.StrFormatMap{
 					"joinTable":    m.joinTable,
+					"primaryFK":    m.primaryFK,
+					"primaryTable": m.primaryTable,
+					"primaryKey":   primaryKey,
 					"foreignFK":    m.foreignFK,
 					"valuesClause": valuesClause,
-				})
-
-				joinAlias2 := joinAlias + "2"
-
-				f.addLeftJoin(joinTable, joinAlias2, fmt.Sprintf("%s.%s = %s.%s", joinAlias2, m.primaryFK, m.primaryTable, primaryKey))
-
-				// modify for exclusion
-				criterionCopy := criterion
-				criterionCopy.Modifier = models.CriterionModifierExcludes
-				criterionCopy.Value = c.Excludes
-
-				m.addHierarchicalConditionClauses(f, criterionCopy, joinAlias2, "root_id")
+				}))
 			}
 		}
 	}

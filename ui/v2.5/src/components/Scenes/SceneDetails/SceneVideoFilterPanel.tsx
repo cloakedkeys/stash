@@ -128,6 +128,7 @@ export const SceneVideoFilterPanel: React.FC<ISceneVideoFilterPanelProps> = (
   };
 
   const intl = useIntl();
+  const [sceneId, setSceneId] = useState(props.scene.id);
 
   const [contrastValue, setContrastValue] = useState(contrastRange.default);
   const [brightnessValue, setBrightnessValue] = useState(
@@ -496,9 +497,15 @@ export const SceneVideoFilterPanel: React.FC<ISceneVideoFilterPanelProps> = (
     return <div id="video-filter-container" />;
   }
 
-  // On render update video style.
-  updateVideoFilters();
-  updateVideoStyle();
+  // Reset scene-local state before applying styles for a different video.
+  if (sceneId !== props.scene.id) {
+    setSceneId(props.scene.id);
+    onResetFilters();
+    onResetTransforms();
+  } else {
+    updateVideoFilters();
+    updateVideoStyle();
+  }
 
   return (
     <div className="container scene-video-filter">

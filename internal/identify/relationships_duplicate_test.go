@@ -29,6 +29,10 @@ func (c *uniquePerformerCreator) UpdateImage(context.Context, int, []byte) error
 	return nil
 }
 
+func (c *uniquePerformerCreator) AddAlternateImage(context.Context, int, []byte) (bool, error) {
+	return true, nil
+}
+
 func TestPerformersDuplicateNewName(t *testing.T) {
 	for _, tt := range []struct {
 		name           string

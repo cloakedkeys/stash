@@ -125,6 +125,7 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 
 		g := &generate.Generator{
 			Encoder:      instance.FFMpeg,
+			FFProbe:      instance.FFProbe,
 			FFMpegConfig: instance.Config,
 			LockManager:  instance.ReadLockManager,
 			MarkerPaths:  instance.Paths.SceneMarkers,
@@ -591,18 +592,16 @@ func (j *GenerateJob) queueImageJob(g *generate.Generator, image *models.Image, 
 	if j.input.ImagePhashes {
 		// generate for all files in image
 		for _, f := range image.Files.List() {
-			if imageFile, ok := f.(*models.ImageFile); ok {
-				task := &GenerateImagePhashTask{
-					repository: j.repository,
-					File:       imageFile,
-					Overwrite:  j.overwrite,
-				}
+			task := &GenerateImagePhashTask{
+				repository: j.repository,
+				File:       f,
+				Overwrite:  j.overwrite,
+			}
 
-				if task.required() {
-					j.totals.imagePhashes++
-					j.totals.tasks++
-					queue <- task
-				}
+			if task.required() {
+				j.totals.imagePhashes++
+				j.totals.tasks++
+				queue <- task
 			}
 		}
 	}

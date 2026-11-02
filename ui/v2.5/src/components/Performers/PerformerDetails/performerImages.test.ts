@@ -5,7 +5,9 @@ import { addPerformerImageFiles, movePerformerImage } from "./performerImages";
 
 afterEach(() => vi.unstubAllGlobals());
 
-it("requests alternate images only in the detail query, never shared list fragments", () => {
+// The performer list asks for them too, for the second image on hover. The
+// server loads them for a whole page at once.
+it("requests alternate images only in the detail and list queries, never shared fragments", () => {
   for (const name of ["performer", "performer-slim"]) {
     const fragment = readFileSync(
       new URL(`../../../../graphql/data/${name}.graphql`, import.meta.url),
@@ -29,7 +31,7 @@ it("requests alternate images only in the detail query, never shared list fragme
       },
     });
   }
-  expect(requesting).toEqual(["FindPerformer"]);
+  expect(requesting).toEqual(["FindPerformers", "FindPerformer"]);
 });
 
 describe("performer image ordering", () => {
