@@ -139,19 +139,73 @@ func nameHeld(names []string, path string) bool {
 	return slices.ContainsFunc(names, func(name string) bool { return strings.EqualFold(name, base) })
 }
 
+// folderTree finds folders in the library.
+type folderTree interface {
+	FindByPath(ctx context.Context, path string, caseSensitive bool) (*models.Folder, error)
+	FindByParentFolderID(ctx context.Context, parentFolderID models.FolderID) ([]*models.Folder, error)
+}
+
+// foldersAt finds the folders in the library at root joined with rel, ignoring case in
+// every alphabet, as some filesystems do and the database doesn't. On a filesystem
+// that minds case, folders whose names differ only in case are all returned, so that
+// a name used in any of them is avoided.
+func foldersAt(ctx context.Context, tree folderTree, root, rel string) ([]*models.Folder, error) {
+	top, err := tree.FindByPath(ctx, root, true)
+	if err == nil && top == nil {
+		// the library's path as configured may differ in case from the scanned one
+		top, err = tree.FindByPath(ctx, root, false)
+	}
+	if err != nil || top == nil {
+		return nil, err
+	}
+	found := []*models.Folder{top}
+	if rel == "." {
+		return found, nil
+	}
+	for _, name := range strings.Split(rel, string(filepath.Separator)) {
+		var next []*models.Folder
+		for _, f := range found {
+			children, err := tree.FindByParentFolderID(ctx, f.ID)
+			if err != nil {
+				return nil, err
+			}
+			for _, c := range children {
+				if strings.EqualFold(filepath.Base(c.Path), name) {
+					next = append(next, c)
+				}
+			}
+		}
+		found = next
+	}
+	return found, nil
+}
+
 // storyFolderFileNames lists the names of the files in the library that are in dir,
 // including ones that have gone missing.
 func (s *Manager) storyFolderFileNames(ctx context.Context, dir string) (names []string, err error) {
+	stash := s.Config.GetStashPaths().GetStashFromDirPath(dir)
+	if stash == nil {
+		return nil, nil
+	}
+	rel, err := filepath.Rel(stash.Path, dir)
+	if err != nil {
+		return nil, fmt.Errorf("finding %s in its library: %w", dir, err)
+	}
 	err = s.Repository.WithReadTxn(ctx, func(ctx context.Context) error {
-		folder, err := s.Repository.Folder.FindByPath(ctx, dir, false)
-		if err != nil || folder == nil {
+		folders, err := foldersAt(ctx, s.Repository.Folder, stash.Path, rel)
+		if err != nil {
 			return err
 		}
-		files, err := s.Repository.File.FindByFolderID(ctx, folder.ID)
-		for _, f := range files {
-			names = append(names, f.Base().Basename)
+		for _, folder := range folders {
+			files, err := s.Repository.File.FindByFolderID(ctx, folder.ID)
+			if err != nil {
+				return err
+			}
+			for _, f := range files {
+				names = append(names, f.Base().Basename)
+			}
 		}
-		return err
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing the library's files in %s: %w", dir, err)

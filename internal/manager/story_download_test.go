@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -75,6 +77,69 @@ func TestNameHeld(t *testing.T) {
 	assert.True(t, nameHeld(names, filepath.Join(dir, "σοφία.txt")), "Greek case")
 	assert.False(t, nameHeld(names, filepath.Join(dir, "Ete.txt")), "accents still count")
 	assert.False(t, nameHeld(nil, filepath.Join(dir, "Été.txt")))
+}
+
+// fakeFolders is a library's folders, found the way the database does: by exact path,
+// or ignoring case in ASCII only.
+type fakeFolders []*models.Folder
+
+func (ff fakeFolders) FindByPath(_ context.Context, path string, caseSensitive bool) (*models.Folder, error) {
+	for _, f := range ff {
+		if f.Path == path || (!caseSensitive && asciiLower(f.Path) == asciiLower(path)) {
+			return f, nil
+		}
+	}
+	return nil, nil
+}
+
+func (ff fakeFolders) FindByParentFolderID(_ context.Context, id models.FolderID) ([]*models.Folder, error) {
+	var ret []*models.Folder
+	for _, f := range ff {
+		if f.ParentFolderID != nil && *f.ParentFolderID == id {
+			ret = append(ret, f)
+		}
+	}
+	return ret, nil
+}
+
+func asciiLower(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 'A' && r <= 'Z' {
+			return r + 'a' - 'A'
+		}
+		return r
+	}, s)
+}
+
+func TestFoldersAt(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "lib")
+	id := func(n int) *models.FolderID { v := models.FolderID(n); return &v }
+	tree := fakeFolders{
+		{ID: 1, Path: root},
+		{ID: 2, Path: filepath.Join(root, "Été"), ParentFolderID: id(1)},
+		{ID: 3, Path: filepath.Join(root, "été"), ParentFolderID: id(1)},
+		{ID: 4, Path: filepath.Join(root, "Été", "Sub"), ParentFolderID: id(2)},
+		{ID: 5, Path: filepath.Join(root, "Other"), ParentFolderID: id(1)},
+	}
+	ids := func(rel string) []models.FolderID {
+		found, err := foldersAt(context.Background(), tree, root, rel)
+		assert.NoError(t, err)
+		var ret []models.FolderID
+		for _, f := range found {
+			ret = append(ret, f.ID)
+		}
+		return ret
+	}
+
+	assert.Equal(t, []models.FolderID{1}, ids("."))
+	assert.Equal(t, []models.FolderID{2, 3}, ids("ÉTÉ"), "case outside ASCII, and both folders differing only in case")
+	assert.Equal(t, []models.FolderID{4}, ids(filepath.Join("été", "sub")))
+	assert.Empty(t, ids("Ete"), "accents still count")
+	assert.Empty(t, ids("missing"))
+
+	found, err := foldersAt(context.Background(), tree, filepath.Join(t.TempDir(), "elsewhere"), ".")
+	assert.NoError(t, err)
+	assert.Empty(t, found, "a library that hasn't been scanned")
 }
 
 func TestCheckStoryDownloadPath(t *testing.T) {
