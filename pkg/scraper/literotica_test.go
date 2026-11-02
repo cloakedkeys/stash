@@ -325,4 +325,23 @@ xPathScrapers:
 			assert.Equal(t, "A Title", *got.Title, "other fields are still plain text")
 		})
 	}
+
+	// a selector for text nodes, and paragraphs that repeat
+	for _, tc := range []struct{ name, body, text, want string }{
+		{"text nodes", `<div class="story">Once upon &lt;a&gt; time.</div>`, `//div[@class="story"]/text()`, "Once upon <a> time."},
+		{"repeated paragraphs", `<div class="story"><p>No.</p><p>Again.</p><p>No.</p></div>`, `//div[@class="story"]/p`, "No.\n\nAgain.\n\nNo."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := loadConfigFromYAML("test", strings.NewReader("name: Test\nxPathScrapers:\n  s:\n    story:\n      Text: "+tc.text+"\n"))
+			require.NoError(t, err)
+			s, err := c.XPathScrapers["s"].scrapeStory(context.Background(), &xpathQuery{doc: mustParseHTML(t, "<html><body>"+tc.body+"</body></html>")})
+			require.NoError(t, err)
+			require.NotNil(t, s)
+			out, err := (&postScraper{}).postScrapeStory(context.Background(), *s)
+			require.NoError(t, err)
+			got := out.(models.ScrapedStory)
+			require.NotNil(t, got.Text)
+			assert.Equal(t, tc.want, *got.Text)
+		})
+	}
 }

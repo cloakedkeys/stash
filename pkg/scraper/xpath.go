@@ -346,8 +346,14 @@ func (q *xpathQuery) runQueryWithPositions(selector string) ([]string, error) {
 func (q *xpathQuery) nodeText(n *html.Node) string {
 	if q.keepHTML && n != nil {
 		// a story's text: its paragraphs and line breaks are kept as markup, which
-		// story.PlainText turns into plain text
-		return strings.TrimSpace(htmlquery.OutputHTML(n, false))
+		// story.PlainText turns into plain text. A text node, such as from text(),
+		// has no markup of its own, so it's escaped to read as the text it holds.
+		switch n.Type {
+		case html.TextNode:
+			return strings.TrimSpace(html.EscapeString(n.Data))
+		case html.ElementNode, html.DocumentNode:
+			return strings.TrimSpace(htmlquery.OutputHTML(n, false))
+		}
 	}
 
 	var ret string
