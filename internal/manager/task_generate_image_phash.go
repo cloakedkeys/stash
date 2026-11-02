@@ -11,12 +11,12 @@ import (
 
 type GenerateImagePhashTask struct {
 	repository models.Repository
-	File       *models.ImageFile
+	File       models.File
 	Overwrite  bool
 }
 
 func (t *GenerateImagePhashTask) GetDescription() string {
-	return fmt.Sprintf("Generating phash for %s", t.File.Path)
+	return fmt.Sprintf("Generating phash for %s", t.File.Base().Path)
 }
 
 func (t *GenerateImagePhashTask) Start(ctx context.Context) {
@@ -34,7 +34,7 @@ func (t *GenerateImagePhashTask) Start(ctx context.Context) {
 		if err != nil {
 			logger.Warnf("Error finding existing phash: %v", err)
 		} else if existing != nil {
-			logger.Infof("Using existing phash for %s", t.File.Path)
+			logger.Infof("Using existing phash for %s", t.File.Base().Path)
 			hash = existing.(int64)
 			set = true
 		}
@@ -43,7 +43,7 @@ func (t *GenerateImagePhashTask) Start(ctx context.Context) {
 	if !set {
 		generated, err := imagephash.Generate(instance.FFMpeg, t.File)
 		if err != nil {
-			logger.Errorf("Error generating phash for %q: %v", t.File.Path, err)
+			logger.Errorf("Error generating phash for %q: %v", t.File.Base().Path, err)
 			logErrorOutput(err)
 			return
 		}
@@ -53,7 +53,7 @@ func (t *GenerateImagePhashTask) Start(ctx context.Context) {
 
 	r := t.repository
 	if err := r.WithTxn(ctx, func(ctx context.Context) error {
-		t.File.Fingerprints = t.File.Fingerprints.AppendUnique(models.Fingerprint{
+		t.File.Base().Fingerprints = t.File.Base().Fingerprints.AppendUnique(models.Fingerprint{
 			Type:        models.FingerprintTypePhash,
 			Fingerprint: hash,
 		})
@@ -68,7 +68,7 @@ func (t *GenerateImagePhashTask) findExistingPhash(ctx context.Context) (interfa
 	r := t.repository
 	var ret interface{}
 	if err := r.WithReadTxn(ctx, func(ctx context.Context) error {
-		md5 := t.File.Fingerprints.Get(models.FingerprintTypeMD5)
+		md5 := t.File.Base().Fingerprints.Get(models.FingerprintTypeMD5)
 
 		// find other files with the same md5
 		files, err := r.File.FindByFingerprint(ctx, models.Fingerprint{
@@ -99,5 +99,5 @@ func (t *GenerateImagePhashTask) required() bool {
 		return true
 	}
 
-	return t.File.Fingerprints.Get(models.FingerprintTypePhash) == nil
+	return t.File.Base().Fingerprints.Get(models.FingerprintTypePhash) == nil
 }
