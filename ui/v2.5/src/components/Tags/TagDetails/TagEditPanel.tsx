@@ -14,7 +14,10 @@ import isEqual from "lodash-es/isEqual";
 import { useToast } from "src/hooks/Toast";
 import { useConfigurationContext } from "src/hooks/Config";
 import { useIsAdmin } from "src/hooks/CurrentUser";
-import { handleUnsavedChanges } from "src/utils/navigation";
+import {
+  handleUnsavedChanges,
+  isRedirectAfterCreate,
+} from "src/utils/navigation";
 import { formikUtils } from "src/utils/form";
 import { yupFormikValidate, yupRequiredStringArray } from "src/utils/yup";
 import { addUpdateStashID, getStashIDs } from "src/utils/stashIds";
@@ -270,7 +273,9 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
           when={formik.dirty}
           message={(location, action) => {
             // Check if it's a redirect after tag creation
-            if (action === "PUSH" && location.pathname.startsWith("/tags/")) {
+            if (
+              isRedirectAfterCreate(isNew, action, location.pathname, "tags")
+            ) {
               return true;
             }
 
