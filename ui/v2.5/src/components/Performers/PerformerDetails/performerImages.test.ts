@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { Kind, parse, visit } from "graphql";
-import { addPerformerImageFiles, movePerformerImage } from "./performerImages";
+import {
+  addPerformerImageFiles,
+  movePerformerImage,
+  unpickedImages,
+} from "./performerImages";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -56,6 +60,16 @@ describe("performer image ordering", () => {
     expect(moved.slice(10, 14)).toEqual(["10", "12", "11", "13"]);
     expect(moved).toHaveLength(images.length);
     expect(new Set(moved)).toEqual(new Set(images));
+  });
+});
+
+describe("images not picked from a scrape", () => {
+  it("keeps the others in order, without the picked one or repeats", () => {
+    expect(unpickedImages(["a", "b", "a", "c", ""], "b")).toEqual(["a", "c"]);
+  });
+
+  it("keeps them all when none was picked", () => {
+    expect(unpickedImages(["a", "b"], undefined)).toEqual(["a", "b"]);
   });
 });
 

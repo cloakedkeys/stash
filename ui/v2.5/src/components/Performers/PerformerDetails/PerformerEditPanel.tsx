@@ -36,6 +36,7 @@ import { useIsAdmin } from "src/hooks/CurrentUser";
 import { PerformerScrapeDialog } from "./PerformerScrapeDialog";
 import PerformerScrapeModal from "./PerformerScrapeModal";
 import PerformerStashBoxModal, { IStashBox } from "./PerformerStashBoxModal";
+import { unpickedImages } from "./performerImages";
 import StashBoxIDSearchModal from "src/components/Shared/StashBoxIDSearchModal";
 import cx from "classnames";
 import { faSyncAlt, faPlus } from "@fortawesome/free-solid-svg-icons";
@@ -131,6 +132,8 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     ignore_auto_tag: yup.boolean().defined(),
     stash_ids: yup.mixed<GQL.StashIdInput[]>().defined(),
     image: yup.string().nullable().optional(),
+    // #571 - scraped images that weren't picked, kept as other images
+    add_images: yup.array(yup.string().required()).optional(),
     custom_fields: yup.object().required().defined(),
   });
 
@@ -297,6 +300,8 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     ) {
       const imageStr = state.images[0];
       formik.setFieldValue("image", imageStr);
+      const others = unpickedImages(state.images, imageStr);
+      formik.setFieldValue("add_images", others.length ? others : undefined);
     }
     if (state.details) {
       formik.setFieldValue("details", state.details);
@@ -342,8 +347,15 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     setEncodingImage(encodingImage);
   }, [setEncodingImage, encodingImage]);
 
+  // An image chosen here, or cleared, replaces a scraped one, so the other
+  // images from that scrape aren't added either. One update, so validation
+  // sees both changes.
   function onImageLoad(imageData: string | null) {
-    formik.setFieldValue("image", imageData);
+    formik.setValues((values) => ({
+      ...values,
+      image: imageData,
+      add_images: undefined,
+    }));
   }
 
   function onImageChange(event: React.FormEvent<HTMLInputElement>) {
@@ -620,7 +632,7 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
           <Button
             className="mr-2"
             variant="danger"
-            onClick={() => formik.setFieldValue("image", null)}
+            onClick={() => onImageLoad(null)}
           >
             <FormattedMessage id="actions.clear_image" />
           </Button>
