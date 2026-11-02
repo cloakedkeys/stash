@@ -85,8 +85,9 @@ func isReservedWindowsName(name string) bool {
 }
 
 // writeStoryText writes text to a new file in dir named after the title, adding " (2)",
-// " (3)" and so on when the name is taken. It never replaces a file.
-func writeStoryText(dir, title, text string) (string, error) {
+// " (3)" and so on when the name is taken, on disk or, if held is given, by a file in
+// the library that has gone missing. It never replaces a file.
+func writeStoryText(dir, title, text string, held func(path string) (bool, error)) (string, error) {
 	if err := fsutil.EnsureDir(dir); err != nil {
 		return "", fmt.Errorf("making the folder for downloaded stories: %w", err)
 	}
@@ -98,6 +99,17 @@ func writeStoryText(dir, title, text string) (string, error) {
 			base = fmt.Sprintf("%s (%d)", name, n)
 		}
 		path := filepath.Join(dir, base+storyFileExt)
+
+		if held != nil {
+			// a scan would take a new file there for the missing one, with its story
+			isHeld, err := held(path)
+			if err != nil {
+				return "", fmt.Errorf("checking the library for %s: %w", path, err)
+			}
+			if isHeld {
+				continue
+			}
+		}
 
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if errors.Is(err, os.ErrExist) {
@@ -133,7 +145,16 @@ func (s *Manager) SaveStoryText(ctx context.Context, title, text string) (models
 		return nil, err
 	}
 
-	path, err := writeStoryText(dir, title, text)
+	held := func(path string) (isHeld bool, err error) {
+		err = s.Repository.WithReadTxn(ctx, func(ctx context.Context) error {
+			// not case sensitive, so as to be safe on filesystems that aren't
+			f, err := s.Repository.File.FindByPath(ctx, path, false)
+			isHeld = f != nil
+			return err
+		})
+		return isHeld, err
+	}
+	path, err := writeStoryText(dir, title, text, held)
 	if err != nil {
 		return nil, err
 	}
@@ -148,8 +169,9 @@ func (s *Manager) SaveStoryText(ctx context.Context, title, text string) (models
 	}
 	if !r.New {
 		// The scan took the file for one already in the library that had gone missing,
-		// as its text is the same. It stays with whatever has that file, which keeps
-		// its details, and nil has the text stored instead.
+		// as its text is the same (a name held by one is skipped above). It stays with
+		// whatever has that file, which keeps its details, and nil has the text stored
+		// instead.
 		logger.Infof("%s matched a missing file already in the library, so it was kept as that file and the story's text was stored", path)
 		return nil, nil
 	}

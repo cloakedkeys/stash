@@ -43,17 +43,21 @@ func TestStoryFileName(t *testing.T) {
 func TestWriteStoryText(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "downloaded")
 
-	first, err := writeStoryText(dir, "Same name", "First text.")
+	first, err := writeStoryText(dir, "Same name", "First text.", nil)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(dir, "Same name.txt"), first, "the folder is made when it's missing")
 
-	second, err := writeStoryText(dir, "Same name", "Second text.")
+	second, err := writeStoryText(dir, "Same name", "Second text.", nil)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(dir, "Same name (2).txt"), second)
 
-	third, err := writeStoryText(dir, "Same name", "Third text.")
+	// a name held by a missing file in the library is skipped, though it's free on disk
+	missing := filepath.Join(dir, "Same name (3).txt")
+	held := func(path string) (bool, error) { return path == missing, nil }
+	third, err := writeStoryText(dir, "Same name", "Third text.", held)
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(dir, "Same name (3).txt"), third)
+	assert.Equal(t, filepath.Join(dir, "Same name (4).txt"), third)
+	assert.NoFileExists(t, missing)
 
 	for path, want := range map[string]string{first: "First text.", second: "Second text.", third: "Third text."} {
 		got, err := os.ReadFile(path)
