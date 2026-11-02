@@ -67,15 +67,71 @@ func TestPlainText(t *testing.T) {
 			"<td nowrap>cell",
 		},
 		{
-			// a script is dropped whatever follows its name, as the browser would run it
+			// like any tag with a bare attribute, it isn't clearly markup, so it shows as
+			// text; the reader shows plain text, so it can't run
 			"a script with a bare attribute",
 			"Before<script async>alert(1)</script><style scoped>p{}</style> after",
-			"Before after",
+			"Before<script async>alert(1)<style scoped>p{} after",
 		},
 		{
 			"drawings are dropped with what's inside them",
 			"Before<svg><rect width='1'/><text>x</text></svg> after<math><mi>y</mi></math>.",
 			"Before after.",
+		},
+		{
+			// words that start with the name of an element dropped with its contents
+			"words in angle brackets that start with script, style, svg or math",
+			"Page one starts here. <Style is everything> she said, and carried on.\n" +
+				"<Script of the play> <Math is hard> <Svg file attached> The rest.",
+			"Page one starts here. <Style is everything> she said, and carried on.\n" +
+				"<Script of the play> <Math is hard> <Svg file attached> The rest.",
+		},
+		{
+			// only a script or style that closes is dropped with what's inside it
+			"a style or script that never closes",
+			"Before<style>p{color:red} after. <script>more",
+			"Beforep{color:red} after. more",
+		},
+		{
+			"a less-than sign before a closing tag's slash",
+			"I love you </3 she said. Later x > y. After.",
+			"I love you </3 she said. Later x > y. After.",
+		},
+		{
+			"angle brackets with a question or exclamation mark",
+			"<?What is that?> and <!Stop right there!>",
+			"<?What is that?> and <!Stop right there!>",
+		},
+		{"an angle bracket that never closes", "The end <she said", "The end <she said"},
+		{
+			// the one case that can't be told apart from a real tag
+			"words with the shape of a real tag",
+			`<I said="hello"> she said`,
+			"she said",
+		},
+		{
+			// elements whose contents a browser reads as text don't change what follows
+			"markup after words in angle brackets",
+			"<Title of the book> she said.<br>The rest, <i>really</i>.\n" +
+				"<Textarea of notes><br><Plaintext here> <i>a</i> <Iframe x> <i>b</i> <Noscript ok> <i>c</i>",
+			"<Title of the book> she said.\nThe rest, really.\n" +
+				"<Textarea of notes>\n<Plaintext here> a <Iframe x> b <Noscript ok> c",
+		},
+		{
+			"comments are dropped only when they close",
+			"a<!-- a note -->b <!-- c",
+			"ab <!-- c",
+		},
+		{
+			// an entity is the character it stands for, never markup
+			"escaped markup stays as text",
+			"&lt;i&gt;kept&lt;/i&gt; &lt;script&gt;x&lt;/script&gt;",
+			"<i>kept</i> <script>x</script>",
+		},
+		{
+			"tag names in capitals, and tags across lines",
+			"<P>one</P><SCRIPT\n  type=\"x\">gone</SCRIPT><BR\n/>two",
+			"one\n\ntwo",
 		},
 		{"zero bytes are dropped", "before\x00 after\x00", "before after"},
 		{"empty", "", ""},

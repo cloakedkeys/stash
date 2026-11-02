@@ -1,28 +1,39 @@
 package story
 
 import (
+	"html"
 	"regexp"
 	"strings"
-
-	"golang.org/x/net/html"
 )
 
 var manyBlankLines = regexp.MustCompile(`\n{3,}`)
 
-// tagShape is a tag whose attributes all have values, such as <i>, </p> or
-// <a href="x">. A tag with bare words after its name, such as <I know what you did>
-// or <a quiet voice>, is taken as part of the story, even though a real tag can
-// have a bare attribute, such as <td nowrap>: showing that as text is the better
-// mistake in a story.
-var tagShape = regexp.MustCompile(`^</?[A-Za-z][A-Za-z0-9]*(\s+[^\s"'=<>/]+\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>` + "`" + `]+))*\s*/?>$`)
+// attribute is one attribute with a value, such as href="x", class=y or title='t'.
+const attribute = `\s+[^\s"'=<>/]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>` + "`" + `]+)`
 
-// rawTextElements are dropped with what's inside them. The browser treats them as
-// markup whatever follows the name, as in <script async>, so they always are here.
-var rawTextElements = map[string]bool{"script": true, "style": true, "svg": true, "math": true}
+// markup finds what is clearly markup, and nothing else:
+//   - group 1: a comment that closes, or a script, style, SVG or maths drawing whose
+//     opening tag has a tag's shape and whose closing tag exists. These are dropped
+//     with what's inside them.
+//   - group 2: the name of a tag whose attributes all have values, such as <i>, </p>
+//     or <a href="x">.
+//
+// A tag with bare words after its name, such as <I know what you did>, <Style is
+// everything> or <td nowrap>, doesn't match, so it stays as written: showing a real
+// tag as text is the better mistake in a story than losing the story's own words.
+var markup = regexp.MustCompile(`(?is)(<!--.*?-->` +
+	`|<script(?:` + attribute + `)*\s*>.*?</script\s*>` +
+	`|<style(?:` + attribute + `)*\s*>.*?</style\s*>` +
+	`|<svg(?:` + attribute + `)*\s*>.*?</svg\s*>` +
+	`|<math(?:` + attribute + `)*\s*>.*?</math\s*>)` +
+	`|</?([a-z][a-z0-9]*)(?:` + attribute + `)*\s*/?>`)
 
 // htmlElements are the names of HTML's elements. Only these can be markup, so
 // a story that writes <whispers> or <Message received> keeps those words.
 var htmlElements = map[string]bool{}
+
+// blockElements start a new paragraph.
+var blockElements = map[string]bool{}
 
 func init() {
 	for _, name := range strings.Fields(`a abbr acronym address area article aside audio
@@ -36,59 +47,47 @@ func init() {
 		template textarea tfoot th thead time title tr track tt u ul var video wbr`) {
 		htmlElements[name] = true
 	}
+	for _, name := range strings.Fields(`p div blockquote h1 h2 h3 h4 h5 h6 li hr tr pre`) {
+		blockElements[name] = true
+	}
 }
 
 // PlainText turns a story's text from a website into plain text, since the reader
-// shows plain text. Formatting such as italics is dropped, entities such as &amp;
-// become the characters they stand for, and line breaks and paragraphs are kept:
-// <br> starts a new line, and a paragraph or block starts after a blank line.
-// Scripts, styles, and SVG and maths drawings are dropped entirely. Anything in angle
-// brackets that isn't an HTML element is kept as written. Zero bytes are dropped. Text
-// that's already plain stays as it is, apart from tidied line endings and blank lines.
+// shows plain text. Only what is clearly markup is removed, and everything else is
+// kept as written:
+//   - Formatting such as italics is dropped. <br> starts a new line, and a paragraph
+//     or block starts after a blank line.
+//   - Scripts, styles, SVG and maths drawings, and comments are dropped with what's
+//     inside them, but only when they close.
+//   - Entities such as &amp; become the characters they stand for, so &lt;i&gt;
+//     shows as <i> rather than being taken as markup.
+//   - Zero bytes are dropped, and line endings and blank lines are tidied.
 func PlainText(s string) string {
 	s = strings.ReplaceAll(s, "\x00", "")
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
 
 	var b strings.Builder
-	z := html.NewTokenizer(strings.NewReader(s))
-	skip := 0
-	for {
-		tt := z.Next()
-		if tt == html.ErrorToken {
-			break
-		}
-
-		switch tt {
-		case html.TextToken:
-			if skip == 0 {
-				b.Write(z.Text())
+	text := 0 // start of the text not yet written
+	for _, m := range markup.FindAllStringSubmatchIndex(s, -1) {
+		var lineBreak string
+		if m[2] < 0 {
+			name := strings.ToLower(s[m[4]:m[5]])
+			if !htmlElements[name] {
+				continue // not markup: it's part of the story, so it stays in the text
 			}
-		case html.StartTagToken, html.EndTagToken, html.SelfClosingTagToken:
-			// copied first, since reading the name lowercases it in place
-			raw := append([]byte(nil), z.Raw()...)
-			name, _ := z.TagName()
-			if !htmlElements[string(name)] || (!rawTextElements[string(name)] && !tagShape.Match(raw)) {
-				// not markup: it's part of the story, so it's kept as written
-				if skip == 0 {
-					b.Write(raw)
-				}
-				continue
-			}
-			switch string(name) {
-			case "script", "style", "svg", "math": // rawTextElements
-				if tt == html.StartTagToken {
-					skip++
-				} else if tt == html.EndTagToken && skip > 0 {
-					skip--
-				}
-			case "br":
-				b.WriteString("\n")
-			case "p", "div", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "li", "hr", "tr", "pre":
-				b.WriteString("\n\n")
+			switch {
+			case name == "br":
+				lineBreak = "\n"
+			case blockElements[name]:
+				lineBreak = "\n\n"
 			}
 		}
+		b.WriteString(html.UnescapeString(s[text:m[0]]))
+		b.WriteString(lineBreak)
+		text = m[1]
 	}
+	b.WriteString(html.UnescapeString(s[text:]))
 
 	lines := strings.Split(b.String(), "\n")
 	for i, l := range lines {
