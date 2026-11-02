@@ -33,6 +33,7 @@ import { ModifyRoute } from "./components/Shared/ModifyRoute";
 import * as GQL from "./core/generated-graphql";
 import { makeTitleProps } from "./hooks/title";
 import { useScrollRestoration } from "./hooks/scrollRestoration";
+import { useSettingsReturnLocation } from "./hooks/settingsNavigation";
 import { LoadingIndicator } from "./components/Shared/LoadingIndicator";
 
 import {
@@ -224,6 +225,7 @@ export const App: React.FC = () => {
   }, [customMessages, language]);
 
   const location = useLocation();
+  const settingsReturnLocation = useSettingsReturnLocation();
   const history = useHistory();
   const setupMatch = useRouteMatch(["/setup", "/migrate", "/welcome"]);
 
@@ -288,7 +290,9 @@ export const App: React.FC = () => {
             <Route path="/studios" component={Studios} />
             <Route path="/groups" component={Groups} />
             <Route path="/stats" component={Stats} />
-            <Route path="/settings" component={Settings} />
+            <Route path="/settings">
+              <Settings returnLocation={settingsReturnLocation} />
+            </Route>
             <ModifyRoute
               path="/sceneFilenameParser"
               component={SceneFilenameParser}

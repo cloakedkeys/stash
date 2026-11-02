@@ -1,8 +1,8 @@
 import React from "react";
-import { Tab, Nav, Row, Col, Form } from "react-bootstrap";
-import { Redirect, useLocation } from "react-router-dom";
+import { Tab, Nav, Row, Col, Form, CloseButton } from "react-bootstrap";
+import { Redirect, useHistory, useLocation } from "react-router-dom";
 import { LinkContainer } from "react-router-bootstrap";
-import { FormattedMessage } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import { Helmet } from "react-helmet";
 import { useTitleProps } from "src/hooks/title";
 import { SettingsAboutPanel } from "./SettingsAboutPanel";
@@ -276,8 +276,12 @@ const SettingTabs: React.FC<{ tab: TabKey; tabs: readonly TabKey[] }> = ({
   );
 };
 
-export const Settings: React.FC = () => {
+export const Settings: React.FC<{
+  returnLocation?: ReturnType<typeof useLocation>;
+}> = ({ returnLocation }) => {
   const location = useLocation();
+  const history = useHistory();
+  const intl = useIntl();
   const tab = new URLSearchParams(location.search).get("tab");
   const tabs = useAllowedTabs();
 
@@ -295,6 +299,11 @@ export const Settings: React.FC = () => {
 
   return (
     <SettingsContext>
+      <CloseButton
+        className="settings-close"
+        label={intl.formatMessage({ id: "actions.close" })}
+        onClick={() => history.replace(returnLocation ?? "/")}
+      />
       <SettingTabs tab={tab} tabs={tabs} />
     </SettingsContext>
   );
