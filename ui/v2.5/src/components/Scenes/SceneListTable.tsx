@@ -1,3 +1,4 @@
+import ImageUtils from "src/utils/image";
 import React from "react";
 import { Link } from "react-router-dom";
 import * as GQL from "src/core/generated-graphql";
@@ -58,7 +59,7 @@ export const SceneListTable: React.FC<ISceneListTableProps> = (
           loading="lazy"
           className="image-thumbnail"
           alt={title}
-          src={scene.paths.screenshot ?? ""}
+          src={ImageUtils.getThumbnailUrl(scene.paths.screenshot)}
         />
       </Link>
     );

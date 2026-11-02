@@ -1,3 +1,4 @@
+import ImageUtils from "src/utils/image";
 import { FavoriteIcon } from "../Shared/FavoriteIcon";
 import { useSceneUserDataUpdate } from "src/core/StashService";
 import React, {
@@ -480,7 +481,7 @@ const SceneCardImage = React.memo(
     return (
       <>
         <ScenePreview
-          image={props.scene.paths.screenshot ?? undefined}
+          image={ImageUtils.getThumbnailUrl(props.scene.paths.screenshot)}
           video={props.scene.paths.preview ?? undefined}
           isPortrait={isPortrait()}
           soundActive={configuration?.interface?.soundOnPreview ?? false}
