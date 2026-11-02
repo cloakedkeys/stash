@@ -37,6 +37,13 @@ func basenameFn(str string) (string, error) {
 	return filepath.Base(str), nil
 }
 
+// upper_unicode compares file and folder names the way Windows does: by their
+// upper case. Lower case would join names Windows keeps apart, because Go
+// lower-cases both İ and I to i.
+func upperUnicodeFn(str string) string {
+	return strings.ToUpper(str)
+}
+
 // custom SQLite function to enable case-insensitive searches
 // that properly handle unicode characters
 func lowerUnicodeFn(str interface{}) (string, error) {

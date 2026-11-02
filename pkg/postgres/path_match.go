@@ -30,10 +30,13 @@ func pathToLikePattern(path string) string {
 	return b.String()
 }
 
+// Names compare by their upper case, as Windows does. Lower case (and ILIKE)
+// would join names Windows keeps apart, such as ai.txt and aİ.txt.
+
 func pathLike(col exp.IdentifierExpression, pattern string) exp.Expression {
-	return goqu.L(`? ILIKE ? ESCAPE '\'`, col, pathToLikePattern(pattern))
+	return goqu.L(`UPPER(?) LIKE UPPER(?) ESCAPE '\'`, col, pathToLikePattern(pattern))
 }
 
 func pathEqNoCase(col exp.IdentifierExpression, value string) exp.Expression {
-	return goqu.L("LOWER(?) = LOWER(?)", col, value)
+	return goqu.L("UPPER(?) = UPPER(?)", col, value)
 }
