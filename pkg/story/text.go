@@ -10,12 +10,17 @@ import (
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/unicode"
+	"golang.org/x/text/encoding/unicode/utf32"
 )
 
 // detectSampleSize is how much of a file is used to guess its encoding.
 const detectSampleSize = 64 * 1024
 
-var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+var (
+	utf8BOM    = []byte{0xEF, 0xBB, 0xBF}
+	utf32LEBOM = []byte{0xFF, 0xFE, 0x00, 0x00}
+	utf32BEBOM = []byte{0x00, 0x00, 0xFE, 0xFF}
+)
 
 // DecodeText returns the text of a story file as UTF-8. A byte order mark
 // decides the encoding when there is one. Text that is already valid UTF-8
@@ -24,6 +29,10 @@ var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 func DecodeText(data []byte) []byte {
 	if bytes.HasPrefix(data, utf8BOM) {
 		return data[len(utf8BOM):]
+	}
+	// before UTF-16, since the UTF-32 little-endian mark starts with the UTF-16 one
+	if bytes.HasPrefix(data, utf32LEBOM) || bytes.HasPrefix(data, utf32BEBOM) {
+		return decodeWith(utf32.UTF32(utf32.BigEndian, utf32.ExpectBOM), data)
 	}
 	if len(data) >= 2 && ((data[0] == 0xFF && data[1] == 0xFE) || (data[0] == 0xFE && data[1] == 0xFF)) {
 		return decodeWith(unicode.UTF16(unicode.BigEndian, unicode.ExpectBOM), data)
