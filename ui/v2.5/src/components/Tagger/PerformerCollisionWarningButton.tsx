@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Overlay, Popover } from "react-bootstrap";
 import { faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { viewportModifiers } from "../Shared/viewportPopper";
 
 import { Icon } from "../Shared/Icon";
 import { PerformerCollisionPopoverContent } from "./scenes/TaggerPerformerPopover";
@@ -79,12 +80,14 @@ export const PerformerCollisionWarningButton: React.FC<{
       <Overlay
         show={showPopover}
         placement="bottom-end"
+        flip
         target={buttonRef}
         container={document.body}
         rootClose={pinned}
         onHide={dismissPopover}
         popperConfig={{
           modifiers: [
+            ...viewportModifiers,
             {
               name: "offset",
               options: {
