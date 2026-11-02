@@ -19,7 +19,9 @@ type StashConfigInput struct {
 // KeepIncludeStory fills in IncludeStory where the input leaves it out: a library keeps
 // its current value, and a new library leaves stories out. Otherwise saving the library
 // list from an older client or script would switch stories off, and the next clean
-// would remove them.
+// would remove them. A library is the same if its path names the same folder, the way
+// the library lookups compare paths, so a trailing slash or, on Windows, different
+// capital letters don't make it a new library.
 func KeepIncludeStory(inputs []*StashConfigInput, current StashConfigs) {
 	for _, in := range inputs {
 		if in == nil || in.IncludeStory != nil {
@@ -27,7 +29,7 @@ func KeepIncludeStory(inputs []*StashConfigInput, current StashConfigs) {
 		}
 		v := false
 		for _, s := range current {
-			if s != nil && s.Path == in.Path {
+			if s != nil && fsutil.IsPathInDir(s.Path, in.Path) && fsutil.IsPathInDir(in.Path, s.Path) {
 				v = s.IncludeStory
 				break
 			}

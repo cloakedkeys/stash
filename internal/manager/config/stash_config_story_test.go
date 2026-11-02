@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
 
 func TestKeepIncludeStory(t *testing.T) {
 	yes, no := true, false
@@ -32,5 +35,32 @@ func TestKeepIncludeStory(t *testing.T) {
 	KeepIncludeStory(off, current)
 	if *off[0].IncludeStory {
 		t.Error("an explicit false was overridden")
+	}
+}
+
+func TestKeepIncludeStorySameFolder(t *testing.T) {
+	current := StashConfigs{{Path: "/library/stories", IncludeStory: true}}
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/library/stories/", true},
+		{"/library/./stories", true},
+		{"/library/other/../stories", true},
+		{"/library/stories/sub", false}, // a folder inside it is a different library
+		{"/library", false},             // and so is the folder around it
+	}
+	if runtime.GOOS == "windows" {
+		tests = append(tests, struct {
+			path string
+			want bool
+		}{"/Library/Stories", true})
+	}
+	for _, test := range tests {
+		in := []*StashConfigInput{{Path: test.path}}
+		KeepIncludeStory(in, current)
+		if *in[0].IncludeStory != test.want {
+			t.Errorf("%s: includeStory = %v, want %v", test.path, *in[0].IncludeStory, test.want)
+		}
 	}
 }
