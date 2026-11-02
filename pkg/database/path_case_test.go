@@ -307,6 +307,14 @@ func TestPathWildcardDistinctLetters(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, files, 1, "the same letters in another case")
 		assert.Equal(t, f.ID, files[0].Base().ID)
+
+		// Linux allows a newline in a name, and * must match it as LIKE's % does
+		withNewline := &models.BaseFile{ParentFolderID: folder.ID, Basename: "é\nclip.mp4"}
+		require.NoError(t, db.File().Create(ctx, withNewline))
+		files, err = db.File().FindAllByPath(ctx, filepath.Join(folder.Path, "É*clip.mp4"), false)
+		require.NoError(t, err)
+		require.Len(t, files, 1, "* matches across a newline")
+		assert.Equal(t, withNewline.ID, files[0].Base().ID)
 	})
 }
 
@@ -339,10 +347,24 @@ func testScannerDistinctLetters(t *testing.T, firstName, secondName string) {
 }
 
 func TestScannerUnicodeCaseDistinctFiles(t *testing.T) {
+	// on a case-sensitive filesystem, names that differ only in case are
+	// different files, ASCII or not
+	for _, names := range [][4]string{
+		{"Été", "Écrit.txt", "été", "écrit.txt"},
+		{"Summer", "Written.txt", "summer", "written.txt"},
+	} {
+		t.Run(names[0], func(t *testing.T) {
+			testScannerCaseDistinctFiles(t,
+				filepath.Join(names[0], names[1]), filepath.Join(names[2], names[3]))
+		})
+	}
+}
+
+func testScannerCaseDistinctFiles(t *testing.T, upperPath, lowerPath string) {
 	ctx := models.WithUserID(context.Background(), testUserID)
 	root := t.TempDir()
-	upper := filepath.Join(root, "Été", "Écrit.txt")
-	lower := filepath.Join(root, "été", "écrit.txt")
+	upper := filepath.Join(root, upperPath)
+	lower := filepath.Join(root, lowerPath)
 	require.NoError(t, os.MkdirAll(filepath.Dir(upper), 0755))
 	require.NoError(t, os.WriteFile(upper, []byte("Upper."), 0600))
 	caseSensitive, err := (&file.OsFS{}).IsPathCaseSensitive(upper)

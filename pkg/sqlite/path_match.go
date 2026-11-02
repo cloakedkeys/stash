@@ -53,7 +53,8 @@ func pathLike(col exp.IdentifierExpression, pattern string) exp.Expression {
 	}
 	// two LIKEs (upper and lower) could each match a different letter at the
 	// same place, so the check is made letter by letter instead
-	return goqu.L(`? REGEXP ?`, col, pathFoldPattern(pattern))
+	// (?s): like LIKE's %, a * also matches a newline, which Linux allows in names
+	return goqu.L(`? REGEXP ?`, col, "(?s)"+pathFoldPattern(pattern))
 }
 
 // pathFoldPattern turns a path with * wildcards into a regular expression that
