@@ -7,6 +7,23 @@ const ts = require("typescript");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 
+// The real rules, so these tests still check what the popovers end up with.
+function loadViewportPopper() {
+  const module = { exports: {} };
+  const source = fs.readFileSync(
+    path.join(__dirname, "../src/components/Shared/viewportPopper.ts"),
+    "utf8"
+  );
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+    },
+  });
+  vm.runInNewContext(compiled.outputText, { module, exports: module.exports });
+  return module.exports;
+}
+
 function render(props = {}, component = "HoverPopover") {
   let overlayProps;
   const module = { exports: {} };
@@ -39,6 +56,7 @@ function render(props = {}, component = "HoverPopover") {
       if (name === "src/patch")
         return { PatchComponent: (_name, component) => component };
       if (name === "./Icon") return { Icon: () => null };
+      if (name === "./viewportPopper") return loadViewportPopper();
       return require(name);
     },
   });
