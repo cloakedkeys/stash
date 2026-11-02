@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -71,6 +72,9 @@ type Database struct {
 
 	schemaVersion uint
 
+	// resetMu drains active database users and excludes new ones throughout reset.
+	resetMu sync.RWMutex
+
 	lockChan chan struct{}
 }
 
@@ -123,6 +127,14 @@ func (db *Database) SetBlobStoreOptions(options database.BlobStoreOptions) {
 
 // Ready returns an error if the database is not ready to begin transactions.
 func (db *Database) Ready() error {
+	db.resetMu.RLock()
+	defer db.resetMu.RUnlock()
+
+	return db.ready()
+}
+
+// ready is called with resetMu held.
+func (db *Database) ready() error {
 	if db.readDB == nil || db.writeDB == nil {
 		return database.ErrDatabaseNotInitialized
 	}
@@ -319,6 +331,9 @@ func (db *Database) Remove() error {
 }
 
 func (db *Database) Reset() error {
+	db.resetMu.Lock()
+	defer db.resetMu.Unlock()
+
 	databasePath := db.dbPath
 	accounts, err := db.readAccounts()
 	if err != nil {

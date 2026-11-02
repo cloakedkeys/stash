@@ -18,8 +18,10 @@ type Manager interface {
 	IsLocked(err error) bool
 }
 
+// DatabaseProvider returns a database context and a release function. The caller
+// must release the context after all database work in that scope is complete.
 type DatabaseProvider interface {
-	WithDatabase(ctx context.Context) (context.Context, error)
+	WithDatabase(ctx context.Context) (context.Context, func(), error)
 }
 
 // TxnFunc is a function that is used in transaction hooks.
@@ -143,12 +145,12 @@ func rollback(ctx context.Context, m Manager) {
 // It does not run inside a transaction, so all database operations will be
 // executed in their own transaction.
 func WithDatabase(ctx context.Context, p DatabaseProvider, fn TxnFunc) error {
-	var err error
-	ctx, err = p.WithDatabase(ctx)
+	ctx, release, err := p.WithDatabase(ctx)
 	if err != nil {
 		return err
 	}
 
+	defer release()
 	return fn(ctx)
 }
 

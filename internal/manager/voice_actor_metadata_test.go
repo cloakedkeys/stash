@@ -92,6 +92,6 @@ func (*metadataTxnManager) Begin(ctx context.Context, _ bool) (context.Context, 
 func (*metadataTxnManager) Commit(context.Context) error   { return nil }
 func (*metadataTxnManager) Rollback(context.Context) error { return nil }
 func (*metadataTxnManager) IsLocked(error) bool            { return false }
-func (*metadataTxnManager) WithDatabase(ctx context.Context) (context.Context, error) {
-	return ctx, nil
+func (*metadataTxnManager) WithDatabase(ctx context.Context) (context.Context, func(), error) {
+	return ctx, func() {}, nil
 }

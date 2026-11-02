@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"sync"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
@@ -19,22 +20,27 @@ const (
 	txnKey key = iota + 1
 	dbKey
 	writableKey
+	txnReleaseKey
 )
 
-func (db *Database) WithDatabase(ctx context.Context) (context.Context, error) {
-	// if we are already in a transaction or have a database already, just use it
-	if tx, _ := getDBReader(ctx); tx != nil {
-		return ctx, nil
+// WithDatabase holds off reset until the caller releases the database context.
+func (db *Database) WithDatabase(ctx context.Context) (context.Context, func(), error) {
+	// An existing reader already holds the reset guard. Do not lock it again:
+	// a pending reset would block a nested read lock.
+	if reader, _ := getDBReader(ctx); reader != nil {
+		return ctx, func() {}, nil
 	}
 
+	db.resetMu.RLock()
 	if db.readDB == nil {
-		return ctx, database.ErrDatabaseNotInitialized
+		db.resetMu.RUnlock()
+		return ctx, nil, database.ErrDatabaseNotInitialized
 	}
 
-	return context.WithValue(ctx, dbKey, db.readDB), nil
+	return context.WithValue(ctx, dbKey, db.readDB), sync.OnceFunc(db.resetMu.RUnlock), nil
 }
 
-func (db *Database) Begin(ctx context.Context, writable bool) (context.Context, error) {
+func (db *Database) Begin(ctx context.Context, writable bool) (ret context.Context, err error) {
 	if tx, _ := getTx(ctx); tx != nil {
 		// log the stack trace so we can see
 		logger.Error(string(debug.Stack()))
@@ -42,13 +48,25 @@ func (db *Database) Begin(ctx context.Context, writable bool) (context.Context, 
 		return nil, fmt.Errorf("already in transaction")
 	}
 
+	// WithDatabase may already own the guard for this scope.
+	release := func() {}
+	if reader, _ := getDBReader(ctx); reader == nil {
+		db.resetMu.RLock()
+		release = sync.OnceFunc(db.resetMu.RUnlock)
+	}
+	defer func() {
+		if err != nil {
+			release()
+		}
+	}()
+
 	if db.readDB == nil {
 		return nil, fmt.Errorf("database not ready: %w", database.ErrDatabaseNotInitialized)
 	}
 
 	dbtx := db.readDB
 	if writable {
-		if err := db.Ready(); err != nil {
+		if err := db.ready(); err != nil {
 			return nil, fmt.Errorf("database not ready: %w", err)
 		}
 		dbtx = db.writeDB
@@ -64,6 +82,7 @@ func (db *Database) Begin(ctx context.Context, writable bool) (context.Context, 
 		return nil, fmt.Errorf("beginning transaction: %w", err)
 	}
 
+	ctx = context.WithValue(ctx, txnReleaseKey, release)
 	ctx = context.WithValue(ctx, writableKey, writable)
 
 	return context.WithValue(ctx, txnKey, tx), nil
@@ -100,6 +119,9 @@ func (db *Database) Rollback(ctx context.Context) error {
 }
 
 func (db *Database) txnComplete(ctx context.Context) {
+	if release, ok := ctx.Value(txnReleaseKey).(func()); ok {
+		release()
+	}
 }
 
 func getTx(ctx context.Context) (*sqlx.Tx, error) {
