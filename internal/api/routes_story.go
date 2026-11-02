@@ -66,18 +66,27 @@ const maxDecodedStorySize = 64 * 1024 * 1024
 // serveStoryText sends the file's text as UTF-8, whatever encoding it was
 // saved in.
 func serveStoryText(f *models.BaseFile, w http.ResponseWriter, r *http.Request) error {
-	if f.Size > maxDecodedStorySize {
+	return serveStoryTextLimit(f, w, r, maxDecodedStorySize)
+}
+
+func serveStoryTextLimit(f *models.BaseFile, w http.ResponseWriter, r *http.Request, limit int64) error {
+	if f.Size > limit {
 		return f.Serve(&file.OsFS{}, w, r)
 	}
 
+	// the size from the last scan may be out of date, so stop reading at the
+	// limit rather than trusting it
 	reader, err := f.Open(&file.OsFS{})
 	if err != nil {
 		return err
 	}
-	data, err := io.ReadAll(reader)
+	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
 	reader.Close()
 	if err != nil {
 		return err
+	}
+	if int64(len(data)) > limit {
+		return f.Serve(&file.OsFS{}, w, r)
 	}
 
 	if r.URL.Query().Has("t") {

@@ -8,6 +8,7 @@ import (
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/unicode"
+	"golang.org/x/text/encoding/unicode/utf32"
 )
 
 func encode(t *testing.T, e encoding.Encoding, s string) []byte {
@@ -44,6 +45,9 @@ func TestDecodeText(t *testing.T) {
 		{"windows-1251", encode(t, charmap.Windows1251, ruText), ruText},
 		{"utf-16 little endian", encode(t, unicode.UTF16(unicode.LittleEndian, unicode.UseBOM), french), french},
 		{"utf-16 big endian", encode(t, unicode.UTF16(unicode.BigEndian, unicode.UseBOM), jaText), jaText},
+		// the little-endian mark starts with the UTF-16 one
+		{"utf-32 little endian", encode(t, utf32.UTF32(utf32.LittleEndian, utf32.UseBOM), "UTF-32 café"), "UTF-32 café"},
+		{"utf-32 big endian", encode(t, utf32.UTF32(utf32.BigEndian, utf32.UseBOM), jaText), jaText},
 	}
 
 	for _, tt := range tests {
