@@ -55,6 +55,7 @@ func TestRedactConfig(t *testing.T) {
 			DatabasePath:                 "/secret/db",
 			BackupDirectoryPath:          "/secret/backup",
 			DeleteTrashPath:              "/secret/trash",
+			StoryDownloadPath:            "/secret/stories",
 			GeneratedPath:                "/secret/generated",
 			MetadataPath:                 "/secret/metadata",
 			ConfigFilePath:               "/secret/config",
@@ -81,7 +82,7 @@ func TestRedactConfig(t *testing.T) {
 	for _, path := range []string{
 		g.DatabasePath, g.BackupDirectoryPath, g.DeleteTrashPath, g.GeneratedPath, g.MetadataPath,
 		g.ConfigFilePath, g.ScrapersPath, g.PluginsPath, g.CachePath, g.BlobsPath, g.FfmpegPath,
-		g.FfprobePath, g.PythonPath,
+		g.FfprobePath, g.PythonPath, g.StoryDownloadPath,
 	} {
 		assert.Empty(t, path)
 	}

@@ -57,6 +57,7 @@ fragment ConfigGeneralData on ConfigGeneralResult {
   imageExtensions
   galleryExtensions
   storyExtensions
+  storyDownloadPath
   excludes
   imageExcludes
   customPerformerImageLocation

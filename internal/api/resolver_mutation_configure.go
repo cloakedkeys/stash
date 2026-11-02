@@ -397,6 +397,24 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 		c.SetInterface(config.StoryExtensions, input.StoryExtensions)
 	}
 
+	// checked after the libraries and story extensions above, which it depends on
+	if input.StoryDownloadPath != nil && *input.StoryDownloadPath != c.GetStoryDownloadPath() {
+		if err := checkConfigOverride(config.StoryDownloadPath); err != nil {
+			return makeConfigGeneralResult(), err
+		}
+		dir := strings.TrimSpace(*input.StoryDownloadPath)
+		if dir != "" {
+			dir = filepath.Clean(dir)
+			if err := manager.CheckStoryDownloadPath(c, dir); err != nil {
+				return makeConfigGeneralResult(), err
+			}
+			if err := fsutil.EnsureDir(dir); err != nil {
+				return makeConfigGeneralResult(), err
+			}
+		}
+		c.SetString(config.StoryDownloadPath, dir)
+	}
+
 	if input.ImageExtensions != nil {
 		c.SetInterface(config.ImageExtensions, input.ImageExtensions)
 	}

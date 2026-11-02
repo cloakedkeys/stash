@@ -78,6 +78,14 @@ export const SettingsLibraryPanel: React.FC = () => {
         />
 
         <StringSetting
+          id="story-download-path"
+          headingID="config.general.story_download_path.heading"
+          subHeadingID="config.general.story_download_path.description"
+          value={general.storyDownloadPath ?? undefined}
+          onChange={(v) => saveGeneral({ storyDownloadPath: v })}
+        />
+
+        <StringSetting
           id="gallery-extensions"
           headingID="config.general.gallery_ext_head"
           subHeadingID="config.general.gallery_ext_desc"
