@@ -1,6 +1,12 @@
 import { faTrashAlt } from "@fortawesome/free-solid-svg-icons";
 import { FormikValues, useFormik } from "formik";
-import React, { InputHTMLAttributes, useEffect, useRef } from "react";
+import React, {
+  InputHTMLAttributes,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Button,
   Col,
@@ -86,6 +92,22 @@ type Formik<V extends FormikValues> = ReturnType<typeof useFormik<V>>;
 interface IProps {
   labelProps?: FormLabelProps;
   fieldProps?: ColProps;
+}
+
+// Returns a function that checks the whole form again once a change has been shown.
+// When several fields are set at once, formik checks each against the values from the
+// last render plus that one field, and the last check decides the errors. A form
+// filled by a scraper would then still say a required field is empty.
+export function useValidateAfterChange(validateForm: () => unknown) {
+  const [changes, setChanges] = useState(0);
+  const validate = useRef(validateForm);
+  validate.current = validateForm;
+
+  useEffect(() => {
+    if (changes > 0) validate.current();
+  }, [changes]);
+
+  return useCallback(() => setChanges((c) => c + 1), []);
 }
 
 export function formikUtils<V extends FormikValues>(
