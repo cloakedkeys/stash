@@ -26,6 +26,7 @@ import { ScrapeResult } from "src/components/Shared/ScrapeDialog/scrapeResult";
 import { Tag } from "src/components/Tags/TagSelect";
 import { uniq } from "lodash-es";
 import { useScrapedTags } from "src/components/Shared/ScrapeDialog/scrapedTags";
+import { unpickedImages } from "./performerImages";
 
 function renderScrapedGender(
   result: ScrapeResult<string>,
@@ -394,7 +395,10 @@ export const PerformerScrapeDialog: React.FC<IPerformerScrapeDialogProps> = (
       urls: urls.getNewValue(),
       gender: gender.getNewValue(),
       tags: tags.getNewValue(),
-      images: newImage ? [newImage] : undefined,
+      // #571 - the picked image first, then the others to keep
+      images: newImage
+        ? [newImage, ...unpickedImages(images, newImage)]
+        : undefined,
       details: details.getNewValue(),
       death_date: deathDate.getNewValue(),
       hair_color: hairColor.getNewValue(),
