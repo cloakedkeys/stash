@@ -188,7 +188,8 @@ export const App: React.FC = () => {
       const defaultMessageLanguage = languageMessageString(defaultLocale);
       const messageLanguage = languageMessageString(language);
 
-      // register countries for the chosen language
+      // register English for fallback and countries for the chosen language
+      await registerCountry(defaultLocale);
       await registerCountry(language);
 
       const defaultMessages = (await locales[defaultMessageLanguage]()).default;
