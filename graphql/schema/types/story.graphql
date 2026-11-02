@@ -62,8 +62,10 @@ input StoryUpdateInput {
 }
 
 input StoriesDestroyInput {
-  "Removes the stories from the library. Their files are kept."
+  "Removes the stories from the library. Their files are kept unless delete_file is set, so the next scan adds them again."
   ids: [ID!]!
+  "Also deletes the stories' files, unless another story uses them. A file inside a zip only loses its record."
+  delete_file: Boolean
 }
 
 type FindStoriesResultType {

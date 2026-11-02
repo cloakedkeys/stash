@@ -3,11 +3,10 @@ import { FormattedMessage, useIntl } from "react-intl";
 import cx from "classnames";
 import { Button } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
-import { objectTitle } from "src/core/files";
-import { useFindStories, useStoriesDestroy } from "src/core/StashService";
+import { useFindStories } from "src/core/StashService";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { useFilteredItemList } from "../List/ItemList";
-import { DeleteEntityDialog } from "../Shared/DeleteEntityDialog";
+import { DeleteStoriesDialog } from "./DeleteStoriesDialog";
 import { View } from "../List/views";
 import { FilteredListToolbar } from "../List/FilteredListToolbar";
 import {
@@ -128,15 +127,9 @@ export const StoryList: React.FC<IStoryList> = ({ view, alterQuery }) => {
 
   function onDelete() {
     showModal(
-      <DeleteEntityDialog
-        selected={selectedItems.map((s) => ({
-          id: s.id,
-          name: objectTitle(s),
-        }))}
+      <DeleteStoriesDialog
+        selected={selectedItems}
         onClose={onCloseEditDelete}
-        singularEntity={intl.formatMessage({ id: "story" })}
-        pluralEntity={intl.formatMessage({ id: "stories" })}
-        destroyMutation={useStoriesDestroy}
       />
     );
   }
