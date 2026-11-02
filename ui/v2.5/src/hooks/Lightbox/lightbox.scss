@@ -4,6 +4,10 @@
   display: flex;
   flex-direction: column;
   left: 0;
+  // its controls kept clear of a phone's notch and home bar; the backdrop still
+  // fills the screen
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
   position: fixed;
   right: 0;
   top: 0;
