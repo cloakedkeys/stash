@@ -15,6 +15,7 @@ import (
 
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/audio"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/gallery"
 	"github.com/stashapp/stash/pkg/group"
@@ -137,6 +138,11 @@ func (t *ExportTask) Start(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	// @manager.total = Scene.count + Audio.count + Gallery.count + Performer.count + Studio.count + Group.count
 	workerCount := runtime.GOMAXPROCS(0) // set worker count to number of cpus available
+	if GetInstance().Database.DatabaseBackend() == database.PostgresBackend {
+		// All export workers share one transaction. PostgreSQL cannot run
+		// concurrent queries on the transaction's single connection.
+		workerCount = 1
+	}
 
 	startTime := time.Now()
 
@@ -645,11 +651,13 @@ func (t *ExportTask) exportScene(ctx context.Context, wg *sync.WaitGroup, jobCha
 	tagReader := r.Tag
 	sceneMarkerReader := r.SceneMarker
 
+exportItems:
 	for s := range jobChan {
 		sceneHash := s.GetHash(t.fileNamingAlgorithm)
 
 		if err := s.LoadRelationships(ctx, sceneReader); err != nil {
 			logger.Errorf("[scenes] <%s> error loading scene relationships: %v", sceneHash, err)
+			continue
 		}
 
 		newSceneJSON, err := scene.ToBasicJSON(ctx, sceneReader, s)
@@ -678,7 +686,7 @@ func (t *ExportTask) exportScene(ctx context.Context, wg *sync.WaitGroup, jobCha
 		for _, g := range galleries {
 			if err := g.LoadFiles(ctx, galleryReader); err != nil {
 				logger.Errorf("[scenes] <%s> error getting scene gallery files: %v", sceneHash, err)
-				continue
+				continue exportItems
 			}
 		}
 
@@ -778,11 +786,13 @@ func (t *ExportTask) exportAudio(ctx context.Context, wg *sync.WaitGroup, jobCha
 	performerReader := r.Performer
 	tagReader := r.Tag
 
+exportItems:
 	for a := range jobChan {
 		audioHash := a.Checksum
 
 		if err := a.LoadRelationships(ctx, audioReader); err != nil {
 			logger.Errorf("[audios] <%s> error loading audio relationships: %v", audioHash, err)
+			continue
 		}
 
 		newAudioJSON, err := audio.ToBasicJSON(ctx, audioReader, a)
@@ -811,7 +821,7 @@ func (t *ExportTask) exportAudio(ctx context.Context, wg *sync.WaitGroup, jobCha
 		for _, g := range galleries {
 			if err := g.LoadFiles(ctx, galleryReader); err != nil {
 				logger.Errorf("[audios] <%s> error getting audio gallery files: %v", audioHash, err)
-				continue
+				continue exportItems
 			}
 		}
 
@@ -929,6 +939,7 @@ func (t *ExportTask) exportImage(ctx context.Context, wg *sync.WaitGroup, jobCha
 	tagReader := r.Tag
 	imageReader := r.Image
 
+exportItems:
 	for s := range jobChan {
 		imageHash := s.Checksum
 
@@ -968,7 +979,7 @@ func (t *ExportTask) exportImage(ctx context.Context, wg *sync.WaitGroup, jobCha
 		for _, g := range imageGalleries {
 			if err := g.LoadFiles(ctx, galleryReader); err != nil {
 				logger.Errorf("[images] <%s> error getting image gallery files: %v", imageHash, err)
-				continue
+				continue exportItems
 			}
 		}
 
@@ -1563,6 +1574,7 @@ func (t *ExportTask) exportGroup(ctx context.Context, wg *sync.WaitGroup, jobCha
 			return nil
 		}(); err != nil {
 			logger.Errorf("[groups] <%s> %v", m.Name, err)
+			continue
 		}
 
 		if t.includeDependencies {
