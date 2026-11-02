@@ -68,7 +68,10 @@ describe("unsupported criterion labels", () => {
     { value: true, label: "true" },
   ])("formats $value as text", ({ value, label }) => {
     const criterion = new UnsupportedCriterionOption("unknown").makeCriterion();
-    criterion.fromDecodedParams({ modifier: CriterionModifier.Excludes, value });
+    criterion.fromDecodedParams({
+      modifier: CriterionModifier.Excludes,
+      value,
+    });
 
     expect(criterion.getLabel(intl)).toBe(
       `Unsupported criterion: unknown excludes ${label}`
