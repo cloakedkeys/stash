@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
@@ -228,6 +229,10 @@ func (t *joinTable) insertJoins(ctx context.Context, id int, foreignIDs []int) e
 
 	for _, fk := range foreignIDs {
 		if _, err := dbWrapper.ExecStmt(ctx, stmt, id, fk); err != nil {
+			// the database's own error names its command; say what wasn't found
+			if isForeignKeyError(err) {
+				return fmt.Errorf("%s not found", strings.ReplaceAll(strings.TrimSuffix(fmt.Sprint(t.fkColumn.GetCol()), "_id"), "_", " "))
+			}
 			return err
 		}
 	}
