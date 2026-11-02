@@ -96,7 +96,8 @@ func TestLiteroticaStoryFields(t *testing.T) {
 	assert.Equal(t, "Parallel Tracks", *s.Title)
 	assert.Equal(t, "Voboy", *s.Author)
 	assert.Equal(t, "Literotica", *s.SourceWebsite)
-	assert.Equal(t, []string{"https://www.literotica.com/s/parallel-tracks"}, s.URLs)
+	// the story keeps the link it was scraped from, so no link is returned
+	assert.Empty(t, s.URLs)
 	assert.Equal(t, "2026-10-02", *s.Date)
 	assert.Equal(t, "The pool party was risky, but the Halloween party... well.", *s.Tagline)
 	assert.Nil(t, s.Details)

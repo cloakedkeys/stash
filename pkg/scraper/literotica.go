@@ -41,12 +41,9 @@ jsonScrapers:
       Author: submission.authorname
       SourceWebsite:
         fixed: Literotica
-      URL:
-        selector: submission.url
-        postProcess:
-          - replace:
-              - regex: ^
-                with: https://www.literotica.com/s/
+      # no URL: the story keeps the link it was scraped from, whether that's
+      # www.literotica.com or a language site such as german.literotica.com,
+      # rather than gaining a second link to the same story
       Date:
         selector: submission.date_approve
         postProcess:
