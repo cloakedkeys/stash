@@ -291,6 +291,25 @@ func TestPathLookupDistinctLetters(t *testing.T) {
 	}
 }
 
+// Each letter of a wildcard lookup must match one letter of the name, not
+// whatever an upper-case and a lower-case comparison each allow separately.
+func TestPathWildcardDistinctLetters(t *testing.T) {
+	runWithRollbackTxn(t, "wildcard", func(t *testing.T, ctx context.Context) {
+		root := t.TempDir()
+		folder := &models.Folder{Path: filepath.Join(root, "Été")}
+		require.NoError(t, db.Folder().Create(ctx, folder))
+		f := &models.BaseFile{ParentFolderID: folder.ID, Basename: "Éıİ.mp4"}
+		require.NoError(t, db.File().Create(ctx, f))
+		files, err := db.File().FindAllByPath(ctx, filepath.Join(folder.Path, "É*i*.mp4"), false)
+		require.NoError(t, err)
+		assert.Empty(t, files, "neither ı nor İ is i")
+		files, err = db.File().FindAllByPath(ctx, filepath.Join(root, "ÉTÉ", "é*ı*İ*"), false)
+		require.NoError(t, err)
+		require.Len(t, files, 1, "the same letters in another case")
+		assert.Equal(t, f.ID, files[0].Base().ID)
+	})
+}
+
 func TestScannerDistinctLetters(t *testing.T) {
 	for _, names := range distinctLetterPairs[:3] {
 		t.Run(names[1], func(t *testing.T) {
