@@ -43,24 +43,35 @@ func (r *mutationResolver) getStory(ctx context.Context, id int) (ret *models.St
 	return ret, nil
 }
 
-// checkStoryFile refuses a file that isn't a plain file, or that already belongs to something.
-func (r *mutationResolver) checkStoryFile(ctx context.Context, fileID models.FileID) error {
+// findStoryFile returns a file that can be a story's: a text file in a library that
+// includes stories.
+func (r *mutationResolver) findStoryFile(ctx context.Context, fileID models.FileID) (models.File, error) {
 	files, err := r.repository.File.Find(ctx, fileID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(files) == 0 {
-		return fmt.Errorf("file with id %d not found", fileID)
+		return nil, fmt.Errorf("file with id %d not found", fileID)
 	}
 
 	// videos, audio and images have their own objects
 	f := files[0]
 	if _, ok := f.(*models.BaseFile); !ok || !manager.IsStoryFile(f.Base().Path) {
-		return fmt.Errorf("%s is not a text file", f.Base().Path)
+		return nil, fmt.Errorf("%s is not a text file", f.Base().Path)
 	}
 	// a clean would remove a story whose file is in a library that doesn't include stories
 	if !manager.UseAsStory(f.Base().Path) {
-		return fmt.Errorf("%s is in a library that doesn't include stories", f.Base().Path)
+		return nil, fmt.Errorf("%s is in a library that doesn't include stories", f.Base().Path)
+	}
+
+	return f, nil
+}
+
+// checkStoryFile refuses a file that isn't a plain file, or that already belongs to something.
+func (r *mutationResolver) checkStoryFile(ctx context.Context, fileID models.FileID) error {
+	f, err := r.findStoryFile(ctx, fileID)
+	if err != nil {
+		return err
 	}
 
 	isPrimary, err := r.repository.File.IsPrimary(ctx, fileID)
@@ -292,6 +303,38 @@ func (r *mutationResolver) StoriesDestroy(ctx context.Context, input StoriesDest
 	}
 
 	fileDeleter.Commit()
+
+	return true, nil
+}
+
+func (r *mutationResolver) StoryAssignFile(ctx context.Context, input AssignStoryFileInput) (bool, error) {
+	storyID, err := strconv.Atoi(input.StoryID)
+	if err != nil {
+		return false, fmt.Errorf("converting story id: %w", err)
+	}
+
+	fileID, err := strconv.Atoi(input.FileID)
+	if err != nil {
+		return false, fmt.Errorf("converting file id: %w", err)
+	}
+
+	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		f, err := r.findStoryFile(ctx, models.FileID(fileID))
+		if err != nil {
+			return err
+		}
+
+		others := []story.FileUser{r.repository.Scene, r.repository.Image, r.repository.Gallery, r.repository.Audio}
+		if err := story.AssignFile(ctx, r.repository.Story, others, storyID, f.Base().ID); err != nil {
+			if errors.Is(err, story.ErrFileUsedElsewhere) {
+				return fmt.Errorf("%s already belongs to something else", f.Base().Path)
+			}
+			return err
+		}
+		return nil
+	}); err != nil {
+		return false, fmt.Errorf("assigning file to story: %w", err)
+	}
 
 	return true, nil
 }

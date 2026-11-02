@@ -1279,6 +1279,28 @@ export const useStoryUserDataUpdate = () =>
     },
   });
 
+// moves a file from one story to another, which can remove the first story
+export const mutateStoryAssignFile = (
+  fromStoryID: string,
+  toStoryID: string,
+  fileID: string
+) =>
+  client.mutate<GQL.StoryAssignFileMutation>({
+    mutation: GQL.StoryAssignFileDocument,
+    variables: { input: { story_id: toStoryID, file_id: fileID } },
+    update(cache, result) {
+      if (!result.data?.storyAssignFile) return;
+
+      for (const id of [fromStoryID, toStoryID]) {
+        cache.evict({ id: cache.identify({ __typename: "Story", id }) });
+      }
+      evictQueries(cache, [
+        GQL.FindStoryDocument,
+        ...storyMutationImpactedQueries,
+      ]);
+    },
+  });
+
 export const useStoriesDestroy = (input: GQL.StoriesDestroyMutationVariables) =>
   GQL.useStoriesDestroyMutation({
     variables: input,

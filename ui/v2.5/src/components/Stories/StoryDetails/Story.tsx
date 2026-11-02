@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
-import { Nav, Tab } from "react-bootstrap";
+import { Button, Nav, Tab } from "react-bootstrap";
 import { Helmet } from "react-helmet";
 import { Link, useHistory, useParams } from "react-router-dom";
 import { ExternalLink } from "src/components/Shared/ExternalLink";
@@ -19,6 +19,7 @@ import { FileSize } from "src/components/Shared/FileSize";
 import { useCanModify } from "src/hooks/CurrentUser";
 import { useToast } from "src/hooks/Toast";
 import { StoryEditPanel } from "./StoryEditPanel";
+import { ReassignStoryFileDialog } from "./ReassignStoryFileDialog";
 
 // StoryText shows the story's text. The server sends it as plain UTF-8, and
 // it's shown as text, so markup in a story file is never run.
@@ -52,9 +53,10 @@ export const StoryText: React.FC<{ url: string }> = ({ url }) => {
   return <div className="story-text">{text}</div>;
 };
 
-const StoryDetailsPanel: React.FC<{ story: GQL.StoryDataFragment }> = ({
-  story,
-}) => {
+const StoryDetailsPanel: React.FC<{
+  story: GQL.StoryDataFragment;
+  onReassign?: (file: GQL.StoryFileDataFragment) => void;
+}> = ({ story, onReassign }) => {
   function row(id: string, value: React.ReactNode) {
     if (!value) return null;
     return (
@@ -103,6 +105,16 @@ const StoryDetailsPanel: React.FC<{ story: GQL.StoryDataFragment }> = ({
         <React.Fragment key={f.id}>
           {row("path", f.path)}
           {row("filesize", <FileSize size={f.size} />)}
+          {onReassign && (
+            <Button
+              className="mb-3"
+              size="sm"
+              variant="secondary"
+              onClick={() => onReassign(f)}
+            >
+              <FormattedMessage id="actions.reassign" />
+            </Button>
+          )}
         </React.Fragment>
       ))}
     </div>
@@ -125,6 +137,7 @@ const StoryPage: React.FC<{ story: GQL.StoryDataFragment }> = ({ story }) => {
     hasText ? "story-read-panel" : "story-details-panel"
   );
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [reassigning, setReassigning] = useState<GQL.StoryFileDataFragment>();
 
   async function onSave(input: Omit<GQL.StoryUpdateInput, "id">) {
     await updateStory({ variables: { input: { id: story.id, ...input } } });
@@ -155,6 +168,18 @@ const StoryPage: React.FC<{ story: GQL.StoryDataFragment }> = ({ story }) => {
 
       {isDeleteOpen && (
         <DeleteStoriesDialog selected={[story]} onClose={onDeleteClosed} />
+      )}
+
+      {reassigning && (
+        <ReassignStoryFileDialog
+          storyID={story.id}
+          file={reassigning}
+          removesStory={!story.title && story.files.length === 1}
+          onClose={(moved) => {
+            setReassigning(undefined);
+            if (moved) history.push(`/stories/${moved.id}`);
+          }}
+        />
       )}
 
       <div className="col-12 story-header">
@@ -204,7 +229,10 @@ const StoryPage: React.FC<{ story: GQL.StoryDataFragment }> = ({ story }) => {
               </Tab.Pane>
             )}
             <Tab.Pane eventKey="story-details-panel">
-              <StoryDetailsPanel story={story} />
+              <StoryDetailsPanel
+                story={story}
+                onReassign={canModify ? setReassigning : undefined}
+              />
             </Tab.Pane>
             {canModify && (
               <Tab.Pane eventKey="story-edit-panel" mountOnEnter>

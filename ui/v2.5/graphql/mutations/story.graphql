@@ -10,6 +10,10 @@ mutation StoryUserDataUpdate($input: UserRatingInput!) {
   }
 }
 
+mutation StoryAssignFile($input: AssignStoryFileInput!) {
+  storyAssignFile(input: $input)
+}
+
 mutation StoriesDestroy($ids: [ID!]!, $delete_file: Boolean) {
   storiesDestroy(input: { ids: $ids, delete_file: $delete_file })
 }
