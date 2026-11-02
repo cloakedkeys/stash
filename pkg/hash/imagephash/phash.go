@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	_ "image/gif"
 
 	"github.com/corona10/goimagehash"
 	"github.com/stashapp/stash/pkg/ffmpeg"

@@ -1,6 +1,7 @@
 package imagephash
 
 import (
+	"archive/zip"
 	"image"
 	"image/color"
 	"image/gif"
@@ -47,11 +48,44 @@ func TestGenerateAnimatedGIF(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	zipPath := filepath.Join(t.TempDir(), "images.zip")
+	zipOut, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(zipOut)
+	w, err := zw.Create("animated.gif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := zipOut.Close(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zf := &models.BaseFile{ID: 1, Path: zipPath, Size: info.Size()}
+
 	// GIF clips are stored as VideoFile, but their first frame is still
 	// decodable without ffmpeg. Static ImageFile decoding must also work.
 	for _, f := range []models.File{
 		&models.ImageFile{BaseFile: &models.BaseFile{Path: path}},
 		&models.VideoFile{BaseFile: &models.BaseFile{Path: path}},
+		&models.VideoFile{BaseFile: &models.BaseFile{
+			Path:     filepath.Join(zipPath, "animated.gif"),
+			DirEntry: models.DirEntry{ZipFileID: &zf.ID, ZipFile: zf},
+		}},
 	} {
 		got, err := Generate(nil, f)
 		if err != nil {

@@ -47,6 +47,14 @@ func (d *Decorator) Decorate(ctx context.Context, fs models.FS, f models.File) (
 			return d.decorateViaTempFile(fs, f)
 		}
 
+		if ext == ".gif" && base.ZipFileID != nil {
+			// Keep existing ImageFile rows as images, even on a forced rescan.
+			// Neither store removes the old subtype when updating a file's type.
+			if _, existingImage := f.(*models.ImageFile); !existingImage {
+				return decorateZipGIF(fs, f)
+			}
+		}
+
 		logger.Debugf("assuming ImageFile for non-OsFS file %q", base.Path)
 		return decorateFallback(fs, f)
 	}
