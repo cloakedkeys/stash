@@ -1081,7 +1081,10 @@ $sticky-header-height: calc(50px + 3.3rem);
 
   .sidebar-pane.hide-sidebar .sidebar {
     left: -$sidebar-width;
-    margin-left: calc(-15px - $sidebar-width);
+    // the page starts after a notch, so go that much further to stay hidden,
+    // and give it back on the right so the content stays clear of the notch
+    margin-left: calc(-15px - $sidebar-width - env(safe-area-inset-left));
+    margin-right: env(safe-area-inset-left);
   }
 
   // on smaller viewports we want the sidebar to overlap content

@@ -916,7 +916,7 @@ div.dropdown-menu {
   max-width: 350px;
   opacity: 0.9;
   position: fixed;
-  right: 2rem;
+  right: calc(2rem + env(safe-area-inset-right));
   top: 4rem;
   transition: right 0.5s;
   z-index: 1051;

@@ -426,14 +426,14 @@
 .loading-indicator {
   opacity: 50%;
   position: fixed;
-  right: 30px;
+  right: calc(30px + env(safe-area-inset-right));
   z-index: 1051;
 
   @include media-breakpoint-down(xs) {
     top: 30px;
   }
   @include media-breakpoint-up(sm) {
-    bottom: 30px;
+    bottom: calc(30px + env(safe-area-inset-bottom));
   }
 
   .fa-icon {
