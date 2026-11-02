@@ -92,6 +92,16 @@ func (ff fakeFolders) FindByPath(_ context.Context, path string, caseSensitive b
 	return nil, nil
 }
 
+func (ff fakeFolders) TopFolders(_ context.Context) ([]*models.Folder, error) {
+	var ret []*models.Folder
+	for _, f := range ff {
+		if f.ParentFolderID == nil {
+			ret = append(ret, f)
+		}
+	}
+	return ret, nil
+}
+
 func (ff fakeFolders) FindByParentFolderID(_ context.Context, id models.FolderID) ([]*models.Folder, error) {
 	var ret []*models.Folder
 	for _, f := range ff {
@@ -140,6 +150,35 @@ func TestFoldersAt(t *testing.T) {
 	found, err := foldersAt(context.Background(), tree, filepath.Join(t.TempDir(), "elsewhere"), ".")
 	assert.NoError(t, err)
 	assert.Empty(t, found, "a library that hasn't been scanned")
+
+	at := func(root, rel string) []models.FolderID {
+		found, err := foldersAt(context.Background(), tree, root, rel)
+		assert.NoError(t, err)
+		var ret []models.FolderID
+		for _, f := range found {
+			ret = append(ret, f.ID)
+		}
+		return ret
+	}
+	assert.Equal(t, []models.FolderID{1}, at(root+string(filepath.Separator), "."), "a library path ending in a separator")
+	upper := filepath.Join(filepath.Dir(root), "LIB")
+	assert.Equal(t, []models.FolderID{1}, at(upper, "."), "a library path in another case")
+
+	accented := fakeFolders{
+		{ID: 1, Path: filepath.Join(root, "Été")},
+		{ID: 2, Path: filepath.Join(root, "Été", "Sub"), ParentFolderID: id(1)},
+	}
+	found, err = foldersAt(context.Background(), accented, filepath.Join(root, "été"), "sub")
+	assert.NoError(t, err)
+	assert.Len(t, found, 1, "a library path in another case outside ASCII")
+
+	nested := fakeFolders{
+		{ID: 1, Path: root},
+		{ID: 2, Path: filepath.Join(root, "inner"), ParentFolderID: id(1)},
+	}
+	found, err = foldersAt(context.Background(), nested, filepath.Join(root, "inner"), ".")
+	assert.NoError(t, err)
+	assert.Len(t, found, 1, "a library inside another library")
 }
 
 func TestCheckStoryDownloadPath(t *testing.T) {

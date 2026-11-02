@@ -141,8 +141,29 @@ func nameHeld(names []string, path string) bool {
 
 // folderTree finds folders in the library.
 type folderTree interface {
+	// TopFolders returns the folders without a parent, which include each library's.
+	TopFolders(ctx context.Context) ([]*models.Folder, error)
 	FindByPath(ctx context.Context, path string, caseSensitive bool) (*models.Folder, error)
 	FindByParentFolderID(ctx context.Context, parentFolderID models.FolderID) ([]*models.Folder, error)
+}
+
+// repositoryFolders is the library's folders in the database.
+type repositoryFolders struct {
+	models.FolderReaderWriter
+}
+
+func (r repositoryFolders) TopFolders(ctx context.Context) ([]*models.Folder, error) {
+	all := -1
+	result, err := r.Query(ctx, models.FolderQueryOptions{
+		QueryOptions: models.QueryOptions{FindFilter: &models.FindFilterType{PerPage: &all}},
+		FolderFilter: &models.FolderFilterType{
+			ParentFolder: &models.HierarchicalMultiCriterionInput{Modifier: models.CriterionModifierIsNull},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.Resolve(ctx)
 }
 
 // foldersAt finds the folders in the library at root joined with rel, ignoring case in
@@ -150,15 +171,25 @@ type folderTree interface {
 // that minds case, folders whose names differ only in case are all returned, so that
 // a name used in any of them is avoided.
 func foldersAt(ctx context.Context, tree folderTree, root, rel string) ([]*models.Folder, error) {
-	top, err := tree.FindByPath(ctx, root, true)
-	if err == nil && top == nil {
-		// the library's path as configured may differ in case from the scanned one
-		top, err = tree.FindByPath(ctx, root, false)
-	}
-	if err != nil || top == nil {
+	root = filepath.Clean(root)
+	tops, err := tree.TopFolders(ctx)
+	if err != nil {
 		return nil, err
 	}
-	found := []*models.Folder{top}
+	var found []*models.Folder
+	for _, f := range tops {
+		if strings.EqualFold(filepath.Clean(f.Path), root) {
+			found = append(found, f)
+		}
+	}
+	if len(found) == 0 {
+		// a library inside another one has a parent
+		top, err := tree.FindByPath(ctx, root, false)
+		if err != nil || top == nil {
+			return nil, err
+		}
+		found = append(found, top)
+	}
 	if rel == "." {
 		return found, nil
 	}
@@ -187,12 +218,12 @@ func (s *Manager) storyFolderFileNames(ctx context.Context, dir string) (names [
 	if stash == nil {
 		return nil, nil
 	}
-	rel, err := filepath.Rel(stash.Path, dir)
+	rel, err := filepath.Rel(filepath.Clean(stash.Path), filepath.Clean(dir))
 	if err != nil {
 		return nil, fmt.Errorf("finding %s in its library: %w", dir, err)
 	}
 	err = s.Repository.WithReadTxn(ctx, func(ctx context.Context) error {
-		folders, err := foldersAt(ctx, s.Repository.Folder, stash.Path, rel)
+		folders, err := foldersAt(ctx, repositoryFolders{s.Repository.Folder}, stash.Path, rel)
 		if err != nil {
 			return err
 		}
