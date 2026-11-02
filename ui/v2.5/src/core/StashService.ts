@@ -419,21 +419,29 @@ export const queryFindPerformer = (id: string) =>
     variables: { id },
   });
 
-export const useFindPerformers = (filter?: ListFilterModel) =>
+export const useFindPerformers = (
+  filter?: ListFilterModel,
+  studioScope?: GQL.StudioScopeInput
+) =>
   GQL.useFindPerformersQuery({
     skip: filter === undefined,
     variables: {
       filter: filter?.makeFindFilter(),
-      performer_filter: filter?.makeFilter(),
+      performer_filter: { ...filter?.makeFilter(), studio_scope: studioScope },
+      studio_scope: studioScope,
     },
   });
 
-export const queryFindPerformers = (filter: ListFilterModel) =>
+export const queryFindPerformers = (
+  filter: ListFilterModel,
+  studioScope?: GQL.StudioScopeInput
+) =>
   client.query<GQL.FindPerformersQuery>({
     query: GQL.FindPerformersDocument,
     variables: {
       filter: filter.makeFindFilter(),
-      performer_filter: filter.makeFilter(),
+      performer_filter: { ...filter.makeFilter(), studio_scope: studioScope },
+      studio_scope: studioScope,
     },
   });
 
