@@ -167,6 +167,21 @@ export const LightboxComponent: React.FC<IProps> = ({
   const switchFromPage = useRef<number | undefined>(page);
   const switchFromImages = useRef<ILightboxImage[]>(images);
 
+  const [previousImages, setPreviousImages] = useState(images);
+  if (images !== previousImages) {
+    setPreviousImages(images);
+    // Reconcile before rendering controls or binding shortcuts to the new list.
+    // Explicit page switches own their landing index instead.
+    if (!isSwitchingPageRef.current && index !== null) {
+      const imageId = previousImages[index]?.id;
+      const nextIndex =
+        imageId === undefined
+          ? -1
+          : images.findIndex((image) => image.id === imageId);
+      if (nextIndex !== -1) setIndex(nextIndex);
+    }
+  }
+
   // The ref and the state must never disagree, so they are only written
   // through this setter.
   const setSwitching = useCallback((v: boolean) => {

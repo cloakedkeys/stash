@@ -1,4 +1,5 @@
 import React, { useContext, useState } from "react";
+import { useIntl } from "react-intl";
 import {
   Form,
   Col,
@@ -465,37 +466,42 @@ export const ScrapedCountryRow: React.FC<IScrapedCountryRowProps> = ({
   onChange,
   locked,
   locale,
-}) => (
-  <ScrapeDialogRow
-    title={title}
-    field={field}
-    result={result}
-    originalField={
-      <FormControl
-        value={
-          getCountryByISO(result.originalValue, locale) ?? result.originalValue
-        }
-        readOnly
-        className="bg-secondary text-white border-secondary"
-      />
-    }
-    newField={
-      <CountrySelect
-        value={result.newValue}
-        disabled={locked}
-        onChange={(value) => {
-          if (onChange) {
-            onChange(result.cloneWithValue(value));
+}) => {
+  const intl = useIntl();
+
+  return (
+    <ScrapeDialogRow
+      title={title}
+      field={field}
+      result={result}
+      originalField={
+        <FormControl
+          value={
+            getCountryByISO(result.originalValue, locale, intl) ??
+            result.originalValue
           }
-        }}
-        showFlag={false}
-        isClearable={false}
-        className="flex-grow-1"
-      />
-    }
-    onChange={onChange}
-  />
-);
+          readOnly
+          className="bg-secondary text-white border-secondary"
+        />
+      }
+      newField={
+        <CountrySelect
+          value={result.newValue}
+          disabled={locked}
+          onChange={(value) => {
+            if (onChange) {
+              onChange(result.cloneWithValue(value));
+            }
+          }}
+          showFlag={false}
+          isClearable={false}
+          className="flex-grow-1"
+        />
+      }
+      onChange={onChange}
+    />
+  );
+};
 
 export const ScrapedCustomFieldRows: React.FC<{
   results: CustomFieldScrapeResults;

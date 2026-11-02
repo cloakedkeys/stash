@@ -52,13 +52,21 @@ type FFMpegConfig interface {
 	GetGenerationHardwareAcceleration() bool
 }
 
+type videoProber interface {
+	NewVideoFile(string) (*ffmpeg.VideoFile, error)
+}
+
 type Generator struct {
 	Encoder      *ffmpeg.FFMpeg
+	FFProbe      videoProber
 	FFMpegConfig FFMpegConfig
 	LockManager  *fsutil.ReadLockManager
 	MarkerPaths  MarkerPaths
 	ScenePaths   ScenePaths
 	Overwrite    bool
+
+	// SampleAspectRatio is the source pixel ratio after automatic rotation.
+	SampleAspectRatio float64
 }
 
 type generateFn func(lockCtx *fsutil.LockContext, tmpFn string) error
@@ -81,6 +89,26 @@ func (g *Generator) DetermineCodecAndHW(ctx context.Context, path string, width,
 			g.Encoder.HWCanFullHWTranscode(ctx, codec, path, width, height, targetHeight)
 	}
 	return codec, fullhw
+}
+
+// previewVideoFilter scales using display dimensions. Anamorphic sources use
+// software decoding so square-pixel normalization runs before hardware upload.
+func (g Generator) previewVideoFilter(codec ffmpeg.VideoCodec, width, height, targetWidth int, fullhw bool) (ffmpeg.VideoFilter, bool) {
+	width, height = ffmpeg.SquarePixelDimensions(width, height, g.SampleAspectRatio)
+	targetHeight := ffmpeg.ScaledShortSide(width, height, targetWidth)
+	var normalize ffmpeg.VideoFilter
+	normalize = normalize.SquarePixels(g.SampleAspectRatio)
+	if normalize != "" {
+		fullhw = false
+	}
+	filter := g.Encoder.HWMaxResFilter(codec, width, height, targetHeight, fullhw)
+	if normalize != "" {
+		if filter != "" {
+			normalize = normalize.Append(string(filter))
+		}
+		filter = normalize
+	}
+	return filter, fullhw
 }
 
 // generateFile performs a generate operation by generating a temporary file using p and pattern, then

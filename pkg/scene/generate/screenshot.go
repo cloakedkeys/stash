@@ -53,10 +53,11 @@ type screenshotOptions struct {
 func (g Generator) screenshot(input string, options screenshotOptions) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
 		ssOptions := transcoder.ScreenshotOptions{
-			OutputPath: tmpFn,
-			OutputType: transcoder.ScreenshotOutputTypeImage2,
-			Quality:    options.Quality,
-			Width:      options.Width,
+			SampleAspectRatio: g.SampleAspectRatio,
+			OutputPath:        tmpFn,
+			OutputType:        transcoder.ScreenshotOutputTypeImage2,
+			Quality:           options.Quality,
+			Width:             options.Width,
 		}
 
 		args := transcoder.ScreenshotTime(input, options.Time, ssOptions)

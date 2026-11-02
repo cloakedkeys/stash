@@ -5,22 +5,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sync"
 
+	"github.com/disintegration/imaging"
 	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/ffmpeg/transcoder"
 	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/models"
+	_ "golang.org/x/image/webp"
 )
 
 const (
 	ffmpegImageQuality = 5
 	clipPreviewCRF     = 25
 )
+
+// Limit full Go decodes to avoid excessive memory use in the server.
+const maxThumbnailDecodePixels = 100_000_000
 
 var vipsPath string
 var once sync.Once
@@ -67,6 +75,8 @@ func NewThumbnailEncoder(ffmpegEncoder *ffmpeg.FFMpeg, ffProbe *ffmpeg.FFProbe, 
 
 // GetThumbnail returns the thumbnail image of the provided image resized to
 // the provided max size. It resizes based on the largest X/Y direction.
+// Opaque images use JPEG; transparent images use WebP, falling back to PNG
+// if WebP encoding is unavailable.
 // It returns nil and an error if an error occurs reading, decoding or encoding
 // the image, or if the image is not suitable for thumbnails.
 func (e *ThumbnailEncoder) GetThumbnail(f models.File, maxSize int) ([]byte, error) {
@@ -110,10 +120,24 @@ func (e *ThumbnailEncoder) GetThumbnail(f models.File, maxSize int) ([]byte, err
 			if f.Base().ZipFileID != nil {
 				return nil, fmt.Errorf("%w: AVIF in zip file", ErrNotSupportedForThumbnail)
 			}
-			if e.vips != nil {
-				return e.vips.ImageThumbnailPath(f.Base().Path, maxSize)
+		}
+	}
+
+	if format == "avif" {
+		if e.vips != nil {
+			return e.vips.ImageThumbnailPath(f.Base().Path, maxSize)
+		}
+		return e.ffmpegImageThumbnailPath(f.Base().Path, maxSize)
+	}
+
+	// Inspect actual alpha values, so an opaque image with an alpha channel
+	// still uses the existing JPEG encoder.
+	if format != "mjpeg" && format != "jpeg" && shouldDecodeThumbnail(data) {
+		decoded, err := imaging.Decode(bytes.NewReader(data), imaging.AutoOrientation(true))
+		if err == nil {
+			if opaque, ok := decoded.(interface{ Opaque() bool }); ok && !opaque.Opaque() {
+				return e.transparentThumbnail(decoded, maxSize)
 			}
-			return e.ffmpegImageThumbnailPath(f.Base().Path, maxSize)
 		}
 	}
 
@@ -127,6 +151,46 @@ func (e *ThumbnailEncoder) GetThumbnail(f models.File, maxSize int) ([]byte, err
 		}
 	}
 	return e.ffmpegImageThumbnail(buf, maxSize)
+}
+
+func shouldDecodeThumbnail(data []byte) bool {
+	config, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return false
+	}
+	if config.Width <= 0 || config.Height <= 0 || config.Width > maxThumbnailDecodePixels/config.Height {
+		return false
+	}
+
+	// PNG reports RGB(A) models for truecolour files without alpha, while
+	// BMP and TIFF can also use those models for files with alpha.
+	if format == "png" && (config.ColorModel == color.RGBAModel || config.ColorModel == color.RGBA64Model) {
+		return false
+	}
+	// Lossy WebP without alpha reports YCbCr; with alpha it reports NYCbCrA.
+	// Lossless WebP reports NRGBA even when all pixels are opaque.
+	switch config.ColorModel {
+	case color.GrayModel, color.Gray16Model, color.YCbCrModel, color.CMYKModel:
+		return false
+	}
+	return true
+}
+
+func (e *ThumbnailEncoder) transparentThumbnail(decoded image.Image, maxSize int) ([]byte, error) {
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, imaging.Fit(decoded, maxSize, maxSize, imaging.Lanczos)); err != nil {
+		return nil, err
+	}
+
+	// Use the configured ffmpeg, including the downloaded library binary.
+	// A system build may lack libwebp; the PNG remains a usable thumbnail.
+	args := ffmpeg.Args{"-hide_banner", "-v", "error", "-i", "-", "-frames:v", "1",
+		"-c:v", "libwebp", "-lossless", "1", "-pix_fmt", "bgra", "-f", "webp", "-"}
+	data, err := e.FFMpeg.GenerateOutput(context.TODO(), args, bytes.NewReader(pngData.Bytes()))
+	if err != nil {
+		return pngData.Bytes(), nil
+	}
+	return data, nil
 }
 
 // GetPreview returns the preview clip of the provided image clip resized to

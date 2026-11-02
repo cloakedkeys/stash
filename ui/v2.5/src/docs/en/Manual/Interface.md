@@ -61,6 +61,18 @@ For example, to override the `actions.add_directory` label (which is `Add direct
 }
 ```
 
+Country names can also be customised in Interface settings under Custom Localisation. Enable custom localisation and add `country_names` entries using uppercase two-letter ISO country codes. For example, `country_names.TW` can be set with:
+
+```json
+{
+  "country_names": {
+    "TW": "My preferred name"
+  }
+}
+```
+
+Countries without an override keep their default names. Overrides change displayed names, including country selections and filters; stored country codes are unchanged.
+
 ## Custom served folders
 
 It is possible to expose specific folders to the UI. This configuration is performed manually in the `config.yml` file only.
