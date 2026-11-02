@@ -422,13 +422,15 @@ func TestScannerCaseRenameParentOfNumberFolder(t *testing.T) {
 	assert.Equal(t, before.file.Base().ID, after.file.Base().ID)
 }
 
-// Two links, É and é, to the same folder are still two entries in the library.
+// Two links, É and é, to the same folder are still two entries in the library,
+// and so are the folders below them.
 func TestScannerCaseDistinctLinks(t *testing.T) {
 	ctx := models.WithUserID(context.Background(), testUserID)
 	root := t.TempDir()
 	target := filepath.Join(t.TempDir(), "target")
-	require.NoError(t, os.MkdirAll(target, 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(target, "123"), 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(target, "clip.txt"), []byte("Clip."), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(target, "123", "inner.txt"), []byte("Inner."), 0600))
 	upper := filepath.Join(root, "É")
 	lower := filepath.Join(root, "é")
 	if err := os.Symlink(target, upper); err != nil {
@@ -444,4 +446,11 @@ func TestScannerCaseDistinctLinks(t *testing.T) {
 	require.NotNil(t, first.folder, "É keeps its row")
 	require.NotNil(t, second.folder, "é gets its own row")
 	assert.NotEqual(t, first.folder.ID, second.folder.ID)
+	firstInner := readPathCase(t, filepath.Join(upper, "123"), filepath.Join(upper, "123", "inner.txt"))
+	secondInner := readPathCase(t, filepath.Join(lower, "123"), filepath.Join(lower, "123", "inner.txt"))
+	require.NotNil(t, firstInner.folder, "É/123 keeps its row")
+	require.NotNil(t, secondInner.folder, "é/123 gets its own row")
+	assert.NotEqual(t, firstInner.folder.ID, secondInner.folder.ID)
+	assert.Equal(t, &first.folder.ID, firstInner.folder.ParentFolderID)
+	assert.Equal(t, &second.folder.ID, secondInner.folder.ParentFolderID)
 }
