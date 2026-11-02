@@ -31,6 +31,7 @@ import {
   faFilm,
   faFolderTree,
   faHeart,
+  faHome,
   faImage,
   faImages,
   faMapMarkerAlt,
@@ -446,7 +447,10 @@ export const MainNavbar: React.FC = () => {
 
       <Navbar.Brand as="div" onClick={handleDismiss}>
         <Link to="/">
-          <Button className="minimal brand-link d-inline-block">Stash</Button>
+          <Button className="minimal brand-link d-inline-flex align-items-center">
+            <Icon icon={faHome} className="mr-2" />
+            Stash
+          </Button>
         </Link>
       </Navbar.Brand>
 
