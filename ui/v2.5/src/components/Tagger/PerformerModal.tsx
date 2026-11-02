@@ -320,7 +320,10 @@ const PerformerModal: React.FC<IPerformerModalProps> = ({
           {maybeRenderField("birthdate", performer.birthdate)}
           {maybeRenderField("death_date", performer.death_date)}
           {maybeRenderField("ethnicity", performer.ethnicity)}
-          {maybeRenderField("country", getCountryByISO(performer.country))}
+          {maybeRenderField(
+            "country",
+            getCountryByISO(performer.country, "en", intl)
+          )}
           {maybeRenderField("hair_color", performer.hair_color)}
           {maybeRenderField("eye_color", performer.eye_color)}
           {maybeRenderField("height", performer.height)}

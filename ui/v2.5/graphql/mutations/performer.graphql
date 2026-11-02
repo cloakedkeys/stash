@@ -7,6 +7,10 @@ mutation PerformerCreate($input: PerformerCreateInput!) {
 mutation PerformerUpdate($input: PerformerUpdateInput!) {
   performerUpdate(input: $input) {
     ...PerformerData
+    # the tagger writes this into the performer list, which shows the second image on hover
+    alternate_images {
+      path
+    }
   }
 }
 

@@ -89,7 +89,24 @@ export const HoverPopover: React.FC<IHoverPopover> = PatchComponent(
             placement={placement}
             target={getOverlayTarget}
             container={document.body}
-            popperConfig={popperConfig}
+            flip
+            popperConfig={{
+              ...popperConfig,
+              modifiers: [
+                // Ignore clipping parents and constrain to the viewport instead.
+                {
+                  name: "flip",
+                  enabled: true,
+                  options: { boundary: [], rootBoundary: "viewport" },
+                },
+                {
+                  name: "preventOverflow",
+                  enabled: true,
+                  options: { boundary: [], rootBoundary: "viewport" },
+                },
+                ...(popperConfig?.modifiers ?? []),
+              ],
+            }}
           >
             <Popover
               onMouseEnter={handleMouseEnter}

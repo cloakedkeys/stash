@@ -1079,6 +1079,7 @@ export const useSceneSaveActivity = () =>
 
       const { id, playDuration, resume_time: resumeTime } = variables;
 
+      // Update activity in place so playback keeps watched scene lists cached.
       cache.modify({
         id: cache.identify({ __typename: "Scene", id }),
         fields: {
@@ -1094,10 +1095,6 @@ export const useSceneSaveActivity = () =>
       if (playDuration) {
         updateStats(cache, "total_play_duration", playDuration);
       }
-
-      evictQueries(cache, [
-        GQL.FindScenesDocument, // filter by play duration
-      ]);
     },
   });
 

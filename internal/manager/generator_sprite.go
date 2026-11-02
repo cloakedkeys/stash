@@ -141,10 +141,11 @@ func NewSpriteGenerator(videoFile ffmpeg.VideoFile, videoChecksum string, imageO
 		Config:          config,
 		SlowSeek:        slowSeek,
 		g: &generate.Generator{
-			Encoder:      instance.FFMpeg,
-			FFMpegConfig: instance.Config,
-			LockManager:  instance.ReadLockManager,
-			ScenePaths:   instance.Paths.Scene,
+			SampleAspectRatio: videoFile.SampleAspectRatio(),
+			Encoder:           instance.FFMpeg,
+			FFMpegConfig:      instance.Config,
+			LockManager:       instance.ReadLockManager,
+			ScenePaths:        instance.Paths.Scene,
 		},
 	}, nil
 }
@@ -200,7 +201,8 @@ func (g *SpriteGenerator) generateSpriteImage() error {
 
 	var images []image.Image
 
-	isPortrait := g.Info.VideoFile.Height > g.Info.VideoFile.Width
+	width, height := ffmpeg.SquarePixelDimensions(g.Info.VideoFile.Width, g.Info.VideoFile.Height, g.g.SampleAspectRatio)
+	isPortrait := height > width
 
 	if !g.SlowSeek {
 		logger.Infof("[generator] generating sprite image for %s", g.Info.VideoFile.Path)

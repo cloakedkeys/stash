@@ -107,7 +107,8 @@ func (g *Generator) previewVideo(path string, width, height int, videoStreamDura
 
 		stepSize, offset := options.getStepSizeAndOffset(videoStreamDuration)
 
-		targetHeight := ffmpeg.ScaledShortSide(width, height, scenePreviewWidth)
+		displayWidth, displayHeight := ffmpeg.SquarePixelDimensions(width, height, g.SampleAspectRatio)
+		targetHeight := ffmpeg.ScaledShortSide(displayWidth, displayHeight, scenePreviewWidth)
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
 
 		segmentDuration := options.SegmentDuration
@@ -157,7 +158,8 @@ func (g *Generator) previewVideo(path string, width, height int, videoStreamDura
 
 func (g *Generator) previewVideoSingle(path string, width, height int, videoStreamDuration float64, options PreviewOptions, fallback bool, useVsync2 bool) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
-		targetHeight := ffmpeg.ScaledShortSide(width, height, scenePreviewWidth)
+		displayWidth, displayHeight := ffmpeg.SquarePixelDimensions(width, height, g.SampleAspectRatio)
+		targetHeight := ffmpeg.ScaledShortSide(displayWidth, displayHeight, scenePreviewWidth)
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
 
 		chunkOptions := previewChunkOptions{
@@ -181,9 +183,7 @@ type previewChunkOptions struct {
 }
 
 func (g Generator) previewVideoChunk(lockCtx *fsutil.LockContext, path string, width, height int, options previewChunkOptions, fallback bool, useVsync2 bool, codec ffmpeg.VideoCodec, fullhw bool) error {
-	targetHeight := ffmpeg.ScaledShortSide(width, height, scenePreviewWidth)
-
-	videoFilter := g.Encoder.HWMaxResFilter(codec, width, height, targetHeight, fullhw)
+	videoFilter, fullhw := g.previewVideoFilter(codec, width, height, scenePreviewWidth, fullhw)
 
 	videoArgs := codec.ExtraArgsHQ(options.Preset, scenePreviewCRF)
 	videoArgs = videoArgs.VideoFilter(videoFilter)
@@ -231,12 +231,35 @@ func (g Generator) generateConcatFile(chunkFiles []string) (fn string, err error
 	defer concatFile.Close()
 
 	w := bufio.NewWriter(concatFile)
+	segments := 0
 	for _, f := range chunkFiles {
+		stat, err := os.Stat(f)
+		if err != nil {
+			return concatFile.Name(), fmt.Errorf("checking preview segment %s: %w", f, err)
+		}
+		if stat.Size() == 0 {
+			logger.Debugf("[generator] skipping preview segment %s: empty file", f)
+			continue
+		}
+
+		video, err := g.FFProbe.NewVideoFile(f)
+		if err != nil {
+			return concatFile.Name(), fmt.Errorf("probing preview segment %s: %w", f, err)
+		}
+		if video.VideoStream == nil {
+			logger.Debugf("[generator] skipping preview segment %s: no video stream", f)
+			continue
+		}
+
 		// files in concat file should be relative to concat
 		relFile := filepath.Base(f)
 		if _, err := fmt.Fprintf(w, "file '%s'\n", relFile); err != nil {
 			return concatFile.Name(), fmt.Errorf("writing concat file: %w", err)
 		}
+		segments++
+	}
+	if segments == 0 {
+		return concatFile.Name(), fmt.Errorf("generating video preview: no usable segments")
 	}
 	return concatFile.Name(), w.Flush()
 }
@@ -288,6 +311,7 @@ func (g Generator) PreviewWebp(ctx context.Context, input string, hash string) e
 func (g Generator) previewVideoToImage(input string) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
 		var videoFilter ffmpeg.VideoFilter
+		videoFilter = videoFilter.SquarePixels(g.SampleAspectRatio)
 		videoFilter = videoFilter.ScaleWidth(scenePreviewWidth)
 		videoFilter = videoFilter.Fps(scenePreviewImageFPS)
 

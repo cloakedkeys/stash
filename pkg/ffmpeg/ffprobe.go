@@ -115,6 +115,24 @@ type VideoFile struct {
 	AudioCodec string
 }
 
+// SampleAspectRatio returns the pixel ratio after ffmpeg's automatic rotation.
+// Unknown or invalid ratios are treated as square pixels.
+func (v *VideoFile) SampleAspectRatio() float64 {
+	if v.VideoStream == nil {
+		return 1
+	}
+	n, d, ok := strings.Cut(v.VideoStream.SampleAspectRatio, ":")
+	numerator, nErr := strconv.Atoi(n)
+	denominator, dErr := strconv.Atoi(d)
+	if !ok || nErr != nil || dErr != nil || numerator <= 0 || denominator <= 0 {
+		return 1
+	}
+	if isRotated(v.VideoStream) {
+		return float64(denominator) / float64(numerator)
+	}
+	return float64(numerator) / float64(denominator)
+}
+
 // TranscodeScale calculates the dimension scaling for a transcode, where maxSize is the maximum size of the longest dimension of the input video.
 // If no scaling is required, then returns 0, 0.
 // Returns -2 for the dimension that will scale to maintain aspect ratio.

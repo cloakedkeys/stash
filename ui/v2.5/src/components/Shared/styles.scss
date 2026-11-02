@@ -962,7 +962,9 @@ button.btn.favorite-button {
 }
 
 .sidebar-toggle-button-container {
+  // Anchor to the list content, not this stationary overlay.
   height: 100%;
+  overflow-anchor: none;
   position: absolute;
 
   .sidebar-toggle-button {
