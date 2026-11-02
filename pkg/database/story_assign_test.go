@@ -12,6 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// titleSavedMeanwhile gives a story's title just after AssignFile reads the stories that
+// have the file, as another session could, so AssignFile holds an untitled copy.
+type titleSavedMeanwhile struct {
+	models.StoryReaderWriter
+	t *testing.T
+}
+
+func (r *titleSavedMeanwhile) FindByFileID(ctx context.Context, id models.FileID) ([]*models.Story, error) {
+	ret, err := r.StoryReaderWriter.FindByFileID(ctx, id)
+	for _, s := range ret {
+		_, err := r.UpdatePartial(ctx, s.ID, models.StoryPartial{Title: models.NewOptionalString("Saved meanwhile")})
+		require.NoError(r.t, err)
+	}
+	return ret, err
+}
+
 // Runs on SQLite, or PostgreSQL when PGSQL_TEST is set.
 func TestStoryAssignFile(t *testing.T) {
 	others := func() []story.FileUser {
@@ -132,6 +148,39 @@ func TestStoryAssignFile(t *testing.T) {
 		text, err := db.Story().GetText(ctx, dest.ID)
 		require.NoError(t, err)
 		require.NotNil(t, text, "nothing changes")
+	})
+
+	runWithRollbackTxn(t, "a title saved after the old story was read keeps it", func(t *testing.T, ctx context.Context) {
+		f := storyFile(ctx, t, "raced.txt")
+		owner := create(ctx, t, "", f.ID)
+		dest := create(ctx, t, "Destination")
+		repo := &titleSavedMeanwhile{StoryReaderWriter: db.Story(), t: t}
+
+		require.NoError(t, story.AssignFile(ctx, repo, others(), dest.ID, f.ID))
+
+		got, err := db.Story().Find(ctx, owner.ID)
+		require.NoError(t, err)
+		require.NotNil(t, got, "the story someone just titled isn't removed")
+		assert.Equal(t, "Saved meanwhile", got.Title)
+		assert.Equal(t, []models.FileID{f.ID}, fileIDs(ctx, t, dest.ID))
+	})
+
+	runWithRollbackTxn(t, "DestroyIfEmpty removes only a story with no title and no files", func(t *testing.T, ctx context.Context) {
+		empty := create(ctx, t, "")
+		titled := create(ctx, t, "Titled")
+		withFile := create(ctx, t, "", storyFile(ctx, t, "has-file.txt").ID)
+
+		for _, c := range []struct {
+			id      int
+			removed bool
+		}{{empty.ID, true}, {titled.ID, false}, {withFile.ID, false}} {
+			removed, err := db.Story().DestroyIfEmpty(ctx, c.id)
+			require.NoError(t, err)
+			assert.Equal(t, c.removed, removed)
+			got, err := db.Story().Find(ctx, c.id)
+			require.NoError(t, err)
+			assert.Equal(t, c.removed, got == nil)
+		}
 	})
 
 	runWithRollbackTxn(t, "refuses a story that doesn't exist", func(t *testing.T, ctx context.Context) {

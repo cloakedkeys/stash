@@ -16,7 +16,7 @@ type AssignRepository interface {
 	AssignFiles(ctx context.Context, id int, fileIDs []models.FileID) error
 	UpdatePartial(ctx context.Context, id int, partial models.StoryPartial) (*models.Story, error)
 	UpdateText(ctx context.Context, id int, text string) error
-	Destroy(ctx context.Context, id int) error
+	DestroyIfEmpty(ctx context.Context, id int) (bool, error)
 }
 
 // ErrFileUsedElsewhere is returned for a file that a scene, image, gallery or audio uses.
@@ -69,10 +69,9 @@ func AssignFile(ctx context.Context, r AssignRepository, others []FileUser, stor
 		}
 
 		if len(files) == 0 {
-			if o.Title == "" {
-				if err := r.Destroy(ctx, o.ID); err != nil {
-					return err
-				}
+			// checked as it's removed, not from o, so a title saved meanwhile keeps it
+			if _, err := r.DestroyIfEmpty(ctx, o.ID); err != nil {
+				return err
 			}
 			continue
 		}

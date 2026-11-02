@@ -29,6 +29,8 @@ type StoryWriter interface {
 	Update(ctx context.Context, object *Story) error
 	UpdatePartial(ctx context.Context, id int, partial StoryPartial) (*Story, error)
 	Destroy(ctx context.Context, id int) error
+	// DestroyIfEmpty removes a story with no title and no files, and reports whether it did.
+	DestroyIfEmpty(ctx context.Context, id int) (bool, error)
 	AddFileID(ctx context.Context, id int, fileID FileID) error
 	AssignFiles(ctx context.Context, id int, fileIDs []FileID) error
 	// UpdateText stores a story's text. An empty text removes it.

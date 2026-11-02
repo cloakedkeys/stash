@@ -112,6 +112,27 @@ func (_m *StoryReaderWriter) Destroy(ctx context.Context, id int) error {
 	return r0
 }
 
+// DestroyIfEmpty provides a mock function with given fields: ctx, id
+func (_m *StoryReaderWriter) DestroyIfEmpty(ctx context.Context, id int) (bool, error) {
+	ret := _m.Called(ctx, id)
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(context.Context, int) bool); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Find provides a mock function with given fields: ctx, id
 func (_m *StoryReaderWriter) Find(ctx context.Context, id int) (*models.Story, error) {
 	ret := _m.Called(ctx, id)
