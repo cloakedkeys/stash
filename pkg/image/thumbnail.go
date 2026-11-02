@@ -82,6 +82,11 @@ func NewThumbnailEncoder(ffmpegEncoder *ffmpeg.FFMpeg, ffProbe *ffmpeg.FFProbe, 
 func (e *ThumbnailEncoder) GetThumbnail(f models.File, maxSize int) ([]byte, error) {
 	// Video-backed image clips can be large, so avoid buffering the whole file.
 	if _, ok := f.(*models.VideoFile); ok {
+		// ffmpeg cannot open ZIP entry paths. Keep the animated-image policy:
+		// the thumbnail route serves the original GIF, preserving animation.
+		if f.Base().ZipFileID != nil {
+			return nil, fmt.Errorf("%w: video in zip file", ErrNotSupportedForThumbnail)
+		}
 		return e.ffmpegImageThumbnailPath(f.Base().Path, maxSize)
 	}
 
