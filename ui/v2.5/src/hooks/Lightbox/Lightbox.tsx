@@ -39,7 +39,6 @@ import * as GQL from "src/core/generated-graphql";
 import { useInterfaceLocalForage } from "../LocalForage";
 import { useCanAdminister } from "../CurrentUser";
 import { useConfigureInterface } from "src/core/StashService";
-import { withoutTypename } from "src/utils/data";
 import { imageLightboxDisplayModeIntlMap } from "src/core/enums";
 import { ILightboxImage, IChapter } from "./types";
 import {
@@ -278,10 +277,7 @@ export const LightboxComponent: React.FC<IProps> = ({
       configureInterface({
         variables: {
           input: {
-            imageLightbox: {
-              ...withoutTypename(config?.interface.imageLightbox),
-              ...v,
-            },
+            imageLightbox: v,
           },
         },
       }).catch((e) => Toast.error(e));
