@@ -21,8 +21,9 @@ type sceneFilesTable struct {
 const sceneUsesWholeFileWhere = "scenes_files.start_time IS NULL AND scenes_files.end_time IS NULL"
 
 // sceneFileDurationSQL is how long a scene is in a linked file: its part of it, or the
-// whole of it. It's never below 0, even when the file's length isn't known yet.
-const sceneFileDurationSQL = "GREATEST(0, COALESCE(scenes_files.end_time, video_files.duration) - COALESCE(scenes_files.start_time, 0))"
+// whole of it. It's never below 0, even when the file's length isn't known yet, and
+// it's null when there's no file, so a scene without one has no length.
+const sceneFileDurationSQL = "CASE WHEN COALESCE(scenes_files.end_time, video_files.duration) - COALESCE(scenes_files.start_time, 0) < 0 THEN 0 ELSE COALESCE(scenes_files.end_time, video_files.duration) - COALESCE(scenes_files.start_time, 0) END"
 
 type sceneFileRange struct {
 	FileID    models.FileID `db:"file_id"`

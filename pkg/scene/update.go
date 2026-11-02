@@ -137,8 +137,15 @@ func (s *Service) addFileToNewScene(ctx context.Context, sceneID int, fileID mod
 		return s.Repository.AddFileID(ctx, sceneID, fileID)
 	}
 
-	return s.AssignFile(ctx, sceneID, fileID)
+	err = s.AssignFile(ctx, sceneID, fileID)
+	if errors.Is(err, errPrimaryFile) && wholeInUse {
+		// say why, rather than what the file is to the other scene
+		return ErrWholeFileInUse
+	}
+	return err
 }
+
+var errPrimaryFile = errors.New("cannot reassign primary file")
 
 func (s *Service) AssignFile(ctx context.Context, sceneID int, fileID models.FileID) error {
 	// a scene that's part of a file has only that file
@@ -167,7 +174,7 @@ func (s *Service) AssignFile(ctx context.Context, sceneID int, fileID models.Fil
 	}
 
 	if isPrimary {
-		return errors.New("cannot reassign primary file")
+		return errPrimaryFile
 	}
 
 	return s.Repository.AssignFiles(ctx, sceneID, []models.FileID{fileID})

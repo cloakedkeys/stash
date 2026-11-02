@@ -219,6 +219,12 @@ func TestSceneFileRangesShared(t *testing.T) {
 		assert.Nil(t, s.StartTime)
 		assert.Nil(t, s.EndTime)
 
+		// a second scene for the whole of it is refused, saying why
+		for _, start := range []*float64{nil, f64(0)} {
+			_, err = newRangeScene(ctx, t, svc, "covers it again", start, nil, alone.ID)
+			assert.ErrorIs(t, err, scene.ErrWholeFileInUse)
+		}
+
 		// a part's start can still be moved to the start of the file
 		start, end, err := svc.ValidateRangeUpdate(ctx, scenes[2], f64(0), f64(300))
 		require.NoError(t, err)
@@ -517,6 +523,35 @@ func TestSceneFileRangeDurations(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.InDelta(t, 10, r.TotalDuration, 0.001, "the open-ended part adds nothing, rather than less than nothing")
+	})
+
+	runWithRollbackTxn(t, "a scene with no file has no length", func(t *testing.T, ctx context.Context) {
+		whole, parts := setup(ctx, t, "durnull")
+		noFile := models.NewScene()
+		noFile.Title = "durnull no file"
+		require.NoError(t, db.Scene().Create(ctx, &noFile, nil))
+
+		query := func(modifier models.CriterionModifier) []int {
+			t.Helper()
+			r, err := db.Scene().Query(ctx, models.SceneQueryOptions{
+				SceneFilter: &models.SceneFilterType{
+					Title:    named("durnull"),
+					Duration: &models.IntCriterionInput{Modifier: modifier},
+				},
+			})
+			require.NoError(t, err)
+			return r.IDs
+		}
+		assert.Equal(t, []int{noFile.ID}, query(models.CriterionModifierIsNull), "no length")
+		assert.ElementsMatch(t, []int{whole.ID, parts[0].ID, parts[1].ID}, query(models.CriterionModifierNotNull), "has a length")
+		r, err := db.Scene().Query(ctx, models.SceneQueryOptions{
+			SceneFilter: &models.SceneFilterType{
+				Title:    named("durnull"),
+				Duration: &models.IntCriterionInput{Value: 50, Modifier: models.CriterionModifierLessThan},
+			},
+		})
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []int{parts[0].ID, parts[1].ID}, r.IDs, "a scene with no file isn't under 50 seconds")
 	})
 }
 
