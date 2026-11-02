@@ -326,6 +326,13 @@ xPathScrapers:
 		})
 	}
 
+	// an attribute, such as a page's address for a sub-scraper, is kept as it is,
+	// not as markup
+	q := &xpathQuery{doc: mustParseHTML(t, `<html><body><a class="page" href="https://example.com/read?id=42&amp;page=2">2</a></body></html>`), keepHTML: true}
+	got, err := q.runQuery(`//a[@class="page"]/@href`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"https://example.com/read?id=42&page=2"}, got)
+
 	// a selector for text nodes, and paragraphs that repeat
 	for _, tc := range []struct{ name, body, text, want string }{
 		{"text nodes", `<div class="story">Once upon &lt;a&gt; time.</div>`, `//div[@class="story"]/text()`, "Once upon <a> time."},

@@ -343,15 +343,27 @@ func (q *xpathQuery) runQueryWithPositions(selector string) ([]string, error) {
 	return ret, nil
 }
 
+// isAttributeNode reports whether n is an attribute picked by a selector such as
+// @href. htmlquery gives one as an element with no parent holding only a text
+// node of its value; an element from the page always has a parent.
+func isAttributeNode(n *html.Node) bool {
+	return n.Type == html.ElementNode && n.Parent == nil && n.FirstChild != nil &&
+		n.FirstChild == n.LastChild && n.FirstChild.Type == html.TextNode
+}
+
 func (q *xpathQuery) nodeText(n *html.Node) string {
 	if q.keepHTML && n != nil {
 		// a story's text: its paragraphs and line breaks are kept as markup, which
 		// story.PlainText turns into plain text. A text node, such as from text(),
 		// has no markup of its own, so it's escaped to read as the text it holds.
-		switch n.Type {
-		case html.TextNode:
+		// An attribute, such as a page's address for a sub-scraper, is kept as it
+		// is, as for any other field.
+		switch {
+		case isAttributeNode(n):
+			return strings.TrimSpace(n.FirstChild.Data)
+		case n.Type == html.TextNode:
 			return strings.TrimSpace(html.EscapeString(n.Data))
-		case html.ElementNode, html.DocumentNode:
+		case n.Type == html.ElementNode, n.Type == html.DocumentNode:
 			return strings.TrimSpace(htmlquery.OutputHTML(n, false))
 		}
 	}
