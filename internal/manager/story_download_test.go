@@ -77,6 +77,8 @@ func TestNameHeld(t *testing.T) {
 	assert.True(t, nameHeld(names, filepath.Join(dir, "σοφία.txt")), "Greek case")
 	assert.False(t, nameHeld(names, filepath.Join(dir, "Ete.txt")), "accents still count")
 	assert.False(t, nameHeld(nil, filepath.Join(dir, "Été.txt")))
+	assert.True(t, nameHeld([]string{"Café.txt"}, filepath.Join(dir, "Café.txt")), "an accent written as a separate mark, as macOS does")
+	assert.True(t, nameHeld([]string{"Café.txt"}, filepath.Join(dir, "CAFÉ.txt")), "the other way, and in another case")
 }
 
 // fakeFolders is a library's folders.
@@ -133,6 +135,7 @@ func TestFoldersAt(t *testing.T) {
 	assert.Empty(t, at(filepath.Join(root, "missing")))
 	assert.Empty(t, at(filepath.Join(t.TempDir(), "elsewhere")), "a library that hasn't been scanned")
 	assert.Empty(t, at(root+"x"), "a name that only starts like a library's")
+	assert.Equal(t, []models.FolderID{2, 3}, at(filepath.Join(root, "Été")), "accents written as separate marks")
 }
 
 func TestCheckStoryDownloadPath(t *testing.T) {

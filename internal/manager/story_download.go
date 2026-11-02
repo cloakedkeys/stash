@@ -11,6 +11,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
@@ -132,11 +134,18 @@ func writeStoryText(dir, title, text string, held func(path string) (bool, error
 	return "", fmt.Errorf("saving the story's text: too many files named %q", name+storyFileExt)
 }
 
-// nameHeld reports whether path's name is one of names, ignoring case as some
-// filesystems do. It folds every alphabet, which the database's own comparison doesn't.
+// sameName reports whether two file or folder names could be the same file: ignoring
+// case in every alphabet, which the database's own comparison doesn't, and the way
+// accented letters are written, as macOS does. On a filesystem that tells them apart
+// this only means a name is avoided that needn't be.
+func sameName(a, b string) bool {
+	return strings.EqualFold(norm.NFC.String(a), norm.NFC.String(b))
+}
+
+// nameHeld reports whether path's name is one of names, by sameName.
 func nameHeld(names []string, path string) bool {
 	base := filepath.Base(path)
-	return slices.ContainsFunc(names, func(name string) bool { return strings.EqualFold(name, base) })
+	return slices.ContainsFunc(names, func(name string) bool { return sameName(name, base) })
 }
 
 // folderTree finds folders in the library.
@@ -196,7 +205,7 @@ func foldersAt(ctx context.Context, tree folderTree, dir string) ([]*models.Fold
 	var steps []step
 	for _, f := range tops {
 		have := pathParts(f.Path)
-		if len(have) <= len(want) && slices.EqualFunc(have, want[:len(have)], strings.EqualFold) {
+		if len(have) <= len(want) && slices.EqualFunc(have, want[:len(have)], sameName) {
 			steps = append(steps, step{f, len(have)})
 		}
 	}
@@ -214,7 +223,7 @@ func foldersAt(ctx context.Context, tree folderTree, dir string) ([]*models.Fold
 				return nil, err
 			}
 			for _, c := range children {
-				if strings.EqualFold(filepath.Base(c.Path), want[s.depth]) {
+				if sameName(filepath.Base(c.Path), want[s.depth]) {
 					next = append(next, step{c, s.depth + 1})
 				}
 			}
