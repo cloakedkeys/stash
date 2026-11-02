@@ -1209,6 +1209,9 @@ func (t *ExportTask) exportStory(ctx context.Context, s *models.Story) error {
 	}
 
 	newStoryJSON := story.ToBasicJSON(s)
+	if err := story.AddText(ctx, r.Story, s, newStoryJSON); err != nil {
+		return err
+	}
 
 	tags, err := r.Tag.FindMany(ctx, s.TagIDs.List())
 	if err != nil {

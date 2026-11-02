@@ -9,6 +9,7 @@ import (
 	"github.com/stashapp/stash/pkg/match"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil"
+	pkgstory "github.com/stashapp/stash/pkg/story"
 	"github.com/stashapp/stash/pkg/utils"
 )
 
@@ -65,6 +66,12 @@ func (c *postScraper) postScrape(ctx context.Context, content ScrapedContent) (_
 		}
 	case models.ScrapedGroup:
 		return c.postScrapeGroup(ctx, v, related)
+	case *models.ScrapedStory:
+		if v != nil {
+			return c.postScrapeStory(ctx, *v)
+		}
+	case models.ScrapedStory:
+		return c.postScrapeStory(ctx, v)
 	}
 
 	// If nothing matches, pass the content through
@@ -520,6 +527,26 @@ func (c *postScraper) postScrapeImage(ctx context.Context, image models.ScrapedI
 	}
 
 	return image, nil
+}
+
+// postScrapeStory matches the story's tags to existing tags, and turns its text into
+// plain text, whichever kind of scraper found it.
+func (c *postScraper) postScrapeStory(ctx context.Context, story models.ScrapedStory) (_ ScrapedContent, err error) {
+	tags, err := postProcessTags(ctx, c.repository.TagFinder, story.Tags)
+	if err != nil {
+		return nil, err
+	}
+	story.Tags = c.filterTags(tags)
+
+	if story.Text != nil {
+		text := pkgstory.PlainText(*story.Text)
+		story.Text = &text
+		if text == "" {
+			story.Text = nil
+		}
+	}
+
+	return story, nil
 }
 
 // postScrapeSingle handles post-processing of a single scraped content item.

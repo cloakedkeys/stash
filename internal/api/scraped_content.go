@@ -209,3 +209,17 @@ func marshalScrapedGroup(content scraper.ScrapedContent) (*models.ScrapedGroup, 
 
 	return m[0], nil
 }
+
+// marshalScrapedStory converts ScrapedContent into a ScrapedStory. If
+// conversion fails, an error is returned.
+func marshalScrapedStory(content scraper.ScrapedContent) (*models.ScrapedStory, error) {
+	switch s := content.(type) {
+	case nil:
+		return nil, nil
+	case *models.ScrapedStory:
+		return s, nil
+	case models.ScrapedStory:
+		return &s, nil
+	}
+	return nil, fmt.Errorf("%w: cannot turn ScrapedContent into ScrapedStory", models.ErrConversion)
+}

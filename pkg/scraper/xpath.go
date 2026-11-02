@@ -81,6 +81,12 @@ func (s *xpathURLScraper) scrapeByURL(ctx context.Context, url string, ty Scrape
 			return nil, err
 		}
 		return ret, nil
+	case ScrapeContentTypeStory:
+		ret, err := scraper.scrapeStory(ctx, q)
+		if err != nil || ret == nil {
+			return nil, err
+		}
+		return ret, nil
 	}
 
 	return nil, ErrNotSupported
@@ -287,6 +293,8 @@ type xpathQuery struct {
 	queryType        QueryType
 	url              string
 	preserveNewlines bool
+	// keepHTML returns each match's HTML instead of its text, for a story's text
+	keepHTML bool
 }
 
 func (q *xpathQuery) getType() QueryType {
@@ -335,7 +343,31 @@ func (q *xpathQuery) runQueryWithPositions(selector string) ([]string, error) {
 	return ret, nil
 }
 
+// isAttributeNode reports whether n is an attribute picked by a selector such as
+// @href. htmlquery gives one as an element with no parent holding only a text
+// node of its value; an element from the page always has a parent.
+func isAttributeNode(n *html.Node) bool {
+	return n.Type == html.ElementNode && n.Parent == nil && n.FirstChild != nil &&
+		n.FirstChild == n.LastChild && n.FirstChild.Type == html.TextNode
+}
+
 func (q *xpathQuery) nodeText(n *html.Node) string {
+	if q.keepHTML && n != nil {
+		// a story's text: its paragraphs and line breaks are kept as markup, which
+		// story.PlainText turns into plain text. A text node, such as from text(),
+		// has no markup of its own, so it's escaped to read as the text it holds.
+		// An attribute, such as a page's address for a sub-scraper, is kept as it
+		// is, as for any other field.
+		switch {
+		case isAttributeNode(n):
+			return strings.TrimSpace(n.FirstChild.Data)
+		case n.Type == html.TextNode:
+			return strings.TrimSpace(html.EscapeString(n.Data))
+		case n.Type == html.ElementNode, n.Type == html.DocumentNode:
+			return strings.TrimSpace(htmlquery.OutputHTML(n, false))
+		}
+	}
+
 	var ret string
 	if n != nil && n.Type == html.CommentNode {
 		ret = htmlquery.OutputHTML(n, true)
@@ -366,5 +398,6 @@ func (q *xpathQuery) subScrape(ctx context.Context, value string) mappedQuery {
 
 	ret := q.scraper.getXPathQuery(doc, value)
 	ret.preserveNewlines = q.preserveNewlines
+	ret.keepHTML = q.keepHTML
 	return ret
 }

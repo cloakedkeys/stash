@@ -1,6 +1,9 @@
 package story
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/json"
 	"github.com/stashapp/stash/pkg/models/jsonschema"
@@ -28,6 +31,28 @@ func ToBasicJSON(s *models.Story) *jsonschema.Story {
 	}
 	ret.Files = filePaths(s)
 	return ret
+}
+
+// TextGetter gets the text stored with a story.
+type TextGetter interface {
+	GetText(ctx context.Context, id int) (*string, error)
+}
+
+// AddText adds the text stored with a story to its JSON. A story with a text file
+// shows the file's text, so its stored text, if any, isn't exported. Its files must be
+// loaded.
+func AddText(ctx context.Context, r TextGetter, s *models.Story, j *jsonschema.Story) error {
+	if len(s.Files.List()) > 0 {
+		return nil
+	}
+	text, err := r.GetText(ctx, s.ID)
+	if err != nil {
+		return fmt.Errorf("getting text: %w", err)
+	}
+	if text != nil {
+		j.Text = *text
+	}
+	return nil
 }
 
 // filePaths lists the story's file paths with the primary file first, since an import

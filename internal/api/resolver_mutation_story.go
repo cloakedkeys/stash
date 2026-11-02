@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/pkg/file"
@@ -13,6 +14,23 @@ import (
 	"github.com/stashapp/stash/pkg/story"
 	"github.com/stashapp/stash/pkg/utils"
 )
+
+// errStoryTextWithFile refuses text for a story with a text file, which always shows
+// the file's text.
+var errStoryTextWithFile = errors.New("a story with a text file shows the file's text, so it can't be given text as well")
+
+// storyText is the text to store from an input: nil when it isn't given, and empty
+// when it's blank, which removes it.
+func storyText(text *string) *string {
+	if text == nil {
+		return nil
+	}
+	if strings.TrimSpace(*text) == "" {
+		empty := ""
+		return &empty
+	}
+	return text
+}
 
 func (r *mutationResolver) getStory(ctx context.Context, id int) (ret *models.Story, err error) {
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
@@ -99,6 +117,11 @@ func (r *mutationResolver) StoryCreate(ctx context.Context, input StoryCreateInp
 		return nil, errors.New("title must be set if story has no files")
 	}
 
+	text := storyText(input.Text)
+	if text != nil && *text != "" && len(fileIDs) > 0 {
+		return nil, errStoryTextWithFile
+	}
+
 	var id int
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		seen := make(map[models.FileID]bool)
@@ -117,6 +140,10 @@ func (r *mutationResolver) StoryCreate(ctx context.Context, input StoryCreateInp
 			return err
 		}
 		id = newStory.ID
+
+		if text != nil && *text != "" {
+			return r.repository.Story.UpdateText(ctx, id, *text)
+		}
 		return nil
 	}); err != nil {
 		return nil, err
@@ -183,7 +210,8 @@ func (r *mutationResolver) StoryUpdate(ctx context.Context, input StoryUpdateInp
 			return fmt.Errorf("story with id %d not found", id)
 		}
 
-		needFiles := updated.PrimaryFileID != nil || (updated.Title.Set && updated.Title.Value == "")
+		text := storyText(input.Text)
+		needFiles := updated.PrimaryFileID != nil || (updated.Title.Set && updated.Title.Value == "") || text != nil
 		if needFiles {
 			if err := original.LoadFiles(ctx, qb); err != nil {
 				return err
@@ -203,6 +231,15 @@ func (r *mutationResolver) StoryUpdate(ctx context.Context, input StoryUpdateInp
 			}
 			if !found {
 				return fmt.Errorf("file with id %d not associated with story", *updated.PrimaryFileID)
+			}
+		}
+
+		if text != nil {
+			if *text != "" && len(original.Files.List()) > 0 {
+				return errStoryTextWithFile
+			}
+			if err := qb.UpdateText(ctx, id, *text); err != nil {
+				return err
 			}
 		}
 

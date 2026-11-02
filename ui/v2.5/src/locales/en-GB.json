@@ -1771,6 +1771,12 @@
   "status": "Status: {statusText}",
   "stories": "Stories",
   "story": "Story",
+  "story_text": {
+    "length": "{words, plural, one {# word} other {# words}}, {characters, plural, one {# character} other {# characters}}",
+    "none": "No text",
+    "stored": "Has text",
+    "title": "Text"
+  },
   "studio": "Studio",
   "studio_and_parent": "Studio & Parent",
   "studio_count": "Studio Count",
@@ -1886,6 +1892,7 @@
   "time_end": "End Time",
   "title": "Title",
   "toast": {
+    "story_not_found": "No story details found at that URL",
     "added_entity": "Added {count, plural, one {{singularEntity}} other {{pluralEntity}}}",
     "added_generation_job_to_queue": "Added generation job to queue",
     "clipboard_access_denied": "Clipboard access denied. Check your browser permissions",

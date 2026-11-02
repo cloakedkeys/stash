@@ -58,6 +58,9 @@ type Definition struct {
 	// Configuration for querying a group by a URL
 	GroupByURL []*ByURLDefinition `yaml:"groupByURL"`
 
+	// Configuration for querying a story by a URL
+	StoryByURL []*ByURLDefinition `yaml:"storyByURL"`
+
 	// Scraper debugging options
 	DebugOptions *scraperDebugOptions `yaml:"debug"`
 
@@ -343,6 +346,14 @@ func (c Definition) spec() Scraper {
 		ret.Group = &group
 	}
 
+	if len(c.StoryByURL) > 0 {
+		story := ScraperSpec{SupportedScrapes: []ScrapeType{ScrapeTypeURL}}
+		for _, v := range c.StoryByURL {
+			story.Urls = append(story.Urls, v.URL...)
+		}
+		ret.Story = &story
+	}
+
 	return ret
 }
 
@@ -358,6 +369,8 @@ func (c Definition) supports(ty ScrapeContentType) bool {
 		return c.ImageByFragment != nil || len(c.ImageByURL) > 0
 	case ScrapeContentTypeMovie, ScrapeContentTypeGroup:
 		return len(c.MovieByURL) > 0 || len(c.GroupByURL) > 0
+	case ScrapeContentTypeStory:
+		return len(c.StoryByURL) > 0
 	}
 
 	panic("Unhandled ScrapeContentType")
@@ -396,6 +409,12 @@ func (c Definition) matchesURL(url string, ty ScrapeContentType) bool {
 			}
 		}
 		for _, scraper := range c.MovieByURL {
+			if scraper.matchesURL(url) {
+				return true
+			}
+		}
+	case ScrapeContentTypeStory:
+		for _, scraper := range c.StoryByURL {
 			if scraper.matchesURL(url) {
 				return true
 			}

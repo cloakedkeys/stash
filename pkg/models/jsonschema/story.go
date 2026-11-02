@@ -22,8 +22,10 @@ type Story struct {
 	Rating int      `json:"rating,omitempty"`
 	URLs   []string `json:"urls,omitempty"`
 	// paths of the story's files, the primary file first
-	Files     []string      `json:"files,omitempty"`
-	Tags      []string      `json:"tags,omitempty"`
+	Files []string `json:"files,omitempty"`
+	Tags  []string `json:"tags,omitempty"`
+	// the text stored with a story that has no text file
+	Text      string        `json:"text,omitempty"`
 	CreatedAt json.JSONTime `json:"created_at,omitempty"`
 	UpdatedAt json.JSONTime `json:"updated_at,omitempty"`
 }
