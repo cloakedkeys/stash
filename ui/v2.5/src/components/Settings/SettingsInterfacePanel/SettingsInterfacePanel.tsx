@@ -55,6 +55,7 @@ const allMenuItems = [
   { id: "groups", headingID: "groups" },
   { id: "markers", headingID: "markers" },
   { id: "galleries", headingID: "galleries" },
+  { id: "stories", headingID: "stories" },
   { id: "folders", headingID: "folders" },
   { id: "performers", headingID: "performers" },
   { id: "voice-actors", headingID: "voice_actors" },
