@@ -48,8 +48,9 @@ func (t *GenerateClipPreviewTask) Start(ctx context.Context) {
 }
 
 func (t *GenerateClipPreviewTask) required() bool {
-	_, ok := t.Image.Files.Primary().(*models.VideoFile)
-	if !ok {
+	f, ok := t.Image.Files.Primary().(*models.VideoFile)
+	// ffprobe and ffmpeg require a real path, not a ZIP entry path.
+	if !ok || f.Base().ZipFileID != nil {
 		return false
 	}
 
