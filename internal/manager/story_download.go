@@ -141,9 +141,9 @@ func nameHeld(names []string, path string) bool {
 
 // folderTree finds folders in the library.
 type folderTree interface {
-	// TopFolders returns the folders without a parent, which include each library's.
+	// TopFolders returns the folders without a parent, which include each library's
+	// that isn't inside another.
 	TopFolders(ctx context.Context) ([]*models.Folder, error)
-	FindByPath(ctx context.Context, path string, caseSensitive bool) (*models.Folder, error)
 	FindByParentFolderID(ctx context.Context, parentFolderID models.FolderID) ([]*models.Folder, error)
 }
 
@@ -166,47 +166,60 @@ func (r repositoryFolders) TopFolders(ctx context.Context) ([]*models.Folder, er
 	return result.Resolve(ctx)
 }
 
-// foldersAt finds the folders in the library at root joined with rel, ignoring case in
-// every alphabet, as some filesystems do and the database doesn't. On a filesystem
-// that minds case, folders whose names differ only in case are all returned, so that
-// a name used in any of them is avoided.
-func foldersAt(ctx context.Context, tree folderTree, root, rel string) ([]*models.Folder, error) {
-	root = filepath.Clean(root)
+// pathParts splits a path into its folder names, the first being the volume or empty.
+func pathParts(path string) []string {
+	parts := strings.Split(filepath.Clean(path), string(filepath.Separator))
+	if len(parts) > 1 && parts[len(parts)-1] == "" {
+		// a volume's root, such as C:\ or /
+		parts = parts[:len(parts)-1]
+	}
+	return parts
+}
+
+// foldersAt finds the folders in the library at dir, ignoring case in every alphabet,
+// as some filesystems do and the database doesn't. It starts from the top folders that
+// hold dir and walks down to it, comparing each folder's name. On a filesystem that
+// minds case, folders whose names differ only in case are all returned, so that a name
+// used in any of them is avoided.
+func foldersAt(ctx context.Context, tree folderTree, dir string) ([]*models.Folder, error) {
+	want := pathParts(dir)
 	tops, err := tree.TopFolders(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var found []*models.Folder
+
+	// the folders found so far, with how many of dir's names they cover
+	type step struct {
+		folder *models.Folder
+		depth  int
+	}
+	var steps []step
 	for _, f := range tops {
-		if strings.EqualFold(filepath.Clean(f.Path), root) {
-			found = append(found, f)
+		have := pathParts(f.Path)
+		if len(have) <= len(want) && slices.EqualFunc(have, want[:len(have)], strings.EqualFold) {
+			steps = append(steps, step{f, len(have)})
 		}
 	}
-	if len(found) == 0 {
-		// a library inside another one has a parent
-		top, err := tree.FindByPath(ctx, root, false)
-		if err != nil || top == nil {
-			return nil, err
-		}
-		found = append(found, top)
-	}
-	if rel == "." {
-		return found, nil
-	}
-	for _, name := range strings.Split(rel, string(filepath.Separator)) {
-		var next []*models.Folder
-		for _, f := range found {
-			children, err := tree.FindByParentFolderID(ctx, f.ID)
+
+	var found []*models.Folder
+	for len(steps) > 0 {
+		var next []step
+		for _, s := range steps {
+			if s.depth == len(want) {
+				found = append(found, s.folder)
+				continue
+			}
+			children, err := tree.FindByParentFolderID(ctx, s.folder.ID)
 			if err != nil {
 				return nil, err
 			}
 			for _, c := range children {
-				if strings.EqualFold(filepath.Base(c.Path), name) {
-					next = append(next, c)
+				if strings.EqualFold(filepath.Base(c.Path), want[s.depth]) {
+					next = append(next, step{c, s.depth + 1})
 				}
 			}
 		}
-		found = next
+		steps = next
 	}
 	return found, nil
 }
@@ -214,16 +227,8 @@ func foldersAt(ctx context.Context, tree folderTree, root, rel string) ([]*model
 // storyFolderFileNames lists the names of the files in the library that are in dir,
 // including ones that have gone missing.
 func (s *Manager) storyFolderFileNames(ctx context.Context, dir string) (names []string, err error) {
-	stash := s.Config.GetStashPaths().GetStashFromDirPath(dir)
-	if stash == nil {
-		return nil, nil
-	}
-	rel, err := filepath.Rel(filepath.Clean(stash.Path), filepath.Clean(dir))
-	if err != nil {
-		return nil, fmt.Errorf("finding %s in its library: %w", dir, err)
-	}
 	err = s.Repository.WithReadTxn(ctx, func(ctx context.Context) error {
-		folders, err := foldersAt(ctx, repositoryFolders{s.Repository.Folder}, stash.Path, rel)
+		folders, err := foldersAt(ctx, repositoryFolders{s.Repository.Folder}, dir)
 		if err != nil {
 			return err
 		}
