@@ -172,6 +172,7 @@ func (t *stashBoxBatchPerformerTagTask) processMatchedPerformer(ctx context.Cont
 			logger.Errorf("Error processing scraped performer image for %s: %v", *p.Name, err)
 			return
 		}
+		otherImages := performer.ScrapedOtherImages(ctx, p, excluded)
 
 		r := instance.Repository
 		err = r.WithTxn(ctx, func(ctx context.Context) error {
@@ -209,6 +210,10 @@ func (t *stashBoxBatchPerformerTagTask) processMatchedPerformer(ctx context.Cont
 				if err := qb.UpdateImage(ctx, t.performer.ID, image); err != nil {
 					return err
 				}
+
+				if err := performer.AddAlternateImages(ctx, qb, t.performer.ID, otherImages); err != nil {
+					return err
+				}
 			}
 
 			return nil
@@ -226,6 +231,7 @@ func (t *stashBoxBatchPerformerTagTask) processMatchedPerformer(ctx context.Cont
 			logger.Errorf("Error processing scraped performer image for %s: %v", *p.Name, err)
 			return
 		}
+		otherImages := performer.ScrapedOtherImages(ctx, p, excluded)
 
 		r := instance.Repository
 		err = r.WithTxn(ctx, func(ctx context.Context) error {
@@ -241,6 +247,10 @@ func (t *stashBoxBatchPerformerTagTask) processMatchedPerformer(ctx context.Cont
 
 			if len(image) > 0 {
 				if err := qb.UpdateImage(ctx, newPerformer.ID, image); err != nil {
+					return err
+				}
+
+				if err := performer.AddAlternateImages(ctx, qb, newPerformer.ID, otherImages); err != nil {
 					return err
 				}
 			}
