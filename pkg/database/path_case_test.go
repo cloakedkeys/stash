@@ -421,3 +421,27 @@ func TestScannerCaseRenameParentOfNumberFolder(t *testing.T) {
 	require.NotNil(t, after.file)
 	assert.Equal(t, before.file.Base().ID, after.file.Base().ID)
 }
+
+// Two links, É and é, to the same folder are still two entries in the library.
+func TestScannerCaseDistinctLinks(t *testing.T) {
+	ctx := models.WithUserID(context.Background(), testUserID)
+	root := t.TempDir()
+	target := filepath.Join(t.TempDir(), "target")
+	require.NoError(t, os.MkdirAll(target, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(target, "clip.txt"), []byte("Clip."), 0600))
+	upper := filepath.Join(root, "É")
+	lower := filepath.Join(root, "é")
+	if err := os.Symlink(target, upper); err != nil {
+		t.Skipf("can't make links here: %v", err)
+	}
+	if err := os.Symlink(target, lower); err != nil {
+		t.Skipf("requires a case-sensitive filesystem: %v", err)
+	}
+	scanPathCaseLibrary(t, ctx, root)
+	t.Cleanup(func() { cleanUpPathCaseLibrary(t, ctx, root, 0) })
+	first := readPathCase(t, upper, filepath.Join(upper, "clip.txt"))
+	second := readPathCase(t, lower, filepath.Join(lower, "clip.txt"))
+	require.NotNil(t, first.folder, "É keeps its row")
+	require.NotNil(t, second.folder, "é gets its own row")
+	assert.NotEqual(t, first.folder.ID, second.folder.ID)
+}

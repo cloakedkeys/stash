@@ -969,12 +969,14 @@ func (s *Scanner) onUnchangedFile(ctx context.Context, f ScannedFile, existing m
 // still leads to the same file or folder as path. That is how a filesystem that
 // ignores case shows a case-only rename. Where case matters, the two can be
 // separate files that both exist, even when the case check above can't tell.
+// Links are compared themselves, not what they point to: two links to one
+// folder are still two entries.
 func sameOnDisk(fsys models.FS, storedPath, path string) bool {
-	stored, err := fsys.Stat(storedPath)
+	stored, err := fsys.Lstat(storedPath)
 	if err != nil {
 		return false
 	}
-	current, err := fsys.Stat(path)
+	current, err := fsys.Lstat(path)
 	if err != nil {
 		return false
 	}

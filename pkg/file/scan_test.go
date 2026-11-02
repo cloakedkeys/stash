@@ -32,6 +32,9 @@ func (f scanTestFS) Stat(name string) (fs.FileInfo, error) {
 }
 
 func (f scanTestFS) Lstat(name string) (fs.FileInfo, error) {
+	if f.onePath != "" {
+		return os.Lstat(f.onePath)
+	}
 	return nil, fs.ErrNotExist
 }
 
