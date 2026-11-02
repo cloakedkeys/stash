@@ -21,6 +21,7 @@ import {
   useListStoryScrapers,
 } from "src/core/StashService";
 import { StoryScrapeDialog } from "./StoryScrapeDialog";
+import { scrapedStoryTextFields } from "./storyScrape";
 
 interface IProps {
   story: GQL.StoryDataFragment;
@@ -120,18 +121,8 @@ export const StoryEditPanel: React.FC<IProps> = ({
   function onScrapeDialogClosed(data?: GQL.ScrapedStoryDataFragment) {
     setScrapedStory(undefined);
     if (!data) return;
-    const fields = [
-      "title",
-      "author",
-      "source_website",
-      "date",
-      "language",
-      "tagline",
-      "details",
-    ] as const;
-    for (const field of fields) {
-      const value = data[field];
-      if (value) formik.setFieldValue(field, value);
+    for (const [field, value] of scrapedStoryTextFields(data)) {
+      formik.setFieldValue(field, value);
     }
     if (data.urls) formik.setFieldValue("urls", data.urls);
     updateTagsStateFromScraper(data.tags ?? undefined);

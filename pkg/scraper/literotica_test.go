@@ -60,6 +60,30 @@ func TestLiteroticaStoryURL(t *testing.T) {
 	}
 
 	assert.False(t, byURL.matchesURL("https://www.literotica.com/stories/memberpage.php?uid=1"))
+
+	// other addresses that contain Literotica's don't turn the scraper on
+	for _, u := range []string{
+		"http://127.0.0.1:19960/?x=literotica.com/s/test",
+		"http://192.168.1.1/literotica.com/s/test",
+		"https://notliterotica.com/s/test",
+		// the API address doesn't cover language subdomains
+		"https://german.literotica.com/s/test",
+	} {
+		assert.False(t, byURL.matchesURL(u), u)
+	}
+
+	// whatever the link, the request only ever goes to Literotica's API
+	apiPrefix := "https://literotica.com/api/3/stories/"
+	for _, u := range []string{
+		"https://evil.example/?u=https://www.literotica.com/s/test",
+		"http://127.0.0.1:19960/?x=literotica.com/s/test",
+		"https://www.literotica.com/s/../../../admin?x=1",
+		"https://www.literotica.com/s/a%2F..%2Fb",
+	} {
+		got := replaceURL(u, byURL)
+		require.True(t, strings.HasPrefix(got, apiPrefix), "%s -> %s", u, got)
+		assert.Regexp(t, `^[A-Za-z0-9_-]*$`, strings.TrimPrefix(got, apiPrefix), u)
+	}
 }
 
 func TestLiteroticaStoryFields(t *testing.T) {
@@ -89,7 +113,7 @@ func TestLiteroticaSpec(t *testing.T) {
 	spec := c.spec()
 	require.NotNil(t, spec.Story)
 	assert.Equal(t, []ScrapeType{ScrapeTypeURL}, spec.Story.SupportedScrapes)
-	assert.Equal(t, []string{"literotica.com/s/"}, spec.Story.Urls)
+	assert.Equal(t, []string{"://literotica.com/s/", "://www.literotica.com/s/"}, spec.Story.Urls)
 	assert.True(t, c.supports(ScrapeContentTypeStory))
 	assert.True(t, c.matchesURL("https://www.literotica.com/s/parallel-tracks", ScrapeContentTypeStory))
 	assert.False(t, c.matchesURL("https://www.literotica.com/s/parallel-tracks", ScrapeContentTypeScene))
@@ -165,7 +189,8 @@ func TestStoryScrapeByURL(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	yml := strings.Replace(literoticaScraperConfig, "https://literotica.com/api/3/stories/$1", ts.URL+"/api/3/stories/$1", 1)
+	yml := strings.Replace(literoticaScraperConfig, "https://literotica.com/api/3/stories/{url}", ts.URL+"/api/3/stories/{url}", 1)
+	require.NotEqual(t, literoticaScraperConfig, yml)
 	c, err := loadConfigFromYAML("test", strings.NewReader(yml))
 	require.NoError(t, err)
 
