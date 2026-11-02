@@ -1074,7 +1074,7 @@
     "studios": "{count, plural, one {Studio} other {Studios}}",
     "tags": "{count, plural, one {Tag} other {Tags}}"
   },
-  "country": "Country",
+  "country": "Country/Region",
   "cover_image": "Cover Image",
   "created_at": "Created At",
   "criterion": {
@@ -1868,7 +1868,7 @@
     },
     "performers": {
       "birthdate": "Matched performer has a different birthdate.",
-      "country": "Matched performer is from a different country.",
+      "country": "Matched performer is from a different country or region.",
       "ethnicity": "Matched performer has a different ethnicity.",
       "gender": "Matched performer has a different gender.",
       "stash_mismatch": "Matched performer already has a different stash-id."

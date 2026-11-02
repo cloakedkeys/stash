@@ -43,6 +43,10 @@ func (jp *jsonUtils) saveGallery(fn string, gallery *jsonschema.Gallery) error {
 	return jsonschema.SaveGalleryFile(filepath.Join(jp.json.Galleries, fn), gallery)
 }
 
+func (jp *jsonUtils) saveStory(fn string, story *jsonschema.Story) error {
+	return jsonschema.SaveStoryFile(filepath.Join(jp.json.Stories, fn), story)
+}
+
 func (jp *jsonUtils) saveFile(fn string, file jsonschema.DirEntry) error {
 	return jsonschema.SaveFileFile(filepath.Join(jp.json.Files, fn), file)
 }

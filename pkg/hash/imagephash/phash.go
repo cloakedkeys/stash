@@ -15,7 +15,7 @@ import (
 )
 
 // Generate computes a perceptual hash for an image file.
-func Generate(encoder *ffmpeg.FFMpeg, imageFile *models.ImageFile) (*uint64, error) {
+func Generate(encoder *ffmpeg.FFMpeg, imageFile models.File) (*uint64, error) {
 	img, err := loadImage(encoder, imageFile)
 	if err != nil {
 		return nil, fmt.Errorf("loading image: %w", err)
@@ -32,7 +32,7 @@ func Generate(encoder *ffmpeg.FFMpeg, imageFile *models.ImageFile) (*uint64, err
 
 // loadImage loads an image from disk and decodes it.
 // Where Go has no built-in decoder for a specific format, ffmpeg is used to convert to BMP first.
-func loadImage(encoder *ffmpeg.FFMpeg, imageFile *models.ImageFile) (image.Image, error) {
+func loadImage(encoder *ffmpeg.FFMpeg, imageFile models.File) (image.Image, error) {
 	// try to load with Go's built-in decoders first for better performance
 	reader, err := imageFile.Open(&file.OsFS{})
 	if err != nil {
@@ -47,7 +47,7 @@ func loadImage(encoder *ffmpeg.FFMpeg, imageFile *models.ImageFile) (image.Image
 		if imageFile.Base().ZipFileID != nil {
 			return nil, fmt.Errorf("ffmpeg fallback unsupported for images in zip files")
 		}
-		return loadImageFFmpeg(encoder, imageFile.Path)
+		return loadImageFFmpeg(encoder, imageFile.Base().Path)
 	}
 
 	if err != nil {

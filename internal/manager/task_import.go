@@ -24,6 +24,7 @@ import (
 	"github.com/stashapp/stash/pkg/performer"
 	"github.com/stashapp/stash/pkg/savedfilter"
 	"github.com/stashapp/stash/pkg/scene"
+	"github.com/stashapp/stash/pkg/story"
 	"github.com/stashapp/stash/pkg/studio"
 	"github.com/stashapp/stash/pkg/tag"
 )
@@ -135,6 +136,7 @@ func (t *ImportTask) Start(ctx context.Context) {
 	t.ImportGroups(ctx)
 	t.ImportFiles(ctx)
 	t.ImportGalleries(ctx)
+	t.ImportStories(ctx)
 
 	t.ImportScenes(ctx)
 	t.ImportAudios(ctx)
@@ -585,6 +587,47 @@ func (t *ImportTask) ImportGalleries(ctx context.Context) {
 	}
 
 	logger.Info("[galleries] import complete")
+}
+
+func (t *ImportTask) ImportStories(ctx context.Context) {
+	logger.Info("[stories] importing")
+
+	path := t.json.json.Stories
+	files, err := os.ReadDir(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			logger.Errorf("[stories] failed to read stories directory: %v", err)
+		}
+		return
+	}
+
+	r := t.repository
+	claimed := make(map[int]bool)
+	for i, fi := range files {
+		storyJSON, err := jsonschema.LoadStoryFile(filepath.Join(path, fi.Name()))
+		if err != nil {
+			logger.Errorf("[stories] failed to read json: %v", err)
+			continue
+		}
+
+		logger.Progressf("[stories] %d of %d", i+1, len(files))
+
+		if err := r.WithTxn(ctx, func(ctx context.Context) error {
+			return performImport(ctx, &story.Importer{
+				ReaderWriter:        r.Story,
+				TagWriter:           r.Tag,
+				FileFinder:          r.File,
+				Input:               *storyJSON,
+				MissingRefBehaviour: t.MissingRefBehaviour,
+				Claimed:             claimed,
+			}, t.DuplicateBehaviour)
+		}); err != nil {
+			logger.Errorf("[stories] <%s> import failed to commit: %v", fi.Name(), err)
+			continue
+		}
+	}
+
+	logger.Info("[stories] import complete")
 }
 
 func (t *ImportTask) ImportTags(ctx context.Context) {
