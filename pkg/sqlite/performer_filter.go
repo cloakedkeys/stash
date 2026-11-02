@@ -576,22 +576,24 @@ var selectPerformerOCountSQL = utils.StrFormat(
 	"SELECT SUM(o_counter) "+
 		"FROM ("+
 		"SELECT SUM({images_user_data}.o_counter) as o_counter from {performers_images} s "+
+		"LEFT JOIN {images} ON {images}.id = s.{images_id} "+
 		"LEFT JOIN {images_user_data} ON {images_user_data}.{images_id} = s.{images_id} AND {images_user_data}.user_id = %[1]d "+
-		"WHERE s.{performer_id} = {performers}.id "+
+		"WHERE s.{performer_id} = {performers}.id %[2]s "+
 		"UNION ALL "+
 		"SELECT SUM({galleries_user_data}.o_counter) as o_counter from {performers_galleries} s "+
+		"LEFT JOIN {galleries} ON {galleries}.id = s.{gallery_id} "+
 		"LEFT JOIN {galleries_user_data} ON {galleries_user_data}.{gallery_id} = s.{gallery_id} AND {galleries_user_data}.user_id = %[1]d "+
-		"WHERE s.{performer_id} = {performers}.id "+
+		"WHERE s.{performer_id} = {performers}.id %[3]s "+
 		"UNION ALL "+
 		"SELECT COUNT({scenes_o_dates}.{o_date}) as o_counter from {performers_scenes} s "+
 		"LEFT JOIN {scenes} ON {scenes}.id = s.{scene_id} "+
 		"LEFT JOIN {scenes_o_dates} ON {scenes_o_dates}.{scene_id} = {scenes}.id AND {scenes_o_dates}.user_id = %[1]d "+
-		"WHERE s.{performer_id} = {performers}.id "+
+		"WHERE s.{performer_id} = {performers}.id %[4]s "+
 		"UNION ALL "+
 		"SELECT COUNT({audios_o_dates}.{audio_o_date}) as o_counter from {performers_audios} a "+
 		"LEFT JOIN {audios} ON {audios}.id = a.{audio_id} "+
 		"LEFT JOIN {audios_o_dates} ON {audios_o_dates}.{audio_id} = {audios}.id AND {audios_o_dates}.user_id = %[1]d "+
-		"WHERE a.{performer_id} = {performers}.id "+
+		"WHERE a.{performer_id} = {performers}.id %[5]s "+
 		")",
 	map[string]interface{}{
 		"performers_images":    performersImagesTable,
@@ -624,7 +626,7 @@ var selectPerformerPlayCountSQL = utils.StrFormat(
 		"SELECT {view_date} FROM {performers_scenes} s "+
 		"LEFT JOIN {scenes} ON {scenes}.id = s.{scene_id} "+
 		"LEFT JOIN {scenes_view_dates} ON {scenes_view_dates}.{scene_id} = {scenes}.id AND {scenes_view_dates}.user_id = %[1]d "+
-		"WHERE s.{performer_id} = {performers}.id"+
+		"WHERE s.{performer_id} = {performers}.id %[4]s"+
 		")",
 	map[string]interface{}{
 		"performer_id":      performerIDColumn,
@@ -643,7 +645,12 @@ func (qb *performerFilterHandler) oCounterCriterionHandler(count *models.IntCrit
 			return
 		}
 
-		lhs := "(" + fmt.Sprintf(selectPerformerOCountSQL, currentUserID(ctx)) + ")"
+		lhs, err := performerStatisticSQL(ctx, selectPerformerOCountSQL, qb.performerFilter.StudioScope)
+		if err != nil {
+			f.setError(err)
+			return
+		}
+		lhs = "(" + lhs + ")"
 		clause, args := getIntCriterionWhereClause(lhs, *count)
 
 		f.addWhere(clause, args...)
@@ -656,7 +663,12 @@ func (qb *performerFilterHandler) playCounterCriterionHandler(count *models.IntC
 			return
 		}
 
-		lhs := "(" + fmt.Sprintf(selectPerformerPlayCountSQL, currentUserID(ctx)) + ")"
+		lhs, err := performerStatisticSQL(ctx, selectPerformerPlayCountSQL, qb.performerFilter.StudioScope)
+		if err != nil {
+			f.setError(err)
+			return
+		}
+		lhs = "(" + lhs + ")"
 		clause, args := getIntCriterionWhereClause(lhs, *count)
 
 		f.addWhere(clause, args...)

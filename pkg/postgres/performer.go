@@ -809,16 +809,6 @@ func (qb *PerformerStore) QueryCount(ctx context.Context, performerFilter *model
 	return query.executeCount(ctx)
 }
 
-func (qb *PerformerStore) sortByOCounter(ctx context.Context, direction string) string {
-	// need to sum the o_counter from scenes and images
-	return " ORDER BY (" + fmt.Sprintf(selectPerformerOCountSQL, currentUserID(ctx)) + ") " + direction
-}
-
-func (qb *PerformerStore) sortByPlayCount(ctx context.Context, direction string) string {
-	// need to sum the o_counter from scenes and images
-	return " ORDER BY (" + fmt.Sprintf(selectPerformerPlayCountSQL, currentUserID(ctx)) + ") " + direction
-}
-
 // used for sorting on performer last o_date.
 // Must be formatted with the current user ID.
 var selectPerformerLastOAtSQL = utils.StrFormat(
@@ -897,7 +887,7 @@ var selectPerformerScenesDurationSQL = utils.StrFormat(
 		"LEFT JOIN {scenes} ON {scenes}.id = s.{scene_id} "+
 		"LEFT JOIN {scenes_files} ON {scenes_files}.{scene_id} = {scenes}.id "+
 		"LEFT JOIN video_files ON video_files.file_id = {scenes_files}.file_id "+
-		"WHERE s.{performer_id} = {performers}.id",
+		"WHERE s.{performer_id} = {performers}.id %[4]s",
 	map[string]interface{}{
 		"performer_id":      performerIDColumn,
 		"performers":        performerTable,
@@ -908,18 +898,13 @@ var selectPerformerScenesDurationSQL = utils.StrFormat(
 	},
 )
 
-func (qb *PerformerStore) sortByScenesDuration(direction string) string {
-	// need to sum duration from all scenes for this performer
-	return " ORDER BY (" + selectPerformerScenesDurationSQL + ") " + direction
-}
-
 // used for sorting by total scene file size
 var selectPerformerScenesSizeSQL = utils.StrFormat(
 	"SELECT COALESCE(SUM({files}.size), 0) FROM {performers_scenes} s "+
 		"LEFT JOIN {scenes} ON {scenes}.id = s.{scene_id} "+
 		"LEFT JOIN {scenes_files} ON {scenes_files}.{scene_id} = {scenes}.id "+
 		"LEFT JOIN {files} ON {files}.id = {scenes_files}.file_id "+
-		"WHERE s.{performer_id} = {performers}.id",
+		"WHERE s.{performer_id} = {performers}.id %[4]s",
 	map[string]interface{}{
 		"performer_id":      performerIDColumn,
 		"performers":        performerTable,
@@ -930,10 +915,6 @@ var selectPerformerScenesSizeSQL = utils.StrFormat(
 		"files":             fileTable,
 	},
 )
-
-func (qb *PerformerStore) sortByScenesSize(direction string) string {
-	return " ORDER BY (" + selectPerformerScenesSizeSQL + ") " + direction
-}
 
 // Audio
 // used for sorting on performer latest audio
@@ -964,7 +945,7 @@ var selectPerformerAudiosDurationSQL = utils.StrFormat(
 		"LEFT JOIN {audios} ON {audios}.id = s.{audio_id} "+
 		"LEFT JOIN {audios_files} ON {audios_files}.{audio_id} = {audios}.id "+
 		"LEFT JOIN {audio_files} ON {audio_files}.file_id = {audios_files}.file_id "+
-		"WHERE s.{performer_id} = {performers}.id",
+		"WHERE s.{performer_id} = {performers}.id %[5]s",
 	map[string]interface{}{
 		"performer_id":      performerIDColumn,
 		"performers":        performerTable,
@@ -976,18 +957,13 @@ var selectPerformerAudiosDurationSQL = utils.StrFormat(
 	},
 )
 
-func (qb *PerformerStore) sortByAudiosDuration(direction string) string {
-	// need to sum duration from all audios for this performer
-	return " ORDER BY (" + selectPerformerAudiosDurationSQL + ") " + direction
-}
-
 // used for sorting by total audio file size
 var selectPerformerAudiosSizeSQL = utils.StrFormat(
 	"SELECT COALESCE(SUM({files}.size), 0) FROM {performers_audios} s "+
 		"LEFT JOIN {audios} ON {audios}.id = s.{audio_id} "+
 		"LEFT JOIN {audios_files} ON {audios_files}.{audio_id} = {audios}.id "+
 		"LEFT JOIN {files} ON {files}.id = {audios_files}.file_id "+
-		"WHERE s.{performer_id} = {performers}.id",
+		"WHERE s.{performer_id} = {performers}.id %[5]s",
 	map[string]interface{}{
 		"performer_id":      performerIDColumn,
 		"performers":        performerTable,
@@ -998,10 +974,6 @@ var selectPerformerAudiosSizeSQL = utils.StrFormat(
 		"files":             fileTable,
 	},
 )
-
-func (qb *PerformerStore) sortByAudiosSize(direction string) string {
-	return " ORDER BY (" + selectPerformerAudiosSizeSQL + ") " + direction
-}
 
 var performerSortOptions = sortOptions{
 	"birthdate",
@@ -1062,20 +1034,26 @@ func (qb *PerformerStore) getPerformerSort(ctx context.Context, findFilter *mode
 			return "", nil, err
 		}
 		sortQuery += " ORDER BY " + lhs + " " + getSortDirection(direction)
-	case "scenes_duration":
-		sortQuery += qb.sortByScenesDuration(direction)
-	case "scenes_size":
-		sortQuery += qb.sortByScenesSize(direction)
+	case "o_counter", "play_count", "scenes_duration", "scenes_size", "audios_duration", "audios_size":
+		templates := map[string]string{
+			"o_counter":       selectPerformerOCountSQL,
+			"play_count":      selectPerformerPlayCountSQL,
+			"scenes_duration": selectPerformerScenesDurationSQL,
+			"scenes_size":     selectPerformerScenesSizeSQL,
+			"audios_duration": selectPerformerAudiosDurationSQL,
+			"audios_size":     selectPerformerAudiosSizeSQL,
+		}
+		lhs, err := performerStatisticSQL(ctx, templates[sort], studioScope)
+		if err != nil {
+			return "", nil, err
+		}
+		sortQuery += " ORDER BY (" + lhs + ") " + getSortDirection(direction)
 	case "audios_count":
 		lhs, err := performerMediaCountSQL(ctx, audioTable, performersAudiosTable, audioIDColumn, studioScope)
 		if err != nil {
 			return "", nil, err
 		}
 		sortQuery += " ORDER BY " + lhs + " " + getSortDirection(direction)
-	case "audios_duration":
-		sortQuery += qb.sortByAudiosDuration(direction)
-	case "audios_size":
-		sortQuery += qb.sortByAudiosSize(direction)
 	case "images_count":
 		lhs, err := performerMediaCountSQL(ctx, imageTable, performersImagesTable, imageIDColumn, studioScope)
 		if err != nil {
@@ -1088,10 +1066,6 @@ func (qb *PerformerStore) getPerformerSort(ctx context.Context, findFilter *mode
 			return "", nil, err
 		}
 		sortQuery += " ORDER BY " + lhs + " " + getSortDirection(direction)
-	case "play_count":
-		sortQuery += qb.sortByPlayCount(ctx, direction)
-	case "o_counter":
-		sortQuery += qb.sortByOCounter(ctx, direction)
 	case "last_played_at":
 		sortQuery += qb.sortByLastPlayedAt(ctx, direction)
 	case "last_o_at":
@@ -1253,4 +1227,18 @@ ON CONFLICT DO NOTHING`,
 	}
 
 	return nil
+}
+
+// OCount sums the current user's counts from media in the requested studio.
+func (qb *PerformerStore) OCount(ctx context.Context, performerID int, scope *models.StudioScopeInput) (int, error) {
+	expression, err := performerStatisticSQL(ctx, selectPerformerOCountSQL, scope)
+	if err != nil {
+		return 0, err
+	}
+	q := dialect.From(qb.table()).Select(goqu.L("COALESCE((" + expression + "), 0)")).Where(qb.tableMgr.byID(performerID))
+	var ret int
+	if err := querySimple(ctx, q, &ret); err != nil {
+		return 0, err
+	}
+	return ret, nil
 }

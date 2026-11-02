@@ -38,6 +38,7 @@ type PerformerAutoTagQueryer interface {
 
 // PerformerCounter provides methods to count performers.
 type PerformerCounter interface {
+	OCount(ctx context.Context, performerID int, scope *StudioScopeInput) (int, error)
 	Count(ctx context.Context) (int, error)
 	CountByTagID(ctx context.Context, tagID int) (int, error)
 }
