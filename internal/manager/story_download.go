@@ -12,6 +12,7 @@ import (
 
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/fsutil"
+	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 )
 
@@ -120,8 +121,9 @@ func writeStoryText(dir, title, text string) (string, error) {
 
 // SaveStoryText saves a scraped story's text as a text file in the folder for
 // downloaded stories and adds the file to the library. It returns nil when that
-// folder isn't set, so the text is stored in the database instead. The scan makes a
-// story for the file, which the caller joins to its own story with story.AssignFile.
+// folder isn't set, or when the file turns out to be one already in the library, so
+// the text is stored in the database instead. Otherwise the file is new, and the scan
+// made a story for it, which the caller joins to its own story with story.AssignFile.
 func (s *Manager) SaveStoryText(ctx context.Context, title, text string) (models.File, error) {
 	dir := s.Config.GetStoryDownloadPath()
 	if dir == "" {
@@ -136,13 +138,20 @@ func (s *Manager) SaveStoryText(ctx context.Context, title, text string) (models
 		return nil, err
 	}
 
-	f, err := s.ScanFile(ctx, ScanFileInput{Path: path})
-	if err == nil && f == nil {
+	r, err := s.scanFile(ctx, ScanFileInput{Path: path})
+	if err == nil && (r == nil || r.File == nil) {
 		err = errors.New("the scan skipped it")
 	}
 	if err != nil {
 		// so a failed save leaves nothing behind
 		return nil, errors.Join(fmt.Errorf("adding %s to the library: %w", path, err), os.Remove(path))
 	}
-	return f, nil
+	if !r.New {
+		// The scan took the file for one already in the library that had gone missing,
+		// as its text is the same. It stays with whatever has that file, which keeps
+		// its details, and nil has the text stored instead.
+		logger.Infof("%s matched a missing file already in the library, so it was kept as that file and the story's text was stored", path)
+		return nil, nil
+	}
+	return r.File, nil
 }

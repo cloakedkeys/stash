@@ -74,6 +74,9 @@ func (r *mutationResolver) undoSavedStoryText(ctx context.Context, saved models.
 		return err
 	}
 
+	// still done when the request was cancelled, which may be why saving the story failed
+	ctx = context.WithoutCancel(ctx)
+
 	id, path := saved.Base().ID, saved.Base().Path
 	undoErr := r.withTxn(ctx, func(ctx context.Context) error {
 		made, err := r.repository.Story.FindByFileID(ctx, id)

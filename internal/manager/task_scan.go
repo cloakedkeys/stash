@@ -177,7 +177,7 @@ func makeScannedFile(f models.FS, path string, info fs.FileInfo, zipFile *file.S
 }
 
 // used for individual scanning only
-func (j *ScanJob) scanFile(ctx context.Context, path string) (models.File, error) {
+func (j *ScanJob) scanFile(ctx context.Context, path string) (*file.ScanFileResult, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("error reading file info for %q: %w", path, err)
@@ -202,12 +202,7 @@ func (j *ScanJob) scanFile(ctx context.Context, path string) (models.File, error
 		return nil, err
 	}
 
-	r, err := j.scanner.ScanFile(ctx, *ff)
-	if err != nil {
-		return nil, err
-	}
-
-	return r.File, nil
+	return j.scanner.ScanFile(ctx, *ff)
 }
 
 func (j *ScanJob) queueFileFunc(ctx context.Context, f models.FS, zipFile *file.ScannedFile, progress *job.Progress) fs.WalkDirFunc {

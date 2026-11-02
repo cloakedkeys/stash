@@ -296,6 +296,15 @@ type ScanFileInput struct {
 }
 
 func (s *Manager) ScanFile(ctx context.Context, input ScanFileInput) (models.File, error) {
+	r, err := s.scanFile(ctx, input)
+	if err != nil || r == nil {
+		return nil, err
+	}
+	return r.File, nil
+}
+
+// scanFile scans one file, and says too whether its record is new.
+func (s *Manager) scanFile(ctx context.Context, input ScanFileInput) (*file.ScanFileResult, error) {
 	if err := s.validateFFmpeg(); err != nil {
 		return nil, err
 	}
@@ -323,12 +332,12 @@ func (s *Manager) ScanFile(ctx context.Context, input ScanFileInput) (models.Fil
 		generateOptions: input.ScanGenerateOptions,
 	}
 
-	f, err := scanJob.scanFile(ctx, input.Path)
+	r, err := scanJob.scanFile(ctx, input.Path)
 	taskQueue.Close()
 
 	s.scanSubs.notify()
 
-	return f, err
+	return r, err
 }
 
 func (s *Manager) Import(ctx context.Context) (int, error) {
