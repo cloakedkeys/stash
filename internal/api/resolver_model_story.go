@@ -51,6 +51,21 @@ func (r *storyResolver) Files(ctx context.Context, obj *models.Story) ([]*BasicF
 }
 
 func (r *storyResolver) Paths(ctx context.Context, obj *models.Story) (*StoryPathsType, error) {
+	// there's text to read if the story has a text file, or else text stored with it
+	hasText := obj.PrimaryFileID != nil
+	if !hasText {
+		if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+			var err error
+			hasText, err = r.repository.Story.HasText(ctx, obj.ID)
+			return err
+		}); err != nil {
+			return nil, err
+		}
+	}
+	if !hasText {
+		return &StoryPathsType{}, nil
+	}
+
 	baseURL, _ := ctx.Value(BaseURLCtxKey).(string)
 	text := urlbuilders.NewStoryURLBuilder(baseURL, obj).GetTextURL()
 

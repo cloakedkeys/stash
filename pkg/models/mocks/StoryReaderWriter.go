@@ -422,3 +422,61 @@ func (_m *StoryReaderWriter) UpdatePartial(ctx context.Context, id int, partial 
 
 	return r0, r1
 }
+
+// GetText provides a mock function with given fields: ctx, id
+func (_m *StoryReaderWriter) GetText(ctx context.Context, id int) (*string, error) {
+	ret := _m.Called(ctx, id)
+
+	var r0 *string
+	if rf, ok := ret.Get(0).(func(context.Context, int) *string); ok {
+		r0 = rf(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*string)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// HasText provides a mock function with given fields: ctx, id
+func (_m *StoryReaderWriter) HasText(ctx context.Context, id int) (bool, error) {
+	ret := _m.Called(ctx, id)
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(context.Context, int) bool); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// UpdateText provides a mock function with given fields: ctx, id, text
+func (_m *StoryReaderWriter) UpdateText(ctx context.Context, id int, text string) error {
+	ret := _m.Called(ctx, id, text)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, int, string) error); ok {
+		r0 = rf(ctx, id, text)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}

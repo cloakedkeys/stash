@@ -32,8 +32,8 @@ func (*Database) Begin(ctx context.Context, exclusive bool) (context.Context, er
 	return ctx, nil
 }
 
-func (*Database) WithDatabase(ctx context.Context) (context.Context, error) {
-	return ctx, nil
+func (*Database) WithDatabase(ctx context.Context) (context.Context, func(), error) {
+	return ctx, func() {}, nil
 }
 
 func (*Database) Commit(ctx context.Context) error {

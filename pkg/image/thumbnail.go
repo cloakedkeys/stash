@@ -129,10 +129,7 @@ func (e *ThumbnailEncoder) GetThumbnail(f models.File, maxSize int) ([]byte, err
 	}
 
 	if format == "avif" {
-		if e.vips != nil {
-			return e.vips.ImageThumbnailPath(f.Base().Path, maxSize)
-		}
-		return e.ffmpegImageThumbnailPath(f.Base().Path, maxSize)
+		return e.avifThumbnailPath(f.Base().Path, maxSize)
 	}
 
 	// Inspect actual alpha values, so an opaque image with an alpha channel

@@ -28,12 +28,16 @@ func (e *vipsEncoder) ImageThumbnail(image *bytes.Buffer, maxSize int) ([]byte, 
 // This is required for formats like AVIF that need random file access (seeking)
 // which stdin cannot provide.
 func (e *vipsEncoder) ImageThumbnailPath(path string, maxSize int) ([]byte, error) {
+	return e.imageThumbnailPath(path, ".jpg[Q=70,strip]", maxSize)
+}
+
+func (e *vipsEncoder) imageThumbnailPath(path, output string, maxSize int) ([]byte, error) {
 	// vips thumbnail syntax: thumbnail input output width [options]
-	// Using .jpg[Q=70,strip] as output writes to stdout
+	// Using a suffix as output writes to stdout
 	args := []string{
 		"thumbnail",
 		path,
-		".jpg[Q=70,strip]",
+		output,
 		fmt.Sprint(maxSize),
 		"--size", "down",
 	}

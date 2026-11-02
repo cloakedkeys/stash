@@ -264,4 +264,78 @@ func TestImporterUpdate(t *testing.T) {
 	db.Story.AssertExpectations(t)
 }
 
+// Text stored with a story is exported, unless the story has a text file, whose text
+// it shows instead.
+func TestAddText(t *testing.T) {
+	ctx := context.Background()
+	db := mocks.NewDatabase()
+	text := "Once upon a time."
+	db.Story.On("GetText", ctx, 1).Return(&text, nil)
+	db.Story.On("GetText", ctx, 2).Return(nil, nil)
+
+	noFile := func(id int) *models.Story {
+		return &models.Story{ID: id, Files: models.NewRelatedFiles([]models.File{})}
+	}
+	j := &jsonschema.Story{}
+	require.NoError(t, AddText(ctx, db.Story, noFile(1), j))
+	assert.Equal(t, text, j.Text)
+
+	j = &jsonschema.Story{}
+	require.NoError(t, AddText(ctx, db.Story, noFile(2), j))
+	assert.Empty(t, j.Text)
+
+	withFile := &models.Story{ID: 3, Files: models.NewRelatedFiles([]models.File{&models.BaseFile{ID: 1, Path: "/stories/a.txt"}})}
+	j = &jsonschema.Story{}
+	require.NoError(t, AddText(ctx, db.Story, withFile, j))
+	assert.Empty(t, j.Text)
+	db.Story.AssertNotCalled(t, "GetText", ctx, 3)
+}
+
+// An imported story without a file gets the import's text, replacing what it had. One
+// with a file, or an import with no text, leaves stored text alone.
+func TestImporterPostImportText(t *testing.T) {
+	ctx := context.Background()
+
+	// creating a story replaces it with what was saved, without its files loaded, as the
+	// store does
+	saved := func(args mock.Arguments) {
+		s := args.Get(1).(*models.Story)
+		*s = models.Story{ID: 5, Title: s.Title}
+	}
+
+	db := mocks.NewDatabase()
+	db.Story.On("Create", ctx, mock.Anything, []models.FileID(nil)).Run(saved).Return(nil)
+	db.Story.On("UpdateText", ctx, 5, "Once upon a time.").Return(nil).Once()
+	i := newImporter(db, jsonschema.Story{Title: "t", Text: "Once upon a time."}, models.ImportMissingRefEnumFail)
+	require.NoError(t, i.PreImport(ctx))
+	id, err := i.Create(ctx)
+	require.NoError(t, err)
+	require.NoError(t, i.PostImport(ctx, *id))
+
+	db.Story.AssertExpectations(t)
+
+	// no text in the import, as in an older export, leaves stored text alone
+	i = newImporter(db, jsonschema.Story{Title: "t"}, models.ImportMissingRefEnumFail)
+	require.NoError(t, i.PreImport(ctx))
+	require.NoError(t, i.PostImport(ctx, 6))
+	db.Story.AssertNotCalled(t, "UpdateText", ctx, 6, mock.Anything)
+
+	file := &models.BaseFile{ID: 2, Path: "/stories/a.txt"}
+	db = mocks.NewDatabase()
+	db.File.On("FindByPath", ctx, file.Path, true).Return(file, nil)
+	db.Story.On("Create", ctx, mock.Anything, []models.FileID{file.ID}).Run(saved).Return(nil)
+	i = newImporter(db, jsonschema.Story{Files: []string{file.Path}, Text: "Ignored."}, models.ImportMissingRefEnumFail)
+	require.NoError(t, i.PreImport(ctx))
+	id, err = i.Create(ctx)
+	require.NoError(t, err)
+	require.NoError(t, i.PostImport(ctx, *id))
+	db.Story.AssertNotCalled(t, "UpdateText", mock.Anything, mock.Anything, mock.Anything)
+
+	db = mocks.NewDatabase()
+	db.Story.On("UpdateText", ctx, 8, "x").Return(errors.New("no"))
+	i = newImporter(db, jsonschema.Story{Title: "t", Text: "x"}, models.ImportMissingRefEnumFail)
+	require.NoError(t, i.PreImport(ctx))
+	assert.ErrorContains(t, i.PostImport(ctx, 8), "setting the story's text")
+}
+
 func intPtr(v int) *int { return &v }

@@ -7,7 +7,6 @@ import { ExternalLink } from "src/components/Shared/ExternalLink";
 import * as GQL from "src/core/generated-graphql";
 import {
   useFindStory,
-  useStoriesDestroy,
   useStoryUpdate,
   useStoryUserDataUpdate,
 } from "src/core/StashService";
@@ -15,7 +14,7 @@ import { objectTitle } from "src/core/files";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { ErrorMessage } from "src/components/Shared/ErrorMessage";
 import { RatingSystem } from "src/components/Shared/Rating/RatingSystem";
-import { DeleteEntityDialog } from "src/components/Shared/DeleteEntityDialog";
+import { DeleteStoriesDialog } from "../DeleteStoriesDialog";
 import { FileSize } from "src/components/Shared/FileSize";
 import { useCanModify } from "src/hooks/CurrentUser";
 import { useToast } from "src/hooks/Toast";
@@ -119,7 +118,8 @@ const StoryPage: React.FC<{ story: GQL.StoryDataFragment }> = ({ story }) => {
   const [updateStory] = useStoryUpdate();
   const [updateUserData] = useStoryUserDataUpdate();
   const title = objectTitle(story);
-  const hasText = story.files.length > 0 && !!story.paths.text;
+  // the text of its file, or else text stored with it, such as a scraper's
+  const hasText = !!story.paths.text;
 
   const [activeTab, setActiveTab] = useState(
     hasText ? "story-read-panel" : "story-details-panel"
@@ -154,13 +154,7 @@ const StoryPage: React.FC<{ story: GQL.StoryDataFragment }> = ({ story }) => {
       </Helmet>
 
       {isDeleteOpen && (
-        <DeleteEntityDialog
-          selected={[{ id: story.id, name: title }]}
-          onClose={onDeleteClosed}
-          singularEntity={intl.formatMessage({ id: "story" })}
-          pluralEntity={intl.formatMessage({ id: "stories" })}
-          destroyMutation={useStoriesDestroy}
-        />
+        <DeleteStoriesDialog selected={[story]} onClose={onDeleteClosed} />
       )}
 
       <div className="col-12 story-header">

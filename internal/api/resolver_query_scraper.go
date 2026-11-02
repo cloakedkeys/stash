@@ -98,6 +98,15 @@ func (r *queryResolver) ScrapeImageURL(ctx context.Context, url string) (*models
 	return marshalScrapedImage(content)
 }
 
+func (r *queryResolver) ScrapeStoryURL(ctx context.Context, url string) (*models.ScrapedStory, error) {
+	content, err := r.scraperCache().ScrapeURL(ctx, url, scraper.ScrapeContentTypeStory)
+	if err != nil {
+		return nil, err
+	}
+
+	return marshalScrapedStory(content)
+}
+
 func (r *queryResolver) ScrapeMovieURL(ctx context.Context, url string) (*models.ScrapedMovie, error) {
 	content, err := r.scraperCache().ScrapeURL(ctx, url, scraper.ScrapeContentTypeMovie)
 	if err != nil {

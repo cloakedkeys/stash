@@ -314,3 +314,19 @@ fragment ScrapedStashBoxPerformerData on StashBoxPerformerQueryResult {
     ...ScrapedScenePerformerData
   }
 }
+
+fragment ScrapedStoryData on ScrapedStory {
+  title
+  author
+  source_website
+  urls
+  date
+  language
+  details
+  tagline
+  text
+
+  tags {
+    ...ScrapedSceneTagData
+  }
+}

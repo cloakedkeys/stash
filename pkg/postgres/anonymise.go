@@ -49,6 +49,7 @@ func (db *Anonymiser) FetchAll(ctx context.Context) error {
 		goqu.I(storiesTagsTable),
 		goqu.I(storiesURLsTable),
 		goqu.I(storiesUserDataTable),
+		goqu.I(storiesTextTable),
 		goqu.I(audiosCustomFieldsTable.GetTable()),
 		goqu.I(audiosFilesTable),
 		goqu.I(audiosGalleriesTable),

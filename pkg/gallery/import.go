@@ -330,12 +330,12 @@ func (i *Importer) FindExistingID(ctx context.Context) (*int, error) {
 	switch {
 	case len(i.gallery.Files.List()) > 0:
 		for _, f := range i.gallery.Files.List() {
-			existing, err := i.ReaderWriter.FindByFileID(ctx, f.Base().ID)
+			existing, err = i.ReaderWriter.FindByFileID(ctx, f.Base().ID)
 			if err != nil {
 				return nil, err
 			}
 
-			if existing != nil {
+			if len(existing) > 0 {
 				break
 			}
 		}

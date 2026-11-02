@@ -332,3 +332,76 @@ func TestImporterPreImportWithMissingTagCreateErr(t *testing.T) {
 
 	db.AssertExpectations(t)
 }
+
+func TestImporterFindExistingIDByZipFile(t *testing.T) {
+	lookupErr := errors.New("FindByFileID error")
+	tests := []struct {
+		name    string
+		matches [][]*models.Gallery
+		err     error
+		wantID  int
+	}{
+		{
+			name:    "first file matches and stops lookup",
+			matches: [][]*models.Gallery{{{ID: 101}, {ID: 102}}},
+			wantID:  101,
+		},
+		{
+			name:    "nil result before match",
+			matches: [][]*models.Gallery{nil, {{ID: 101}}},
+			wantID:  101,
+		},
+		{
+			name:    "empty result before match",
+			matches: [][]*models.Gallery{{}, {{ID: 101}}},
+			wantID:  101,
+		},
+		{
+			name:    "no matching files",
+			matches: [][]*models.Gallery{nil, {}, nil},
+		},
+		{
+			name:    "first lookup fails",
+			matches: [][]*models.Gallery{nil},
+			err:     lookupErr,
+		},
+		{
+			name:    "lookup fails after a miss",
+			matches: [][]*models.Gallery{{}, nil},
+			err:     lookupErr,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := mocks.NewDatabase()
+			files := []models.File{
+				&models.BaseFile{ID: 1},
+				&models.BaseFile{ID: 2},
+				&models.BaseFile{ID: 3},
+			}
+			for n, matches := range tt.matches {
+				var err error
+				if n == len(tt.matches)-1 {
+					err = tt.err
+				}
+				db.Gallery.On("FindByFileID", testCtx, files[n].Base().ID).Return(matches, err).Once()
+			}
+
+			i := Importer{
+				ReaderWriter: db.Gallery,
+				gallery: models.Gallery{
+					Files: models.NewRelatedFiles(files),
+				},
+			}
+			id, err := i.FindExistingID(testCtx)
+			assert.Equal(t, tt.err, err)
+			if tt.wantID == 0 {
+				assert.Nil(t, id)
+			} else {
+				assert.Equal(t, &tt.wantID, id)
+			}
+			db.AssertExpectations(t)
+		})
+	}
+}
