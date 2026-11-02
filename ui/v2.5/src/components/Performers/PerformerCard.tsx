@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIntl } from "react-intl";
+import cx from "classnames";
 import * as GQL from "src/core/generated-graphql";
 import NavUtils from "src/utils/navigation";
 import TextUtils from "src/utils/text";
@@ -16,7 +17,7 @@ import {
 } from "src/models/list-filter/criteria/criterion";
 import { PopoverCountButton } from "../Shared/PopoverCountButton";
 import GenderIcon from "./GenderIcon";
-import { faLink, faTag } from "@fortawesome/free-solid-svg-icons";
+import { faImages, faLink, faTag } from "@fortawesome/free-solid-svg-icons";
 import { faInstagram, faTwitter } from "@fortawesome/free-brands-svg-icons";
 import { RatingBanner } from "../Shared/RatingBanner";
 import { usePerformerUserDataUpdate } from "src/core/StashService";
@@ -26,6 +27,10 @@ import { PatchComponent } from "src/patch";
 import { ExternalLinksButton } from "../Shared/ExternalLinksButton";
 import { useConfigurationContext } from "src/hooks/Config";
 import { OCounterButton } from "../Shared/CountButton";
+import {
+  IPerformerAlternateImages,
+  performerHoverImage,
+} from "./performerCardImage";
 
 export interface IPerformerCardExtraCriteria {
   scenes?: ModifierCriterion<CriterionValue>[];
@@ -36,7 +41,10 @@ export interface IPerformerCardExtraCriteria {
 }
 
 interface IPerformerCardProps {
-  performer: GQL.PerformerDataFragment;
+  performer: GQL.PerformerDataFragment & IPerformerAlternateImages;
+  // on screens without hover, the second image is shown with a button
+  showHoverImage?: boolean;
+  onToggleHoverImage?: () => void;
   cardWidth?: number;
   ageFromDate?: string;
   selecting?: boolean;
@@ -169,10 +177,35 @@ const PerformerCardPopovers: React.FC<IPerformerCardProps> = PatchComponent(
 
 const PerformerCardOverlays: React.FC<IPerformerCardProps> = PatchComponent(
   "PerformerCard.Overlays",
-  ({ performer }) => {
+  ({ performer, showHoverImage, onToggleHoverImage }) => {
+    const intl = useIntl();
     const { configuration } = useConfigurationContext();
     const uiConfig = configuration?.ui;
     const [setPerformerUserData] = usePerformerUserDataUpdate();
+
+    // only shown on screens without hover, see styles.scss
+    function maybeRenderHoverImageToggle() {
+      if (!onToggleHoverImage || !performerHoverImage(performer)) return;
+
+      const label = intl.formatMessage({ id: "actions.show_other_image" });
+      return (
+        <Button
+          className={cx("minimal", "performer-card__hover-image-toggle", {
+            active: showHoverImage,
+          })}
+          title={label}
+          aria-label={label}
+          aria-pressed={!!showHoverImage}
+          onClick={(e) => {
+            // don't select the card while selecting several
+            e.stopPropagation();
+            onToggleHoverImage();
+          }}
+        >
+          <Icon icon={faImages} />
+        </Button>
+      );
+    }
 
     function onToggleFavorite(v: boolean) {
       if (performer.id) {
@@ -279,6 +312,7 @@ const PerformerCardOverlays: React.FC<IPerformerCardProps> = PatchComponent(
         {maybeRenderRatingBanner()}
         {maybeRenderLinks()}
         {maybeRenderFlag()}
+        {maybeRenderHoverImageToggle()}
       </>
     );
   }
@@ -318,14 +352,44 @@ const PerformerCardDetails: React.FC<IPerformerCardProps> = PatchComponent(
 
 const PerformerCardImage: React.FC<IPerformerCardProps> = PatchComponent(
   "PerformerCard.Image",
-  ({ performer }) => {
-    return (
+  ({ performer, showHoverImage }) => {
+    const hoverImage = performerHoverImage(performer);
+    // the second image is only fetched once someone hovers or asks for it,
+    // then kept so it fades out instead of disappearing
+    const [wanted, setWanted] = useState(false);
+    useEffect(() => {
+      if (showHoverImage) setWanted(true);
+    }, [showHoverImage]);
+
+    const image = (
       <img
         loading="lazy"
         className="performer-card-image"
         alt={performer.name ?? ""}
         src={performer.image_path ?? ""}
       />
+    );
+
+    if (!hoverImage) return image;
+
+    return (
+      <span
+        className={cx("performer-card-images", {
+          "show-hover-image": showHoverImage,
+        })}
+        onPointerEnter={(e) => {
+          if (e.pointerType === "mouse") setWanted(true);
+        }}
+      >
+        {image}
+        {(wanted || showHoverImage) && (
+          <img
+            className="performer-card-image performer-card-hover-image"
+            alt=""
+            src={hoverImage}
+          />
+        )}
+      </span>
     );
   }
 );
@@ -357,6 +421,12 @@ export const PerformerCard: React.FC<IPerformerCardProps> = PatchComponent(
       onSelectedChanged,
       zoomIndex,
     } = props;
+    const [showHoverImage, setShowHoverImage] = useState(false);
+    const cardProps = {
+      ...props,
+      showHoverImage,
+      onToggleHoverImage: () => setShowHoverImage((v) => !v),
+    };
 
     return (
       <GridCard
@@ -367,8 +437,8 @@ export const PerformerCard: React.FC<IPerformerCardProps> = PatchComponent(
           <GenderIcon className="gender-icon" gender={performer.gender} />
         }
         title={<PerformerCardTitle {...props} />}
-        image={<PerformerCardImage {...props} />}
-        overlays={<PerformerCardOverlays {...props} />}
+        image={<PerformerCardImage {...cardProps} />}
+        overlays={<PerformerCardOverlays {...cardProps} />}
         details={<PerformerCardDetails {...props} />}
         popovers={<PerformerCardPopovers {...props} />}
         selected={selected}

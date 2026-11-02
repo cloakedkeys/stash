@@ -11,6 +11,9 @@ query FindPerformers(
     count
     performers {
       ...PerformerData
+      alternate_images {
+        path
+      }
     }
   }
 }
