@@ -88,7 +88,11 @@ function setup(overrides = {}) {
     "src/components/Shared/viewportPopper": { viewportModifiers: [] },
     "../LocalForage": { useInterfaceLocalForage: () => [{}, noop] },
     "react-intl": { useIntl: () => ({ formatMessage: () => "" }) },
-    "src/core/StashService": { useImageUserDataUpdate: () => [noop] },
+    "src/core/StashService": {
+      useImageUserDataUpdate: () => [noop],
+      useConfigureInterface: () => [noop],
+    },
+    "../CurrentUser": { useCanAdminister: () => false },
     "src/core/enums": { imageLightboxDisplayModeIntlMap: new Map() },
     "src/core/files": { imageTitle: (image) => image.id },
     "src/utils/visualFile": { isVideo: () => false },
