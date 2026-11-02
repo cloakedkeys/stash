@@ -328,7 +328,11 @@ export const MainNavbar: React.FC = () => {
   function maybeRenderLogout() {
     if (SessionUtils.isLoggedIn()) {
       return (
-        <form className="d-flex" method="post" action={`${baseURL}logout`}>
+        <form
+          className="nav-utility logout-form"
+          method="post"
+          action={`${baseURL}logout`}
+        >
           <Button
             type="submit"
             className="minimal logout-button d-flex align-items-center"
