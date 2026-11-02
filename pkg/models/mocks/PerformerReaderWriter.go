@@ -752,3 +752,21 @@ func (_m *PerformerReaderWriter) GetAlternateImagesBulk(ctx context.Context, ids
 	}
 	return rows, ret.Error(1)
 }
+
+// OCount provides a mock function with given fields: ctx, performerID, scope
+func (_m *PerformerReaderWriter) OCount(ctx context.Context, performerID int, scope *models.StudioScopeInput) (int, error) {
+	ret := _m.Called(ctx, performerID, scope)
+	var r0 int
+	if rf, ok := ret.Get(0).(func(context.Context, int, *models.StudioScopeInput) int); ok {
+		r0 = rf(ctx, performerID, scope)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int, *models.StudioScopeInput) error); ok {
+		r1 = rf(ctx, performerID, scope)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}

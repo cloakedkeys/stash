@@ -36,3 +36,17 @@ func performerStudioScopeSQL(ctx context.Context, mediaTable string, scope *mode
 	}
 	return fmt.Sprintf(" AND %s.studio_id IN (SELECT column2 FROM %s)", mediaTable, values), nil
 }
+
+// Statistic templates use argument 1 for the user and arguments 2-5 for the
+// image, gallery, scene and audio studio conditions respectively.
+func performerStatisticSQL(ctx context.Context, template string, scope *models.StudioScopeInput) (string, error) {
+	args := []interface{}{currentUserID(ctx)}
+	for _, table := range []string{imageTable, galleryTable, sceneTable, audioTable} {
+		condition, err := performerStudioScopeSQL(ctx, table, scope)
+		if err != nil {
+			return "", err
+		}
+		args = append(args, condition)
+	}
+	return fmt.Sprintf(template, args...), nil
+}

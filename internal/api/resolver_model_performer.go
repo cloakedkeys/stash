@@ -321,10 +321,23 @@ func (r *performerResolver) PerformerCount(ctx context.Context, obj *models.Perf
 	return ret, nil
 }
 
-func (r *performerResolver) OCounter(ctx context.Context, obj *models.Performer) (ret *int, err error) {
+func (r *performerResolver) OCounter(ctx context.Context, obj *models.Performer, studioScope *models.StudioScopeInput) (ret *int, err error) {
 	// this adds up everything the performer is in
 	if models.LibraryLimitFromContext(ctx) != nil {
 		return nil, nil
+	}
+
+	if studioScope != nil {
+		var count int
+		err := r.withReadTxn(ctx, func(ctx context.Context) error {
+			var err error
+			count, err = r.repository.Performer.OCount(ctx, obj.ID, studioScope)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &count, nil
 	}
 
 	var res_scene int
