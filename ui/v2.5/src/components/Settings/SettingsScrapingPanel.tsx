@@ -13,8 +13,8 @@ import {
 } from "src/core/StashService";
 import * as GQL from "src/core/generated-graphql";
 import { ConflictBadge, findConflict } from "./ScraperURLConflicts";
+import { scraperSiteLink } from "./scraperSiteLink";
 import { useToast } from "src/hooks/Toast";
-import TextUtils from "src/utils/text";
 import { CollapseButton } from "../Shared/CollapseButton";
 import { Icon } from "../Shared/Icon";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
@@ -128,22 +128,20 @@ const URLList: React.FC<IURLList> = ({
   scraperNames,
 }) => {
   const items = useMemo(() => {
-    function linkSite(url: string) {
-      const u = new URL(url);
-      return `${u.protocol}//${u.host}`;
-    }
-
     const ret = urls
       .slice()
       .sort()
       .map((u) => {
-        const sanitised = TextUtils.sanitiseURL(u);
-        const siteURL = linkSite(sanitised!);
+        const site = scraperSiteLink(u);
         const conflict = findConflict(conflicts, scraperId, u);
 
         return (
           <li key={u}>
-            <ExternalLink href={siteURL}>{sanitised}</ExternalLink>
+            {site.href ? (
+              <ExternalLink href={site.href}>{site.text}</ExternalLink>
+            ) : (
+              site.text
+            )}
             {conflict && (
               <ConflictBadge
                 conflict={conflict}
