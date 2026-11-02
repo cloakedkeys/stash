@@ -29,6 +29,7 @@ import { useConfigurationContext } from "src/hooks/Config";
 import { OCounterButton } from "../Shared/CountButton";
 import {
   IPerformerAlternateImages,
+  performerCardImages,
   performerHoverImage,
 } from "./performerCardImage";
 
@@ -42,6 +43,8 @@ export interface IPerformerCardExtraCriteria {
 
 interface IPerformerCardProps {
   performer: GQL.PerformerDataFragment & IPerformerAlternateImages;
+  // which of the performer's images the card shows, see performerCardImages
+  imageIndex?: number;
   // on screens without hover, the second image is shown with a button
   showHoverImage?: boolean;
   onToggleHoverImage?: () => void;
@@ -352,8 +355,11 @@ const PerformerCardDetails: React.FC<IPerformerCardProps> = PatchComponent(
 
 const PerformerCardImage: React.FC<IPerformerCardProps> = PatchComponent(
   "PerformerCard.Image",
-  ({ performer, showHoverImage }) => {
-    const hoverImage = performerHoverImage(performer);
+  ({ performer, imageIndex, showHoverImage }) => {
+    const { image: mainImage, hoverImage } = performerCardImages(
+      performer,
+      imageIndex
+    );
     // the second image is only fetched once someone hovers or asks for it,
     // then kept so it fades out instead of disappearing
     const [wanted, setWanted] = useState(false);
@@ -366,7 +372,7 @@ const PerformerCardImage: React.FC<IPerformerCardProps> = PatchComponent(
         loading="lazy"
         className="performer-card-image"
         alt={performer.name ?? ""}
-        src={performer.image_path ?? ""}
+        src={mainImage ?? ""}
       />
     );
 
@@ -421,9 +427,14 @@ export const PerformerCard: React.FC<IPerformerCardProps> = PatchComponent(
       onSelectedChanged,
       zoomIndex,
     } = props;
+    const { configuration } = useConfigurationContext();
     const [showHoverImage, setShowHoverImage] = useState(false);
+    // picked once per card, so the image changes each time the list is opened
+    // but not while it's open
+    const [randomIndex] = useState(() => Math.floor(Math.random() * 1000000));
     const cardProps = {
       ...props,
+      imageIndex: configuration?.ui.performerCardRandomImage ? randomIndex : 0,
       showHoverImage,
       onToggleHoverImage: () => setShowHoverImage((v) => !v),
     };

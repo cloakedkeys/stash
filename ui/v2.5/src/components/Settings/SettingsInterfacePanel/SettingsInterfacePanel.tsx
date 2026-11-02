@@ -55,6 +55,7 @@ const allMenuItems = [
   { id: "groups", headingID: "groups" },
   { id: "markers", headingID: "markers" },
   { id: "galleries", headingID: "galleries" },
+  { id: "stories", headingID: "stories" },
   { id: "folders", headingID: "folders" },
   { id: "performers", headingID: "performers" },
   { id: "voice-actors", headingID: "voice_actors" },
@@ -769,6 +770,13 @@ export const SettingsInterfacePanel: React.FC = PatchComponent(
             headingID="config.ui.performer_list.options.show_links_on_grid_card.heading"
             checked={ui.showLinksOnPerformerCard ?? undefined}
             onChange={(v) => saveUI({ showLinksOnPerformerCard: v })}
+          />
+          <BooleanSetting
+            id="performer-card-random-image"
+            headingID="config.ui.performer_list.options.random_image.heading"
+            subHeadingID="config.ui.performer_list.options.random_image.description"
+            checked={ui.performerCardRandomImage ?? undefined}
+            onChange={(v) => saveUI({ performerCardRandomImage: v })}
           />
         </SettingSection>
 

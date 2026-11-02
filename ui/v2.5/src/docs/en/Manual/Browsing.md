@@ -87,6 +87,8 @@ Use the left and right buttons to reorder the other images, or **Remove** to rem
 
 Performer cards in lists show the main image. Hover over a card to see the first of the other images. On a touch screen, tap the images button at the bottom of the card to switch between them.
 
+To see a different image each time, turn on **Show a random image on performer cards** under Settings > Interface > Performer List. Each card then shows one of the performer's images, picked each time the list is opened, and the next one on hover.
+
 The **Images** tab still shows library images. Its **Set as performer image** action replaces the main image without saving the old main image among the others.
 
 ## Reveal file in file manager

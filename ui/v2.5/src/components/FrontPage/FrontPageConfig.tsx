@@ -12,6 +12,7 @@ import {
   generatePremadeFrontPageContent,
   getFrontPageContent,
 } from "src/core/config";
+import { frontPageFilterCandidates } from "./frontPageFilters";
 
 interface IAddSavedFilterModalProps {
   onClose: (content?: FrontPageContent) => void;
@@ -28,6 +29,7 @@ const FilterModeToMessageID = {
   [GQL.FilterMode.Performers]: "performers",
   [GQL.FilterMode.SceneMarkers]: "markers",
   [GQL.FilterMode.Scenes]: "scenes",
+  [GQL.FilterMode.Stories]: "stories",
   [GQL.FilterMode.Studios]: "studios",
   [GQL.FilterMode.Tags]: "tags",
 };
@@ -92,16 +94,15 @@ const AddContentModal: React.FC<IAddSavedFilterModalProps> = ({
         text: "",
       },
     ].concat(
-      candidates.findSavedFilters
-        .filter((f) => {
-          return !existingSavedFilterIDs.includes(f.id);
-        })
-        .map((f) => {
-          return {
-            value: f.id,
-            text: filterTitle(intl, f),
-          };
-        })
+      frontPageFilterCandidates(
+        candidates.findSavedFilters,
+        existingSavedFilterIDs
+      ).map((f) => {
+        return {
+          value: f.id,
+          text: filterTitle(intl, f),
+        };
+      })
     );
 
     ret.sort((a, b) => {
