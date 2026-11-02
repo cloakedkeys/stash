@@ -75,80 +75,78 @@ function saveActivityOptions() {
       return {};
     },
   });
-  return module.exports.useSceneSaveActivity();
+  const createSaveActivity = module.exports.useSceneSaveActivity;
+  return createSaveActivity();
 }
 
 for (const playDuration of [0, 10]) {
-  test(
-    `activity saves (${playDuration}s) keep watched scene lists cached`,
-    async () => {
-      const cache = new InMemoryCache();
-      const scene = {
-        __typename: "Scene",
-        id: "1",
-        title: "Playing scene",
-        resume_time: 5,
-        play_duration: 20,
-      };
-      const data = { findScenes: { count: 1, scenes: [scene] } };
-      const lists = [{}, { scene_ids: [1] }];
-      for (const variables of lists) {
-        cache.writeQuery({ query: scenesQuery, variables, data });
-      }
-      cache.writeQuery({
-        query: statsQuery,
-        data: { stats: { total_play_duration: 100 } },
-      });
-
-      const requests = [];
-      const client = new ApolloClient({
-        cache,
-        link: new ApolloLink((operation) => {
-          requests.push(operation.operationName);
-          return Observable.of({
-            data:
-              operation.operationName === "SceneSaveActivity"
-                ? { sceneSaveActivity: true }
-                : data,
-          });
-        }),
-      });
-      const subscriptions = lists.map((variables) =>
-        client.watchQuery({ query: scenesQuery, variables }).subscribe({})
-      );
-      try {
-        const { update } = saveActivityOptions();
-        for (const resume_time of [30, 40]) {
-          await client.mutate({
-            mutation: saveMutation,
-            variables: { id: "1", resume_time, playDuration },
-            update,
-          });
-        }
-        // Let Apollo dispatch any refetch triggered by an evicted query.
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        assert.deepEqual(requests, ["SceneSaveActivity", "SceneSaveActivity"]);
-        for (const variables of lists) {
-          assert.deepEqual(cache.readQuery({ query: scenesQuery, variables }), {
-            findScenes: {
-              count: 1,
-              scenes: [
-                {
-                  ...scene,
-                  resume_time: 40,
-                  play_duration: 20 + 2 * playDuration,
-                },
-              ],
-            },
-          });
-        }
-        assert.deepEqual(cache.readQuery({ query: statsQuery }), {
-          stats: { total_play_duration: 100 + 2 * playDuration },
-        });
-      } finally {
-        for (const subscription of subscriptions) subscription.unsubscribe();
-        client.stop();
-      }
+  test(`activity saves (${playDuration}s) keep watched scene lists cached`, async () => {
+    const cache = new InMemoryCache();
+    const scene = {
+      __typename: "Scene",
+      id: "1",
+      title: "Playing scene",
+      resume_time: 5,
+      play_duration: 20,
+    };
+    const data = { findScenes: { count: 1, scenes: [scene] } };
+    const lists = [{}, { scene_ids: [1] }];
+    for (const variables of lists) {
+      cache.writeQuery({ query: scenesQuery, variables, data });
     }
-  );
+    cache.writeQuery({
+      query: statsQuery,
+      data: { stats: { total_play_duration: 100 } },
+    });
+
+    const requests = [];
+    const client = new ApolloClient({
+      cache,
+      link: new ApolloLink((operation) => {
+        requests.push(operation.operationName);
+        return Observable.of({
+          data:
+            operation.operationName === "SceneSaveActivity"
+              ? { sceneSaveActivity: true }
+              : data,
+        });
+      }),
+    });
+    const subscriptions = lists.map((variables) =>
+      client.watchQuery({ query: scenesQuery, variables }).subscribe({})
+    );
+    try {
+      const { update } = saveActivityOptions();
+      for (const resume_time of [30, 40]) {
+        await client.mutate({
+          mutation: saveMutation,
+          variables: { id: "1", resume_time, playDuration },
+          update,
+        });
+      }
+      // Let Apollo dispatch any refetch triggered by an evicted query.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.deepEqual(requests, ["SceneSaveActivity", "SceneSaveActivity"]);
+      for (const variables of lists) {
+        assert.deepEqual(cache.readQuery({ query: scenesQuery, variables }), {
+          findScenes: {
+            count: 1,
+            scenes: [
+              {
+                ...scene,
+                resume_time: 40,
+                play_duration: 20 + 2 * playDuration,
+              },
+            ],
+          },
+        });
+      }
+      assert.deepEqual(cache.readQuery({ query: statsQuery }), {
+        stats: { total_play_duration: 100 + 2 * playDuration },
+      });
+    } finally {
+      for (const subscription of subscriptions) subscription.unsubscribe();
+      client.stop();
+    }
+  });
 }
