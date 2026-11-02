@@ -1233,6 +1233,13 @@ export class UnsupportedCriterionOption extends StringCriterionOption {
 }
 
 export class UnsupportedCriterion extends StringCriterion {
+  protected getLabelValue(_intl: IntlShape): string {
+    // URL criteria can contain structured values from another list mode.
+    return typeof this.value === "string"
+      ? this.value
+      : JSON.stringify(this.value);
+  }
+
   public getLabel(intl: IntlShape): string {
     const modifierString = ModifierCriterion.getModifierLabel(
       intl,
