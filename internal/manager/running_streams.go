@@ -1,11 +1,17 @@
 package manager
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image/png"
 	"mime"
 	"net/http"
+	"os"
 	"path/filepath"
+
+	"github.com/disintegration/imaging"
+	_ "golang.org/x/image/webp"
 
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/internal/static"
@@ -87,7 +93,9 @@ func (s *SceneServer) ServeScreenshot(scene *models.Scene, w http.ResponseWriter
 
 			// fall back to the scene image blob if the file isn't present
 			screenshotExists, _ := fsutil.FileExists(filepath)
-			if screenshotExists {
+			if screenshotExists && r.URL.Query().Get("thumbnail") == "true" {
+				cover, _ = os.ReadFile(filepath)
+			} else if screenshotExists {
 				if r.URL.Query().Has("t") {
 					w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 				} else {
@@ -99,10 +107,36 @@ func (s *SceneServer) ServeScreenshot(scene *models.Scene, w http.ResponseWriter
 		}
 
 		// fallback to default cover if none found
-		cover = static.ReadAll(static.DefaultSceneImage)
+		if cover == nil {
+			cover = static.ReadAll(static.DefaultSceneImage)
+		}
 	}
 
+	if r.URL.Query().Get("thumbnail") == "true" {
+		cover = sceneCoverThumbnail(cover)
+	}
 	utils.ServeImage(w, r, cover)
+}
+
+// Keep the stored cover intact for the player, editing and exports. Unsupported
+// formats (including SVG) are served unchanged.
+func sceneCoverThumbnail(cover []byte) []byte {
+	img, err := imaging.Decode(bytes.NewReader(cover), imaging.AutoOrientation(true))
+	if err != nil {
+		return cover
+	}
+
+	thumb := imaging.Fit(img, 640, 640, imaging.Lanczos)
+	var data bytes.Buffer
+	if thumb.Opaque() {
+		err = imaging.Encode(&data, thumb, imaging.JPEG, imaging.JPEGQuality(75))
+	} else {
+		err = png.Encode(&data, thumb)
+	}
+	if err != nil {
+		return cover
+	}
+	return data.Bytes()
 }
 
 type AudioCoverGetter interface {

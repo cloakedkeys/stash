@@ -1,3 +1,4 @@
+import ImageUtils from "src/utils/image";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import cx from "classnames";
@@ -125,7 +126,7 @@ export const QueueViewer: React.FC<IPlaylistViewer> = ({
               <img
                 loading="lazy"
                 alt={scene.title ?? ""}
-                src={scene.paths.screenshot ?? ""}
+                src={ImageUtils.getThumbnailUrl(scene.paths.screenshot)}
               />
             </div>
             <div className="queue-scene-details">
