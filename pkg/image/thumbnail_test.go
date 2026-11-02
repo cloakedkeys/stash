@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 	"image"
 	"image/color"
@@ -18,6 +19,22 @@ import (
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/require"
 )
+
+func TestThumbnailSkipsZipVideoBeforeFFmpeg(t *testing.T) {
+	zipID := models.FileID(1)
+	f := &models.VideoFile{
+		BaseFile: &models.BaseFile{
+			Path:     filepath.Join("images.zip", "animated.gif"),
+			DirEntry: models.DirEntry{ZipFileID: &zipID},
+		},
+		Format: "gif", VideoCodec: "gif",
+	}
+	// No encoder or source file is needed. The caller recognizes this error
+	// and serves the original animated GIF without logging a failure.
+	data, err := (&ThumbnailEncoder{}).GetThumbnail(f, 320)
+	require.Nil(t, data)
+	require.True(t, errors.Is(err, ErrNotSupportedForThumbnail))
+}
 
 func thumbnailTestPNG(t *testing.T, alpha uint8) []byte {
 	t.Helper()

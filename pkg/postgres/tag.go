@@ -925,7 +925,7 @@ func (qb *TagStore) sortByScenesCountAll(direction string) string {
 
 func (qb *TagStore) sortByScenesDuration(direction string) string {
 	return fmt.Sprintf(` ORDER BY (
-		SELECT COALESCE(SUM(video_files.duration), 0)
+		SELECT COALESCE(SUM(`+sceneFileDurationSQL+`), 0)
 		FROM %s
 		LEFT JOIN %s ON %s.id = %s.%s
 		LEFT JOIN %s ON %s.%s = %s.id

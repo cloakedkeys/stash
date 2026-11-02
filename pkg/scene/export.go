@@ -60,6 +60,8 @@ func ToBasicJSON(ctx context.Context, reader ExportGetter, scene *models.Scene) 
 	for _, f := range scene.Files.List() {
 		newSceneJSON.Files = append(newSceneJSON.Files, f.Base().Path)
 	}
+	newSceneJSON.StartTime = scene.StartTime
+	newSceneJSON.EndTime = scene.EndTime
 
 	cover, err := reader.GetCover(ctx, scene.ID)
 	if err != nil {

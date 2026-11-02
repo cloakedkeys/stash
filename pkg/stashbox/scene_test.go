@@ -165,6 +165,22 @@ func TestCollectFingerprints(t *testing.T) {
 		}
 	})
 
+	t.Run("a scene that's part of its file sends nothing", func(t *testing.T) {
+		start := 10.0
+		part := makeScene(
+			[]models.StashID{{Endpoint: endpoint, StashID: "scene-1"}},
+			[]*models.VideoFile{makeFile(120, models.Fingerprints{
+				{Type: models.FingerprintTypeMD5, Fingerprint: "deadbeef"},
+			})},
+		)
+		part.StartTime = &start
+
+		// the fingerprints and length are the whole file's, not the scene's
+		if got := c.collectFingerprints([]*models.Scene{part}); len(got) != 0 {
+			t.Fatalf("expected 0 fingerprints, got %d", len(got))
+		}
+	})
+
 	t.Run("unknown fingerprint type is skipped", func(t *testing.T) {
 		scenes := []*models.Scene{
 			makeScene(

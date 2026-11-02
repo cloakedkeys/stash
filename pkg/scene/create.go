@@ -21,6 +21,24 @@ func (s *Service) Create(ctx context.Context, input models.CreateSceneInput) (*m
 	newScene.CreatedAt = now
 	newScene.UpdatedAt = now
 
+	// the scene's part of its file, which is stored with its link to the file
+	start, end := input.Scene.StartTime, input.Scene.EndTime
+	if start != nil || end != nil {
+		if len(input.FileIDs) != 1 {
+			return nil, ErrRangeNeedsOneFile
+		}
+		f, err := s.findVideoFile(ctx, input.FileIDs[0])
+		if err != nil {
+			return nil, err
+		}
+		start, end, err = checkRange(f, start, end)
+		if err != nil {
+			return nil, err
+		}
+	}
+	ranged := start != nil || end != nil
+	newScene.StartTime, newScene.EndTime = nil, nil
+
 	// don't pass the file ids since they may be already assigned
 	// assign them afterwards
 	if err := s.Repository.Create(ctx, &newScene, nil); err != nil {
@@ -36,16 +54,21 @@ func (s *Service) Create(ctx context.Context, input models.CreateSceneInput) (*m
 	}
 
 	for _, f := range input.FileIDs {
-		if err := s.AssignFile(ctx, newScene.ID, f); err != nil {
+		if err := s.addFileToNewScene(ctx, newScene.ID, f, ranged); err != nil {
 			return nil, fmt.Errorf("assigning file %d to new scene: %w", f, err)
 		}
 	}
 
 	if len(input.FileIDs) > 0 {
-		// assign the primary to the first
-		if _, err := s.Repository.UpdatePartial(ctx, newScene.ID, models.ScenePartial{
+		// assign the primary to the first, and the scene's part of it
+		partial := models.ScenePartial{
 			PrimaryFileID: &input.FileIDs[0],
-		}); err != nil {
+		}
+		if ranged {
+			partial.StartTime = models.NewOptionalFloat64Ptr(start)
+			partial.EndTime = models.NewOptionalFloat64Ptr(end)
+		}
+		if _, err := s.Repository.UpdatePartial(ctx, newScene.ID, partial); err != nil {
 			return nil, fmt.Errorf("setting primary file on new scene: %w", err)
 		}
 	}

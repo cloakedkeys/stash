@@ -138,6 +138,8 @@ type sceneQueryRow struct {
 	PrimaryFileBasename   zero.String `db:"primary_file_basename"`
 	PrimaryFileOshash     zero.String `db:"primary_file_oshash"`
 	PrimaryFileChecksum   zero.String `db:"primary_file_checksum"`
+	PrimaryFileStartTime  null.Float  `db:"primary_file_start_time"`
+	PrimaryFileEndTime    null.Float  `db:"primary_file_end_time"`
 }
 
 func (r *sceneQueryRow) resolve() *models.Scene {
@@ -156,6 +158,8 @@ func (r *sceneQueryRow) resolve() *models.Scene {
 		PrimaryFileID: nullIntFileIDPtr(r.PrimaryFileID),
 		OSHash:        r.PrimaryFileOshash.String,
 		Checksum:      r.PrimaryFileChecksum.String,
+		StartTime:     r.PrimaryFileStartTime.Ptr(),
+		EndTime:       r.PrimaryFileEndTime.Ptr(),
 
 		CreatedAt: r.CreatedAt.Timestamp,
 		UpdatedAt: r.UpdatedAt.Timestamp,
@@ -317,6 +321,8 @@ func (qb *SceneStore) selectDataset() *goqu.SelectDataset {
 		files.Col("basename").As("primary_file_basename"),
 		checksum.Col("fingerprint").As("primary_file_checksum"),
 		oshash.Col("fingerprint").As("primary_file_oshash"),
+		scenesFilesJoinTable.Col("start_time").As("primary_file_start_time"),
+		scenesFilesJoinTable.Col("end_time").As("primary_file_end_time"),
 	)
 }
 
@@ -337,6 +343,11 @@ func (qb *SceneStore) Create(ctx context.Context, newObject *models.Scene, fileI
 		const firstPrimary = true
 		if err := scenesFilesTableMgr.insertJoins(ctx, id, firstPrimary, fileIDs); err != nil {
 			return err
+		}
+		if newObject.StartTime != nil || newObject.EndTime != nil {
+			if err := scenesFilesTableMgr.setPrimaryRange(ctx, id, models.NewOptionalFloat64Ptr(newObject.StartTime), models.NewOptionalFloat64Ptr(newObject.EndTime)); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -437,6 +448,11 @@ func (qb *SceneStore) UpdatePartial(ctx context.Context, id int, partial models.
 	}
 	if partial.PrimaryFileID != nil {
 		if err := scenesFilesTableMgr.setPrimary(ctx, id, *partial.PrimaryFileID); err != nil {
+			return nil, err
+		}
+	}
+	if partial.StartTime.Set || partial.EndTime.Set {
+		if err := scenesFilesTableMgr.setPrimaryRange(ctx, id, partial.StartTime, partial.EndTime); err != nil {
 			return nil, err
 		}
 	}
@@ -1011,16 +1027,12 @@ func (qb *SceneStore) Count(ctx context.Context) (int, error) {
 }
 
 func (qb *SceneStore) Size(ctx context.Context) (float64, error) {
-	table := qb.table()
+	// a file shared by several scenes counts once
 	fileTable := fileTableMgr.table
 	q := dialect.Select(
-		goqu.COALESCE(goqu.SUM(fileTableMgr.table.Col("size")), 0),
-	).From(table).InnerJoin(
-		scenesFilesJoinTable,
-		goqu.On(table.Col(idColumn).Eq(scenesFilesJoinTable.Col(sceneIDColumn))),
-	).InnerJoin(
-		fileTable,
-		goqu.On(scenesFilesJoinTable.Col(fileIDColumn).Eq(fileTable.Col(idColumn))),
+		goqu.COALESCE(goqu.SUM(fileTable.Col("size")), 0),
+	).From(fileTable).Where(
+		fileTable.Col(idColumn).In(dialect.From(scenesFilesJoinTable).Select(scenesFilesJoinTable.Col(fileIDColumn))),
 	)
 	var ret float64
 	if err := querySimple(ctx, q, &ret); err != nil {
@@ -1031,15 +1043,12 @@ func (qb *SceneStore) Size(ctx context.Context) (float64, error) {
 }
 
 func (qb *SceneStore) Duration(ctx context.Context) (float64, error) {
-	table := qb.table()
 	videoFileTable := videoFileTableMgr.table
 
+	// a scene that's part of a file adds the length of its part
 	q := dialect.Select(
-		goqu.COALESCE(goqu.SUM(videoFileTable.Col("duration")), 0),
-	).From(table).InnerJoin(
-		scenesFilesJoinTable,
-		goqu.On(scenesFilesJoinTable.Col("scene_id").Eq(table.Col(idColumn))),
-	).InnerJoin(
+		goqu.L("COALESCE(SUM("+sceneFileDurationSQL+"), 0)"),
+	).From(scenesFilesJoinTable).InnerJoin(
 		videoFileTable,
 		goqu.On(videoFileTable.Col("file_id").Eq(scenesFilesJoinTable.Col("file_id"))),
 	)
@@ -1224,7 +1233,7 @@ func (qb *SceneStore) queryGroupedFields(ctx context.Context, options models.Sce
 				onClause: "scenes_files.file_id = video_files.file_id",
 			},
 		)
-		query.addColumn("COALESCE(video_files.duration, 0) as duration")
+		query.addColumn("COALESCE(" + sceneFileDurationSQL + ", 0) as duration")
 		aggregateQuery.addColumn("SUM(temp.duration) as duration")
 	}
 
@@ -1240,7 +1249,8 @@ func (qb *SceneStore) queryGroupedFields(ctx context.Context, options models.Sce
 			},
 		)
 		query.addColumn("COALESCE(files.size, 0) as size")
-		aggregateQuery.addColumn("SUM(temp.size) as size")
+		// a file shared by several scenes counts once
+		aggregateQuery.addColumn("SUM(CASE WHEN temp.file_row = 1 THEN temp.size ELSE 0 END) as size")
 	}
 
 	// #5503 - select the file id so equal-sized/duration files aren't collapsed by DISTINCT
@@ -1250,6 +1260,9 @@ func (qb *SceneStore) queryGroupedFields(ctx context.Context, options models.Sce
 
 	const includeSortPagination = false
 	aggregateQuery.from = fmt.Sprintf("(%s) as temp", query.toSQL(includeSortPagination))
+	if options.TotalSize {
+		aggregateQuery.from = fmt.Sprintf("(SELECT temp.*, ROW_NUMBER() OVER (PARTITION BY temp.file_id) AS file_row FROM %s) as temp", aggregateQuery.from)
+	}
 
 	out := struct {
 		Total    int
@@ -1410,8 +1423,9 @@ func (qb *SceneStore) setSceneSort(ctx context.Context, query *queryBuilder, fin
 	case "filesize":
 		query.sortAndPagination += getFileSizeSort(sceneTable, scenesFilesTable, sceneIDColumn, direction)
 	case "duration":
+		// a part of a file sorts by the part's length
 		addVideoFileTable()
-		query.sortAndPagination += getSort(sort, direction, videoFileTable)
+		query.sortAndPagination += " ORDER BY " + sceneFileDurationSQL + " " + getSortDirection(direction)
 	case "interactive", "interactive_speed":
 		addVideoFileTable()
 		query.sortAndPagination += getSort(sort, direction, videoFileTable)
@@ -1684,6 +1698,9 @@ func (qb *SceneStore) FindDuplicates(ctx context.Context, distance int, duration
 			onClause: "files.id = video_files.file_id",
 		},
 	)
+	// a scene that's part of a file has the fingerprints of the whole of it, so it isn't
+	// compared with other scenes
+	query.addWhere(sceneUsesWholeFileWhere)
 
 	if distance == 0 {
 		query.columns = []string{

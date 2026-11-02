@@ -635,6 +635,9 @@ export function setObjectFilter(
       }
       out.markers_filter = relatedFilterOutput as SceneMarkerFilterType;
       break;
+    case FilterMode.Stories:
+      // tags can't be filtered by their stories yet, so every tag is offered
+      break;
     default:
       throw new Error("Invalid filter mode");
   }

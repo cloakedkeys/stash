@@ -1,0 +1,51 @@
+fragment StoryFileData on BasicFile {
+  id
+  path
+  basename
+  size
+  mod_time
+}
+
+fragment SlimStoryData on Story {
+  id
+  title
+  author
+  date
+  rating100
+
+  files {
+    ...StoryFileData
+  }
+
+  tags {
+    id
+    name
+  }
+}
+
+fragment StoryData on Story {
+  id
+  title
+  author
+  source_website
+  urls
+  date
+  language
+  details
+  tagline
+  rating100
+  created_at
+  updated_at
+
+  files {
+    ...StoryFileData
+  }
+
+  paths {
+    text
+  }
+
+  tags {
+    ...SlimTagData
+  }
+}

@@ -1,0 +1,3 @@
+-- Where a scene starts and ends in its file, in seconds. NULL is the start or end of the file.
+ALTER TABLE scenes_files ADD COLUMN start_time DOUBLE PRECISION;
+ALTER TABLE scenes_files ADD COLUMN end_time DOUBLE PRECISION;

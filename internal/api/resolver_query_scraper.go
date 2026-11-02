@@ -269,35 +269,12 @@ func (r *queryResolver) ScrapeMultiScenes(ctx context.Context, source scraper.So
 }
 
 func (r *queryResolver) getScenesFingerprints(ctx context.Context, ids []int) ([]models.Fingerprints, error) {
-	fingerprints := make([]models.Fingerprints, len(ids))
+	var fingerprints []models.Fingerprints
 
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		qb := r.repository.Scene
-
-		for i, sceneID := range ids {
-			scene, err := qb.Find(ctx, sceneID)
-			if err != nil {
-				return err
-			}
-
-			if scene == nil {
-				return fmt.Errorf("scene with id %d not found", sceneID)
-			}
-
-			if err := scene.LoadFiles(ctx, qb); err != nil {
-				return err
-			}
-
-			var sceneFPs models.Fingerprints
-
-			for _, f := range scene.Files.List() {
-				sceneFPs = append(sceneFPs, f.Fingerprints...)
-			}
-
-			fingerprints[i] = sceneFPs
-		}
-
-		return nil
+		var err error
+		fingerprints, err = r.sceneService.GetScenesFingerprints(ctx, ids)
+		return err
 	}); err != nil {
 		return nil, err
 	}

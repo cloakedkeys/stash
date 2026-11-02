@@ -54,6 +54,8 @@ func (r *mutationResolver) SceneCreate(ctx context.Context, input models.SceneCr
 		newScene.Favorite = *input.Favorite
 	}
 	newScene.Organized = translator.bool(input.Organized)
+	newScene.StartTime = input.StartTime
+	newScene.EndTime = input.EndTime
 	newScene.StashIDs = models.NewRelatedStashIDs(models.StashIDInputs(input.StashIds).ToStashIDs())
 
 	newScene.Date, err = translator.datePtr(input.Date)
@@ -236,6 +238,9 @@ func scenePartialFromInput(input models.SceneUpdateInput, translator changesetTr
 
 	updatedScene.URLs = translator.optionalURLs(input.Urls, input.URL)
 
+	updatedScene.StartTime = translator.optionalFloat64(input.StartTime, "start_time")
+	updatedScene.EndTime = translator.optionalFloat64(input.EndTime, "end_time")
+
 	updatedScene.PrimaryFileID, err = translator.fileIDPtrFromString(input.PrimaryFileID)
 	if err != nil {
 		return nil, fmt.Errorf("converting primary file id: %w", err)
@@ -323,6 +328,22 @@ func (r *mutationResolver) sceneUpdate(ctx context.Context, input models.SceneUp
 		if f == nil {
 			return nil, fmt.Errorf("file with id %d not associated with scene", newPrimaryFileID)
 		}
+	}
+
+	if updatedScene.StartTime.Set || updatedScene.EndTime.Set {
+		start, end := originalScene.StartTime, originalScene.EndTime
+		if updatedScene.StartTime.Set {
+			start = updatedScene.StartTime.Ptr()
+		}
+		if updatedScene.EndTime.Set {
+			end = updatedScene.EndTime.Ptr()
+		}
+		start, end, err := r.sceneService.ValidateRangeUpdate(ctx, originalScene, start, end)
+		if err != nil {
+			return nil, err
+		}
+		updatedScene.StartTime = models.NewOptionalFloat64Ptr(start)
+		updatedScene.EndTime = models.NewOptionalFloat64Ptr(end)
 	}
 
 	var coverImageData []byte
@@ -905,8 +926,7 @@ func (r *mutationResolver) SceneMarkerUpdate(ctx context.Context, input SceneMar
 
 		// remove the marker preview if the scene changed or if the timestamp was changed
 		if existingMarker.SceneID != newMarker.SceneID || existingMarker.Seconds != newMarker.Seconds || float64OrZero(existingMarker.EndSeconds) != float64OrZero(newMarker.EndSeconds) {
-			seconds := int(existingMarker.Seconds)
-			if err := fileDeleter.MarkMarkerFiles(existingScene, seconds); err != nil {
+			if err := r.sceneService.MarkMarkerFiles(ctx, existingScene, existingMarker, fileDeleter); err != nil {
 				return err
 			}
 		}
@@ -1097,7 +1117,7 @@ func (r *mutationResolver) SceneMarkersDestroy(ctx context.Context, markerIDs []
 
 			markers = append(markers, marker)
 
-			if err := scene.DestroyMarker(ctx, s, marker, qb, fileDeleter); err != nil {
+			if err := r.sceneService.DestroyMarker(ctx, s, marker, fileDeleter); err != nil {
 				return err
 			}
 		}
