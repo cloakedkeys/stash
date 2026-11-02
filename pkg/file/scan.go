@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -168,14 +169,15 @@ func (s *Scanner) ScanFolder(ctx context.Context, file ScannedFile) (*models.Fol
 		// case insensitive searching
 		// assume case sensitive if in zip
 		if f == nil && file.ZipFileID == nil {
-			// an error means the check could not tell, as when two names that
-			// differ only in case both exist; only a sure answer may join them
-			caseSensitive, err := file.FS.IsPathCaseSensitive(file.Path)
+			caseSensitive, _ := file.FS.IsPathCaseSensitive(file.Path)
 
-			if err == nil && !caseSensitive {
+			if !caseSensitive {
 				f, err = s.Repository.Folder.FindByPath(ctx, path, false)
 				if err != nil {
 					return fmt.Errorf("checking for existing folder %q: %w", path, err)
+				}
+				if f != nil && !sameOnDisk(file.FS, f.Path, path) {
+					f = nil
 				}
 			}
 		}
@@ -385,12 +387,15 @@ func (s *Scanner) ScanFile(ctx context.Context, f ScannedFile) (*ScanFileResult,
 		// case insensitive search
 		// assume case sensitive if in zip
 		if ff == nil && f.ZipFileID == nil {
-			caseSensitive, err := f.FS.IsPathCaseSensitive(f.Path)
+			caseSensitive, _ := f.FS.IsPathCaseSensitive(f.Path)
 
-			if err == nil && !caseSensitive {
+			if !caseSensitive {
 				ff, err = s.Repository.File.FindByPath(ctx, f.Path, false)
 				if err != nil {
 					return fmt.Errorf("checking for existing file %q: %w", f.Path, err)
+				}
+				if ff != nil && !sameOnDisk(f.FS, ff.Base().Path, f.Path) {
+					ff = nil
 				}
 			}
 		}
@@ -633,7 +638,7 @@ func (s *Scanner) handleRename(ctx context.Context, f models.File, fp []models.F
 			// original filename, and the filesystem is case-insensitive
 			// then treat it as a move
 			// #6326 - this should now be handled earlier, and this shouldn't be necessary
-			if caseSensitive, err := fs.IsPathCaseSensitive(other.Base().Path); err == nil && !caseSensitive {
+			if caseSensitive, _ := fs.IsPathCaseSensitive(other.Base().Path); !caseSensitive && sameOnDisk(fs, other.Base().Path, f.Base().Path) {
 				// treat as a move
 				missing = append(missing, other)
 			}
@@ -958,4 +963,20 @@ func (s *Scanner) onUnchangedFile(ctx context.Context, f ScannedFile, existing m
 		Updated:         true,
 		HandlerRequired: true,
 	}, nil
+}
+
+// sameOnDisk reports whether storedPath, which differs from path only in case,
+// still leads to the same file or folder as path. That is how a filesystem that
+// ignores case shows a case-only rename. Where case matters, the two can be
+// separate files that both exist, even when the case check above can't tell.
+func sameOnDisk(fsys models.FS, storedPath, path string) bool {
+	stored, err := fsys.Stat(storedPath)
+	if err != nil {
+		return false
+	}
+	current, err := fsys.Stat(path)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(stored, current)
 }

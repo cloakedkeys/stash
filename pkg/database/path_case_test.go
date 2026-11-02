@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/models"
@@ -374,6 +375,12 @@ func testScannerCaseDistinctFiles(t *testing.T, upperPath, lowerPath string) {
 	}
 	require.NoError(t, os.MkdirAll(filepath.Dir(lower), 0755))
 	require.NoError(t, os.WriteFile(lower, []byte("Lower."), 0600))
+	// the case check compares times, so give both the same ones to show the
+	// scanner doesn't rely on them differing
+	same := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	for _, p := range []string{upper, lower, filepath.Dir(upper), filepath.Dir(lower)} {
+		require.NoError(t, os.Chtimes(p, same, same))
+	}
 	scanPathCaseLibrary(t, ctx, root)
 	t.Cleanup(func() { cleanUpPathCaseLibrary(t, ctx, root, 0) })
 	first := readPathCase(t, filepath.Dir(upper), upper).file
@@ -382,4 +389,35 @@ func testScannerCaseDistinctFiles(t *testing.T, upperPath, lowerPath string) {
 	require.NotNil(t, second)
 	assert.NotEqual(t, first.Base().ID, second.Base().ID)
 	assert.NotEqual(t, first.Base().ParentFolderID, second.Base().ParentFolderID)
+}
+
+// Renaming a folder doesn't update the stored paths below it, so on the next
+// scan each subfolder is found by a lookup that ignores case. A name with no
+// letters, like 123, can't be checked for case, and must still be found.
+func TestScannerCaseRenameParentOfNumberFolder(t *testing.T) {
+	ctx := models.WithUserID(context.Background(), testUserID)
+	root := filepath.Join(t.TempDir(), "Library")
+	oldParent := filepath.Join(root, "Summer")
+	oldFolder := filepath.Join(oldParent, "123")
+	require.NoError(t, os.MkdirAll(oldFolder, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(oldFolder, "clip.txt"), []byte("Clip."), 0600))
+	caseSensitive, err := (&file.OsFS{}).IsPathCaseSensitive(oldParent)
+	require.NoError(t, err)
+	if caseSensitive {
+		t.Skip("requires a case-insensitive filesystem")
+	}
+	scanPathCaseLibrary(t, ctx, root)
+	t.Cleanup(func() { cleanUpPathCaseLibrary(t, ctx, root, 0) })
+	before := readPathCase(t, oldFolder, filepath.Join(oldFolder, "clip.txt"))
+	require.NotNil(t, before.folder)
+
+	newParent := filepath.Join(root, "summer")
+	require.NoError(t, os.Rename(oldParent, newParent))
+	newFolder := filepath.Join(newParent, "123")
+	scanPathCaseLibrary(t, ctx, root)
+	after := readPathCase(t, newFolder, filepath.Join(newFolder, "clip.txt"))
+	require.NotNil(t, after.folder)
+	assert.Equal(t, before.folder.ID, after.folder.ID, "123 keeps its row")
+	require.NotNil(t, after.file)
+	assert.Equal(t, before.file.Base().ID, after.file.Base().ID)
 }
