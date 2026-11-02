@@ -622,7 +622,7 @@ var selectPerformerOCountSQL = utils.StrFormat(
 // used for sorting and filtering play count on performer view count.
 // Must be formatted with the current user ID.
 var selectPerformerPlayCountSQL = utils.StrFormat(
-	"SELECT COUNT(DISTINCT {view_date}) FROM ("+
+	"SELECT COUNT({view_date}) FROM ("+
 		"SELECT {view_date} FROM {performers_scenes} s "+
 		"LEFT JOIN {scenes} ON {scenes}.id = s.{scene_id} "+
 		"LEFT JOIN {scenes_view_dates} ON {scenes_view_dates}.{scene_id} = {scenes}.id AND {scenes_view_dates}.user_id = %[1]d "+
