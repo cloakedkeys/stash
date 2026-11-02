@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/stashapp/stash/internal/manager"
+	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/file"
+	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 	"github.com/stashapp/stash/pkg/story"
@@ -30,6 +34,70 @@ func storyText(text *string) *string {
 		return &empty
 	}
 	return text
+}
+
+// setStoryText gives a story its text: the file it was saved to, when the folder for
+// downloaded stories is set, or else the text stored with the story.
+func (r *mutationResolver) setStoryText(ctx context.Context, id int, saved models.File, text string) error {
+	if saved == nil {
+		return r.repository.Story.UpdateText(ctx, id, text)
+	}
+
+	// the file's scan made a story of its own, which this removes
+	others := []story.FileUser{r.repository.Scene, r.repository.Image, r.repository.Gallery, r.repository.Audio}
+	return story.AssignFile(ctx, r.repository.Story, others, id, saved.Base().ID)
+}
+
+// errSaveStoryText stands in for why saving a story's text as a file failed, since that
+// can name the folder for downloaded stories, which only admins see. The log says why.
+var errSaveStoryText = errors.New("saving the story's text as a file failed; the log says why")
+
+// saveStoryText saves text as a file when the folder for downloaded stories is set, and
+// returns nil when it isn't, so the text is stored instead.
+func saveStoryText(ctx context.Context, title, text string) (models.File, error) {
+	if config.GetInstance().GetStoryDownloadPath() == "" {
+		return nil, nil
+	}
+	f, err := manager.GetInstance().SaveStoryText(ctx, title, text)
+	if err != nil {
+		logger.Errorf("saving the text of story %q as a file: %v", title, err)
+		return nil, errSaveStoryText
+	}
+	return f, nil
+}
+
+// undoSavedStoryText removes the file a story's text was saved to, with the story its
+// scan made, when saving the story then fails, so a refused change leaves nothing
+// behind. It returns err.
+func (r *mutationResolver) undoSavedStoryText(ctx context.Context, saved models.File, err error) error {
+	if saved == nil {
+		return err
+	}
+
+	// still done when the request was cancelled, which may be why saving the story failed
+	ctx = context.WithoutCancel(ctx)
+
+	id, path := saved.Base().ID, saved.Base().Path
+	undoErr := r.withTxn(ctx, func(ctx context.Context) error {
+		made, err := r.repository.Story.FindByFileID(ctx, id)
+		if err != nil {
+			return err
+		}
+		for _, s := range made {
+			if err := r.repository.Story.Destroy(ctx, s.ID); err != nil {
+				return err
+			}
+		}
+		return r.repository.File.Destroy(ctx, id)
+	})
+	if undoErr == nil {
+		undoErr = os.Remove(path)
+	}
+	if undoErr != nil {
+		logger.Errorf("removing the text saved at %s after saving its story failed: %v", path, undoErr)
+		return fmt.Errorf("%w; the story's text was kept as %s in the folder for downloaded stories", err, filepath.Base(path))
+	}
+	return err
 }
 
 func (r *mutationResolver) getStory(ctx context.Context, id int) (ret *models.Story, err error) {
@@ -133,6 +201,15 @@ func (r *mutationResolver) StoryCreate(ctx context.Context, input StoryCreateInp
 		return nil, errStoryTextWithFile
 	}
 
+	// saved as a file first, when that's set, since a scan can't be part of the transaction
+	var saved models.File
+	if text != nil && *text != "" {
+		saved, err = saveStoryText(ctx, newStory.Title, *text)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var id int
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		seen := make(map[models.FileID]bool)
@@ -153,11 +230,11 @@ func (r *mutationResolver) StoryCreate(ctx context.Context, input StoryCreateInp
 		id = newStory.ID
 
 		if text != nil && *text != "" {
-			return r.repository.Story.UpdateText(ctx, id, *text)
+			return r.setStoryText(ctx, id, saved, *text)
 		}
 		return nil
 	}); err != nil {
-		return nil, err
+		return nil, r.undoSavedStoryText(ctx, saved, err)
 	}
 
 	return r.getStory(ctx, id)
@@ -210,6 +287,12 @@ func (r *mutationResolver) StoryUpdate(ctx context.Context, input StoryUpdateInp
 		return nil, err
 	}
 
+	text := storyText(input.Text)
+	saved, err := r.saveUpdatedStoryText(ctx, id, updated, text)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Story
 
@@ -221,7 +304,6 @@ func (r *mutationResolver) StoryUpdate(ctx context.Context, input StoryUpdateInp
 			return fmt.Errorf("story with id %d not found", id)
 		}
 
-		text := storyText(input.Text)
 		needFiles := updated.PrimaryFileID != nil || (updated.Title.Set && updated.Title.Value == "") || text != nil
 		if needFiles {
 			if err := original.LoadFiles(ctx, qb); err != nil {
@@ -249,7 +331,12 @@ func (r *mutationResolver) StoryUpdate(ctx context.Context, input StoryUpdateInp
 			if *text != "" && len(original.Files.List()) > 0 {
 				return errStoryTextWithFile
 			}
-			if err := qb.UpdateText(ctx, id, *text); err != nil {
+			if *text == "" {
+				err = qb.UpdateText(ctx, id, "")
+			} else {
+				err = r.setStoryText(ctx, id, saved, *text)
+			}
+			if err != nil {
 				return err
 			}
 		}
@@ -257,10 +344,50 @@ func (r *mutationResolver) StoryUpdate(ctx context.Context, input StoryUpdateInp
 		_, err = qb.UpdatePartial(ctx, id, *updated)
 		return err
 	}); err != nil {
-		return nil, err
+		return nil, r.undoSavedStoryText(ctx, saved, err)
 	}
 
 	return r.getStory(ctx, id)
+}
+
+// saveUpdatedStoryText saves a story's new text as a file when the folder for
+// downloaded stories is set, named after the story's title as it will be. It returns
+// nil when there's no file to save, so the text is stored instead. What would refuse
+// the update is checked first, so nothing is saved for an update that fails.
+func (r *mutationResolver) saveUpdatedStoryText(ctx context.Context, id int, updated *models.StoryPartial, text *string) (models.File, error) {
+	if text == nil || *text == "" || config.GetInstance().GetStoryDownloadPath() == "" {
+		return nil, nil
+	}
+
+	var title string
+	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+		original, err := r.repository.Story.Find(ctx, id)
+		if err != nil {
+			return err
+		}
+		if original == nil {
+			return fmt.Errorf("story with id %d not found", id)
+		}
+		if err := original.LoadFiles(ctx, r.repository.Story); err != nil {
+			return err
+		}
+		if len(original.Files.List()) > 0 {
+			return errStoryTextWithFile
+		}
+		title = original.Title
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	if updated.Title.Set {
+		title = updated.Title.Value
+	}
+	if title == "" {
+		return nil, errors.New("title must be set if story has no files")
+	}
+
+	return saveStoryText(ctx, title, *text)
 }
 
 func (r *mutationResolver) StoriesDestroy(ctx context.Context, input StoriesDestroyInput) (bool, error) {

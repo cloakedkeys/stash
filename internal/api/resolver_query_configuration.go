@@ -49,6 +49,7 @@ func redactConfig(c *ConfigResult) {
 	g.DatabasePath = ""
 	g.BackupDirectoryPath = ""
 	g.DeleteTrashPath = ""
+	g.StoryDownloadPath = ""
 	g.GeneratedPath = ""
 	g.MetadataPath = ""
 	g.ConfigFilePath = ""
@@ -189,6 +190,7 @@ func makeConfigGeneralResult() *ConfigGeneralResult {
 		MaxUploadSize:                  config.GetMaxUploadSize(),
 		AudioExtensions:                config.GetAudioExtensions(),
 		StoryExtensions:                config.GetStoryExtensions(),
+		StoryDownloadPath:              config.GetStoryDownloadPath(),
 		ImageExtensions:                config.GetImageExtensions(),
 		GalleryExtensions:              config.GetGalleryExtensions(),
 		CreateGalleriesFromFolders:     config.GetCreateGalleriesFromFolders(),

@@ -60,15 +60,7 @@ func videoUploadPath(cfg *config.Config, library, name string) (string, error) {
 	if name == "" || base == "." || base == ".." || base != name || strings.ContainsAny(name, `/\<>:"|?*`) || strings.ContainsFunc(name, unicode.IsControl) || strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") {
 		return "", fmt.Errorf("invalid upload filename %q", name)
 	}
-	device := strings.ToUpper(strings.TrimRight(strings.SplitN(base, ".", 2)[0], " ."))
-	reserved := device == "CON" || device == "PRN" || device == "AUX" || device == "NUL" || device == "CONIN$" || device == "CONOUT$"
-	if strings.HasPrefix(device, "COM") || strings.HasPrefix(device, "LPT") {
-		switch device[3:] {
-		case "1", "2", "3", "4", "5", "6", "7", "8", "9", "¹", "²", "³":
-			reserved = true
-		}
-	}
-	if reserved {
+	if isReservedWindowsName(base) {
 		return "", fmt.Errorf("upload filename %q is reserved on Windows", name)
 	}
 	if !fsutil.MatchExtension(base, cfg.GetVideoExtensions()) {

@@ -79,6 +79,7 @@ const (
 	ImageExtensions            = "image_extensions"
 	GalleryExtensions          = "gallery_extensions"
 	StoryExtensions            = "story_extensions"
+	StoryDownloadPath          = "story_download_path"
 	CreateGalleriesFromFolders = "create_galleries_from_folders"
 
 	// CalculateMD5 is the config key used to determine if MD5 should be calculated
@@ -947,6 +948,13 @@ func (i *Config) GetStoryExtensions() []string {
 		ret = defaultStoryExtensions
 	}
 	return ret
+}
+
+// GetStoryDownloadPath returns the folder that a scraped story's text is saved to as a
+// text file, inside a library that includes stories. When it's empty, the text is
+// stored in the database.
+func (i *Config) GetStoryDownloadPath() string {
+	return i.getString(StoryDownloadPath)
 }
 
 func (i *Config) GetImageExtensions() []string {

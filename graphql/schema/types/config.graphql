@@ -183,6 +183,12 @@ input ConfigGeneralInput {
   imageExtensions: [String!]
   "Array of text file extensions that are stories, in libraries that include stories"
   storyExtensions: [String!]
+  """
+  Folder that a scraped story's text is saved to as a .txt file named after its title,
+  then added to the library. It must be inside a library that includes stories. Empty
+  stores the text in the database.
+  """
+  storyDownloadPath: String
   "Array of gallery zip file extensions"
   galleryExtensions: [String!]
   "Array of file regexp to exclude from Video Scans"
@@ -343,6 +349,8 @@ type ConfigGeneralResult {
   imageExtensions: [String!]!
   "Array of text file extensions that are stories, in libraries that include stories"
   storyExtensions: [String!]!
+  "Folder that a scraped story's text is saved to as a text file. Empty when the text is stored in the database"
+  storyDownloadPath: String!
   "Array of gallery zip file extensions"
   galleryExtensions: [String!]!
   "True if galleries should be created from folders with images"
