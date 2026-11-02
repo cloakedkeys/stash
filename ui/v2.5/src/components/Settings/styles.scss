@@ -15,6 +15,8 @@
   align-items: center;
   background-color: $body-bg;
   border-radius: 50%;
+  // Bootstrap's close button is black, which doesn't show on the dark theme
+  color: $text-color;
   display: flex;
   font-size: 2rem;
   height: 3rem;
@@ -26,6 +28,11 @@
   top: calc(#{$navbar-height} + 0.5rem);
   width: 3rem;
   z-index: 10;
+
+  &:hover,
+  &:focus {
+    color: $text-color;
+  }
 
   // the nav bar is at the bottom on a phone held upright
   @include media-breakpoint-down(xs) {
