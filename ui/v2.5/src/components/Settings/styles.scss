@@ -1,5 +1,10 @@
 @include media-breakpoint-up(sm) {
   #settings-menu-container {
+    // so the tabs can be scrolled to on a short screen, clear of the
+    // troubleshooting mode button below them
+    max-height: calc(100dvh - #{$navbar-height} - 0.5rem);
+    overflow-y: auto;
+    padding-bottom: 4rem;
     position: fixed;
   }
 }
