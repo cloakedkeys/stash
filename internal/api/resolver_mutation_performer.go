@@ -122,6 +122,8 @@ func (r *mutationResolver) PerformerCreate(ctx context.Context, input models.Per
 			return nil, fmt.Errorf("processing image: %w", err)
 		}
 	}
+	// loaded before the transaction, since fetching them can take a while
+	addImages := performer.LoadImages(ctx, newPerformer.Name, input.AddImages)
 
 	// Start the transaction and save the performer
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
@@ -149,7 +151,7 @@ func (r *mutationResolver) PerformerCreate(ctx context.Context, input models.Per
 			}
 		}
 
-		return nil
+		return performer.AddAlternateImages(ctx, qb, newPerformer.ID, addImages)
 	}); err != nil {
 		return nil, err
 	}
@@ -378,6 +380,8 @@ func (r *mutationResolver) PerformerUpdate(ctx context.Context, input models.Per
 			return nil, fmt.Errorf("processing image: %w", err)
 		}
 	}
+	// loaded before the transaction, since fetching them can take a while
+	addImages := performer.LoadImages(ctx, input.ID, input.AddImages)
 
 	// Start the transaction and save the performer
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
@@ -426,13 +430,13 @@ func (r *mutationResolver) PerformerUpdate(ctx context.Context, input models.Per
 			}
 		}
 
-		return nil
+		return performer.AddAlternateImages(ctx, qb, performerID, addImages)
 	}); err != nil {
 		return nil, err
 	}
 
 	r.hookExecutor.ExecutePostHooks(ctx, performerID, hook.PerformerUpdatePost, input, translator.getFields())
-	if imageIncluded {
+	if imageIncluded || len(addImages) > 0 {
 		loaders.InvalidatePerformerImages(ctx, performerID)
 	}
 	return r.getPerformer(ctx, performerID)

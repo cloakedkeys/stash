@@ -20,6 +20,7 @@ import {
 import { ExternalLink } from "../Shared/ExternalLink";
 import { StashIDPill } from "../Shared/StashID";
 import { listToMap } from "src/utils/data";
+import { unpickedImages } from "../Performers/PerformerDetails/performerImages";
 
 interface IPerformerModalProps {
   performer: GQL.ScrapedScenePerformerDataFragment;
@@ -286,6 +287,12 @@ const PerformerModal: React.FC<IPerformerModalProps> = ({
         performerData.alias_list = undefined;
       }
     });
+
+    // #571 - keep the images that weren't picked as other images
+    if (!excluded.image) {
+      const others = unpickedImages(images, images[imageIndex]);
+      if (others.length) performerData.add_images = others;
+    }
 
     onSave(performerData);
   }

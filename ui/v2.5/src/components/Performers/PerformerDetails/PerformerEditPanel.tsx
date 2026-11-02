@@ -36,6 +36,7 @@ import { useIsAdmin } from "src/hooks/CurrentUser";
 import { PerformerScrapeDialog } from "./PerformerScrapeDialog";
 import PerformerScrapeModal from "./PerformerScrapeModal";
 import PerformerStashBoxModal, { IStashBox } from "./PerformerStashBoxModal";
+import { unpickedImages } from "./performerImages";
 import StashBoxIDSearchModal from "src/components/Shared/StashBoxIDSearchModal";
 import cx from "classnames";
 import { faSyncAlt, faPlus } from "@fortawesome/free-solid-svg-icons";
@@ -131,6 +132,8 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     ignore_auto_tag: yup.boolean().defined(),
     stash_ids: yup.mixed<GQL.StashIdInput[]>().defined(),
     image: yup.string().nullable().optional(),
+    // #571 - scraped images that weren't picked, kept as other images
+    add_images: yup.array(yup.string().required()).optional(),
     custom_fields: yup.object().required().defined(),
   });
 
@@ -297,6 +300,8 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     ) {
       const imageStr = state.images[0];
       formik.setFieldValue("image", imageStr);
+      const others = unpickedImages(state.images, imageStr);
+      formik.setFieldValue("add_images", others.length ? others : undefined);
     }
     if (state.details) {
       formik.setFieldValue("details", state.details);

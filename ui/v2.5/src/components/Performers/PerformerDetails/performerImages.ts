@@ -17,6 +17,15 @@ export function movePerformerImage(
   return result;
 }
 
+// The scraped images that weren't picked as the main image, in their scraped
+// order and without repeats. Saving adds them to the performer's other images.
+export function unpickedImages(
+  images: readonly string[],
+  picked: string | undefined
+): string[] {
+  return [...new Set(images)].filter((image) => image && image !== picked);
+}
+
 export async function addPerformerImageFiles(
   files: readonly File[],
   add: (image: string) => Promise<unknown>,

@@ -96,6 +96,11 @@ input PerformerCreateInput {
   "This should be a URL or a base64 encoded data URL"
   image: String
   stash_ids: [StashIDInput!]
+  """
+  Images to add to the performer's other images, as URLs or base64 encoded data URLs.
+  Images the performer already has, and ones that can't be loaded, are skipped.
+  """
+  add_images: [String!]
   # rating expressed as 1-100
   rating100: Int
   details: String
@@ -137,6 +142,11 @@ input PerformerUpdateInput {
   "This should be a URL or a base64 encoded data URL"
   image: String
   stash_ids: [StashIDInput!]
+  """
+  Images to add to the performer's other images, as URLs or base64 encoded data URLs.
+  Images the performer already has, and ones that can't be loaded, are skipped.
+  """
+  add_images: [String!]
   # rating expressed as 1-100
   rating100: Int
   details: String

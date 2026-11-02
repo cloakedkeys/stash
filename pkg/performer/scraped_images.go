@@ -18,15 +18,22 @@ func ScrapedOtherImages(ctx context.Context, p *models.ScrapedPerformer, exclude
 		return nil
 	}
 
+	name := ""
+	if p.Name != nil {
+		name = *p.Name
+	}
+	return LoadImages(ctx, name, p.Images[1:])
+}
+
+// LoadImages loads images from URLs or base64 encoded data URLs, in order. An
+// image that can't be loaded is skipped with a warning naming the performer, so
+// one broken link doesn't stop the rest.
+func LoadImages(ctx context.Context, performerName string, images []string) [][]byte {
 	var ret [][]byte
-	for _, img := range p.Images[1:] {
+	for _, img := range images {
 		data, err := utils.ProcessImageInput(ctx, img)
 		if err != nil {
-			name := ""
-			if p.Name != nil {
-				name = *p.Name
-			}
-			logger.Warnf("Skipping an image for performer %s: %v", name, err)
+			logger.Warnf("Skipping an image for performer %s: %v", performerName, err)
 			continue
 		}
 		if len(data) > 0 {
