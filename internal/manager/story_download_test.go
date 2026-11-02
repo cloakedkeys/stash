@@ -23,13 +23,16 @@ func TestStoryFileName(t *testing.T) {
 		{"..", "Story"},
 		{"", "Story"},
 		{"   ", "Story"},
-		{"CON", "CON_"},
-		{"com1", "com1_"},
-		{"LPT9.txt", "LPT9.txt_"},
+		{"CON", "_CON"},
+		{"com1", "_com1"},
+		{"LPT9.txt", "_LPT9.txt"},
+		{"nul.tar.gz", "_nul.tar.gz"},
 		{"Console", "Console"},
 		{"Café crème", "Café crème"},
 	} {
-		assert.Equal(t, c.want, storyFileName(c.title), "title %q", c.title)
+		got := storyFileName(c.title)
+		assert.Equal(t, c.want, got, "title %q", c.title)
+		assert.False(t, isReservedWindowsName(got+storyFileExt), "%q is a Windows device name", got+storyFileExt)
 	}
 
 	long := storyFileName(strings.Repeat("é", 300))

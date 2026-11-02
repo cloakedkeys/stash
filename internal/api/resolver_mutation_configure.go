@@ -393,25 +393,41 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 		c.SetInterface(config.AudioExtensions, input.AudioExtensions)
 	}
 
+	existingStoryExtensions := c.GetStoryExtensions()
 	if input.StoryExtensions != nil {
 		c.SetInterface(config.StoryExtensions, input.StoryExtensions)
 	}
 
-	// checked after the libraries and story extensions above, which it depends on
-	if input.StoryDownloadPath != nil && *input.StoryDownloadPath != c.GetStoryDownloadPath() {
+	// checked after the libraries and story extensions above, which it depends on, so
+	// changing either can't leave a folder that no longer holds stories
+	dir := c.GetStoryDownloadPath()
+	pathChanged := input.StoryDownloadPath != nil && *input.StoryDownloadPath != dir
+	if pathChanged {
 		if err := checkConfigOverride(config.StoryDownloadPath); err != nil {
 			return makeConfigGeneralResult(), err
 		}
-		dir := strings.TrimSpace(*input.StoryDownloadPath)
+		dir = strings.TrimSpace(*input.StoryDownloadPath)
 		if dir != "" {
 			dir = filepath.Clean(dir)
-			if err := manager.CheckStoryDownloadPath(c, dir); err != nil {
-				return makeConfigGeneralResult(), err
+		}
+	}
+	if dir != "" && (pathChanged || input.Stashes != nil || input.StoryExtensions != nil) {
+		if err := manager.CheckStoryDownloadPath(c, dir); err != nil {
+			// so the refused libraries and extensions aren't shown as saved
+			c.SetInterface(config.Stash, existingPaths)
+			c.SetInterface(config.StoryExtensions, existingStoryExtensions)
+			if !pathChanged {
+				err = fmt.Errorf("%w; change or clear the folder for downloaded stories first", err)
 			}
+			return makeConfigGeneralResult(), err
+		}
+		if pathChanged {
 			if err := fsutil.EnsureDir(dir); err != nil {
 				return makeConfigGeneralResult(), err
 			}
 		}
+	}
+	if pathChanged {
 		c.SetString(config.StoryDownloadPath, dir)
 	}
 

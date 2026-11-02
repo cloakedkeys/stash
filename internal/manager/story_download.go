@@ -59,8 +59,9 @@ func storyFileName(title string) string {
 	if name == "" {
 		return "Story"
 	}
+	// at the front, since the device name before any dot is what's reserved
 	if isReservedWindowsName(name) {
-		name += "_"
+		name = "_" + name
 	}
 	return name
 }
@@ -136,11 +137,12 @@ func (s *Manager) SaveStoryText(ctx context.Context, title, text string) (models
 	}
 
 	f, err := s.ScanFile(ctx, ScanFileInput{Path: path})
-	if err != nil {
-		return nil, fmt.Errorf("the story's text was saved at %s, but adding it to the library failed: %w", path, err)
+	if err == nil && f == nil {
+		err = errors.New("the scan skipped it")
 	}
-	if f == nil {
-		return nil, fmt.Errorf("the story's text was saved at %s, but it wasn't added to the library", path)
+	if err != nil {
+		// so a failed save leaves nothing behind
+		return nil, errors.Join(fmt.Errorf("adding %s to the library: %w", path, err), os.Remove(path))
 	}
 	return f, nil
 }

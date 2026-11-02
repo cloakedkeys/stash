@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/file"
+	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 	"github.com/stashapp/stash/pkg/story"
@@ -45,21 +48,53 @@ func (r *mutationResolver) setStoryText(ctx context.Context, id int, saved model
 	return story.AssignFile(ctx, r.repository.Story, others, id, saved.Base().ID)
 }
 
+// errSaveStoryText stands in for why saving a story's text as a file failed, since that
+// can name the folder for downloaded stories, which only admins see. The log says why.
+var errSaveStoryText = errors.New("saving the story's text as a file failed; the log says why")
+
 // saveStoryText saves text as a file when the folder for downloaded stories is set, and
 // returns nil when it isn't, so the text is stored instead.
 func saveStoryText(ctx context.Context, title, text string) (models.File, error) {
 	if config.GetInstance().GetStoryDownloadPath() == "" {
 		return nil, nil
 	}
-	return manager.GetInstance().SaveStoryText(ctx, title, text)
+	f, err := manager.GetInstance().SaveStoryText(ctx, title, text)
+	if err != nil {
+		logger.Errorf("saving the text of story %q as a file: %v", title, err)
+		return nil, errSaveStoryText
+	}
+	return f, nil
 }
 
-// savedStoryTextError says where the text was saved when saving the story then fails.
-func savedStoryTextError(saved models.File, err error) error {
+// undoSavedStoryText removes the file a story's text was saved to, with the story its
+// scan made, when saving the story then fails, so a refused change leaves nothing
+// behind. It returns err.
+func (r *mutationResolver) undoSavedStoryText(ctx context.Context, saved models.File, err error) error {
 	if saved == nil {
 		return err
 	}
-	return fmt.Errorf("the story's text was saved at %s, but saving the story failed: %w", saved.Base().Path, err)
+
+	id, path := saved.Base().ID, saved.Base().Path
+	undoErr := r.withTxn(ctx, func(ctx context.Context) error {
+		made, err := r.repository.Story.FindByFileID(ctx, id)
+		if err != nil {
+			return err
+		}
+		for _, s := range made {
+			if err := r.repository.Story.Destroy(ctx, s.ID); err != nil {
+				return err
+			}
+		}
+		return r.repository.File.Destroy(ctx, id)
+	})
+	if undoErr == nil {
+		undoErr = os.Remove(path)
+	}
+	if undoErr != nil {
+		logger.Errorf("removing the text saved at %s after saving its story failed: %v", path, undoErr)
+		return fmt.Errorf("%w; the story's text was kept as %s in the folder for downloaded stories", err, filepath.Base(path))
+	}
+	return err
 }
 
 func (r *mutationResolver) getStory(ctx context.Context, id int) (ret *models.Story, err error) {
@@ -196,7 +231,7 @@ func (r *mutationResolver) StoryCreate(ctx context.Context, input StoryCreateInp
 		}
 		return nil
 	}); err != nil {
-		return nil, savedStoryTextError(saved, err)
+		return nil, r.undoSavedStoryText(ctx, saved, err)
 	}
 
 	return r.getStory(ctx, id)
@@ -306,7 +341,7 @@ func (r *mutationResolver) StoryUpdate(ctx context.Context, input StoryUpdateInp
 		_, err = qb.UpdatePartial(ctx, id, *updated)
 		return err
 	}); err != nil {
-		return nil, savedStoryTextError(saved, err)
+		return nil, r.undoSavedStoryText(ctx, saved, err)
 	}
 
 	return r.getStory(ctx, id)
