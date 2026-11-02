@@ -102,6 +102,8 @@ func (s *DownloadFFmpegJob) downloadSingle(ctx context.Context, url string, prog
 	if err != nil {
 		return err
 	}
+	// Defers run in reverse order: close the file before removing it on Windows.
+	defer os.Remove(archivePath)
 	defer out.Close()
 
 	logger.Infof("Downloading %s...", url)
