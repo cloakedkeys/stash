@@ -887,7 +887,7 @@ func (qb *PerformerStore) sortByLastPlayedAt(ctx context.Context, direction stri
 
 // used for sorting by total scene duration
 var selectPerformerScenesDurationSQL = utils.StrFormat(
-	"SELECT COALESCE(SUM(video_files.duration), 0) FROM {performers_scenes} s "+
+	"SELECT COALESCE(SUM("+sceneFileDurationSQL+"), 0) FROM {performers_scenes} s "+
 		"LEFT JOIN {scenes} ON {scenes}.id = s.{scene_id} "+
 		"LEFT JOIN {scenes_files} ON {scenes_files}.{scene_id} = {scenes}.id "+
 		"LEFT JOIN video_files ON video_files.file_id = {scenes_files}.file_id "+

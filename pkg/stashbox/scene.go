@@ -11,6 +11,7 @@ import (
 	"github.com/Yamashou/gqlgenc/clientv2"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	pkgscene "github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/scraper"
 	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/stashbox/graphql"
@@ -497,7 +498,8 @@ func (c Client) collectFingerprints(scenes []*models.Scene) []graphql.Fingerprin
 			}
 		}
 
-		if sceneStashID == "" {
+		// a scene that's part of a file would send the whole file's fingerprints as its own
+		if sceneStashID == "" || pkgscene.HasRange(scene) {
 			continue
 		}
 
