@@ -3,6 +3,7 @@ import { FormattedMessage, useIntl } from "react-intl";
 import { Nav, Tab } from "react-bootstrap";
 import { Helmet } from "react-helmet";
 import { Link, useHistory, useParams } from "react-router-dom";
+import { ExternalLink } from "src/components/Shared/ExternalLink";
 import * as GQL from "src/core/generated-graphql";
 import {
   useFindStory,
@@ -79,9 +80,7 @@ const StoryDetailsPanel: React.FC<{ story: GQL.StoryDataFragment }> = ({
           <ul className="newline-list">
             {story.urls.map((u) => (
               <li key={u}>
-                <a href={u} target="_blank" rel="noopener noreferrer">
-                  {u}
-                </a>
+                <ExternalLink href={u}>{u}</ExternalLink>
               </li>
             ))}
           </ul>

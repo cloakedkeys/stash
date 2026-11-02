@@ -37,6 +37,8 @@ import {
 } from "src/core/StashService";
 import * as GQL from "src/core/generated-graphql";
 import { useInterfaceLocalForage } from "../LocalForage";
+import { useCanAdminister } from "../CurrentUser";
+import { useConfigureInterface } from "src/core/StashService";
 import { imageLightboxDisplayModeIntlMap } from "src/core/enums";
 import { ILightboxImage, IChapter } from "./types";
 import {
@@ -260,9 +262,28 @@ export const LightboxComponent: React.FC<IProps> = ({
   const [interfaceLocalForage, setInterfaceLocalForage] =
     useInterfaceLocalForage();
 
-  const lightboxSettings = interfaceLocalForage.data?.imageLightbox;
+  const canSaveSettings = useCanAdminister();
+  const [configureInterface] = useConfigureInterface();
+
+  // Options changed here are the Settings > Interface options, so there's one value
+  // that every browser sees. An account that can't change those keeps its own
+  // choices in this browser.
+  const lightboxSettings = canSaveSettings
+    ? undefined
+    : interfaceLocalForage.data?.imageLightbox;
 
   function setLightboxSettings(v: Partial<GQL.ConfigImageLightboxInput>) {
+    if (canSaveSettings) {
+      configureInterface({
+        variables: {
+          input: {
+            imageLightbox: v,
+          },
+        },
+      }).catch((e) => Toast.error(e));
+      return;
+    }
+
     setInterfaceLocalForage((prev) => {
       return {
         ...prev,

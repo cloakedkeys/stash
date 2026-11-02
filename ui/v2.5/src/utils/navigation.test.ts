@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createIntl } from "react-intl";
-import { handleUnsavedChanges } from "./navigation";
+import { handleUnsavedChanges, isRedirectAfterCreate } from "./navigation";
 
 const intl = createIntl({
   locale: "en",
@@ -66,4 +66,21 @@ it("allows the same pathname on a new performer form but warns when leaving", ()
   ]) {
     expect(prompt({ pathname })).toBe("Unsaved changes");
   }
+});
+
+describe.each(["groups", "studios", "tags"])("%s", (base) => {
+  it("doesn't ask when a new item goes to its page", () => {
+    expect(isRedirectAfterCreate(true, "PUSH", `/${base}/2`, base)).toBe(true);
+  });
+
+  it("asks when leaving an existing item for another", () => {
+    expect(isRedirectAfterCreate(false, "PUSH", `/${base}/2`, base)).toBe(
+      false
+    );
+  });
+
+  it("asks when going back from a new item, or elsewhere", () => {
+    expect(isRedirectAfterCreate(true, "POP", `/${base}/2`, base)).toBe(false);
+    expect(isRedirectAfterCreate(true, "PUSH", "/scenes", base)).toBe(false);
+  });
 });
