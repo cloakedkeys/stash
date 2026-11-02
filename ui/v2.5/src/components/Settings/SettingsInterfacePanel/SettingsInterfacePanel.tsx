@@ -50,6 +50,7 @@ import { faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
 
 const allMenuItems = [
   { id: "scenes", headingID: "scenes" },
+  { id: "audios", headingID: "audios" },
   { id: "images", headingID: "images" },
   { id: "groups", headingID: "groups" },
   { id: "markers", headingID: "markers" },

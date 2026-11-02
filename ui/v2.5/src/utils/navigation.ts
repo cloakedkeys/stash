@@ -526,6 +526,18 @@ const makeSceneMarkersSceneUrl = (scene: GQL.SceneMarkerSceneDataFragment) => {
   return `/scenes/markers?${filter.makeQueryParameters()}`;
 };
 
+// The page a new item goes to once it's created is under the same section, and
+// that shouldn't ask about unsaved changes. Leaving an existing item for another
+// one in that section should.
+export function isRedirectAfterCreate(
+  isNew: boolean,
+  action: string,
+  pathname: string,
+  basepath: string
+) {
+  return isNew && action === "PUSH" && pathname.startsWith(`/${basepath}/`);
+}
+
 export function handleUnsavedChanges(
   intl: IntlShape,
   basepath: string,
