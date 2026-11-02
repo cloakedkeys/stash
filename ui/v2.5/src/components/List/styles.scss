@@ -1070,14 +1070,29 @@ ul.selectable-list {
 
 .pagination-footer-container {
   background-color: transparent;
-  bottom: calc($navbar-height + env(safe-area-inset-bottom));
   margin: auto;
   pointer-events: none;
-  position: sticky;
   z-index: 10;
 
   @include media-breakpoint-up(sm) {
     bottom: env(safe-area-inset-bottom);
+    position: sticky;
+  }
+
+  // On a phone the footer sits just above the bottom navbar. Sticking it to
+  // the bottom let it drift away from the navbar in mobile Firefox when the
+  // page changed height (#1494), so it is fixed in place like the navbar. The
+  // container keeps the footer's height so the last row isn't covered.
+  @include media-breakpoint-down(xs) {
+    min-height: calc(1.25rem + #{$input-height});
+
+    .pagination-footer {
+      bottom: calc($navbar-height + env(safe-area-inset-bottom));
+      left: 0;
+      position: fixed;
+      right: 0;
+      z-index: 10;
+    }
   }
 }
 
