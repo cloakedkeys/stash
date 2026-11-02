@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
 	"image/png"
 	"mime"
 	"net/http"
@@ -121,6 +122,11 @@ func (s *SceneServer) ServeScreenshot(scene *models.Scene, w http.ResponseWriter
 // Keep the stored cover intact for the player, editing and exports. Unsupported
 // formats (including SVG) are served unchanged.
 func sceneCoverThumbnail(cover []byte) []byte {
+	config, _, err := image.DecodeConfig(bytes.NewReader(cover))
+	if err != nil || (config.Width <= 640 && config.Height <= 640) {
+		return cover
+	}
+
 	img, err := imaging.Decode(bytes.NewReader(cover), imaging.AutoOrientation(true))
 	if err != nil {
 		return cover

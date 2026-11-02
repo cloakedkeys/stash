@@ -80,6 +80,9 @@ func TestSceneScreenshotThumbnail(t *testing.T) {
 					require.Equal(t, cover, w.Body.Bytes(), "original cover must stay byte-for-byte intact")
 					continue
 				}
+				if tc.width <= 640 && tc.height <= 640 {
+					require.Equal(t, cover, w.Body.Bytes(), "small cover must stay byte-for-byte intact")
+				}
 				decoded, _, err := image.Decode(bytes.NewReader(w.Body.Bytes()))
 				require.NoError(t, err)
 				require.Equal(t, tc.want, decoded.Bounds())
