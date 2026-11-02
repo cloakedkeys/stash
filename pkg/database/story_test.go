@@ -415,4 +415,19 @@ func TestStoryText(t *testing.T) {
 		assert.NotContains(t, err.Error(), "can't be saved")
 		assert.NotContains(t, err.Error(), "INSERT")
 	})
+
+	runWithRollbackTxn(t, "a failure to read or remove text doesn't show the query", func(t *testing.T, ctx context.Context) {
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		store := db.Story()
+		_, getErr := store.GetText(cancelled, invalidID)
+		_, hasErr := store.HasText(cancelled, invalidID)
+		removeErr := store.UpdateText(cancelled, invalidID, "")
+		for name, err := range map[string]error{"get": getErr, "has": hasErr, "remove": removeErr} {
+			require.Error(t, err, name)
+			assert.Contains(t, err.Error(), "story "+strconv.Itoa(invalidID), name)
+			assert.NotContains(t, err.Error(), "SELECT", name)
+			assert.NotContains(t, err.Error(), "DELETE", name)
+		}
+	})
 }

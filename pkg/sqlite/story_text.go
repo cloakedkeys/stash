@@ -21,7 +21,7 @@ func (qb *StoryStore) GetText(ctx context.Context, storyID int) (*string, error)
 	q := dialect.From(storiesTextJoinTable).Select(storiesTextJoinTable.Col("text")).Where(storiesTextJoinTable.Col(storyIDColumn).Eq(storyID))
 	var text sql.NullString
 	if err := querySimple(ctx, q, &text); err != nil {
-		return nil, fmt.Errorf("getting text of story %d: %w", storyID, err)
+		return nil, fmt.Errorf("getting text of story %d: %w", storyID, databaseError(err))
 	}
 	if !text.Valid {
 		return nil, nil
@@ -34,7 +34,7 @@ func (qb *StoryStore) HasText(ctx context.Context, storyID int) (bool, error) {
 	q := dialect.From(storiesTextJoinTable).Select(goqu.L("1")).Where(storiesTextJoinTable.Col(storyIDColumn).Eq(storyID))
 	var found sql.NullInt64
 	if err := querySimple(ctx, q, &found); err != nil {
-		return false, fmt.Errorf("checking text of story %d: %w", storyID, err)
+		return false, fmt.Errorf("checking text of story %d: %w", storyID, databaseError(err))
 	}
 	return found.Valid, nil
 }
@@ -50,7 +50,7 @@ func (qb *StoryStore) UpdateText(ctx context.Context, storyID int, text string) 
 	if text == "" {
 		stmt := dialect.Delete(storiesTextJoinTable).Where(storiesTextJoinTable.Col(storyIDColumn).Eq(storyID))
 		if _, err := exec(ctx, stmt); err != nil {
-			return fmt.Errorf("removing text of story %d: %w", storyID, err)
+			return fmt.Errorf("removing text of story %d: %w", storyID, databaseError(err))
 		}
 		return nil
 	}
@@ -68,7 +68,8 @@ func (qb *StoryStore) UpdateText(ctx context.Context, storyID int, text string) 
 }
 
 // databaseError is the database's own error inside err, without the query that exec
-// adds around it.
+// and querySimple add around it. Every error here goes through it, so none of them
+// shows a query.
 func databaseError(err error) error {
 	for {
 		inner := errors.Unwrap(err)
