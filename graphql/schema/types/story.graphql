@@ -1,9 +1,12 @@
 type StoryPathsType {
-  "The story's text, served as plain text"
+  """
+  The story's text, served as plain text: its text file's, or else the text stored
+  with it. Null when it has neither.
+  """
   text: String # Resolver
 }
 
-"A story, kept in a text file"
+"A story, kept in a text file or with its text stored in the library"
 type Story {
   id: ID!
   title: String
@@ -36,6 +39,11 @@ input StoryCreateInput {
   details: String
   tagline: String
   tag_ids: [ID!]
+  """
+  The story's text, for a story without a text file, such as one scraped from a
+  website. Can't be set with file_ids: a story with a text file shows the file's text.
+  """
+  text: String
 
   """
   The first id will be assigned as primary.
@@ -57,13 +65,20 @@ input StoryUpdateInput {
   details: String
   tagline: String
   tag_ids: [ID!]
+  """
+  The story's text, for a story without a text file. An empty string removes it.
+  Can't be set for a story with a text file, which shows the file's text.
+  """
+  text: String
 
   primary_file_id: ID
 }
 
 input StoriesDestroyInput {
-  "Removes the stories from the library. Their files are kept."
+  "Removes the stories from the library. Their files are kept unless delete_file is set, so the next scan adds them again."
   ids: [ID!]!
+  "Also deletes the stories' files, unless another story uses them. A file inside a zip only loses its record."
+  delete_file: Boolean
 }
 
 type FindStoriesResultType {

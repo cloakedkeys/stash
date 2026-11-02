@@ -85,6 +85,7 @@ function setup(overrides = {}) {
     "../debounce": { useDebounce: () => Object.assign(noop, { cancel: noop }) },
     "../Toast": { useToast: () => ({}) },
     "../Config": { useConfigurationContext: () => ({}) },
+    "src/components/Shared/viewportPopper": { viewportModifiers: [] },
     "../LocalForage": { useInterfaceLocalForage: () => [{}, noop] },
     "react-intl": { useIntl: () => ({ formatMessage: () => "" }) },
     "src/core/StashService": {

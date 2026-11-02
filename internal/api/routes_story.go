@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -17,9 +19,14 @@ import (
 	"github.com/stashapp/stash/pkg/story"
 )
 
+type storyFinder interface {
+	models.StoryGetter
+	GetText(ctx context.Context, id int) (*string, error)
+}
+
 type storyRoutes struct {
 	routes
-	storyFinder models.StoryGetter
+	storyFinder storyFinder
 	fileGetter  models.FileGetter
 }
 
@@ -35,21 +42,23 @@ func (rs storyRoutes) Routes() chi.Router {
 	return r
 }
 
-// Text serves the story's file as plain text, whatever its name, so that a
-// file containing HTML or script is never run by the browser.
+// Text serves the story's text as plain text: its file's, whatever the file's name,
+// or else the text stored with it. Either way, text containing HTML or script is
+// never run by the browser.
 func (rs storyRoutes) Text(w http.ResponseWriter, r *http.Request) {
 	story := r.Context().Value(storyKey).(*models.Story)
-
-	f := story.Files.Primary()
-	if f == nil {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return
-	}
 
 	h := w.Header()
 	h.Set("Content-Type", "text/plain; charset=utf-8")
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Security-Policy", "sandbox")
+
+	// a story's text file always wins over text stored with it
+	f := story.Files.Primary()
+	if f == nil {
+		rs.storedText(w, r, story)
+		return
+	}
 
 	if err := serveStoryText(f.Base(), w, r); err != nil {
 		if !errors.Is(err, context.Canceled) {
@@ -57,6 +66,31 @@ func (rs storyRoutes) Text(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 	}
+}
+
+// storedText serves the text stored with a story that has no text file.
+func (rs storyRoutes) storedText(w http.ResponseWriter, r *http.Request, story *models.Story) {
+	var text *string
+	if err := rs.withReadTxn(r, func(ctx context.Context) error {
+		var err error
+		text, err = rs.storyFinder.GetText(ctx, story.ID)
+		return err
+	}); err != nil {
+		if !errors.Is(err, context.Canceled) {
+			logger.Warnf("error getting text of story %d: %v", story.ID, err)
+		}
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if text == nil {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	// the text can change whenever the story is saved, so it's sent in full each time
+	// rather than checked against a time, which only counts whole seconds
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeContent(w, r, "story.txt", time.Time{}, strings.NewReader(*text))
 }
 
 // maxDecodedStorySize is the largest story file that is read whole to turn

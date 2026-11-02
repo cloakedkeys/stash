@@ -46,6 +46,9 @@ func extractHostname(urlStr string) string {
 
 type isMultiFunc func(key string) bool
 
+// storyTextKey is a story scraper's field for the story's text.
+const storyTextKey = "Text"
+
 func (s mappedConfig) process(ctx context.Context, q mappedQuery, common commonMappedConfig, isMulti isMultiFunc) mappedResults {
 	return s.processAttributes(ctx, q, common, isMulti, false)
 }
@@ -104,6 +107,8 @@ func (s mappedConfig) processAttributes(ctx context.Context, q mappedQuery, comm
 				// Keep multiline Details without changing normalization for other fields.
 				xpathField := *xpath
 				xpathField.preserveNewlines = k == "Details"
+				// a story's text keeps its markup, so its paragraphs survive
+				xpathField.keepHTML = k == storyTextKey
 				fieldQuery = &xpathField
 			}
 
@@ -119,7 +124,12 @@ func (s mappedConfig) processAttributes(ctx context.Context, q mappedQuery, comm
 			}
 
 			if len(found) > 0 {
-				result := s.postProcess(ctx, fieldQuery, attrConfig, found, preservePositions)
+				var result []string
+				if k == storyTextKey && !attrConfig.hasConcat() && !attrConfig.hasSplit() {
+					result = storyTextResult(ctx, fieldQuery, attrConfig, found)
+				} else {
+					result = s.postProcess(ctx, fieldQuery, attrConfig, found, preservePositions)
+				}
 
 				// HACK - if the key is URLs, then we need to set the value as a multi-value
 				isMulti := isMulti != nil && isMulti(k)
@@ -135,6 +145,23 @@ func (s mappedConfig) processAttributes(ctx context.Context, q mappedQuery, comm
 	}
 
 	return ret
+}
+
+// storyTextResult is a story's text: the whole of every match, such as a selector
+// that matches each paragraph or page. Each match is post-processed on its own, as
+// any other field's are, then they're joined in order. Repeats are kept, since a
+// story can say the same thing twice.
+func storyTextResult(ctx context.Context, q mappedQuery, attrConfig mappedScraperAttrConfig, found []string) []string {
+	var parts []string
+	for _, text := range found {
+		if text = attrConfig.postProcess(ctx, text, q); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return []string{strings.Join(parts, "\n\n")}
 }
 
 func (s mappedConfig) postProcess(ctx context.Context, q mappedQuery, attrConfig mappedScraperAttrConfig, found []string, preservePositions bool) []string {
@@ -355,6 +382,46 @@ func (s *mappedImageScraperConfig) UnmarshalYAML(unmarshal func(interface{}) err
 	}
 
 	return nil
+}
+
+type mappedStoryScraperConfig struct {
+	mappedConfig
+
+	Tags mappedConfig `yaml:"Tags"`
+}
+type _mappedStoryScraperConfig mappedStoryScraperConfig
+
+func (s *mappedStoryScraperConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// unmarshal to a map first, move the Tags sub-field out, then pass the
+	// rest down to the base map, the same way as the other configs
+	parentMap := make(map[string]interface{})
+	if err := unmarshal(parentMap); err != nil {
+		return err
+	}
+
+	thisMap := make(map[string]interface{})
+	thisMap[mappedScraperConfigSceneTags] = parentMap[mappedScraperConfigSceneTags]
+	delete(parentMap, mappedScraperConfigSceneTags)
+
+	yml, err := yaml.Marshal(thisMap)
+	if err != nil {
+		return err
+	}
+
+	// needs to be a different type to prevent infinite recursion
+	c := _mappedStoryScraperConfig{}
+	if err := yaml.Unmarshal(yml, &c); err != nil {
+		return err
+	}
+
+	*s = mappedStoryScraperConfig(c)
+
+	yml, err = yaml.Marshal(parentMap)
+	if err != nil {
+		return err
+	}
+
+	return yaml.Unmarshal(yml, &s.mappedConfig)
 }
 
 type mappedPerformerScraperConfig struct {

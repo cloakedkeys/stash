@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
@@ -228,6 +229,10 @@ func (t *joinTable) insertJoins(ctx context.Context, id int, foreignIDs []int) e
 
 	for _, fk := range foreignIDs {
 		if _, err := dbWrapper.ExecStmt(ctx, stmt, id, fk); err != nil {
+			// the database's own error names its command; say what wasn't found
+			if isForeignKeyError(err) {
+				return fmt.Errorf("%s not found", strings.ReplaceAll(strings.TrimSuffix(fmt.Sprint(t.fkColumn.GetCol()), "_id"), "_", " "))
+			}
 			return err
 		}
 	}
@@ -1311,7 +1316,7 @@ func exec(ctx context.Context, stmt sqler) (sql.Result, error) {
 		return nil, fmt.Errorf("generating sql: %w", err)
 	}
 
-	logger.Tracef("SQL: %s [%v]", sql, args)
+	logger.Tracef("SQL: %s [%v]", sql, logArgs(args))
 	ret, err := tx.ExecContext(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("executing `%s` [%v]: %w", sql, args, err)
@@ -1332,7 +1337,7 @@ func execID(ctx context.Context, stmt sqler) (*int64, error) {
 		return nil, fmt.Errorf("generating sql: %w", err)
 	}
 
-	logger.Tracef("SQL: %s [%v]", sql, args)
+	logger.Tracef("SQL: %s [%v]", sql, logArgs(args))
 	var id int64
 	err = tx.QueryRowContext(ctx, sql, args...).Scan(&id)
 	if err != nil {

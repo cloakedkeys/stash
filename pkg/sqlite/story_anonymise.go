@@ -10,6 +10,9 @@ import (
 	"github.com/stashapp/stash/pkg/txn"
 )
 
+// anonymisedStoryText replaces the text stored with each story.
+const anonymisedStoryText = "Anonymised story text."
+
 func (db *Anonymiser) anonymiseStories(ctx context.Context) error {
 	logger.Infof("Anonymising stories")
 	table := storyTableMgr.table
@@ -81,6 +84,18 @@ func (db *Anonymiser) anonymiseStories(ctx context.Context) error {
 	}
 
 	if err := db.anonymiseURLs(ctx, goqu.T(storiesURLsTable), "story_id"); err != nil {
+		return err
+	}
+
+	// a story's stored text is swapped for a placeholder in one go. Obfuscating it a
+	// letter at a time would take far too long for whole stories.
+	if err := txn.WithTxn(ctx, db, func(ctx context.Context) error {
+		stmt := dialect.Update(storiesTextJoinTable).Set(goqu.Record{"text": anonymisedStoryText})
+		if _, err := exec(ctx, stmt); err != nil {
+			return fmt.Errorf("anonymising %s: %w", storiesTextTable, err)
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 

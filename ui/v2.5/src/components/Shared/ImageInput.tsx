@@ -20,6 +20,7 @@ import {
 import { PatchComponent } from "src/patch";
 import ImageUtils from "src/utils/image";
 import { useToast } from "src/hooks/Toast";
+import { viewportModifiers } from "./viewportPopper";
 
 export interface IImageInputExtraAction {
   icon: IconDefinition;
@@ -218,6 +219,8 @@ export const ImageInput: React.FC<IImageInput> = PatchComponent(
         <OverlayTrigger
           trigger="click"
           placement="top"
+          flip
+          popperConfig={{ modifiers: viewportModifiers }}
           overlay={popover}
           rootClose
         >

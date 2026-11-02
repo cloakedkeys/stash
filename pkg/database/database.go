@@ -43,7 +43,7 @@ type Database interface {
 	SetBlobStoreOptions(options BlobStoreOptions)
 	Vacuum(ctx context.Context) error
 	Version() uint
-	WithDatabase(ctx context.Context) (context.Context, error)
+	WithDatabase(ctx context.Context) (context.Context, func(), error)
 	NewMigrator() (MigrateStore, error)
 
 	User() UserStore

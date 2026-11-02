@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 
 	"github.com/stashapp/stash/pkg/fsutil"
@@ -19,21 +20,49 @@ type StashConfigInput struct {
 // KeepIncludeStory fills in IncludeStory where the input leaves it out: a library keeps
 // its current value, and a new library leaves stories out. Otherwise saving the library
 // list from an older client or script would switch stories off, and the next clean
-// would remove them.
+// would remove them. A library is the same if its path names the same folder, so a
+// trailing slash or different capital letters on a disk that ignores them don't make it
+// a new library. A library with exactly the same path comes first.
 func KeepIncludeStory(inputs []*StashConfigInput, current StashConfigs) {
 	for _, in := range inputs {
 		if in == nil || in.IncludeStory != nil {
 			continue
 		}
 		v := false
-		for _, s := range current {
-			if s != nil && s.Path == in.Path {
-				v = s.IncludeStory
-				break
-			}
+		if s := current.find(in.Path, func(a, b string) bool { return a == b }); s != nil {
+			v = s.IncludeStory
+		} else if s := current.find(in.Path, sameFolder); s != nil {
+			v = s.IncludeStory
 		}
 		in.IncludeStory = &v
 	}
+}
+
+func (s StashConfigs) find(path string, same func(a, b string) bool) *StashConfig {
+	for _, c := range s {
+		if c != nil && same(c.Path, path) {
+			return c
+		}
+	}
+	return nil
+}
+
+// sameFolder reports whether a and b name the same folder: either the paths compare the
+// same, the way the library lookups compare them, or both exist and are the same folder,
+// such as on a Mac, whose disks usually ignore capital letters.
+func sameFolder(a, b string) bool {
+	if fsutil.IsPathInDir(a, b) && fsutil.IsPathInDir(b, a) {
+		return true
+	}
+	ai, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(ai, bi)
 }
 
 type StashConfig struct {

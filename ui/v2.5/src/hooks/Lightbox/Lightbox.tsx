@@ -36,6 +36,7 @@ import {
   useImageUserDataUpdate,
 } from "src/core/StashService";
 import * as GQL from "src/core/generated-graphql";
+import { viewportModifiers } from "src/components/Shared/viewportPopper";
 import { useInterfaceLocalForage } from "../LocalForage";
 import { useCanAdminister } from "../CurrentUser";
 import { useConfigureInterface } from "src/core/StashService";
@@ -1035,13 +1036,25 @@ export const LightboxComponent: React.FC<IProps> = ({
                   target={overlayTarget.current}
                   show={showOptions}
                   placement="bottom"
+                  flip
+                  popperConfig={{
+                    modifiers: [
+                      ...viewportModifiers,
+                      // It's tall, so on a short window it has no room on either side. Slide it
+                      // up over the button so all of it can be seen.
+                      {
+                        name: "preventOverflow",
+                        options: { altAxis: true, tether: false },
+                      },
+                    ],
+                  }}
                   container={containerRef}
                   rootClose
                   onHide={() => setShowOptions(false)}
                 >
                   {({ placement, arrowProps, show: _show, ...props }) => (
                     <div
-                      className="popover"
+                      className="popover Lightbox-options-popover"
                       {...props}
                       style={{ ...props.style }}
                     >

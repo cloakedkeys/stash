@@ -393,6 +393,12 @@ func (s *scriptScraper) scrape(ctx context.Context, command []string, input stri
 			return nil, err
 		}
 		return image, nil
+	case ScrapeContentTypeStory:
+		var story *models.ScrapedStory
+		if err := s.runScraperScript(ctx, command, input, &story); err != nil || story == nil {
+			return nil, err
+		}
+		return story, nil
 	}
 
 	return nil, ErrNotSupported

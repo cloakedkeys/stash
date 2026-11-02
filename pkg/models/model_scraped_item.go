@@ -736,6 +736,23 @@ type ScrapedImage struct {
 
 func (ScrapedImage) IsScrapedContent() {}
 
+// ScrapedStory is the details of a story found by a scraper.
+type ScrapedStory struct {
+	Title         *string       `json:"title"`
+	Author        *string       `json:"author"`
+	SourceWebsite *string       `json:"source_website"`
+	URLs          []string      `json:"urls"`
+	Date          *string       `json:"date"`
+	Language      *string       `json:"language"`
+	Details       *string       `json:"details"`
+	Tagline       *string       `json:"tagline"`
+	Tags          []*ScrapedTag `json:"tags"`
+	// Text is the story's text, as plain text.
+	Text *string `json:"text"`
+}
+
+func (ScrapedStory) IsScrapedContent() {}
+
 type ScrapedImageInput struct {
 	Title   *string  `json:"title"`
 	Code    *string  `json:"code"`

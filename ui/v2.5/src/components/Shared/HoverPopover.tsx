@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Overlay, Popover, OverlayProps } from "react-bootstrap";
 import { PatchComponent } from "src/patch";
 import { Icon } from "./Icon";
+import { viewportModifiers } from "./viewportPopper";
 import { faExclamationTriangle } from "@fortawesome/free-solid-svg-icons";
 
 interface IHoverPopover {
@@ -93,17 +94,7 @@ export const HoverPopover: React.FC<IHoverPopover> = PatchComponent(
             popperConfig={{
               ...popperConfig,
               modifiers: [
-                // Ignore clipping parents and constrain to the viewport instead.
-                {
-                  name: "flip",
-                  enabled: true,
-                  options: { boundary: [], rootBoundary: "viewport" },
-                },
-                {
-                  name: "preventOverflow",
-                  enabled: true,
-                  options: { boundary: [], rootBoundary: "viewport" },
-                },
+                ...viewportModifiers,
                 ...(popperConfig?.modifiers ?? []),
               ],
             }}
