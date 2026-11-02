@@ -17,16 +17,11 @@ import { useFormik } from "formik";
 import { Prompt, useLocation } from "react-router-dom";
 import { GroupScrapeDialog } from "./GroupScrapeDialog";
 import isEqual from "lodash-es/isEqual";
-<<<<<<< HEAD
-import { handleUnsavedChanges } from "src/utils/navigation";
-import { formikUtils, useValidateAfterChange } from "src/utils/form";
-=======
 import {
   handleUnsavedChanges,
   isRedirectAfterCreate,
 } from "src/utils/navigation";
-import { formikUtils } from "src/utils/form";
->>>>>>> private/develop
+import { formikUtils, useValidateAfterChange } from "src/utils/form";
 import {
   yupDateString,
   yupFormikValidate,
