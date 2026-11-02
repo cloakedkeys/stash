@@ -54,6 +54,9 @@ func TestLiteroticaStoryURL(t *testing.T) {
 		"https://literotica.com/s/parallel-tracks",
 		"http://www.literotica.com/s/parallel-tracks?page=3",
 		"https://www.literotica.com/s/parallel-tracks#comments",
+		// language subdomains: the same API serves their stories
+		"https://german.literotica.com/s/parallel-tracks",
+		"https://french.literotica.com/s/parallel-tracks?page=2",
 	} {
 		assert.True(t, byURL.matchesURL(u), u)
 		assert.Equal(t, api, replaceURL(u, byURL), u)
@@ -66,8 +69,6 @@ func TestLiteroticaStoryURL(t *testing.T) {
 		"http://127.0.0.1:19960/?x=literotica.com/s/test",
 		"http://192.168.1.1/literotica.com/s/test",
 		"https://notliterotica.com/s/test",
-		// the API address doesn't cover language subdomains
-		"https://german.literotica.com/s/test",
 	} {
 		assert.False(t, byURL.matchesURL(u), u)
 	}
@@ -113,7 +114,7 @@ func TestLiteroticaSpec(t *testing.T) {
 	spec := c.spec()
 	require.NotNil(t, spec.Story)
 	assert.Equal(t, []ScrapeType{ScrapeTypeURL}, spec.Story.SupportedScrapes)
-	assert.Equal(t, []string{"://literotica.com/s/", "://www.literotica.com/s/"}, spec.Story.Urls)
+	assert.Equal(t, []string{"://literotica.com/s/", ".literotica.com/s/"}, spec.Story.Urls)
 	assert.True(t, c.supports(ScrapeContentTypeStory))
 	assert.True(t, c.matchesURL("https://www.literotica.com/s/parallel-tracks", ScrapeContentTypeStory))
 	assert.False(t, c.matchesURL("https://www.literotica.com/s/parallel-tracks", ScrapeContentTypeScene))

@@ -17,18 +17,18 @@ const literoticaScraperConfig = `
 name: Literotica
 storyByURL:
   - action: scrapeJson
-    # with the scheme, so language subdomains, which the API address below
-    # doesn't cover, don't match
+    # literotica.com and its subdomains, including the language ones such as
+    # german.literotica.com, whose stories the same API serves
     url:
       - ://literotica.com/s/
-      - ://www.literotica.com/s/
+      - .literotica.com/s/
     # always Literotica's address: the link is cut down to the story's name,
     # and anything left that can't be in a name is dropped, so a link that
     # only contains a Literotica address can't send the request elsewhere
     queryURL: "https://literotica.com/api/3/stories/{url}"
     queryURLReplace:
       url:
-        - regex: ^https?://(?:www\.)?literotica\.com/s/([^/?#]+).*$
+        - regex: ^https?://(?:[a-z]+\.)?literotica\.com/s/([^/?#]+).*$
           with: $1
         - regex: "[^A-Za-z0-9_-]"
           with: ""
