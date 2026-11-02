@@ -7,8 +7,11 @@ import (
 	"strconv"
 
 	"github.com/stashapp/stash/internal/manager"
+	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
+	"github.com/stashapp/stash/pkg/story"
+	"github.com/stashapp/stash/pkg/utils"
 )
 
 func (r *mutationResolver) getStory(ctx context.Context, id int) (ret *models.Story, err error) {
@@ -218,28 +221,40 @@ func (r *mutationResolver) StoriesDestroy(ctx context.Context, input StoriesDest
 		return false, fmt.Errorf("converting ids: %w", err)
 	}
 
+	// files are only deleted from disk once the database changes are saved
+	deleteFile := utils.IsTrue(input.DeleteFile)
+	fileDeleter := file.NewDeleter()
+	if deleteFile {
+		fileDeleter = file.NewDeleterWithTrash(manager.GetInstance().Config.GetDeleteTrashPath())
+	}
+
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Story
+		// a file is kept while anything else uses it
+		others := []story.FileUser{r.repository.Scene, r.repository.Image, r.repository.Gallery, r.repository.Audio}
 
 		for _, id := range ids {
-			story, err := qb.Find(ctx, id)
+			s, err := qb.Find(ctx, id)
 			if err != nil {
 				return err
 			}
-			if story == nil {
+			if s == nil {
 				return fmt.Errorf("story with id %d not found", id)
 			}
 
-			// removes the story's rows only. Its files and their records stay.
-			if err := qb.Destroy(ctx, id); err != nil {
+			// without deleteFile, its files and their records stay
+			if err := story.Destroy(ctx, qb, r.repository.File, others, s, fileDeleter, deleteFile); err != nil {
 				return err
 			}
 		}
 
 		return nil
 	}); err != nil {
+		fileDeleter.Rollback()
 		return false, err
 	}
+
+	fileDeleter.Commit()
 
 	return true, nil
 }

@@ -6,7 +6,6 @@ import { Link, useHistory, useParams } from "react-router-dom";
 import * as GQL from "src/core/generated-graphql";
 import {
   useFindStory,
-  useStoriesDestroy,
   useStoryUpdate,
   useStoryUserDataUpdate,
 } from "src/core/StashService";
@@ -14,7 +13,7 @@ import { objectTitle } from "src/core/files";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { ErrorMessage } from "src/components/Shared/ErrorMessage";
 import { RatingSystem } from "src/components/Shared/Rating/RatingSystem";
-import { DeleteEntityDialog } from "src/components/Shared/DeleteEntityDialog";
+import { DeleteStoriesDialog } from "../DeleteStoriesDialog";
 import { FileSize } from "src/components/Shared/FileSize";
 import { useCanModify } from "src/hooks/CurrentUser";
 import { useToast } from "src/hooks/Toast";
@@ -155,13 +154,7 @@ const StoryPage: React.FC<{ story: GQL.StoryDataFragment }> = ({ story }) => {
       </Helmet>
 
       {isDeleteOpen && (
-        <DeleteEntityDialog
-          selected={[{ id: story.id, name: title }]}
-          onClose={onDeleteClosed}
-          singularEntity={intl.formatMessage({ id: "story" })}
-          pluralEntity={intl.formatMessage({ id: "stories" })}
-          destroyMutation={useStoriesDestroy}
-        />
+        <DeleteStoriesDialog selected={[story]} onClose={onDeleteClosed} />
       )}
 
       <div className="col-12 story-header">

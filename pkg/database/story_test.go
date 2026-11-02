@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/story"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -176,6 +178,82 @@ func TestStoryDestroyKeepsFiles(t *testing.T) {
 		onDisk, err := os.ReadFile(path)
 		require.NoError(t, err)
 		assert.Equal(t, content, onDisk)
+	})
+}
+
+func TestStoryDestroyDeletesFiles(t *testing.T) {
+	runWithRollbackTxn(t, "deletes only files nothing else uses", func(t *testing.T, ctx context.Context) {
+		dir := t.TempDir()
+		folder := &models.Folder{Path: dir}
+		require.NoError(t, db.Folder().Create(ctx, folder))
+		onDisk := func(name string) *models.BaseFile {
+			path := filepath.Join(dir, name)
+			require.NoError(t, os.WriteFile(path, []byte("A story."), 0600))
+			f := &models.BaseFile{Basename: name, ParentFolderID: folder.ID, Size: 8, DirEntry: models.DirEntry{ModTime: time.Now()}}
+			require.NoError(t, db.File().Create(ctx, f))
+			f.Path = path
+			return f
+		}
+		own := onDisk("own.txt")
+		withAudio := onDisk("with-audio.txt")
+		withStory := onDisk("with-story.txt")
+
+		audio := models.NewAudio()
+		require.NoError(t, db.Audio().Create(ctx, &audio, []models.FileID{withAudio.ID}))
+		other := models.NewStory()
+		require.NoError(t, db.Story().Create(ctx, &other, []models.FileID{withStory.ID}))
+		s := models.NewStory()
+		require.NoError(t, db.Story().Create(ctx, &s, []models.FileID{own.ID, withAudio.ID, withStory.ID}))
+
+		others := []story.FileUser{db.Scene(), db.Image(), db.Gallery(), db.Audio()}
+		deleter := file.NewDeleter()
+		require.NoError(t, story.Destroy(ctx, db.Story(), db.File(), others, &s, deleter, true))
+		deleter.Commit()
+
+		got, err := db.Story().Find(ctx, s.ID)
+		require.NoError(t, err)
+		assert.Nil(t, got, "the story is removed")
+
+		_, err = os.Stat(own.Path)
+		assert.True(t, os.IsNotExist(err), "its own file is deleted from disk")
+		// finding a file that isn't there is an error
+		_, err = db.File().Find(ctx, own.ID)
+		assert.Error(t, err, "and its record is removed")
+
+		for _, kept := range []*models.BaseFile{withAudio, withStory} {
+			_, err := os.Stat(kept.Path)
+			assert.NoError(t, err, "%s is still on disk", kept.Basename)
+			records, err := db.File().Find(ctx, kept.ID)
+			require.NoError(t, err)
+			assert.Len(t, records, 1, "%s keeps its record", kept.Basename)
+		}
+		audioFiles, err := db.Audio().GetManyFileIDs(ctx, []int{audio.ID})
+		require.NoError(t, err)
+		assert.Equal(t, [][]models.FileID{{withAudio.ID}}, audioFiles, "the audio keeps its file")
+		otherFiles, err := db.Story().GetManyFileIDs(ctx, []int{other.ID})
+		require.NoError(t, err)
+		assert.Equal(t, [][]models.FileID{{withStory.ID}}, otherFiles, "the other story keeps its file")
+	})
+
+	runWithRollbackTxn(t, "keeps files without deleteFile", func(t *testing.T, ctx context.Context) {
+		path := filepath.Join(t.TempDir(), "kept.txt")
+		require.NoError(t, os.WriteFile(path, []byte("Kept."), 0600))
+		folder := &models.Folder{Path: filepath.Dir(path)}
+		require.NoError(t, db.Folder().Create(ctx, folder))
+		f := &models.BaseFile{Basename: "kept.txt", ParentFolderID: folder.ID, Size: 5, DirEntry: models.DirEntry{ModTime: time.Now()}}
+		require.NoError(t, db.File().Create(ctx, f))
+		s := models.NewStory()
+		require.NoError(t, db.Story().Create(ctx, &s, []models.FileID{f.ID}))
+
+		deleter := file.NewDeleter()
+		require.NoError(t, story.Destroy(ctx, db.Story(), db.File(), nil, &s, deleter, false))
+		deleter.Commit()
+
+		_, err := os.Stat(path)
+		assert.NoError(t, err, "the file is still on disk")
+		records, err := db.File().Find(ctx, f.ID)
+		require.NoError(t, err)
+		assert.Len(t, records, 1, "and keeps its record")
 	})
 }
 
