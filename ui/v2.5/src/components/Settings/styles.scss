@@ -503,4 +503,10 @@
     padding-left: 0.5rem;
     position: static;
   }
+
+  // too short for the whole tab list, which then scrolls: a pinned button
+  // would cover the tabs scrolling under it, so leave it at the end of the list
+  @media (max-height: 700px) {
+    position: static;
+  }
 }
