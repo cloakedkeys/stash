@@ -38,7 +38,11 @@ func (j *verifyJob) Execute(ctx context.Context, progress *job.Progress) error {
 	}
 
 	options := j.options
-	options.PathFilter = newVerifyFilter(instance.Config)
+	filter := newVerifyFilter(instance.Config)
+	options.PathFilter = filter
+	if options.PurgeMissing || options.DryRun {
+		options.OnRetainedFile = filter.cleanScenesOfKeptFile(options.DryRun)
+	}
 
 	j.verifier.Verify(ctx, options, progress)
 
@@ -138,25 +142,32 @@ func (f *verifyFilter) shouldCleanFolder(path string, s *config.StashConfig) boo
 }
 
 func (f *verifyFilter) shouldCleanFile(path string, info fs.FileInfo, stash *config.StashConfig) bool {
-	switch {
-	case info.IsDir() || fsutil.MatchExtension(path, f.zipExt):
+	if info.IsDir() || fsutil.MatchExtension(path, f.zipExt) {
 		return f.shouldCleanGallery(path, stash)
-	case useAsVideo(path):
-		return f.shouldCleanVideoFile(path, stash)
-	case useAsAudio(path):
-		return f.shouldCleanAudioFile(path, stash)
-	case useAsImage(path):
-		return f.shouldCleanImage(path, stash)
-	case IsStoryFile(path):
-		if !stash.IncludeStory {
-			logger.Infof("File in stash library that doesn't include stories. Marking as missing: \"%s\"", path)
-			return true
-		}
-		return false
-	default:
+	}
+
+	video, audio, image, story := useAsVideo(path), useAsAudio(path), useAsImage(path), IsStoryFile(path)
+	if !video && !audio && !image && !story {
 		logger.Infof("File extension does not match any media extensions. Marking as missing: \"%s\"", path)
 		return true
 	}
+
+	// A file can be more than one kind, such as a .webm loop that is both a
+	// video and an image. It stays while any kind still includes it, and
+	// cleanScenesOfKeptFile removes the scenes of one that is no longer a
+	// video (#1533).
+	if (video && !f.shouldCleanVideoFile(path, stash)) ||
+		(audio && !f.shouldCleanAudioFile(path, stash)) ||
+		(image && !f.shouldCleanImage(path, stash)) {
+		return false
+	}
+	if story {
+		if stash.IncludeStory {
+			return false
+		}
+		logger.Infof("File in stash library that doesn't include stories. Marking as missing: \"%s\"", path)
+	}
+	return true
 }
 
 func (f *verifyFilter) shouldCleanAudioFile(path string, stash *config.StashConfig) bool {

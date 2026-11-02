@@ -218,7 +218,11 @@ func (j *purgeMissingJob) deleteGallery(ctx context.Context, id int) {
 	}
 }
 
-type purgeHandler struct{}
+type purgeHandler struct {
+	// keepFile is set when the file stays in the library and only what was
+	// made from it goes, so its links are removed rather than its entry
+	keepFile bool
+}
 
 func (h *purgeHandler) HandleFile(ctx context.Context, fileDeleter *file.Deleter, fileID models.FileID) error {
 	if err := h.handleRelatedScenes(ctx, fileDeleter, fileID); err != nil {
@@ -372,6 +376,22 @@ func (h *purgeHandler) handleRelatedScenes(ctx context.Context, fileDeleter *fil
 					newPrimaryID = f.ID
 					break
 				}
+			}
+
+			if h.keepFile {
+				// the file stays in the library, so the scene lets go of it;
+				// its first remaining file becomes the primary one
+				var remaining []*models.VideoFile
+				for _, f := range scene.Files.List() {
+					if f.ID != fileID {
+						remaining = append(remaining, f)
+					}
+				}
+				scene.Files = models.NewRelatedVideoFiles(remaining)
+				if err := sceneQB.Update(ctx, scene); err != nil {
+					return err
+				}
+				continue
 			}
 
 			scenePartial := models.NewScenePartial()
