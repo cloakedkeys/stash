@@ -30,13 +30,18 @@ func pathToLikePattern(path string) string {
 	return b.String()
 }
 
-// Names compare by their upper case, as Windows does. Lower case (and ILIKE)
-// would join names Windows keeps apart, such as ai.txt and aİ.txt.
+// Neither upper nor lower case alone matches what a filesystem treats as the
+// same name: LOWER (and ILIKE) joins İ with i, and UPPER joins ı with I, or ß
+// with SS in some locales, while Windows keeps them apart. Two names only count
+// as the same when both their upper case and their lower case match. A rename
+// that fails this is scanned as a new file, which is safer than handing one
+// file's details to another.
 
 func pathLike(col exp.IdentifierExpression, pattern string) exp.Expression {
-	return goqu.L(`UPPER(?) LIKE UPPER(?) ESCAPE '\'`, col, pathToLikePattern(pattern))
+	p := pathToLikePattern(pattern)
+	return goqu.L(`UPPER(?) LIKE UPPER(?) ESCAPE '\' AND LOWER(?) LIKE LOWER(?) ESCAPE '\'`, col, p, col, p)
 }
 
 func pathEqNoCase(col exp.IdentifierExpression, value string) exp.Expression {
-	return goqu.L("UPPER(?) = UPPER(?)", col, value)
+	return goqu.L("UPPER(?) = UPPER(?) AND LOWER(?) = LOWER(?)", col, value, col, value)
 }

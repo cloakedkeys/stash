@@ -37,9 +37,8 @@ func basenameFn(str string) (string, error) {
 	return filepath.Base(str), nil
 }
 
-// upper_unicode compares file and folder names the way Windows does: by their
-// upper case. Lower case would join names Windows keeps apart, because Go
-// lower-cases both İ and I to i.
+// upper_unicode is used with lower_unicode to compare file and folder names
+// whatever their case (see pathEqNoCase).
 func upperUnicodeFn(str string) string {
 	return strings.ToUpper(str)
 }

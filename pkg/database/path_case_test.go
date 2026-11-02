@@ -265,43 +265,57 @@ func TestPathLookupUnicodeCase(t *testing.T) {
 	}
 }
 
-// Go lower-cases both İ and I to i, but Windows keeps ai.txt and aİ.txt apart.
+// Names that one case mapping joins but Windows keeps apart: lower case turns
+// İ into i, upper case turns ı into I, and PostgreSQL can upper-case ß to SS.
+// Each pair is stored as the first name and looked up as the second, both ways.
+var distinctLetterPairs = [][2]string{{"ai", "aİ"}, {"ai", "aı"}, {"ss", "ß"}, {"aİ", "ai"}, {"aı", "ai"}, {"ß", "ss"}}
+
 func TestPathLookupDistinctLetters(t *testing.T) {
-	runWithRollbackTxn(t, "İ", func(t *testing.T, ctx context.Context) {
-		root := t.TempDir()
-		folder := &models.Folder{Path: filepath.Join(root, "ai")}
-		require.NoError(t, db.Folder().Create(ctx, folder))
-		f := &models.BaseFile{ParentFolderID: folder.ID, Basename: "ai.txt"}
-		require.NoError(t, db.File().Create(ctx, f))
-		gotFolder, err := db.Folder().FindByPath(ctx, filepath.Join(root, "aİ"), false)
-		require.NoError(t, err)
-		assert.Nil(t, gotFolder)
-		gotFile, err := db.File().FindByPath(ctx, filepath.Join(folder.Path, "aİ.txt"), false)
-		require.NoError(t, err)
-		assert.Nil(t, gotFile)
-		files, err := db.File().FindAllByPath(ctx, filepath.Join(folder.Path, "aİ*"), false)
-		require.NoError(t, err)
-		assert.Empty(t, files)
-	})
+	for _, names := range distinctLetterPairs {
+		runWithRollbackTxn(t, names[0]+"-"+names[1], func(t *testing.T, ctx context.Context) {
+			root := t.TempDir()
+			folder := &models.Folder{Path: filepath.Join(root, names[0])}
+			require.NoError(t, db.Folder().Create(ctx, folder))
+			f := &models.BaseFile{ParentFolderID: folder.ID, Basename: names[0] + ".txt"}
+			require.NoError(t, db.File().Create(ctx, f))
+			gotFolder, err := db.Folder().FindByPath(ctx, filepath.Join(root, names[1]), false)
+			require.NoError(t, err)
+			assert.Nil(t, gotFolder)
+			gotFile, err := db.File().FindByPath(ctx, filepath.Join(folder.Path, names[1]+".txt"), false)
+			require.NoError(t, err)
+			assert.Nil(t, gotFile)
+			files, err := db.File().FindAllByPath(ctx, filepath.Join(folder.Path, names[1]+"*"), false)
+			require.NoError(t, err)
+			assert.Empty(t, files)
+		})
+	}
 }
 
 func TestScannerDistinctLetters(t *testing.T) {
+	for _, names := range distinctLetterPairs[:3] {
+		t.Run(names[1], func(t *testing.T) {
+			testScannerDistinctLetters(t, names[0]+".txt", names[1]+".txt")
+		})
+	}
+}
+
+func testScannerDistinctLetters(t *testing.T, firstName, secondName string) {
 	ctx := models.WithUserID(context.Background(), testUserID)
 	root := t.TempDir()
-	first := filepath.Join(root, "ai.txt")
-	second := filepath.Join(root, "aİ.txt")
+	first := filepath.Join(root, firstName)
+	second := filepath.Join(root, secondName)
 	require.NoError(t, os.WriteFile(first, []byte("First."), 0600))
 	scanPathCaseLibrary(t, ctx, root)
 	t.Cleanup(func() { cleanUpPathCaseLibrary(t, ctx, root, 0) })
 	require.NoError(t, os.WriteFile(second, []byte("Second."), 0600))
 	if b, err := os.ReadFile(first); err != nil || string(b) != "First." {
-		t.Skip("the filesystem treats ai.txt and aİ.txt as one file")
+		t.Skipf("the filesystem treats %s and %s as one file", firstName, secondName)
 	}
 	scanPathCaseLibrary(t, ctx, root)
 	a := readPathCase(t, root, first).file
 	b := readPathCase(t, root, second).file
-	require.NotNil(t, a, "ai.txt keeps its row")
-	require.NotNil(t, b, "aİ.txt gets its own row")
+	require.NotNil(t, a, "%s keeps its row", firstName)
+	require.NotNil(t, b, "%s gets its own row", secondName)
 	assert.NotEqual(t, a.Base().ID, b.Base().ID)
 }
 
