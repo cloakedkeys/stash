@@ -137,6 +137,11 @@ func (i *Config) loadFromEnv() {
 	v := i.overrides
 
 	if err := v.Load(env.ProviderWithValue("STASH_", ".", func(key, value string) (string, interface{}) {
+		// Match unset environment variables so config values and defaults still apply.
+		if value == "" {
+			return "", nil
+		}
+
 		key = strings.ToLower(strings.TrimPrefix(key, "STASH_"))
 		if newKey, ok := envBinds[key]; ok {
 			return newKey, value
