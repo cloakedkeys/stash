@@ -1070,7 +1070,7 @@ ul.selectable-list {
 
 .pagination-footer-container {
   background-color: transparent;
-  bottom: $navbar-height;
+  bottom: calc($navbar-height + env(safe-area-inset-bottom));
   margin: auto;
   pointer-events: none;
   position: sticky;

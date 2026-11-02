@@ -59,11 +59,17 @@ body {
   -webkit-font-smoothing: antialiased;
   margin: 0;
   overflow-x: hidden;
-  padding: $navbar-height 0 0 0;
+  // The page reaches the edges of the screen (viewport-fit=cover in index.html), so
+  // it's kept clear of a notch or rounded corners, which these are the size of. They
+  // are 0 where there are none.
+  padding: calc($navbar-height + env(safe-area-inset-top))
+    env(safe-area-inset-right) 0 env(safe-area-inset-left);
 
   @include media-breakpoint-down(xs) {
     @media (orientation: portrait) {
-      padding: 0.5rem 0 $navbar-height;
+      padding: 0.5rem env(safe-area-inset-right)
+        calc($navbar-height + env(safe-area-inset-bottom))
+        env(safe-area-inset-left);
     }
   }
 }
@@ -1067,18 +1073,25 @@ div.dropdown-menu {
 
 .top-nav {
   justify-content: start;
-  padding: 0.25rem 1rem;
+  // its background reaches the edges, and what's on it is kept clear of a notch
+  padding: calc(0.25rem + env(safe-area-inset-top))
+    calc(1rem + env(safe-area-inset-right)) 0.25rem
+    calc(1rem + env(safe-area-inset-left));
 
   @include media-breakpoint-down(xs) {
-    padding: 0.25rem 2rem;
+    padding: calc(0.25rem + env(safe-area-inset-top))
+      calc(2rem + env(safe-area-inset-right)) 0.25rem
+      calc(2rem + env(safe-area-inset-left));
 
     @media (orientation: portrait) {
       bottom: 0;
+      padding-bottom: calc(0.25rem + env(safe-area-inset-bottom));
+      padding-top: 0.25rem;
       top: auto;
     }
   }
   @include media-breakpoint-up(xl) {
-    height: $navbar-height;
+    height: calc($navbar-height + env(safe-area-inset-top));
   }
 
   .navbar-toggler {
@@ -1484,15 +1497,15 @@ h3 .TruncatedText {
   .troubleshooting-mode-alert {
     align-items: baseline;
     border-radius: 0;
-    bottom: 0.5rem;
+    bottom: calc(0.5rem + env(safe-area-inset-bottom));
     display: inline-flex;
     margin: 0;
     position: fixed;
-    right: 0.5rem;
+    right: calc(0.5rem + env(safe-area-inset-right));
 
     @include media-breakpoint-down(xs) {
       @media (orientation: portrait) {
-        bottom: $navbar-height;
+        bottom: calc($navbar-height + env(safe-area-inset-bottom));
 
         & > span {
           font-size: 0.75rem;
