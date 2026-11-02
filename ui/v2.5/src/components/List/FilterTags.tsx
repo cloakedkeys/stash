@@ -309,7 +309,10 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
       <FilterTag
         key={criterion.getId()}
         label={
-          <CriterionLabel criterion={criterion} sfwContentMode={sfwContentMode} />
+          <CriterionLabel
+            criterion={criterion}
+            sfwContentMode={sfwContentMode}
+          />
         }
         unsupported={unsupported}
         onClick={() => onClickCriterionTag(criterion)}

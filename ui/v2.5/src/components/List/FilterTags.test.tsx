@@ -1,4 +1,3 @@
-import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { IntlProvider } from "react-intl";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -30,7 +29,10 @@ import { ScenesCriterion } from "src/models/list-filter/criteria/scenes";
 import { GalleriesCriterion } from "src/models/list-filter/criteria/galleries";
 import { FilterTags } from "./FilterTags";
 
-vi.mock("@apollo/client", () => ({ useQuery: vi.fn() }));
+vi.mock("@apollo/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@apollo/client")>()),
+  useQuery: vi.fn(),
+}));
 vi.mock("react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react")>()),
   useLayoutEffect: () => {},
@@ -48,7 +50,8 @@ const messages = {
   "criterion_modifier.includes_all": "includes all",
   "criterion_modifier.excludes": "excludes",
   "criterion_modifier.is_null": "is missing",
-  "criterion_modifier.format_string": "{criterion} {modifierString} {valueString}",
+  "criterion_modifier.format_string":
+    "{criterion} {modifierString} {valueString}",
   "criterion_modifier.format_string_excludes":
     "{criterion} {modifierString} {valueString} excluding {excludedString}",
   "criterion_modifier.format_string_excludes_depth":
@@ -86,7 +89,9 @@ const hierarchicalCases = [
   ["sub groups", SubGroupsCriterionOption],
 ] as const;
 
-it.each(hierarchicalCases)("refreshes saved %s badge names by ID", (_, option) => {
+it.each(
+  hierarchicalCases
+)("refreshes saved %s badge names by ID", (_, option) => {
   const criterion = option.makeCriterion();
   criterion.setFromSavedCriterion({
     modifier: GQL.CriterionModifier.Includes,
@@ -113,46 +118,48 @@ it.each(hierarchicalCases)("refreshes saved %s badge names by ID", (_, option) =
 });
 
 it.each([
-  ["performers", () => new PerformersCriterion(), "findPerformers", "performers"],
+  [
+    "performers",
+    () => new PerformersCriterion(),
+    "findPerformers",
+    "performers",
+  ],
   ["studios", () => new StudiosCriterion(), "findStudios", "studios"],
-] as const)(
-  "refreshes included and excluded %s without changing saved values",
-  (_, make, field, list) => {
-    const criterion = make();
-    criterion.setFromSavedCriterion({
-      modifier: GQL.CriterionModifier.Includes,
-      value: {
-        items: [{ id: "1", label: "Old included" }],
-        excluded: [{ id: "2", label: "Old excluded" }],
-        depth: -1,
+] as const)("refreshes included and excluded %s without changing saved values", (_, make, field, list) => {
+  const criterion = make();
+  criterion.setFromSavedCriterion({
+    modifier: GQL.CriterionModifier.Includes,
+    value: {
+      items: [{ id: "1", label: "Old included" }],
+      excluded: [{ id: "2", label: "Old excluded" }],
+      depth: -1,
+    },
+  });
+  const before = JSON.stringify(criterion.toQueryParams());
+  const input = criterion.toCriterionInput();
+  vi.mocked(useQuery).mockReturnValue({
+    data: {
+      [field]: {
+        [list]: [
+          { id: "2", name: "New excluded" },
+          { id: "1", name: "New included" },
+        ],
       },
-    });
-    const before = JSON.stringify(criterion.toQueryParams());
-    const input = criterion.toCriterionInput();
-    vi.mocked(useQuery).mockReturnValue({
-      data: {
-        [field]: {
-          [list]: [
-            { id: "2", name: "New excluded" },
-            { id: "1", name: "New included" },
-          ],
-        },
-      },
-    } as ReturnType<typeof useQuery>);
+    },
+  } as ReturnType<typeof useQuery>);
 
-    const markup = renderBadge(criterion);
-    expect(markup).toContain("New included");
-    expect(markup).toContain("New excluded");
-    expect(markup).not.toContain("Old included");
-    expect(markup).not.toContain("Old excluded");
-    expect(criterion.toCriterionInput()).toEqual(input);
-    expect(JSON.stringify(criterion.toQueryParams())).toBe(before);
-    expect(useQuery).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ variables: { ids: ["1", "2"] } })
-    );
-  }
-);
+  const markup = renderBadge(criterion);
+  expect(markup).toContain("New included");
+  expect(markup).toContain("New excluded");
+  expect(markup).not.toContain("Old included");
+  expect(markup).not.toContain("Old excluded");
+  expect(criterion.toCriterionInput()).toEqual(input);
+  expect(JSON.stringify(criterion.toQueryParams())).toBe(before);
+  expect(useQuery).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ variables: { ids: ["1", "2"] } })
+  );
+});
 
 it("refreshes flat ID lists and keeps missing entities as saved", () => {
   const criterion = new ParentStudiosCriterion();
@@ -175,30 +182,27 @@ it("refreshes flat ID lists and keeps missing entities as saved", () => {
 it.each([
   ["scenes", () => new ScenesCriterion(), "findScenes"],
   ["galleries", () => new GalleriesCriterion(), "findGalleries"],
-] as const)(
-  "refreshes %s titles and uses the file name for untitled items",
-  (list, make, field) => {
-    const criterion = make();
-    criterion.setFromSavedCriterion({
-      modifier: GQL.CriterionModifier.Includes,
-      value: [
-        { id: "1", label: "Old title" },
-        { id: "2", label: "Old file" },
-      ],
-    });
-    vi.mocked(useQuery).mockReturnValue({
-      data: {
-        [field]: {
-          [list]: [
-            { id: "1", title: "New title", files: [] },
-            { id: "2", title: "", files: [{ path: "/library/new-file.mp4" }] },
-          ],
-        },
+] as const)("refreshes %s titles and uses the file name for untitled items", (list, make, field) => {
+  const criterion = make();
+  criterion.setFromSavedCriterion({
+    modifier: GQL.CriterionModifier.Includes,
+    value: [
+      { id: "1", label: "Old title" },
+      { id: "2", label: "Old file" },
+    ],
+  });
+  vi.mocked(useQuery).mockReturnValue({
+    data: {
+      [field]: {
+        [list]: [
+          { id: "1", title: "New title", files: [] },
+          { id: "2", title: "", files: [{ path: "/library/new-file.mp4" }] },
+        ],
       },
-    } as ReturnType<typeof useQuery>);
-    expect(renderBadge(criterion)).toContain("New title, new-file.mp4");
-  }
-);
+    },
+  } as ReturnType<typeof useQuery>);
+  expect(renderBadge(criterion)).toContain("New title, new-file.mp4");
+});
 
 it("does not query for scalar criteria", () => {
   const criterion = new StringCriterion(
@@ -240,7 +244,11 @@ it("refreshes excluded-only tags and legacy performer selections", () => {
     vi.mocked(useQuery).mockReturnValue({
       data:
         criterion instanceof PerformersCriterion
-          ? { findPerformers: { performers: [{ id: "1", name: "New excluded" }] } }
+          ? {
+              findPerformers: {
+                performers: [{ id: "1", name: "New excluded" }],
+              },
+            }
           : { findTags: { tags: [{ id: "1", name: "New excluded" }] } },
     } as ReturnType<typeof useQuery>);
     const markup = renderBadge(criterion);
