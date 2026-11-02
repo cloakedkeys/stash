@@ -1141,6 +1141,7 @@ enum FilterMode {
   TAGS
   IMAGES
   AUDIOS
+  STORIES
 }
 
 type SavedFilter {

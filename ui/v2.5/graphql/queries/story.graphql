@@ -1,0 +1,14 @@
+query FindStories($filter: FindFilterType, $story_filter: StoryFilterType) {
+  findStories(filter: $filter, story_filter: $story_filter) {
+    count
+    stories {
+      ...SlimStoryData
+    }
+  }
+}
+
+query FindStory($id: ID!) {
+  findStory(id: $id) {
+    ...StoryData
+  }
+}
