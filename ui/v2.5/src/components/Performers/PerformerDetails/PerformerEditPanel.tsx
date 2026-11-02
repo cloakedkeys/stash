@@ -41,7 +41,7 @@ import StashBoxIDSearchModal from "src/components/Shared/StashBoxIDSearchModal";
 import cx from "classnames";
 import { faSyncAlt, faPlus } from "@fortawesome/free-solid-svg-icons";
 import isEqual from "lodash-es/isEqual";
-import { formikUtils } from "src/utils/form";
+import { formikUtils, useValidateAfterChange } from "src/utils/form";
 import {
   yupFormikValidate,
   yupInputNumber,
@@ -220,6 +220,8 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     }
   }
 
+  const validateAfterChange = useValidateAfterChange(formik.validateForm);
+
   function updatePerformerEditStateFromScraper(
     state: Partial<GQL.ScrapedPerformerDataFragment>
   ) {
@@ -320,6 +322,7 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     }
 
     updateStashIDs(state.remote_site_id);
+    validateAfterChange();
   }
 
   function updateStashIDs(remoteSiteID: string | null | undefined) {

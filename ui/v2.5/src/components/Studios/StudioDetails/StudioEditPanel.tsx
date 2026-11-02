@@ -21,7 +21,7 @@ import {
   handleUnsavedChanges,
   isRedirectAfterCreate,
 } from "src/utils/navigation";
-import { formikUtils } from "src/utils/form";
+import { formikUtils, useValidateAfterChange } from "src/utils/form";
 import { yupFormikValidate, yupRequiredStringArray } from "src/utils/yup";
 import { Studio, StudioSelect } from "../StudioSelect";
 import { useTagsEdit } from "src/hooks/tagsEdit";
@@ -257,6 +257,8 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
     }
   }
 
+  const validateAfterChange = useValidateAfterChange(formik.validateForm);
+
   function updateStudioEditStateFromScraper(
     state: Partial<GQL.ScrapedStudioDataFragment>
   ) {
@@ -285,6 +287,8 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
     }
 
     updateStashIDs(state.remote_site_id);
+
+    validateAfterChange();
   }
 
   function onScrapeStashBox(studioResult: GQL.ScrapedStudio) {

@@ -21,7 +21,7 @@ import {
   handleUnsavedChanges,
   isRedirectAfterCreate,
 } from "src/utils/navigation";
-import { formikUtils } from "src/utils/form";
+import { formikUtils, useValidateAfterChange } from "src/utils/form";
 import {
   yupDateString,
   yupFormikValidate,
@@ -177,6 +177,8 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
     };
   });
 
+  const validateAfterChange = useValidateAfterChange(formik.validateForm);
+
   function updateGroupEditStateFromScraper(
     state: Partial<GQL.ScrapedGroupDataFragment>
   ) {
@@ -226,6 +228,8 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
       // image is a base64 string
       formik.setFieldValue("back_image", state.back_image);
     }
+
+    validateAfterChange();
   }
 
   async function onSave(input: InputValues, andNew?: boolean) {
