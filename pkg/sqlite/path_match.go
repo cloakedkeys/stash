@@ -30,10 +30,21 @@ func pathToLikePattern(path string) string {
 	return b.String()
 }
 
+// SQLite's LIKE and NOCASE only ignore the case of ASCII letters, so a path
+// with other letters (Été, Пример) goes through lower_unicode(). That calls
+// back into Go for every row, so pure-ASCII paths, which scans look up once per
+// file, keep the built-in comparison.
+
 func pathLike(col exp.IdentifierExpression, pattern string) exp.Expression {
-	return goqu.L(`? LIKE ? ESCAPE '\'`, col, pathToLikePattern(pattern))
+	if isASCII(pattern) {
+		return goqu.L(`? LIKE ? ESCAPE '\'`, col, pathToLikePattern(pattern))
+	}
+	return goqu.L(`lower_unicode(?) LIKE ? ESCAPE '\'`, col, strings.ToLower(pathToLikePattern(pattern)))
 }
 
 func pathEqNoCase(col exp.IdentifierExpression, value string) exp.Expression {
-	return goqu.L("? = ? COLLATE NOCASE", col, value)
+	if isASCII(value) {
+		return goqu.L("? = ? COLLATE NOCASE", col, value)
+	}
+	return goqu.L("lower_unicode(?) = ?", col, strings.ToLower(value))
 }
