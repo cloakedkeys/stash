@@ -5,17 +5,18 @@ import (
 )
 
 type SystemStatus struct {
-	DatabaseSchema *int             `json:"databaseSchema"`
-	DatabasePath   *string          `json:"databasePath"`
-	ConfigPath     *string          `json:"configPath"`
-	AppSchema      int              `json:"appSchema"`
-	Status         SystemStatusEnum `json:"status"`
-	Os             string           `json:"os"`
-	WorkingDir     string           `json:"working_dir"`
-	HomeDir        string           `json:"home_dir"`
-	FfmpegPath     *string          `json:"ffmpegPath"`
-	FfprobePath    *string          `json:"ffprobePath"`
-	LocalIPs       []string         `json:"localIPs"`
+	DatabaseSchema   *int             `json:"databaseSchema"`
+	DatabasePath     *string          `json:"databasePath"`
+	ConfigPath       *string          `json:"configPath"`
+	AppSchema        int              `json:"appSchema"`
+	Status           SystemStatusEnum `json:"status"`
+	Os               string           `json:"os"`
+	WorkingDir       string           `json:"working_dir"`
+	HomeDir          string           `json:"home_dir"`
+	FfmpegPath       *string          `json:"ffmpegPath"`
+	FfprobePath      *string          `json:"ffprobePath"`
+	FfmpegDownloaded bool             `json:"ffmpegDownloaded"`
+	LocalIPs         []string         `json:"localIPs"`
 }
 
 type SetupInput struct {

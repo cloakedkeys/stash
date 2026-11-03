@@ -466,6 +466,12 @@
             "heading": "FFmpeg live transcode output arguments"
           }
         },
+        "remove_ffmpeg": {
+          "description": "FFmpeg was downloaded into the configuration folder. Remove it to use another copy or download it again.",
+          "heading": "Remove FFmpeg",
+          "nothing_to_remove": "There is no downloaded FFmpeg to remove.",
+          "success": "Downloaded FFmpeg removed."
+        },
         "transcode": {
           "input_args": {
             "desc": "Advanced: Additional arguments to pass to ffmpeg before the input field when generating video.",

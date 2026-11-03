@@ -44,6 +44,10 @@ func (s *DownloadFFmpegJob) setTaskProgress(taskProgress float64, progress *job.
 }
 
 func (s *DownloadFFmpegJob) download(ctx context.Context, progress *job.Progress) error {
+	if ffmpeg.HasDownloadedFFmpeg(s.ConfigDirectory) {
+		return ffmpeg.ErrAlreadyInstalled
+	}
+
 	s.urls = ffmpeg.GetFFmpegURL()
 
 	// set steps based on the number of URLs

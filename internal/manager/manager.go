@@ -439,17 +439,18 @@ func (s *Manager) GetSystemStatus() *SystemStatus {
 	}
 
 	return &SystemStatus{
-		Os:             runtime.GOOS,
-		WorkingDir:     workingDir,
-		HomeDir:        homeDir,
-		DatabaseSchema: &dbSchema,
-		DatabasePath:   &dbPath,
-		AppSchema:      appSchema,
-		Status:         status,
-		ConfigPath:     &configFile,
-		FfmpegPath:     &ffmpegPath,
-		FfprobePath:    &ffprobePath,
-		LocalIPs:       utils.LocalIPv4s(),
+		Os:               runtime.GOOS,
+		WorkingDir:       workingDir,
+		HomeDir:          homeDir,
+		DatabaseSchema:   &dbSchema,
+		DatabasePath:     &dbPath,
+		AppSchema:        appSchema,
+		Status:           status,
+		ConfigPath:       &configFile,
+		FfmpegPath:       &ffmpegPath,
+		FfprobePath:      &ffprobePath,
+		FfmpegDownloaded: ffmpeg.HasDownloadedFFmpeg(s.Config.GetConfigPathAbs()),
+		LocalIPs:         utils.LocalIPv4s(),
 	}
 }
 

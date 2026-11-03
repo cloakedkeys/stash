@@ -33,11 +33,9 @@ func (r *mutationResolver) DownloadFFMpeg(ctx context.Context) (string, error) {
 	mgr := manager.GetInstance()
 	configDir := mgr.Config.GetConfigPathAbs()
 
-	// don't run if ffmpeg is already installed
-	ffmpegPath := ffmpeg.FindFFMpeg(configDir)
-	ffprobePath := ffmpeg.FindFFProbe(configDir)
-	if ffmpegPath != "" && ffprobePath != "" {
-		return "", fmt.Errorf("ffmpeg and ffprobe already installed at %s and %s", ffmpegPath, ffprobePath)
+	// Do not overwrite files managed by the downloader.
+	if ffmpeg.HasDownloadedFFmpeg(configDir) {
+		return "", ffmpeg.ErrAlreadyInstalled
 	}
 
 	t := &task.DownloadFFmpegJob{
@@ -55,6 +53,41 @@ func (r *mutationResolver) DownloadFFMpeg(ctx context.Context) (string, error) {
 	jobID := mgr.JobManager.Add(ctx, "Downloading ffmpeg...", t)
 
 	return strconv.Itoa(jobID), nil
+}
+
+func (r *mutationResolver) RemoveDownloadedFFMpeg(ctx context.Context) (bool, error) {
+	mgr := manager.GetInstance()
+	configDir := mgr.Config.GetConfigPathAbs()
+	removed, err := ffmpeg.RemoveDownloadedFFmpeg(configDir)
+
+	// A configured path to a removed file would stop Stash finding another
+	// FFmpeg (on the PATH, for example), so forget it.
+	cleared := false
+	for key, path := range map[string]string{
+		config.FFMpegPath:  mgr.Config.GetFFMpegPath(),
+		config.FFProbePath: mgr.Config.GetFFProbePath(),
+	} {
+		if ffmpeg.IsDownloadedFile(configDir, path) {
+			mgr.Config.SetString(key, "")
+			cleared = true
+		}
+	}
+	if cleared {
+		if err := mgr.Config.Write(); err != nil {
+			logger.Warnf("Error saving the configuration after removing FFmpeg: %v", err)
+		}
+	}
+
+	// Discard cached paths even after a partial removal or manual deletion.
+	mgr.FFMpeg = nil
+	mgr.FFProbe = nil
+	mgr.RefreshFFMpeg(ctx)
+	mgr.RefreshStreamManager()
+	if err != nil {
+		logger.Errorf("Error removing downloaded FFmpeg: %v", err)
+		return false, errors.New("could not remove downloaded ffmpeg, see the logs")
+	}
+	return removed, nil
 }
 
 func (r *mutationResolver) setConfigString(key string, value *string) {

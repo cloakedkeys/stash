@@ -437,6 +437,8 @@ type SystemStatus {
   homeDir: String!
   ffmpegPath: String
   ffprobePath: String
+  "Whether either FFmpeg binary is present in Stash's download directory."
+  ffmpegDownloaded: Boolean!
   localIPs: [String!]!
 }
 
