@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { IntlProvider } from "react-intl";
@@ -119,6 +120,35 @@ describe("Settings descriptions (#1949)", () => {
     expect(html).toContain("</a>). See ");
     expect(html).toContain('href="http://example.net/help"');
     expect(html).toContain("</a>!");
+  });
+
+  it("stops an address at a translation's own punctuation", () => {
+    for (const locale of ["zh-TW", "ar", "ja-JP"]) {
+      const text = JSON.parse(
+        readFileSync(
+          new URL(`../../locales/${locale}.json`, import.meta.url),
+          "utf8"
+        )
+      ).config.ui.custom_locales.description as string;
+      const html = render(<SettingDescription>{text}</SettingDescription>);
+      expect(html, locale).toContain('href="' + masterURL + '"');
+    }
+  });
+
+  it("leaves protocol words in any language as text", () => {
+    for (const locale of ["en-GB", "ar", "ja-JP", "zh-TW"]) {
+      const text = JSON.parse(
+        readFileSync(
+          new URL(`../../locales/${locale}.json`, import.meta.url),
+          "utf8"
+        )
+      ).config.general.chrome_cdp_path_desc as string;
+      expect(text, locale).toContain("localhost:9222");
+      expect(
+        render(<SettingDescription>{text}</SettingDescription>),
+        locale
+      ).not.toContain("<a");
+    }
   });
 
   it("leaves example addresses on this computer as text", () => {

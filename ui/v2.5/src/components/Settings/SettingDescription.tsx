@@ -24,31 +24,35 @@ export const SettingDescription: React.FC<React.PropsWithChildren> = ({
 
   return (
     <>
-      {children.split(/(https?:\/\/[^\s<>"']+)/gi).map((part, index) => {
-        if (index % 2 === 0) return part;
+      {/* only the characters an address can contain, so a translation's own
+          punctuation right after it, such as "。" or "،", stays outside */}
+      {children
+        .split(/(https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&()*+,;=%]+)/gi)
+        .map((part, index) => {
+          if (index % 2 === 0) return part;
 
-        // Keep sentence punctuation outside the link.
-        const href = part.replace(/[.,;:!?)\]}]+$/, "");
-        let url: URL;
-        try {
-          url = new URL(href);
-        } catch {
-          return part;
-        }
-        // an address on this computer is an example to copy, not a page
-        if (/^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/.test(url.hostname)) {
-          return part;
-        }
+          // Keep sentence punctuation outside the link.
+          const href = part.replace(/[.,;:!?)\]}]+$/, "");
+          let url: URL;
+          try {
+            url = new URL(href);
+          } catch {
+            return part;
+          }
+          // an address on this computer is an example to copy, not a page
+          if (/^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/.test(url.hostname)) {
+            return part;
+          }
 
-        return (
-          <React.Fragment key={index}>
-            <ExternalLink href={href} title={href}>
-              {shortLinkText(url)}
-            </ExternalLink>
-            {part.slice(href.length)}
-          </React.Fragment>
-        );
-      })}
+          return (
+            <React.Fragment key={index}>
+              <ExternalLink href={href} title={href}>
+                {shortLinkText(url)}
+              </ExternalLink>
+              {part.slice(href.length)}
+            </React.Fragment>
+          );
+        })}
     </>
   );
 };
