@@ -13,9 +13,11 @@ export function restartTooltipFades(doc: Document = document) {
 }
 
 export function installTouchTooltipFade(win: Window = window) {
-  if (!win.matchMedia?.("(hover: none)").matches) return;
-  // after the tap's own update, so a hint whose text changed is restarted
-  win.document.addEventListener("click", () =>
-    win.requestAnimationFrame(() => restartTooltipFades(win.document))
-  );
+  // checked on each tap, since a device can switch between mouse and touch
+  // without a reload, and the fade's media query follows it
+  win.document.addEventListener("click", () => {
+    if (!win.matchMedia?.("(hover: none)").matches) return;
+    // after the tap's own update, so a hint whose text changed is restarted
+    win.requestAnimationFrame(() => restartTooltipFades(win.document));
+  });
 }
