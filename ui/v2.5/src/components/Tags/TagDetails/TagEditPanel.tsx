@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import * as yup from "yup";
@@ -60,6 +60,8 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
 
   // Network state
   const [isLoading, setIsLoading] = useState(false);
+  // true while a save runs, when the page moves to the item it created
+  const saving = useRef(false);
 
   const [childTags, setChildTags] = useState<Tag[]>([]);
   const [parentTags, setParentTags] = useState<Tag[]>([]);
@@ -149,6 +151,7 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
 
   async function onSave(input: InputValues, andNew?: boolean) {
     setIsLoading(true);
+    saving.current = true;
     try {
       // ignore_auto_tag may only be changed by administrators
       await onSubmit(
@@ -163,6 +166,7 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
     } catch (e) {
       Toast.error(e);
     }
+    saving.current = false;
     setIsLoading(false);
   }
 
@@ -274,7 +278,12 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
           message={(location, action) => {
             // Check if it's a redirect after tag creation
             if (
-              isRedirectAfterCreate(isNew, action, location.pathname, "tags")
+              isRedirectAfterCreate(
+                isNew && saving.current,
+                action,
+                location.pathname,
+                "tags"
+              )
             ) {
               return true;
             }

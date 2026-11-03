@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import * as yup from "yup";
@@ -68,6 +68,8 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
 
   // Network state
   const [isLoading, setIsLoading] = useState(false);
+  // true while a save runs, when the page moves to the item it created
+  const saving = useRef(false);
 
   const [parentStudio, setParentStudio] = useState<Studio | null>(null);
   const [childStudios, setChildStudios] = useState<Studio[]>([]);
@@ -185,6 +187,7 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
 
   async function onSave(input: InputValues, andNew?: boolean) {
     setIsLoading(true);
+    saving.current = true;
     try {
       // ignore_auto_tag may only be changed by administrators
       await onSubmit(
@@ -215,6 +218,7 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
     } catch (e) {
       Toast.error(e);
     }
+    saving.current = false;
     setIsLoading(false);
   }
 
@@ -494,7 +498,12 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
         message={(location, action) => {
           // Check if it's a redirect after studio creation
           if (
-            isRedirectAfterCreate(isNew, action, location.pathname, "studios")
+            isRedirectAfterCreate(
+              isNew && saving.current,
+              action,
+              location.pathname,
+              "studios"
+            )
           )
             return true;
 
