@@ -88,6 +88,10 @@ func (r *mutationResolver) setConfigFloat(key string, value *float64) {
 func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGeneralInput) (*ConfigGeneralResult, error) {
 	c := config.GetInstance()
 
+	if err := validateMediaExtensions(input); err != nil {
+		return makeConfigGeneralResult(), err
+	}
+
 	// #4709 - allow stash paths even if they do not exist, so that users may configure stash
 	// for disconnected drives or network storage.
 	existingPaths := c.GetStashPaths()

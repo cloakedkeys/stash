@@ -16,7 +16,11 @@ export const SettingsLibraryPanel: React.FC = () => {
 
   function commaDelimitedToList(value: string | undefined) {
     if (value) {
-      return value.split(",").map((s) => s.trim());
+      // a trailing comma or a leading dot isn't a mistake worth an error
+      return value
+        .split(",")
+        .map((s) => s.trim().replace(/^\.+/, ""))
+        .filter((s) => s);
     }
   }
 
