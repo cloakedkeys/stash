@@ -68,6 +68,9 @@ const (
 
 	DefaultMaxSessionAge = 60 * 60 * 1 // 1 hours
 
+	// MaxSupportedSessionAge is the browser cookie lifetime limit, in seconds.
+	MaxSupportedSessionAge = 400 * 24 * 60 * 60
+
 	Database = "database"
 
 	Exclude      = "exclude"
@@ -1371,6 +1374,7 @@ func (i *Config) ValidateStashBoxes(boxes []*StashBoxInput) error {
 }
 
 // GetMaxSessionAge gets the maximum age for session cookies, in seconds.
+// Values above the browser cookie lifetime limit are capped before conversion.
 // Session cookie expiry times are refreshed every request.
 func (i *Config) GetMaxSessionAge() int {
 	i.RLock()
@@ -1379,6 +1383,12 @@ func (i *Config) GetMaxSessionAge() int {
 	ret := DefaultMaxSessionAge
 	v := i.forKey(MaxSessionAge)
 	if v.Exists(MaxSessionAge) {
+		// Check before converting to int: a saved YAML number may exceed even
+		// the platform integer range. ParseFloat also handles numeric strings.
+		age, _ := strconv.ParseFloat(fmt.Sprint(v.Get(MaxSessionAge)), 64)
+		if age > MaxSupportedSessionAge {
+			return MaxSupportedSessionAge
+		}
 		ret = v.Int(MaxSessionAge)
 	}
 

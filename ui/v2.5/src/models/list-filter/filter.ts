@@ -41,6 +41,14 @@ const DEFAULT_PARAMS = {
 };
 
 // TODO: handle customCriteria
+// The most items a list shows on one page. Bigger pages are slow, especially
+// on a phone, so a web address or saved filter asking for more gets this many
+// (#1954). 0 or less is left alone: it has its own meaning (everything).
+export const MAX_PAGE_SIZE = 255;
+
+export function limitPageSize(pageSize: number) {
+  return pageSize > MAX_PAGE_SIZE ? MAX_PAGE_SIZE : pageSize;
+}
 export class ListFilterModel {
   public readonly mode: FilterMode;
   public readonly options: ListFilterOptions;
@@ -125,7 +133,7 @@ export class ListFilterModel {
 
   public configureFromDecodedParams(params: IDecodedParams) {
     if (params.perPage !== undefined) {
-      this.itemsPerPage = params.perPage;
+      this.itemsPerPage = limitPageSize(params.perPage);
     }
     if (params.sortby !== undefined) {
       this.sortBy = params.sortby;
@@ -293,7 +301,9 @@ export class ListFilterModel {
       ui_options: uiOptions,
     } = savedFilter;
 
-    this.itemsPerPage = findFilter?.per_page ?? this.itemsPerPage;
+    this.itemsPerPage = limitPageSize(
+      findFilter?.per_page ?? this.itemsPerPage
+    );
     this.sortBy = findFilter?.sort ?? this.sortBy;
     // parse the random seed if provided
     const match = this.sortBy?.match(/^random_(\d+)$/);

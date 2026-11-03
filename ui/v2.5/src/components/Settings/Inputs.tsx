@@ -155,10 +155,15 @@ interface IBooleanSetting extends ISetting {
 export const BooleanSetting: React.FC<IBooleanSetting> = PatchComponent(
   "BooleanSetting",
   (props) => {
-    const { id, disabled, checked, onChange, ...settingProps } = props;
+    const { id, disabled, checked, onChange, className, ...settingProps } =
+      props;
 
     return (
-      <Setting {...settingProps} disabled={disabled}>
+      <Setting
+        {...settingProps}
+        className={`boolean-setting ${className ?? ""}`}
+        disabled={disabled}
+      >
         <Form.Switch
           id={id}
           disabled={disabled}

@@ -88,11 +88,17 @@
 .gallery-card,
 .group-card,
 .audio-card {
+  // The heart sits at the bottom-left of the picture: the top-left has the
+  // checkbox and the rating ribbon, the top-right the studio logo (#1978).
+  .thumbnail-section {
+    position: relative;
+  }
+
   button.btn.favorite-button {
-    left: 2.5rem;
+    bottom: 0.5rem;
+    left: 0.5rem;
     padding: 0;
     position: absolute;
-    top: 10px;
 
     svg.fa-icon {
       margin-left: 0.4rem;
