@@ -85,7 +85,8 @@ jobs:
         head=$(git rev-parse HEAD)
         quiet=false
         if gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --branch develop \
-            --status success --limit 50 --json headSha --jq '.[].headSha' | grep -qx "$head"; then
+            --status success --limit 50 --json headSha,event \
+            --jq '.[] | select(.event != "pull_request") | .headSha' | grep -qx "$head"; then
           quiet=true
         fi
         echo "Newest commit $head already passed: $quiet"
