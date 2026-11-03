@@ -1,4 +1,3 @@
-import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { IntlProvider } from "react-intl";
 import { describe, expect, it, vi } from "vitest";
@@ -34,20 +33,22 @@ function render(packageSources = sources) {
 }
 
 describe("available package source controls", () => {
-  it.each([{ sources }, { sources: [] }])(
-    "keeps Add source above the scrolling table with sources %j",
-    ({ sources: packageSources }) => {
-      const html = render(packageSources);
-      const addSource = html.indexOf("Add source");
-      const scrollContainer = html.indexOf(
-        'class="package-manager-table-container"'
-      );
+  it.each([
+    { sources },
+    { sources: [] },
+  ])("keeps Add source above the scrolling table with sources %j", ({
+    sources: packageSources,
+  }) => {
+    const html = render(packageSources);
+    const addSource = html.indexOf("Add source");
+    const scrollContainer = html.indexOf(
+      'class="package-manager-table-container"'
+    );
 
-      expect(addSource).toBeGreaterThan(-1);
-      expect(addSource).toBeLessThan(scrollContainer);
-      expect(html.match(/Add source/g)).toHaveLength(1);
-    }
-  );
+    expect(addSource).toBeGreaterThan(-1);
+    expect(addSource).toBeLessThan(scrollContainer);
+    expect(html.match(/Add source/g)).toHaveLength(1);
+  });
 
   it("gives each source its own row group for its sticky header", () => {
     const html = render();
