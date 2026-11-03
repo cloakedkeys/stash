@@ -9,6 +9,11 @@ const styles = readFileSync(new URL("./styles.scss", import.meta.url), "utf8");
 describe("performer tab toolbars on phones", () => {
   const start = styles.indexOf("// The rows stay independent");
   const mobile = styles.slice(start, styles.indexOf("\n}\n", start));
+  const literal = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const orderOf = (selector: string) =>
+    new RegExp(`${literal(selector)}\\s*\\{\\s*order:\\s*(\\d+);`).exec(
+      mobile
+    )?.[1];
 
   it("applies to performer pages on small screens only", () => {
     expect(start).toBeGreaterThan(-1);
@@ -19,24 +24,27 @@ describe("performer tab toolbars on phones", () => {
 
   it("forces a line break after the filters and before the views", () => {
     expect(mobile).toMatch(
-      /&::before,\s*&::after\s*\{\s*content: "";\s*flex-basis: 100%;\s*height: 0;/
+      /&::before,\s*&::after\s*\{\s*content: "";\s*flex-basis: 100%;\s*height: 0;\s*\}/
     );
   });
 
-  it.each([
-    [".search-term-input", 1],
-    [".search-term-input + .btn-group", 2],
-    [".sort-by-select", 4],
-    [".page-size-selector", 5],
-    [".list-operations", 6],
-    [".display-mode-button-group", 8],
-  ])("puts %s in place %i", (selector, order) => {
-    expect(mobile).toContain(`> ${selector} {\n        order: ${order};`);
+  // an empty break line still has a row gap above and below it
+  it("keeps the usual 0.5rem between rows", () => {
+    expect(mobile).toMatch(/row-gap:\s*0\.25rem;/);
+    expect(mobile).not.toMatch(/margin-top:\s*-/);
   });
 
-  it("breaks between the rows", () => {
-    expect(mobile).toContain("&::before {\n        order: 3;");
-    expect(mobile).toContain("&::after {\n        order: 7;");
+  it.each([
+    ["> .search-term-input", "1"],
+    ["> .search-term-input + .btn-group", "2"],
+    ["&::before", "3"],
+    ["> .sort-by-select", "4"],
+    ["> .page-size-selector", "5"],
+    ["> .list-operations", "6"],
+    ["&::after", "7"],
+    ["> .display-mode-button-group", "8"],
+  ])("puts %s in place %s", (selector, order) => {
+    expect(orderOf(selector)).toBe(order);
   });
 
   it("doesn't hide any control", () => {
