@@ -41,6 +41,12 @@
         max-height: inherit;
         overflow-y: hidden;
       }
+
+      // Help opened on a topic scrolls its text to the top before the text
+      // has loaded, so keep room to scroll that far (#2005)
+      .manual-content {
+        min-height: 100vh;
+      }
     }
   }
 }
