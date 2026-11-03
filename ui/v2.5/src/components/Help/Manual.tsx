@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useIntl } from "react-intl";
 import { Modal, Container, Row, Col, Nav, Tab } from "react-bootstrap";
+import { scrollToTopic } from "./scrollToTopic";
 import Introduction from "src/docs/en/Manual/Introduction.md";
 import Tasks from "src/docs/en/Manual/Tasks.md";
 import AutoTagging from "src/docs/en/Manual/AutoTagging.md";
@@ -197,6 +198,17 @@ export const Manual: React.FC<IManualProps> = ({
     setActiveTab(defaultActiveTab);
   }, [defaultActiveTab]);
 
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  function showTopic(key: string, scroll = true) {
+    setActiveTab(key);
+    if (!scroll) return;
+    // once the topic's text is shown
+    requestAnimationFrame(() =>
+      scrollToTopic(contentRef.current, (q) => window.matchMedia(q))
+    );
+  }
+
   // links to other manual pages are specified as "/help/page.md"
   // intercept clicks to these pages and set the tab accordingly
   function interceptLinkClick(
@@ -206,7 +218,7 @@ export const Manual: React.FC<IManualProps> = ({
       const href = event.target.getAttribute("href");
       if (href?.startsWith("/help")) {
         const newKey = event.target.pathname.substring("/help/".length);
-        setActiveTab(newKey);
+        showTopic(newKey);
         event.preventDefault();
       }
     }
@@ -226,7 +238,8 @@ export const Manual: React.FC<IManualProps> = ({
         <Container className="manual-container">
           <Tab.Container
             activeKey={activeTab ?? content[0].key}
-            onSelect={(k) => k && setActiveTab(k)}
+            // arrow keys move through the list; only a tap or click scrolls
+            onSelect={(k, e) => k && showTopic(k, e?.type !== "keydown")}
             id="manual-tabs"
           >
             <Row>
@@ -244,7 +257,7 @@ export const Manual: React.FC<IManualProps> = ({
                   <hr className="d-sm-none" />
                 </Nav>
               </Col>
-              <Col lg={9} className="manual-content">
+              <Col lg={9} className="manual-content" ref={contentRef}>
                 <Tab.Content>
                   {content.map((c) => {
                     return (
