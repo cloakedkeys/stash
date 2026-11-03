@@ -30,7 +30,11 @@ vi.mock("src/hooks/CurrentUser", () => ({
 vi.mock("src/hooks/title", () => ({ useTitleProps: () => ({}) }));
 vi.mock("./context", () => ({
   SettingsContext: ({ children }: React.PropsWithChildren) => children,
-  useSettings: () => ({ advancedMode: false, setAdvancedMode: vi.fn() }),
+  useSettings: () => ({
+    advancedMode: false,
+    setAdvancedMode: vi.fn(),
+    saveIndicator: <span data-save-status="failed" />,
+  }),
 }));
 vi.mock("../TroubleshootingMode/useTroubleshootingMode", () => ({
   useTroubleshootingMode: () => ({ isActive: false }),
@@ -100,4 +104,10 @@ it("closes to Home when Settings was opened directly", () => {
   expect(navigation.close).toBeTypeOf("function");
   navigation.close!();
   expect(navigation.replace).toHaveBeenCalledWith("/");
+});
+
+it("keeps save feedback beside the Settings close button", () => {
+  expect(render()).toContain(
+    '<div class="settings-controls"><span data-save-status="failed"></span><button type="button" aria-label="Close"'
+  );
 });
