@@ -151,6 +151,13 @@ input[type="range"].zoom-slider {
 .saved-filter-list-menu {
   width: 300px;
 
+  // On a phone it spans the screen under the toolbar row, instead of sliding
+  // left over the controls beside it (#1955). The menu's popper keeps 8px from
+  // each edge.
+  @include media-breakpoint-down(xs) {
+    width: calc(100vw - 16px);
+  }
+
   &.dropdown-menu.show {
     display: flex;
     flex-direction: column;

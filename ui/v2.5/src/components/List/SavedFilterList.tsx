@@ -1148,6 +1148,10 @@ export const SidebarSavedFilterList: React.FC<ISavedFilterListProps> = ({
 // Declared out here so that its type is stable. Built during render, every
 // re-render would be a new component type, remounting the list and discarding
 // an in-progress rename.
+export const savedFilterPopperConfig = {
+  modifiers: [{ name: "preventOverflow", options: { padding: 8 } }],
+};
+
 const SavedFilterDropdownMenu = React.forwardRef<
   HTMLDivElement,
   HTMLAttributes<HTMLDivElement> & { listProps: ISavedFilterListProps }
@@ -1179,6 +1183,8 @@ export const SavedFilterDropdown: React.FC<ISavedFilterListProps> = (props) => {
       as={SavedFilterDropdownMenu}
       className="saved-filter-list-menu"
       listProps={{ ...props, onOperationChosen: keepOpen }}
+      // keeps the full-width menu on a phone off the screen's edges (#1955)
+      popperConfig={savedFilterPopperConfig}
     />
   );
 
