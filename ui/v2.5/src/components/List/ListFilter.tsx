@@ -9,7 +9,11 @@ import Mousetrap from "mousetrap";
 import { Button, Form, InputGroup, Popover, Overlay } from "react-bootstrap";
 
 import { Icon } from "../Shared/Icon";
-import { ListFilterModel } from "src/models/list-filter/filter";
+import {
+  limitPageSize,
+  ListFilterModel,
+  MAX_PAGE_SIZE,
+} from "src/models/list-filter/filter";
 import useFocus from "src/utils/focus";
 import { useIntl } from "react-intl";
 import { faCheck } from "@fortawesome/free-solid-svg-icons";
@@ -91,7 +95,7 @@ export const SearchTermInput: React.FC<{
   );
 };
 
-const PAGE_SIZE_OPTIONS = ["20", "40", "60", "120", "250", "500", "1000"];
+const PAGE_SIZE_OPTIONS = ["20", "40", "60", "120"];
 
 export const PageSizeSelector: React.FC<{
   pageSize: number;
@@ -147,7 +151,7 @@ export const PageSizeSelector: React.FC<{
       return;
     }
 
-    setPageSize(pp);
+    setPageSize(limitPageSize(pp));
   }
 
   return (
@@ -179,6 +183,7 @@ export const PageSizeSelector: React.FC<{
               <Form.Control
                 type="number"
                 min={1}
+                max={MAX_PAGE_SIZE}
                 className="text-input"
                 ref={perPageInput}
                 onKeyPress={(e: React.KeyboardEvent<HTMLInputElement>) => {
