@@ -194,8 +194,10 @@ textarea.scene-description {
   margin-right: 0.3rem;
 }
 
+// Starts to the right of the favourite heart in the bottom-left corner,
+// which also shows on hover (#1978).
 .scene-interactive-speed-overlay {
-  left: 0.7rem;
+  left: 4rem;
 }
 
 .extra-scene-info {
