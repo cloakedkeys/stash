@@ -20,6 +20,12 @@ describe("left edges in Settings", () => {
     );
   });
 
+  it("the Tasks job queue box isn't inset either", () => {
+    expect(block("\n.job-table.card {")).toMatch(
+      /^\n\.job-table\.card \{[^}]*margin-left: 0;\s*margin-right: 0;/
+    );
+  });
+
   it("fields and buttons in a group line up with its heading", () => {
     expect(block("  .setting-group {")).toMatch(
       /> \.form-group,\s*> \.btn \{\s*margin-left: 15px;\s*margin-right: 15px;/

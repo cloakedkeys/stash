@@ -395,6 +395,9 @@
   background-color: $card-bg;
   height: 10em;
   margin-bottom: 30px;
+  // in line with its heading, like the section boxes (#1948)
+  margin-left: 0;
+  margin-right: 0;
   overflow-y: auto;
   padding: 0.5rem 15px;
 
