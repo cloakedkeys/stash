@@ -68,6 +68,13 @@
     padding: 0;
   }
 
+  // Cards are inset 5px everywhere; here that put the box's edge right of
+  // the heading and description above it (#1948).
+  > .card {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
   h1 {
     font-size: 2rem;
   }
@@ -171,6 +178,14 @@
 
     &:not(:last-child) {
       border-bottom: 1px solid #000;
+    }
+
+    // fields and buttons placed straight in a group line up with its heading,
+    // which has the setting's 15px padding (#1948)
+    > .form-group,
+    > .btn {
+      margin-left: 15px;
+      margin-right: 15px;
     }
 
     > .setting:first-child {
@@ -380,6 +395,9 @@
   background-color: $card-bg;
   height: 10em;
   margin-bottom: 30px;
+  // in line with its heading, like the section boxes (#1948)
+  margin-left: 0;
+  margin-right: 0;
   overflow-y: auto;
   padding: 0.5rem 15px;
 
