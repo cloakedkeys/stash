@@ -18,14 +18,14 @@ describe("scraperSiteLink", () => {
 
   it("links an address that matches both http and https", () => {
     expect(scraperSiteLink("://literotica.com/s/")).toEqual({
-      text: "://literotica.com/s/",
+      text: "https://literotica.com/s/",
       href: "https://literotica.com",
     });
   });
 
   it("links an address that matches any subdomain", () => {
     expect(scraperSiteLink(".literotica.com/s/")).toEqual({
-      text: ".literotica.com/s/",
+      text: "https://*.literotica.com/s/",
       href: "https://literotica.com",
     });
   });
