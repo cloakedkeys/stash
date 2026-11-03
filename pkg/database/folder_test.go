@@ -5,6 +5,7 @@ package database_test
 
 import (
 	"context"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -348,6 +349,33 @@ func Test_FolderStore_GetManyParentFolderIDs(t *testing.T) {
 			}
 
 			assert.Equal(got, tt.want)
+		})
+	}
+}
+
+// Clean limited to a folder finds what's in it with FindAllInPaths. A folder
+// name with _ or % only covers that folder, not one that differs there (#2026).
+func TestFolderStore_FindAllInPathsTreatsLikeWildcardsLiterally(t *testing.T) {
+	root := filepath.Join("allinpaths", "root")
+	for _, name := range []string{"my_dir", "my%dir"} {
+		runWithRollbackTxn(t, name, func(t *testing.T, ctx context.Context) {
+			qb := db.Folder()
+			want := []string{filepath.Join(root, name), filepath.Join(root, name, "child")}
+			for _, p := range append(want, filepath.Join(root, "my-dir"), filepath.Join(root, "my-dir", "child")) {
+				if err := qb.Create(ctx, &models.Folder{Path: p}); err != nil {
+					t.Fatalf("creating %s: %v", p, err)
+				}
+			}
+
+			got, err := qb.FindAllInPaths(ctx, []string{filepath.Join(root, name)}, true, -1, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var paths []string
+			for _, f := range got {
+				paths = append(paths, f.Path)
+			}
+			assert.ElementsMatch(t, want, paths)
 		})
 	}
 }
