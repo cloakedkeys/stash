@@ -20,10 +20,15 @@ import { TextField, URLField, URLsField } from "src/utils/field";
 import { StashIDPill } from "src/components/Shared/StashID";
 import { PatchComponent } from "../../../patch";
 import { FileSize } from "src/components/Shared/FileSize";
+import { useCanModify } from "src/hooks/CurrentUser";
+import { objectTitle } from "src/core/files";
+import { SceneCreateFromPartDialog } from "./SceneCreateFromPartDialog";
+import { SceneFileRangeDescription } from "./SceneFileRange";
 import { VRMetadataEditor } from "./VRMetadataEditor";
 
 interface IFileInfoPanelProps {
   sceneID: string;
+  sceneTitle: string;
   file: GQL.VideoFileDataFragment;
   primary?: boolean;
   ofMany?: boolean;
@@ -38,6 +43,8 @@ const FileInfoPanel: React.FC<IFileInfoPanelProps> = (
 ) => {
   const intl = useIntl();
   const history = useHistory();
+  const canModify = useCanModify();
+  const [creatingPart, setCreatingPart] = useState(false);
 
   // TODO - generalise fingerprints
   const oshash = props.file.fingerprints.find((f) => f.type === "oshash");
@@ -147,6 +154,19 @@ const FileInfoPanel: React.FC<IFileInfoPanelProps> = (
         )}
         <VRMetadataEditor file={props.file} />
       </dl>
+      {canModify && (
+        <Button className="edit-button" onClick={() => setCreatingPart(true)}>
+          <FormattedMessage id="scene_file_range.create" />
+        </Button>
+      )}
+      {creatingPart && (
+        <SceneCreateFromPartDialog
+          fileID={props.file.id}
+          fileDuration={props.file.duration}
+          sceneTitle={props.sceneTitle}
+          onClose={() => setCreatingPart(false)}
+        />
+      )}
       {props.ofMany && props.onSetPrimaryFile && !props.primary && (
         <div>
           <Button
@@ -248,7 +268,11 @@ const _SceneFileInfoPanel: React.FC<ISceneFileInfoPanelProps> = (
 
     if (props.scene.files.length === 1) {
       return (
-        <FileInfoPanel sceneID={props.scene.id} file={props.scene.files[0]} />
+        <FileInfoPanel
+          sceneID={props.scene.id}
+          sceneTitle={objectTitle(props.scene)}
+          file={props.scene.files[0]}
+        />
       );
     }
 
@@ -286,6 +310,7 @@ const _SceneFileInfoPanel: React.FC<ISceneFileInfoPanelProps> = (
               <Card.Body>
                 <FileInfoPanel
                   sceneID={props.scene.id}
+                  sceneTitle={objectTitle(props.scene)}
                   file={file}
                   primary={index === 0}
                   ofMany
@@ -319,6 +344,7 @@ const _SceneFileInfoPanel: React.FC<ISceneFileInfoPanelProps> = (
         {renderStashIDs()}
       </dl>
 
+      <SceneFileRangeDescription scene={props.scene} />
       {filesPanel}
     </>
   );

@@ -6,6 +6,8 @@ fragment SceneData on Scene {
   }
   id
   title
+  start_time
+  end_time
   code
   details
   director
