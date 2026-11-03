@@ -4,7 +4,7 @@ on:
   push:
     # Not develop: each pull request has already run every check before it
     # merges, so running them again for every merge doubled the paid minutes.
-    # develop gets one run a day instead, and only if something merged.
+    # develop gets one run a day instead, and only if it changed since a run passed.
     branches:
       - master
       - 'releases/**'
@@ -16,7 +16,8 @@ on:
   release:
     types: [ published ]
   schedule:
-    - cron: '0 6 * * *'
+    # off the hour, when GitHub delays or drops fewer scheduled runs
+    - cron: '17 6 * * *'
   # Run it on develop by hand: Actions > Build > Run workflow
   workflow_dispatch:
 
@@ -36,10 +37,14 @@ jobs:
   # then. Anything else, including this check failing, means they run. Jobs using this must
   # compare with != 'true', so that an empty answer runs them too.
   # Draft pull requests skip this, as they skip every check.
-  # For the daily run it also says whether anything merged in the last day.
+  # For the daily run it also says whether develop changed since a run passed.
   changes:
     if: ${{ (github.event_name == 'pull_request' && !github.event.pull_request.draft) || github.event_name == 'schedule' }}
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # to see earlier runs for the daily run's quiet check
+      actions: read
     outputs:
       go_unchanged: ${{ steps.check.outputs.go_unchanged }}
       quiet: ${{ steps.quiet.outputs.quiet }}
@@ -49,7 +54,10 @@ jobs:
       with:
         fetch-depth: 2
 
+    # only for pull requests: on develop the newest commit can be a merge that
+    # doesn't show what else changed since the last run
     - id: check
+      if: ${{ github.event_name == 'pull_request' }}
       run: |
         go_unchanged=false
         files=""
@@ -67,15 +75,20 @@ jobs:
         echo "Go unchanged: $go_unchanged"
         echo "go_unchanged=$go_unchanged" >> "$GITHUB_OUTPUT"
 
-    # The daily run skips every other job when develop's newest commit is
-    # more than a day old: the previous day's run already checked it.
+    # The daily run skips every other job when an earlier run on develop
+    # already passed on this same commit. If that can't be checked, it runs.
     - id: quiet
       if: ${{ github.event_name == 'schedule' }}
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
-        age=$(( $(date +%s) - $(git log -1 --format=%ct HEAD) ))
+        head=$(git rev-parse HEAD)
         quiet=false
-        if [ "$age" -gt 90000 ]; then quiet=true; fi
-        echo "Newest commit is $age seconds old. Quiet: $quiet"
+        if gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --branch develop \
+            --status success --limit 50 --json headSha --jq '.[].headSha' | grep -qx "$head"; then
+          quiet=true
+        fi
+        echo "Newest commit $head already passed: $quiet"
         echo "quiet=$quiet" >> "$GITHUB_OUTPUT"
 
   # Job 1: Generate code and build UI
