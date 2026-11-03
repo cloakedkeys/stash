@@ -1762,6 +1762,10 @@
     },
     "welcome_to_stash": "Welcome to Stash"
   },
+  "split_scene": {
+    "copy_markers": "Copy the original scene's {count, plural, one {# marker} other {# markers}}",
+    "copy_markers_note": "Marker times come from the original scene's files and may not match this file."
+  },
   "stash_id": "Stash ID",
   "stash_id_count": "Stash ID Count",
   "stash_id_endpoint": "Stash ID Endpoint URL",
@@ -1940,6 +1944,7 @@
     "removed_entity": "Removed {count, plural, one {{singularEntity}} other {{pluralEntity}}}",
     "rescanning_entity": "Rescanning {count, plural, one {{singularEntity}} other {{pluralEntity}}}…",
     "saved_entity": "Saved {entity}",
+    "scene_markers_copy_failed": "{count, plural, one {# marker could not be copied} other {# markers could not be copied}}. The new scene was created.",
     "started_auto_tagging": "Started auto tagging",
     "started_generating": "Started generating",
     "started_importing": "Started importing",
