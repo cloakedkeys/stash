@@ -7,6 +7,8 @@ on:
       - master
       - 'releases/**'
   pull_request:
+    # ready_for_review: drafts skip every check, so run them when one is marked ready
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: test-postgres-${{ github.ref }}
@@ -14,12 +16,12 @@ concurrency:
 
 jobs:
   changes:
-    uses: ./.github/workflows/docs-only.yml
+    uses: ./.github/workflows/changes.yml
 
   # A required check: a skipped job counts as passed.
   test-postgres:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
+    if: ${{ !cancelled() && !github.event.pull_request.draft && needs.changes.outputs.go_unchanged != 'true' }}
     runs-on: ubuntu-24.04
     services:
       postgres:
