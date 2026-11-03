@@ -200,8 +200,9 @@ export const Manual: React.FC<IManualProps> = ({
 
   const contentRef = useRef<HTMLDivElement>(null);
 
-  function showTopic(key: string) {
+  function showTopic(key: string, scroll = true) {
     setActiveTab(key);
+    if (!scroll) return;
     // once the topic's text is shown
     requestAnimationFrame(() =>
       scrollToTopic(contentRef.current, (q) => window.matchMedia(q))
@@ -237,7 +238,8 @@ export const Manual: React.FC<IManualProps> = ({
         <Container className="manual-container">
           <Tab.Container
             activeKey={activeTab ?? content[0].key}
-            onSelect={(k) => k && showTopic(k)}
+            // arrow keys move through the list; only a tap or click scrolls
+            onSelect={(k, e) => k && showTopic(k, e?.type !== "keydown")}
             id="manual-tabs"
           >
             <Row>
