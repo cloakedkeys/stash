@@ -58,6 +58,12 @@ function renderContent(
   );
 }
 
+// Only an error opens in the larger box, which is titled "Error". A tap on
+// any other message, easy on a phone, showed it as an error (#1973).
+export function canExpandToast(toast: Pick<IToast, "variant">) {
+  return toast.variant === "danger";
+}
+
 let toastID = 0;
 
 type ToastFn = (item: IToast) => void;
@@ -78,6 +84,8 @@ export const ToastProvider: React.FC<React.PropsWithChildren<unknown>> = ({
 
     if (!toast || expanded) return null;
 
+    const canExpand = canExpandToast(toast);
+
     return (
       <Toast
         autohide
@@ -87,10 +95,13 @@ export const ToastProvider: React.FC<React.PropsWithChildren<unknown>> = ({
         delay={toast.delay ?? 3000}
       >
         <Toast.Header>
-          <span className="mr-auto" onClick={() => expand()}>
+          <span
+            className="mr-auto"
+            onClick={canExpand ? () => expand() : undefined}
+          >
             {renderContent(toast.content, () => setHiding(true))}
           </span>
-          {toast.variant === "danger" && (
+          {canExpand && (
             <Button
               variant="minimal"
               className="expand-error-button"
