@@ -31,4 +31,13 @@ describe("filter panel on a phone", () => {
     // sm and below is below 768px, where Sidebar.tsx closes it on a tap outside
     expect(sidebar).toContain('"only screen and (max-width: 767px)"');
   });
+
+  it("covers the page header on detail pages too", () => {
+    // there the pane is sticky, which keeps the dim beneath the header
+    // (z-index 11) unless the pane itself is lifted over it
+    const detail = styles.slice(styles.indexOf("\n.detail-body {"));
+    expect(detail).toMatch(
+      /\.sidebar-pane \{\s*position: sticky;[^@]*@include media-breakpoint-down\(sm\) \{\s*&:not\(\.hide-sidebar\) \{\s*z-index: 12;/
+    );
+  });
 });

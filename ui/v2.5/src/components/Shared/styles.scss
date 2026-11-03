@@ -1068,6 +1068,15 @@ $sticky-header-height: calc(50px + 3.3rem);
   .sidebar-pane {
     position: sticky;
     top: calc($sticky-detail-header-height + $navbar-height);
+
+    // Being sticky keeps the dim layer of an open panel (above) beneath the
+    // page header (z-index 11) and the compact one (10), which stayed bright
+    // and tappable. Lift the whole pane over them while the panel is open.
+    @include media-breakpoint-down(sm) {
+      &:not(.hide-sidebar) {
+        z-index: 12;
+      }
+    }
   }
 
   .sidebar {
