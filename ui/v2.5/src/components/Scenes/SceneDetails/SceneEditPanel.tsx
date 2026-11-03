@@ -99,12 +99,13 @@ export const SceneEditPanel: React.FC<IProps> = ({
   const intl = useIntl();
   const isAdmin = useCanAdminister();
   const Toast = useToast();
-  const performerPicture = usePerformerPictureFromFrame(scene.performers ?? []);
 
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [performers, setPerformers, setInitialPerformers] = useInitialState<
     Performer[]
   >(scene.performers ?? []);
+  // the performers in the form, which may not be saved yet
+  const performerPicture = usePerformerPictureFromFrame(performers);
   const [voiceActors, setVoiceActors, setInitialVoiceActors] = useInitialState<
     VoiceActorOption[]
   >(scene.voice_actors ?? []);
@@ -1067,9 +1068,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
                         },
                       ]
                     : []),
-                  ...(!isNew &&
-                  !!scene.files?.length &&
-                  !!scene.performers?.length
+                  ...(!isNew && !!scene.files?.length && performers.length > 0
                     ? [
                         {
                           icon: faUser,

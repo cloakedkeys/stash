@@ -77,7 +77,7 @@ export function usePerformerPictureFromFrame(performers: IScenePerformer[]) {
       show
       header={intl.formatMessage({ id: "actions.set_as_performer_image" })}
       onHide={close}
-      cancel={{
+      accept={{
         text: intl.formatMessage({ id: "actions.cancel" }),
         variant: "secondary",
         onClick: close,

@@ -21,7 +21,7 @@ describe("performer picture from the library", () => {
   it("offers the current frame beside the scene's other cover actions", () => {
     const panel = read("./Scenes/SceneDetails/SceneEditPanel.tsx");
     expect(panel).toMatch(
-      /!isNew &&\s*!!scene\.files\?\.length &&\s*!!scene\.performers\?\.length\s*\?\s*\[\s*\{\s*icon: faUser,\s*labelId: "actions\.set_as_performer_image",\s*onClick: performerPicture\.capture,/
+      /!isNew &&\s*!!scene\.files\?\.length &&\s*performers\.length > 0\s*\?\s*\[\s*\{\s*icon: faUser,\s*labelId: "actions\.set_as_performer_image",\s*onClick: performerPicture\.capture,/
     );
     // it isn't limited to admins, unlike the server-side thumbnail actions
     const frameAction = panel.indexOf("performerPicture.capture");
@@ -29,5 +29,14 @@ describe("performer picture from the library", () => {
     expect(adminGate).toBeGreaterThan(-1);
     expect(panel.slice(adminGate, frameAction)).toContain(": []),");
     expect(panel).toContain("{performerPicture.dialog}");
+    // the performers shown in the form, not the last saved ones, so a
+    // performer swapped in without saving gets the picture
+    expect(panel).toContain("usePerformerPictureFromFrame(performers)");
+  });
+
+  it("closes the performer chooser with its button", () => {
+    const hook = read("./Scenes/SceneDetails/usePerformerPictureFromFrame.tsx");
+    // the dialog's main button is the accept one; without a handler it did nothing
+    expect(hook).toMatch(/accept=\{\{[\s\S]*?onClick: close,\s*\}\}/);
   });
 });
