@@ -57,6 +57,9 @@ type VerifyOptions struct {
 	// PathFilter are used to determine if a file should be included.
 	// Excluded files are marked for cleaning.
 	PathFilter PathFilter
+
+	// OnRetainedFile handles media associations for files that remain in the library.
+	OnRetainedFile func(context.Context, models.File) error
 }
 
 // Verify starts the verify process.
@@ -285,6 +288,9 @@ func (j *verifyJob) assessFiles(ctx context.Context) error {
 				if j.shouldClean(ctx, f) {
 					err = j.handleMissingFile(ctx, f)
 				} else {
+					if j.options.OnRetainedFile != nil {
+						err = j.options.OnRetainedFile(ctx, f)
+					}
 					// increment progress, no further processing
 					progress.Increment()
 				}
