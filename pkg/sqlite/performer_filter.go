@@ -742,7 +742,7 @@ func (qb *performerFilterHandler) studiosCriterionHandler(studios *models.Hierar
 
 				templStr := `SELECT performer_id FROM {primaryTable}
 		INNER JOIN {joinTable} ON {primaryTable}.id = {joinTable}.{primaryFK}
-		INNER JOIN studio ON {primaryTable}.studio_id = studio.item_id`
+		WHERE {primaryTable}.studio_id IN (SELECT item_id FROM studio)`
 
 				var unions []string
 				for _, c := range formatMaps {
@@ -766,7 +766,7 @@ func (qb *performerFilterHandler) studiosCriterionHandler(studios *models.Hierar
 
 				excludeTemplStr := `SELECT performer_id FROM {primaryTable}
 	INNER JOIN {joinTable} ON {primaryTable}.id = {joinTable}.{primaryFK}
-	INNER JOIN exclude_studio ON {primaryTable}.studio_id = exclude_studio.item_id`
+	WHERE {primaryTable}.studio_id IN (SELECT item_id FROM exclude_studio)`
 
 				var unions []string
 				for _, c := range formatMaps {
