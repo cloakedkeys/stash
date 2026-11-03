@@ -76,3 +76,23 @@ func TestRemoveDownloadedFFmpegRejectsDirectories(t *testing.T) {
 		t.Fatal("directory was removed:", err)
 	}
 }
+
+func TestIsDownloadedFile(t *testing.T) {
+	dir := t.TempDir()
+	other := t.TempDir()
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"", false},
+		{filepath.Join(dir, getFFMpegFilename()), true},
+		{filepath.Join(dir, getFFProbeFilename()), true},
+		{filepath.Join(dir, ".", getFFMpegFilename()), true},
+		{filepath.Join(other, getFFMpegFilename()), false},
+		{filepath.Join(dir, "keep.txt"), false},
+	} {
+		if got := IsDownloadedFile(dir, tc.path); got != tc.want {
+			t.Errorf("IsDownloadedFile(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}

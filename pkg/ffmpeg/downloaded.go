@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 var ErrAlreadyInstalled = errors.New("FFmpeg is already installed.")
@@ -43,4 +45,22 @@ func RemoveDownloadedFFmpeg(configDir string) (bool, error) {
 		}
 	}
 	return removed, nil
+}
+
+// IsDownloadedFile reports whether path names one of the two files the
+// downloader puts in configDir. A configured path pointing at one of them must
+// be cleared when they're removed, or Stash keeps looking for the missing file
+// instead of finding another FFmpeg.
+func IsDownloadedFile(configDir, path string) bool {
+	if path == "" {
+		return false
+	}
+	path = filepath.Clean(path)
+	for _, name := range []string{getFFMpegFilename(), getFFProbeFilename()} {
+		downloaded := filepath.Join(configDir, name)
+		if path == downloaded || (runtime.GOOS == "windows" && strings.EqualFold(path, downloaded)) {
+			return true
+		}
+	}
+	return false
 }

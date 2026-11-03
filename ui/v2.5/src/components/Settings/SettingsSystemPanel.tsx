@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import * as GQL from "src/core/generated-graphql";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { SettingSection } from "./SettingSection";
@@ -19,12 +19,13 @@ import {
 import { FormattedMessage, useIntl } from "react-intl";
 import { Button } from "react-bootstrap";
 import { useToast } from "src/hooks/Toast";
-import { useHistory } from "react-router-dom";
+import { useHistory, useLocation } from "react-router-dom";
 
 export const SettingsConfigurationPanel: React.FC = () => {
   const intl = useIntl();
   const Toast = useToast();
   const history = useHistory();
+  const location = useLocation();
 
   const { general, loading, error, saveGeneral } = useSettings();
   const [mutateDownloadFFMpeg, { loading: downloading }] =
@@ -38,6 +39,15 @@ export const SettingsConfigurationPanel: React.FC = () => {
     refetch: refetchStatus,
   } = GQL.useSystemStatusQuery({ fetchPolicy: "network-only" });
   const ffmpegDownloaded = systemStatus?.systemStatus.ffmpegDownloaded ?? false;
+
+  // The settings tabs stay mounted, so this panel isn't reloaded when you
+  // come back to it, for example after a download finishes on the Tasks tab.
+  // Check what's installed again each time the System tab is opened.
+  const onSystemTab =
+    new URLSearchParams(location.search).get("tab") === "system";
+  useEffect(() => {
+    if (onSystemTab) refetchStatus().catch(() => {});
+  }, [onSystemTab, refetchStatus]);
 
   const transcodeQualities = [
     GQL.StreamingResolutionEnum.Low,

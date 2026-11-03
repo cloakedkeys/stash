@@ -57,7 +57,27 @@ func (r *mutationResolver) DownloadFFMpeg(ctx context.Context) (string, error) {
 
 func (r *mutationResolver) RemoveDownloadedFFMpeg(ctx context.Context) (bool, error) {
 	mgr := manager.GetInstance()
-	removed, err := ffmpeg.RemoveDownloadedFFmpeg(mgr.Config.GetConfigPathAbs())
+	configDir := mgr.Config.GetConfigPathAbs()
+	removed, err := ffmpeg.RemoveDownloadedFFmpeg(configDir)
+
+	// A configured path to a removed file would stop Stash finding another
+	// FFmpeg (on the PATH, for example), so forget it.
+	cleared := false
+	for key, path := range map[string]string{
+		config.FFMpegPath:  mgr.Config.GetFFMpegPath(),
+		config.FFProbePath: mgr.Config.GetFFProbePath(),
+	} {
+		if ffmpeg.IsDownloadedFile(configDir, path) {
+			mgr.Config.SetString(key, "")
+			cleared = true
+		}
+	}
+	if cleared {
+		if err := mgr.Config.Write(); err != nil {
+			logger.Warnf("Error saving the configuration after removing FFmpeg: %v", err)
+		}
+	}
+
 	// Discard cached paths even after a partial removal or manual deletion.
 	mgr.FFMpeg = nil
 	mgr.FFProbe = nil
