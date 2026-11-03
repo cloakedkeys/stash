@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { ModalSetting, NumberSetting } from "./Inputs";
+import { ModalSetting } from "./Inputs";
 import { SettingSection } from "./SettingSection";
 import * as GQL from "src/core/generated-graphql";
 import { Button, Form } from "react-bootstrap";
@@ -10,6 +10,16 @@ import { useToast } from "src/hooks/Toast";
 import { useCurrentUser, useIsAdmin } from "src/hooks/CurrentUser";
 import { Accounts } from "./Accounts";
 import { LibraryLimits } from "./LibraryLimits";
+
+const maxSessionAge = 400 * 24 * 60 * 60;
+const sessionAgeChoices = [
+  3600,
+  86400,
+  604800,
+  2592000,
+  7776000,
+  maxSessionAge,
+];
 
 const PasswordInput: React.FC<{
   value: GQL.UserChangePasswordInput;
@@ -65,6 +75,34 @@ export const SettingsSecurityPanel: React.FC = () => {
     GQL.useChangePasswordMutation();
   const canGenerateAPIKey =
     isAdmin || user?.roles?.includes(GQL.RoleEnum.GenerateApiKey);
+
+  function formatSessionAge(value: number) {
+    if (value > 0 && value % 86400 === 0) {
+      return intl.formatMessage(
+        {
+          id: "config.general.auth.session_age_days",
+          defaultMessage: "{count, plural, one {# day} other {# days}}",
+        },
+        { count: value / 86400 }
+      );
+    }
+    if (value > 0 && value % 3600 === 0) {
+      return intl.formatMessage(
+        {
+          id: "config.general.auth.session_age_hours",
+          defaultMessage: "{count, plural, one {# hour} other {# hours}}",
+        },
+        { count: value / 3600 }
+      );
+    }
+    return intl.formatMessage(
+      {
+        id: "config.general.auth.session_age_seconds",
+        defaultMessage: "{count, plural, one {# second} other {# seconds}}",
+      },
+      { count: value }
+    );
+  }
 
   async function onChangePassword(input: GQL.UserChangePasswordInput) {
     if (passwordChangePending.current) return;
@@ -160,13 +198,38 @@ export const SettingsSecurityPanel: React.FC = () => {
             </Button>
           </div>
         </div>
-        <NumberSetting
+        <ModalSetting<number>
           id="maxSessionAge"
           headingID="config.general.auth.maximum_session_age"
           subHeadingID="config.general.auth.maximum_session_age_desc"
-          value={general.maxSessionAge ?? undefined}
+          value={Math.min(general.maxSessionAge ?? 3600, maxSessionAge)}
           disabled={!isAdmin}
-          onChange={(value) => saveGeneral({ maxSessionAge: value })}
+          onChange={(value) =>
+            saveGeneral({ maxSessionAge: Math.min(value, maxSessionAge) })
+          }
+          renderField={(value, setValue) => (
+            <Form.Control
+              as="select"
+              className="input-control"
+              aria-label={intl.formatMessage({
+                id: "config.general.auth.maximum_session_age",
+              })}
+              value={value ?? 3600}
+              onChange={(event) => setValue(Number(event.currentTarget.value))}
+            >
+              {value !== undefined && !sessionAgeChoices.includes(value) && (
+                <option value={value}>{formatSessionAge(value)}</option>
+              )}
+              {sessionAgeChoices.map((age) => (
+                <option key={age} value={age}>
+                  {formatSessionAge(age)}
+                </option>
+              ))}
+            </Form.Control>
+          )}
+          renderValue={(value) => (
+            <span>{formatSessionAge(value ?? 3600)}</span>
+          )}
         />
       </SettingSection>
       {isAdmin && <Accounts />}
