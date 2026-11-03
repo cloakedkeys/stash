@@ -1,5 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { scrapedStoryTextFields, storyTextLength } from "./storyScrape";
+import {
+  scrapedStoryTextFields,
+  storyTextLength,
+  storyURLScrapable,
+} from "./storyScrape";
+
+describe("storyURLScrapable", () => {
+  const scrapers = [
+    { id: "a", name: "A", story: null },
+    {
+      id: "lit",
+      name: "Literotica",
+      story: { urls: ["literotica.com/s/"], supported_scrapes: [] },
+    },
+  ];
+
+  it("is true when an installed scraper lists part of the address", () => {
+    expect(
+      storyURLScrapable(scrapers, "https://www.literotica.com/s/a-story")
+    ).toBe(true);
+  });
+
+  it("is false for other addresses, or with no scrapers", () => {
+    expect(storyURLScrapable(scrapers, "https://example.com/s/a")).toBe(false);
+    expect(storyURLScrapable([], "https://www.literotica.com/s/a")).toBe(false);
+    expect(storyURLScrapable(undefined, "https://www.literotica.com/s/a")).toBe(
+      false
+    );
+  });
+});
 
 describe("storyTextLength", () => {
   it("counts words across lines and paragraphs", () => {

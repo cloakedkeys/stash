@@ -25,6 +25,17 @@ export function scrapedStoryTextFields(
   return ret;
 }
 
+// Whether an installed story scraper handles this address. Each scraper lists
+// parts of the addresses it handles, such as "literotica.com/s/".
+export function storyURLScrapable(
+  scrapers: GQL.ListStoryScrapersQuery["listScrapers"] | undefined,
+  url: string
+): boolean {
+  return (scrapers ?? []).some((s) =>
+    (s.story?.urls ?? []).some((u) => url.includes(u))
+  );
+}
+
 // How long a story's text is, to show in place of the text itself, which is
 // too long to show in the scrape dialog.
 export function storyTextLength(text: string): {

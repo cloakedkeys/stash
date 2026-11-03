@@ -55,6 +55,7 @@ func (qb *storyFilterHandler) criterionHandler() criterionHandler {
 		stringCriterionHandler(f.Title, "stories.title"),
 		storyUserData.intCriterionHandler(f.Rating100, storyUserData.column("rating")),
 		qb.tagsCriterionHandler(f.Tags),
+		qb.urlsCriterionHandler(f.URL),
 	}
 }
 func (qb *storyFilterHandler) tagsCriterionHandler(tags *models.HierarchicalMultiCriterionInput) criterionHandlerFunc {
@@ -70,4 +71,18 @@ func (qb *storyFilterHandler) tagsCriterionHandler(tags *models.HierarchicalMult
 	}
 
 	return h.handler(tags)
+}
+
+func (qb *storyFilterHandler) urlsCriterionHandler(url *models.StringCriterionInput) criterionHandlerFunc {
+	h := stringListCriterionHandlerBuilder{
+		primaryTable: storyTable,
+		primaryFK:    storyIDColumn,
+		joinTable:    storiesURLsTable,
+		stringColumn: storyURLColumn,
+		addJoinTable: func(f *filterBuilder, joinType joinType) {
+			storiesURLsTableMgr.join(f, joinType, "", "stories.id")
+		},
+	}
+
+	return h.handler(url)
 }

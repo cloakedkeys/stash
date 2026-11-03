@@ -12,3 +12,19 @@ query FindStory($id: ID!) {
     ...StoryData
   }
 }
+
+# stories that may have this web address: Equals matches without case and
+# treats _ and % as wildcards, so the caller compares the addresses itself.
+# All of them: the exact one can sort after any number of loose ones.
+query FindStoriesByURL($url: String!) {
+  findStories(
+    filter: { per_page: -1 }
+    story_filter: { url: { value: $url, modifier: EQUALS } }
+  ) {
+    stories {
+      id
+      title
+      urls
+    }
+  }
+}

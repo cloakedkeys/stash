@@ -98,6 +98,7 @@
     "ignore": "Ignore",
     "import": "Import…",
     "import_from_file": "Import from file",
+    "import_story": "Import Story…",
     "load": "Load",
     "load_filter": "Load filter",
     "logout": "Log out",
@@ -1171,6 +1172,14 @@
         "row": "Row"
       },
       "margin_desc": "Number of margin pixels around each entire image."
+    },
+    "import_story": {
+      "address": "Story address",
+      "already_added": "This story is already in Stories:",
+      "help": "Paste a story's web address. Stash fetches the story with the installed scraper for that site and adds it to Stories.",
+      "no_scraper": "No installed scraper handles this address. Story scrapers are installed in Settings → Metadata Providers.",
+      "not_found": "The scraper found no story at this address.",
+      "title": "Import Story"
     },
     "lightbox": {
       "delay": "Delay (Sec)",
