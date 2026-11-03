@@ -188,3 +188,14 @@ hr {
     background-color: transparent;
   }
 }
+
+// On a phone, open pop-ups in the middle of the screen rather than stuck to
+// the top (#1946). The same rules as Bootstrap's modal-dialog-centered, which
+// let a pop-up taller than the screen grow and scroll as before.
+@include media-breakpoint-down(xs) {
+  .modal-dialog {
+    align-items: center;
+    display: flex;
+    min-height: calc(100% - #{$modal-dialog-margin * 2});
+  }
+}
