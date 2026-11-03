@@ -229,6 +229,15 @@ export const Manual: React.FC<IManualProps> = ({
       animation={animation}
       show={show}
       onHide={onClose}
+      onShow={() => {
+        if (defaultActiveTab) {
+          // Wait for the requested tab and modal focus, including when
+          // animation is disabled (Identify and Generate).
+          requestAnimationFrame(() =>
+            scrollToTopic(contentRef.current, (q) => window.matchMedia(q))
+          );
+        }
+      }}
       dialogClassName="modal-dialog-scrollable manual modal-xl"
     >
       <Modal.Header closeButton>
