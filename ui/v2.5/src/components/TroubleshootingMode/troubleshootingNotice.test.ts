@@ -11,17 +11,19 @@ const phone = overlay.slice(
   overlay.indexOf("@include media-breakpoint-down(xs) {")
 );
 
-// The notice must occupy space after every page, including when its text wraps
-// on a phone. Only the red frame should remain over the viewport (#1952).
+// On a phone the notice takes its own space at the top of every page instead
+// of being pinned over the bottom; only the red frame stays over the screen
+// (#1952).
 describe("troubleshooting notice on a phone", () => {
-  it("renders after the page content", () => {
-    expect(app.indexOf("<TroubleshootingModeOverlay />")).toBeGreaterThan(
+  it("comes before the page content, so it's at the top of the page", () => {
+    expect(app.indexOf("<TroubleshootingModeOverlay />")).toBeGreaterThan(-1);
+    expect(app.indexOf("<TroubleshootingModeOverlay />")).toBeLessThan(
       app.indexOf("<MainContainer>{renderContent()}</MainContainer>")
     );
   });
 
   it("keeps both the wrapper and notice in normal flow on narrow screens", () => {
-    expect(phone).toMatch(/^[^{]*\{\s*border: 0;\s*position: static;/);
+    expect(phone).toMatch(/^[^{]*\{\s*border: 0;[^{]*position: static;/);
     expect(phone).toMatch(
       /\.troubleshooting-mode-alert\s*\{[^}]*display: flex;[^}]*position: static;/
     );
@@ -31,6 +33,14 @@ describe("troubleshooting notice on a phone", () => {
     expect(overlay).toContain("pointer-events: none;");
     expect(phone).toMatch(
       /&::before\s*\{[^}]*border: 5px solid \$danger;[^}]*inset: 0;[^}]*position: fixed;/
+    );
+  });
+
+  it("keeps the frame above the nav bar", () => {
+    // see-through on the wrapper would keep the frame beneath other layers
+    expect(phone).toMatch(/^[^{]*\{[^{]*opacity: 1;/);
+    expect(phone).toMatch(
+      /&::before\s*\{[^}]*opacity: 0\.75;[^}]*z-index: 1040;/
     );
   });
 });
