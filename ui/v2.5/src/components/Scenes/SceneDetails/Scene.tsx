@@ -23,7 +23,6 @@ import {
   queryFindScenesByID,
   queryFindSceneMarkers,
   queryFindSceneMarkersByID,
-  useSceneIncrementPlayCount,
 } from "src/core/StashService";
 
 import { SceneEditPanel } from "./SceneEditPanel";
@@ -223,16 +222,6 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
   const boxes = configuration?.general?.stashBoxes ?? [];
 
   const [incrementO] = useSceneIncrementO(scene.id);
-
-  const [incrementPlay] = useSceneIncrementPlayCount();
-
-  function incrementPlayCount() {
-    incrementPlay({
-      variables: {
-        id: scene.id,
-      },
-    });
-  }
 
   const [organizedLoading, setOrganizedLoading] = useState(false);
 
@@ -781,9 +770,11 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
                 <ExternalPlayerButton scene={scene} />
               </span>
               <span>
+                {/* plays are counted by playing, not by tapping (#1970);
+                    the button opens the history, where one can be added */}
                 <ViewCountButton
                   value={scene.play_count ?? 0}
-                  onIncrement={() => incrementPlayCount()}
+                  onValueClicked={() => setActiveTabKey("scene-history-panel")}
                 />
               </span>
               <span>

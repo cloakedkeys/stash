@@ -31,11 +31,12 @@ export const CountButton: React.FC<ICountButtonProps> = ({
       className={cx("count-button", { "increment-only": !onValueClicked })}
       data-action={dataAction}
     >
+      {/* with nothing to add, the icon does what the count does */}
       <Button
         className="minimal count-icon"
         variant="secondary"
-        onClick={() => onIncrement?.()}
-        title={title}
+        onClick={() => (onIncrement ?? onValueClicked)?.()}
+        title={onIncrement ? title : (countTitle ?? title)}
       >
         {icon}
       </Button>

@@ -17,7 +17,6 @@ import {
   useAudioIncrementO,
   useAudioUpdate,
   useAudioUserDataUpdate,
-  useAudioIncrementPlayCount,
   queryFindAudios,
   queryFindAudiosByID,
 } from "src/core/StashService";
@@ -176,16 +175,6 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
   const { showStudioText } = configuration?.ui ?? {};
 
   const [incrementO] = useAudioIncrementO(audio.id);
-  const [incrementPlay] = useAudioIncrementPlayCount();
-
-  function incrementPlayCount() {
-    incrementPlay({
-      variables: {
-        id: audio.id,
-      },
-    });
-  }
-
   const [organizedLoading, setOrganizedLoading] = useState(false);
 
   const canModify = useCanModify();
@@ -556,9 +545,11 @@ const AudioPage: React.FC<IProps> = PatchComponent("AudioPage", (props) => {
             </span>
             <span className="audio-toolbar-group">
               <span>
+                {/* plays are counted by playing, not by tapping (#1970);
+                    the button opens the history, where one can be added */}
                 <ViewCountButton
                   value={audio.play_count ?? 0}
-                  onIncrement={() => incrementPlayCount()}
+                  onValueClicked={() => setActiveTabKey("audio-history-panel")}
                 />
               </span>
               <span>
