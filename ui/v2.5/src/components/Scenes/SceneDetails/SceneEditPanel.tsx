@@ -37,6 +37,7 @@ import {
   faPlus,
   faArrowsRotate,
   faCameraRotate,
+  faUser,
 } from "@fortawesome/free-solid-svg-icons";
 import { objectTitle } from "src/core/files";
 import { galleryTitle } from "src/core/galleries";
@@ -69,6 +70,7 @@ import {
   formatCustomFieldInput,
 } from "src/components/Shared/CustomFields";
 import cloneDeep from "lodash-es/cloneDeep";
+import { usePerformerPictureFromFrame } from "./usePerformerPictureFromFrame";
 
 const SceneScrapeDialog = lazyComponent(() => import("./SceneScrapeDialog"));
 const SceneQueryModal = lazyComponent(() => import("./SceneQueryModal"));
@@ -102,6 +104,8 @@ export const SceneEditPanel: React.FC<IProps> = ({
   const [performers, setPerformers, setInitialPerformers] = useInitialState<
     Performer[]
   >(scene.performers ?? []);
+  // the performers in the form, which may not be saved yet
+  const performerPicture = usePerformerPictureFromFrame(performers);
   const [voiceActors, setVoiceActors, setInitialVoiceActors] = useInitialState<
     VoiceActorOption[]
   >(scene.voice_actors ?? []);
@@ -893,6 +897,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
 
       {renderScrapeQueryModal()}
       {maybeRenderScrapeDialog()}
+      {performerPicture.dialog}
       {isStashIDSearchOpen && (
         <StashBoxIDSearchModal
           entityType="scene"
@@ -1046,9 +1051,10 @@ export const SceneEditPanel: React.FC<IProps> = ({
                 isEditing
                 onImageChange={onCoverImageChange}
                 onImageURL={onImageLoad}
-                // Generate-from-server actions require a saved scene.
-                extraActions={
-                  !isNew && isAdmin
+                // Generate-from-server actions require a saved scene, and
+                // a frame for a performer's picture needs a video playing.
+                extraActions={[
+                  ...(!isNew && isAdmin
                     ? [
                         {
                           icon: faArrowsRotate,
@@ -1061,8 +1067,17 @@ export const SceneEditPanel: React.FC<IProps> = ({
                           onClick: () => onGenerateThumbFromCurrent?.(),
                         },
                       ]
-                    : undefined
-                }
+                    : []),
+                  ...(!isNew && !!scene.files?.length && performers.length > 0
+                    ? [
+                        {
+                          icon: faUser,
+                          labelId: "actions.set_as_performer_image",
+                          onClick: performerPicture.capture,
+                        },
+                      ]
+                    : []),
+                ]}
                 onReset={
                   formik.values.cover_image ||
                   (formik.values.cover_image !== null &&

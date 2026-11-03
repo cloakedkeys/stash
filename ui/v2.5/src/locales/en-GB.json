@@ -164,6 +164,7 @@
     "set_as_performer_image": "Set as performer image",
     "set_back_image": "Back image…",
     "set_cover": "Set as Cover",
+    "set_from_scene_cover": "Set from a scene cover",
     "set_front_image": "Front image…",
     "set_image": "Set image…",
     "show": "Show",
@@ -1577,6 +1578,14 @@
   "performer_count_all": "Performer Count (All)",
   "performer_favorite": "Performer Favourited",
   "performer_image": "Performer Image",
+  "performer_picture": {
+    "choose_performer": "Choose a performer. Their picture will be saved straight away.",
+    "cover_save_hint": "Choose a cover, then save the performer to keep the picture.",
+    "cover_unavailable": "Couldn't load the scene cover. Try again.",
+    "current_frame": "Current video frame",
+    "frame_unavailable": "Couldn't capture the video frame. Play the video in this browser and try again.",
+    "no_scene_covers": "No scenes with a cover found for this performer."
+  },
   "performer_tagger": {
     "add_new_performers": "Add New Performers",
     "any_names_entered_will_be_queried": "Any names entered will be queried from the remote Stash-Box instance and added if found. Only exact matches will be considered a match.",
@@ -1936,6 +1945,7 @@
     "merged_performers": "Merged performers",
     "merged_scenes": "Merged scenes",
     "merged_tags": "Merged tags",
+    "performer_picture_saved": "Picture saved for {performer}",
     "reassign_past_tense": "File reassigned",
     "removed_entity": "Removed {count, plural, one {{singularEntity}} other {{pluralEntity}}}",
     "rescanning_entity": "Rescanning {count, plural, one {{singularEntity}} other {{pluralEntity}}}…",

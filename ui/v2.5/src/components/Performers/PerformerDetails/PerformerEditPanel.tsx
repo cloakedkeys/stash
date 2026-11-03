@@ -39,7 +39,7 @@ import PerformerStashBoxModal, { IStashBox } from "./PerformerStashBoxModal";
 import { unpickedImages } from "./performerImages";
 import StashBoxIDSearchModal from "src/components/Shared/StashBoxIDSearchModal";
 import cx from "classnames";
-import { faSyncAlt, faPlus } from "@fortawesome/free-solid-svg-icons";
+import { faSyncAlt, faPlus, faImage } from "@fortawesome/free-solid-svg-icons";
 import isEqual from "lodash-es/isEqual";
 import { formikUtils, useValidateAfterChange } from "src/utils/form";
 import {
@@ -56,6 +56,7 @@ import {
   formatCustomFieldInput,
 } from "src/components/Shared/CustomFields";
 import cloneDeep from "lodash-es/cloneDeep";
+import { SceneCoverPicker } from "./SceneCoverPicker";
 
 const isScraper = (
   scraper: GQL.Scraper | GQL.StashBox
@@ -91,6 +92,8 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
   const [isScraperModalOpen, setIsScraperModalOpen] = useState<boolean>(false);
   const [isStashIDSearchOpen, setIsStashIDSearchOpen] =
     useState<boolean>(false);
+
+  const [showSceneCovers, setShowSceneCovers] = useState(false);
 
   // Network state
   const [isLoading, setIsLoading] = useState(false);
@@ -630,6 +633,17 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
           isEditing
           onImageChange={onImageChange}
           onImageURL={onImageLoad}
+          extraActions={
+            !isNew
+              ? [
+                  {
+                    icon: faImage,
+                    labelId: "actions.set_from_scene_cover",
+                    onClick: () => setShowSceneCovers(true),
+                  },
+                ]
+              : undefined
+          }
         />
         <div>
           <Button
@@ -721,6 +735,13 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
 
   return (
     <>
+      {showSceneCovers && performer.id && (
+        <SceneCoverPicker
+          performerId={performer.id}
+          onSelect={onImageLoad}
+          onClose={() => setShowSceneCovers(false)}
+        />
+      )}
       {renderScrapeModal()}
       {maybeRenderScrapeDialog()}
       {isStashIDSearchOpen && (
