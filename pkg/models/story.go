@@ -7,6 +7,7 @@ type StoryFilterType struct {
 	Title     *StringCriterionInput
 	Tags      *HierarchicalMultiCriterionInput
 	Rating100 *IntCriterionInput
+	URL       *StringCriterionInput `json:"url"`
 }
 type StoryQueryOptions struct {
 	QueryOptions

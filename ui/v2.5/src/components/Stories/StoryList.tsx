@@ -7,6 +7,7 @@ import { useFindStories } from "src/core/StashService";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { useFilteredItemList } from "../List/ItemList";
 import { DeleteStoriesDialog } from "./DeleteStoriesDialog";
+import { ImportStoryDialog } from "./ImportStoryDialog";
 import { View } from "../List/views";
 import { FilteredListToolbar } from "../List/FilteredListToolbar";
 import {
@@ -150,6 +151,10 @@ export const StoryList: React.FC<IStoryList> = ({ view, alterQuery }) => {
           text: intl.formatMessage({ id: "actions.select_none" }),
           onClick: () => onSelectNone(),
           isDisplayed: () => listSelect.hasSelection,
+        },
+        {
+          text: intl.formatMessage({ id: "actions.import_story" }),
+          onClick: () => showModal(<ImportStoryDialog onClose={closeModal} />),
         },
       ]}
       onDelete={onDelete}

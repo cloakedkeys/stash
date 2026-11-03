@@ -1263,6 +1263,30 @@ const storyMutationImpactedQueries = [
   GQL.FindTagsDocument, // tag lists
 ];
 
+export const mutateStoryCreate = (input: GQL.StoryCreateInput) =>
+  client.mutate<GQL.StoryCreateMutation>({
+    mutation: GQL.StoryCreateDocument,
+    variables: { input },
+    update(cache, result) {
+      if (!result.data?.storyCreate) return;
+      evictQueries(cache, storyMutationImpactedQueries);
+    },
+  });
+
+// the first story with this web address, asked of the server each time so a
+// story added or deleted since is seen
+export const queryFindStoryByURL = (url: string) =>
+  client.query<GQL.FindStoriesQuery>({
+    query: GQL.FindStoriesDocument,
+    variables: {
+      filter: { per_page: 1 },
+      story_filter: {
+        url: { value: url, modifier: GQL.CriterionModifier.Equals },
+      },
+    },
+    fetchPolicy: "network-only",
+  });
+
 export const useStoryUpdate = () =>
   GQL.useStoryUpdateMutation({
     update(cache, result) {

@@ -1,3 +1,9 @@
+mutation StoryCreate($input: StoryCreateInput!) {
+  storyCreate(input: $input) {
+    id
+  }
+}
+
 mutation StoryUpdate($input: StoryUpdateInput!) {
   storyUpdate(input: $input) {
     ...StoryData

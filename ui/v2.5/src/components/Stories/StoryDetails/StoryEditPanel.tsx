@@ -21,7 +21,7 @@ import {
   useListStoryScrapers,
 } from "src/core/StashService";
 import { StoryScrapeDialog } from "./StoryScrapeDialog";
-import { scrapedStoryTextFields } from "./storyScrape";
+import { scrapedStoryTextFields, storyURLScrapable } from "./storyScrape";
 
 interface IProps {
   story: GQL.StoryDataFragment;
@@ -100,9 +100,7 @@ export const StoryEditPanel: React.FC<IProps> = ({
   );
 
   function urlScrapable(url: string) {
-    return (scrapers.data?.listScrapers ?? []).some((s) =>
-      (s.story?.urls ?? []).some((u) => url.includes(u))
-    );
+    return storyURLScrapable(scrapers.data?.listScrapers, url);
   }
 
   async function onScrapeStoryURL(url: string) {
