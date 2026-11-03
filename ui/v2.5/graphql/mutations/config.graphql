@@ -10,6 +10,10 @@ mutation DownloadFFMpeg {
   downloadFFMpeg
 }
 
+mutation RemoveDownloadedFFMpeg {
+  removeDownloadedFFMpeg
+}
+
 mutation ConfigureGeneral($input: ConfigGeneralInput!) {
   configureGeneral(input: $input) {
     ...ConfigGeneralData

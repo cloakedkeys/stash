@@ -16,6 +16,7 @@ func (r *queryResolver) SystemStatus(ctx context.Context) (*manager.SystemStatus
 		status.HomeDir = ""
 		status.FfmpegPath = nil
 		status.FfprobePath = nil
+		status.FfmpegDownloaded = false
 		status.LocalIPs = nil
 	}
 

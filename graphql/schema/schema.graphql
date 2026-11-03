@@ -344,6 +344,8 @@ type Mutation {
 
   "Downloads and installs ffmpeg and ffprobe binaries into the configuration directory. Returns the job ID."
   downloadFFMpeg: ID! @hasRole(role: ADMIN)
+  "Remove downloaded FFmpeg binaries. Returns false if neither file exists."
+  removeDownloadedFFMpeg: Boolean! @hasRole(role: ADMIN)
 
   sceneCreate(input: SceneCreateInput!): Scene @hasRole(role: MODIFY)
   sceneUpdate(input: SceneUpdateInput!): Scene @hasRole(role: MODIFY)

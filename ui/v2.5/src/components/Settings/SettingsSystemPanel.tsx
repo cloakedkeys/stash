@@ -27,7 +27,17 @@ export const SettingsConfigurationPanel: React.FC = () => {
   const history = useHistory();
 
   const { general, loading, error, saveGeneral } = useSettings();
-  const [mutateDownloadFFMpeg] = GQL.useDownloadFfMpegMutation();
+  const [mutateDownloadFFMpeg, { loading: downloading }] =
+    GQL.useDownloadFfMpegMutation();
+  const [mutateRemoveFFmpeg, { loading: removing }] =
+    GQL.useRemoveDownloadedFfMpegMutation();
+  const {
+    data: systemStatus,
+    loading: statusLoading,
+    error: statusError,
+    refetch: refetchStatus,
+  } = GQL.useSystemStatusQuery({ fetchPolicy: "network-only" });
+  const ffmpegDownloaded = systemStatus?.systemStatus.ffmpegDownloaded ?? false;
 
   const transcodeQualities = [
     GQL.StreamingResolutionEnum.Low,
@@ -121,11 +131,33 @@ export const SettingsConfigurationPanel: React.FC = () => {
       history.push("/settings?tab=tasks");
     } catch (e) {
       Toast.error(e);
+      void refetchStatus().catch(Toast.error);
     }
   }
 
-  if (error) return <h1>{error.message}</h1>;
-  if (loading) return <LoadingIndicator />;
+  async function onRemoveFFmpeg() {
+    try {
+      const result = await mutateRemoveFFmpeg();
+      Toast.success(
+        intl.formatMessage({
+          id: result.data?.removeDownloadedFFMpeg
+            ? "config.general.ffmpeg.remove_ffmpeg.success"
+            : "config.general.ffmpeg.remove_ffmpeg.nothing_to_remove",
+        })
+      );
+    } catch (e) {
+      Toast.error(e);
+    } finally {
+      try {
+        await refetchStatus();
+      } catch (e) {
+        Toast.error(e);
+      }
+    }
+  }
+
+  if (error || statusError) return <h1>{(error ?? statusError)?.message}</h1>;
+  if (loading || statusLoading) return <LoadingIndicator />;
 
   return (
     <>
@@ -196,12 +228,34 @@ export const SettingsConfigurationPanel: React.FC = () => {
 
         <Setting
           heading={
-            <FormattedMessage id="config.general.ffmpeg.download_ffmpeg.heading" />
+            <FormattedMessage
+              id={
+                ffmpegDownloaded
+                  ? "config.general.ffmpeg.remove_ffmpeg.heading"
+                  : "config.general.ffmpeg.download_ffmpeg.heading"
+              }
+            />
           }
-          subHeadingID="config.general.ffmpeg.download_ffmpeg.description"
+          subHeadingID={
+            ffmpegDownloaded
+              ? "config.general.ffmpeg.remove_ffmpeg.description"
+              : "config.general.ffmpeg.download_ffmpeg.description"
+          }
         >
-          <Button variant="secondary" onClick={() => onDownloadFFMpeg()}>
-            <FormattedMessage id="config.general.ffmpeg.download_ffmpeg.heading" />
+          <Button
+            variant="secondary"
+            disabled={downloading || removing}
+            onClick={() =>
+              ffmpegDownloaded ? onRemoveFFmpeg() : onDownloadFFMpeg()
+            }
+          >
+            <FormattedMessage
+              id={
+                ffmpegDownloaded
+                  ? "actions.remove"
+                  : "config.general.ffmpeg.download_ffmpeg.heading"
+              }
+            />
           </Button>
         </Setting>
 
