@@ -50,6 +50,26 @@
     }
   }
 
+  // Source headers occupy the top of the available list; column labels scroll
+  // away so wrapped labels never need a fixed-height sticky offset.
+  .available-packages {
+    table thead {
+      position: static;
+    }
+
+    // on the cells, since Firefox doesn't make a table row sticky
+    .package-source > td {
+      background-color: $card-bg;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .package-manager-toolbar {
+      flex-wrap: wrap;
+    }
+  }
+
   table td {
     vertical-align: middle;
   }
