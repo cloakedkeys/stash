@@ -526,19 +526,6 @@ const makeSceneMarkersSceneUrl = (scene: GQL.SceneMarkerSceneDataFragment) => {
   return `/scenes/markers?${filter.makeQueryParameters()}`;
 };
 
-// The page a new item goes to once it's created is under the same section, and
-// that shouldn't ask about unsaved changes. Any other move to an item in that
-// section should, including from a new item that hasn't been saved (#1899), so
-// `creating` is only true while a new item's save is running.
-export function isRedirectAfterCreate(
-  creating: boolean,
-  action: string,
-  pathname: string,
-  basepath: string
-) {
-  return creating && action === "PUSH" && pathname.startsWith(`/${basepath}/`);
-}
-
 export function handleUnsavedChanges(
   intl: IntlShape,
   basepath: string,

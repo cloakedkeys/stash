@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import * as yup from "yup";
@@ -14,10 +14,7 @@ import isEqual from "lodash-es/isEqual";
 import { useToast } from "src/hooks/Toast";
 import { useConfigurationContext } from "src/hooks/Config";
 import { useIsAdmin } from "src/hooks/CurrentUser";
-import {
-  handleUnsavedChanges,
-  isRedirectAfterCreate,
-} from "src/utils/navigation";
+import { handleUnsavedChanges } from "src/utils/navigation";
 import { formikUtils } from "src/utils/form";
 import { yupFormikValidate, yupRequiredStringArray } from "src/utils/yup";
 import { addUpdateStashID, getStashIDs } from "src/utils/stashIds";
@@ -60,8 +57,6 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
 
   // Network state
   const [isLoading, setIsLoading] = useState(false);
-  // true while a save runs, when the page moves to the item it created
-  const saving = useRef(false);
 
   const [childTags, setChildTags] = useState<Tag[]>([]);
   const [parentTags, setParentTags] = useState<Tag[]>([]);
@@ -151,7 +146,6 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
 
   async function onSave(input: InputValues, andNew?: boolean) {
     setIsLoading(true);
-    saving.current = true;
     try {
       // ignore_auto_tag may only be changed by administrators
       await onSubmit(
@@ -166,7 +160,6 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
     } catch (e) {
       Toast.error(e);
     }
-    saving.current = false;
     setIsLoading(false);
   }
 
@@ -275,26 +268,9 @@ export const TagEditPanel: React.FC<ITagEditPanel> = ({
 
         <Prompt
           when={formik.dirty}
-          message={(location, action) => {
-            // Check if it's a redirect after tag creation
-            if (
-              isRedirectAfterCreate(
-                isNew && saving.current,
-                action,
-                location.pathname,
-                "tags"
-              )
-            ) {
-              return true;
-            }
-
-            return handleUnsavedChanges(
-              intl,
-              "tags",
-              tag.id,
-              pathname
-            )(location);
-          }}
+          // While a save runs the form is replaced by a loading indicator, so this
+          // doesn't ask when a new item's page moves to it once created (#1899).
+          message={handleUnsavedChanges(intl, "tags", tag.id, pathname)}
         />
 
         <Form noValidate onSubmit={formik.handleSubmit} id="tag-edit">

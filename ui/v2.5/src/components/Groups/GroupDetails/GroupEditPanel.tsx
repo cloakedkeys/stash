@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import * as yup from "yup";
@@ -17,10 +17,7 @@ import { useFormik } from "formik";
 import { Prompt, useLocation } from "react-router-dom";
 import { GroupScrapeDialog } from "./GroupScrapeDialog";
 import isEqual from "lodash-es/isEqual";
-import {
-  handleUnsavedChanges,
-  isRedirectAfterCreate,
-} from "src/utils/navigation";
+import { handleUnsavedChanges } from "src/utils/navigation";
 import { formikUtils, useValidateAfterChange } from "src/utils/form";
 import {
   yupDateString,
@@ -64,8 +61,6 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
   const isNew = group.id === undefined;
 
   const [isLoading, setIsLoading] = useState(false);
-  // true while a save runs, when the page moves to the item it created
-  const saving = useRef(false);
   const [isImageAlertOpen, setIsImageAlertOpen] = useState<boolean>(false);
 
   const [imageClipboard, setImageClipboard] = useState<string>();
@@ -236,7 +231,6 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
 
   async function onSave(input: InputValues, andNew?: boolean) {
     setIsLoading(true);
-    saving.current = true;
     try {
       await onSubmit(input, andNew);
       formik.resetForm();
@@ -248,7 +242,6 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
     } catch (e) {
       Toast.error(e);
     }
-    saving.current = false;
     setIsLoading(false);
   }
 
@@ -476,25 +469,9 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
 
       <Prompt
         when={formik.dirty}
-        message={(location, action) => {
-          // Check if it's a redirect after group creation
-          if (
-            isRedirectAfterCreate(
-              isNew && saving.current,
-              action,
-              location.pathname,
-              "groups"
-            )
-          )
-            return true;
-
-          return handleUnsavedChanges(
-            intl,
-            "groups",
-            group.id,
-            pathname
-          )(location);
-        }}
+        // While a save runs the form is replaced by a loading indicator, so this
+        // doesn't ask when a new item's page moves to it once created (#1899).
+        message={handleUnsavedChanges(intl, "groups", group.id, pathname)}
       />
 
       <Form noValidate onSubmit={formik.handleSubmit} id="group-edit">
