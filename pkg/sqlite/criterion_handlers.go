@@ -33,6 +33,18 @@ func (h compoundHandler) handle(ctx context.Context, f *filterBuilder) {
 
 // shared criterion handlers go here
 
+func escapeLikeValue(value string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
+}
+
+func stringCriterionValue(c *models.StringCriterionInput) string {
+	value := escapeLikeValue(c.Value)
+	if c.MatchPrefix {
+		value += "%"
+	}
+	return value
+}
+
 func stringCriterionHandler(c *models.StringCriterionInput, column string) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if c != nil {
@@ -45,9 +57,9 @@ func stringCriterionHandler(c *models.StringCriterionInput, column string) crite
 					clause := getStringSearchClause([]string{column}, c.Value, true)
 					f.whereClauses = append(f.whereClauses, makeClause("("+column+" IS NULL OR ("+clause.sql+"))", clause.args...))
 				case models.CriterionModifierEquals:
-					f.addWhere(column+" LIKE ?", c.Value)
+					f.addWhere(column+` LIKE ? ESCAPE '\'`, stringCriterionValue(c))
 				case models.CriterionModifierNotEquals:
-					f.addWhere("("+column+" IS NULL OR "+column+" NOT LIKE ?)", c.Value)
+					f.addWhere(`(`+column+` IS NULL OR `+column+` NOT LIKE ? ESCAPE '\')`, stringCriterionValue(c))
 				case models.CriterionModifierMatchesRegex:
 					if _, err := regexp.Compile(c.Value); err != nil {
 						f.setError(err)
@@ -82,9 +94,9 @@ func stringNoTrimCriterionHandler(c *models.StringCriterionInput, column string)
 				case models.CriterionModifierExcludes:
 					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{column}, c.Value, true))
 				case models.CriterionModifierEquals:
-					f.addWhere(column+" LIKE ?", c.Value)
+					f.addWhere(column+` LIKE ? ESCAPE '\'`, stringCriterionValue(c))
 				case models.CriterionModifierNotEquals:
-					f.addWhere(column+" NOT LIKE ?", c.Value)
+					f.addWhere(column+` NOT LIKE ? ESCAPE '\'`, stringCriterionValue(c))
 				case models.CriterionModifierMatchesRegex:
 					if _, err := regexp.Compile(c.Value); err != nil {
 						f.setError(err)
@@ -169,11 +181,11 @@ func pathCriterionHandler(c *models.StringCriterionInput, pathColumn string, bas
 					f.whereClauses = append(f.whereClauses, getPathSearchClauseMany(pathColumn, basenameColumn, c.Value, addWildcards, not))
 				case models.CriterionModifierEquals:
 					addWildcards = false
-					f.whereClauses = append(f.whereClauses, getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not))
+					f.whereClauses = append(f.whereClauses, getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not, c.MatchPrefix))
 				case models.CriterionModifierNotEquals:
 					addWildcards = false
 					not = true
-					f.whereClauses = append(f.whereClauses, getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not))
+					f.whereClauses = append(f.whereClauses, getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not, c.MatchPrefix))
 				case models.CriterionModifierMatchesRegex:
 					if _, err := regexp.Compile(c.Value); err != nil {
 						f.setError(err)
@@ -200,15 +212,16 @@ func pathCriterionHandler(c *models.StringCriterionInput, pathColumn string, bas
 	}
 }
 
-func getPathSearchClause(pathColumn, basenameColumn, p string, addWildcards, not bool) sqlClause {
-	escapeClause := ""
+func getPathSearchClause(pathColumn, basenameColumn, p string, addWildcards, not, matchPrefix bool) sqlClause {
+	p = escapeLikeValue(p)
 	if addWildcards {
-		p = "%" + escapeLikeValue(p) + "%"
-		escapeClause = " ESCAPE '\\'"
+		p = "%" + p + "%"
+	} else if matchPrefix {
+		p += "%"
 	}
 
 	filepathColumn := fmt.Sprintf("%s || '%s' || %s", pathColumn, string(filepath.Separator), basenameColumn)
-	ret := makeClause(fmt.Sprintf("%s LIKE ?%s", filepathColumn, escapeClause), p)
+	ret := makeClause(filepathColumn+` LIKE ? ESCAPE '\'`, p)
 
 	if not {
 		ret = ret.not()
@@ -230,7 +243,7 @@ func getPathSearchClauseMany(pathColumn, basenameColumn, p string, addWildcards,
 		var ret []sqlClause
 		// Search for any word
 		for _, word := range queryWords {
-			ret = append(ret, getPathSearchClause(pathColumn, basenameColumn, word, addWildcards, not))
+			ret = append(ret, getPathSearchClause(pathColumn, basenameColumn, word, addWildcards, not, false))
 		}
 
 		if !not {
@@ -240,7 +253,7 @@ func getPathSearchClauseMany(pathColumn, basenameColumn, p string, addWildcards,
 		return andClauses(ret...)
 	}
 
-	return getPathSearchClause(pathColumn, basenameColumn, trimmedQuery, addWildcards, not)
+	return getPathSearchClause(pathColumn, basenameColumn, trimmedQuery, addWildcards, not, false)
 }
 
 func intCriterionHandler(c *models.IntCriterionInput, column string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
@@ -1249,9 +1262,4 @@ func (h *phashDistanceCriterionHandler) handle(ctx context.Context, f *filterBui
 			Modifier: phashDistance.Modifier,
 		}, "fingerprints_phash.fingerprint", nil)(ctx, f)
 	}
-}
-
-// escapeLikeValue makes user text literal in a LIKE pattern with a backslash escape.
-func escapeLikeValue(value string) string {
-	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
 }

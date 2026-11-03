@@ -1803,13 +1803,25 @@ func TestAudioQueryPath(t *testing.T) {
 			[]int{otherAudioIdx},
 		},
 		{
-			"equals full path wildcard",
+			// folder-limited tasks match a path prefix this way (#2020)
+			"equals full path prefix",
+			models.StringCriterionInput{
+				Value:       filepath.Join(folder, "audio_0001_"),
+				Modifier:    models.CriterionModifierEquals,
+				MatchPrefix: true,
+			},
+			[]int{audioIdx},
+			[]int{otherAudioIdx},
+		},
+		{
+			// a typed % is a plain character, not a wildcard (#2020)
+			"equals full path with percent is literal",
 			models.StringCriterionInput{
 				Value:    filepath.Join(folder, "audio_0001_%"),
 				Modifier: models.CriterionModifierEquals,
 			},
-			[]int{audioIdx},
-			[]int{otherAudioIdx},
+			nil,
+			[]int{audioIdx, otherAudioIdx},
 		},
 		{
 			"not equals full path",

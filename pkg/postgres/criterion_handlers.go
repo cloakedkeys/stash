@@ -33,6 +33,18 @@ func (h compoundHandler) handle(ctx context.Context, f *filterBuilder) {
 
 // shared criterion handlers go here
 
+func escapeLikeValue(value string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
+}
+
+func stringCriterionValue(c *models.StringCriterionInput) string {
+	value := escapeLikeValue(c.Value)
+	if c.MatchPrefix {
+		value += "%"
+	}
+	return value
+}
+
 func stringCriterionHandler(c *models.StringCriterionInput, column string) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if c != nil {
@@ -45,9 +57,9 @@ func stringCriterionHandler(c *models.StringCriterionInput, column string) crite
 					clause := getStringSearchClause([]string{column}, c.Value, true)
 					f.whereClauses = append(f.whereClauses, makeClause("("+column+" IS NULL OR ("+clause.sql+"))", clause.args...))
 				case models.CriterionModifierEquals:
-					f.addWhere(column+" ILIKE ? ESCAPE ''", c.Value)
+					f.addWhere(column+` ILIKE ? ESCAPE '\'`, stringCriterionValue(c))
 				case models.CriterionModifierNotEquals:
-					f.addWhere("("+column+" IS NULL OR "+column+" NOT ILIKE ? ESCAPE '')", c.Value)
+					f.addWhere(`(`+column+` IS NULL OR `+column+` NOT ILIKE ? ESCAPE '\')`, stringCriterionValue(c))
 				case models.CriterionModifierMatchesRegex:
 					translated, err := translateRegex(c.Value)
 					if err != nil {
@@ -134,11 +146,11 @@ func pathCriterionHandler(c *models.StringCriterionInput, pathColumn string, bas
 					f.whereClauses = append(f.whereClauses, getPathSearchClauseMany(pathColumn, basenameColumn, c.Value, addWildcards, not))
 				case models.CriterionModifierEquals:
 					addWildcards = false
-					f.whereClauses = append(f.whereClauses, getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not))
+					f.whereClauses = append(f.whereClauses, getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not, c.MatchPrefix))
 				case models.CriterionModifierNotEquals:
 					addWildcards = false
 					not = true
-					f.whereClauses = append(f.whereClauses, getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not))
+					f.whereClauses = append(f.whereClauses, getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not, c.MatchPrefix))
 				case models.CriterionModifierMatchesRegex:
 					translated, err := translateRegex(c.Value)
 					if err != nil {
@@ -167,15 +179,16 @@ func pathCriterionHandler(c *models.StringCriterionInput, pathColumn string, bas
 	}
 }
 
-func getPathSearchClause(pathColumn, basenameColumn, p string, addWildcards, not bool) sqlClause {
-	escapeClause := " ESCAPE ''"
+func getPathSearchClause(pathColumn, basenameColumn, p string, addWildcards, not, matchPrefix bool) sqlClause {
+	p = escapeLikeValue(p)
 	if addWildcards {
-		p = "%" + escapeLikeValue(p) + "%"
-		escapeClause = " ESCAPE '\\'"
+		p = "%" + p + "%"
+	} else if matchPrefix {
+		p += "%"
 	}
 
 	filepathColumn := fmt.Sprintf("%s || '%s' || %s", pathColumn, string(filepath.Separator), basenameColumn)
-	ret := makeClause(fmt.Sprintf("%s ILIKE ?%s", filepathColumn, escapeClause), p)
+	ret := makeClause(filepathColumn+` ILIKE ? ESCAPE '\'`, p)
 
 	if not {
 		ret = ret.not()
@@ -197,7 +210,7 @@ func getPathSearchClauseMany(pathColumn, basenameColumn, p string, addWildcards,
 		var ret []sqlClause
 		// Search for any word
 		for _, word := range queryWords {
-			ret = append(ret, getPathSearchClause(pathColumn, basenameColumn, word, addWildcards, not))
+			ret = append(ret, getPathSearchClause(pathColumn, basenameColumn, word, addWildcards, not, false))
 		}
 
 		if !not {
@@ -207,7 +220,7 @@ func getPathSearchClauseMany(pathColumn, basenameColumn, p string, addWildcards,
 		return andClauses(ret...)
 	}
 
-	return getPathSearchClause(pathColumn, basenameColumn, trimmedQuery, addWildcards, not)
+	return getPathSearchClause(pathColumn, basenameColumn, trimmedQuery, addWildcards, not, false)
 }
 
 func intCriterionHandler(c *models.IntCriterionInput, column string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
@@ -1232,9 +1245,9 @@ func uuidCriterionHandler(c *models.StringCriterionInput, column string) criteri
 				case models.CriterionModifierExcludes:
 					f.whereClauses = append(f.whereClauses, getStringSearchClause([]string{columnCast}, c.Value, true))
 				case models.CriterionModifierEquals:
-					f.addWhere(columnCast+" ILIKE ? ESCAPE ''", c.Value)
+					f.addWhere(columnCast+` ILIKE ? ESCAPE '\'`, stringCriterionValue(c))
 				case models.CriterionModifierNotEquals:
-					f.addWhere(columnCast+" NOT ILIKE ? ESCAPE ''", c.Value)
+					f.addWhere(columnCast+` NOT ILIKE ? ESCAPE '\'`, stringCriterionValue(c))
 				case models.CriterionModifierMatchesRegex:
 					translated, err := translateRegex(c.Value)
 					if err != nil {
@@ -1259,9 +1272,4 @@ func uuidCriterionHandler(c *models.StringCriterionInput, column string) criteri
 			}
 		}
 	}
-}
-
-// escapeLikeValue makes user text literal in a LIKE pattern with a backslash escape.
-func escapeLikeValue(value string) string {
-	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
 }
