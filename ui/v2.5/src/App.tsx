@@ -407,7 +407,6 @@ export const App: React.FC = () => {
                 <CurrentUserProvider user={me.data?.me ?? null}>
                   {maybeRenderReleaseNotes()}
                   <ConnectionMonitor />
-                  <TroubleshootingModeOverlay />
                   <Suspense fallback={<LoadingIndicator />}>
                     <LightboxProvider>
                       <ManualProvider>
@@ -422,6 +421,7 @@ export const App: React.FC = () => {
                       </ManualProvider>
                     </LightboxProvider>
                   </Suspense>
+                  <TroubleshootingModeOverlay />
                 </CurrentUserProvider>
               </ConfigurationProvider>
             </AppContainer>

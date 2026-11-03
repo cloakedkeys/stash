@@ -1542,20 +1542,35 @@ h3 .TruncatedText {
     margin: 0;
     position: fixed;
     right: calc(0.5rem + env(safe-area-inset-right));
-
-    @include media-breakpoint-down(xs) {
-      @media (orientation: portrait) {
-        bottom: calc($navbar-height + env(safe-area-inset-bottom));
-
-        & > span {
-          font-size: 0.75rem;
-        }
-      }
-    }
   }
 
   .btn {
     pointer-events: auto;
+  }
+
+  @include media-breakpoint-down(xs) {
+    border: 0;
+    position: static;
+
+    // Keep the frame over the viewport while the notice takes its own space
+    // after the page. Its height can grow naturally when the message wraps.
+    &::before {
+      border: 5px solid $danger;
+      content: "";
+      inset: 0;
+      position: fixed;
+      z-index: 1040;
+    }
+
+    .troubleshooting-mode-alert {
+      display: flex;
+      margin: 0.5rem;
+      position: static;
+
+      & > span {
+        font-size: 0.75rem;
+      }
+    }
   }
 }
 
