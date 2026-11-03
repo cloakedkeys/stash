@@ -6,6 +6,8 @@ on:
       - develop
       - master
       - 'releases/**'
+    tags:
+      - 'v*'
   pull_request:
     # ready_for_review: drafts skip every check, so run them when one is marked ready
     types: [opened, synchronize, reopened, ready_for_review]
@@ -14,21 +16,55 @@ on:
 
 concurrency:
   group: ${{ github.ref }}
-  cancel-in-progress: true
+  # Only cancel pull requests, so pushes to develop keep all results:
+  # every commit on a shared branch still gets a result
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   COMPILER_IMAGE: ghcr.io/stashapp/compiler:14
 
 jobs:
+  # Says whether a pull request leaves the Go code alone: it only changes documentation and the
+  # web UI (ui/v2.5, but not its translations, which the login page uses). The Go checks skip it
+  # then. Anything else, including this check failing, means they run. Jobs using this must
+  # compare with != 'true', so that an empty answer runs them too.
+  # Draft pull requests skip this, as they skip every check.
   changes:
-    uses: ./.github/workflows/changes.yml
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    runs-on: ubuntu-24.04
+    outputs:
+      go_unchanged: ${{ steps.check.outputs.go_unchanged }}
+    steps:
+    # a pull request's commit here is a merge, and its first parent is the branch it merges into
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 2
+
+    - id: check
+      run: |
+        go_unchanged=false
+        files=""
+        if git rev-parse --verify --quiet HEAD^2 > /dev/null \
+          && files=$(git diff --no-renames --name-only HEAD^1 HEAD) \
+          && [ -n "$files" ]; then
+          # grep exits 1 only when every file matched. 0 means some didn't, and 2 is an error.
+          status=0
+          printf '%s\n' "$files" | grep -qvE '^(ui/v2\.5/.*|[^/]+\.md)$' || status=$?
+          if [ "$status" -eq 1 ] && ! printf '%s\n' "$files" | grep -qE '^ui/v2\.5/src/locales/'; then
+            go_unchanged=true
+          fi
+        fi
+        printf '%s\n' "$files"
+        echo "Go unchanged: $go_unchanged"
+        echo "go_unchanged=$go_unchanged" >> "$GITHUB_OUTPUT"
 
   # Job 1: Generate code and build UI
   # Runs natively (no Docker) — go generate/gqlgen and node don't need cross-compilers.
   # Produces artifacts (generated Go files + UI build) consumed by test and build jobs.
   generate:
     # A draft pull request skips every check; marking it ready runs them.
-    if: ${{ !github.event.pull_request.draft }}
+    # Tag pushes previously ran only lint.
+    if: ${{ !github.event.pull_request.draft && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) }}
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6
@@ -76,7 +112,7 @@ jobs:
       run: pnpm run test
 
     - name: Cache UI build
-      uses: actions/cache@v5
+      uses: actions/cache/restore@v5
       id: cache-ui
       with:
         path: ui/v2.5/build
@@ -91,6 +127,14 @@ jobs:
       # skip UI build for pull requests if UI is unchanged (UI was cached)
       if: ${{ github.event_name != 'pull_request' || steps.cache-ui.outputs.cache-hit != 'true' }}
       run: make ui
+
+    # Only develop pushes save caches that other pull requests can restore.
+    - name: Save UI build cache
+      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' && steps.cache-ui.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v5
+      with:
+        path: ui/v2.5/build
+        key: ${{ steps.cache-ui.outputs.cache-primary-key }}
 
     # Bundle generated Go files + UI build for downstream jobs (test + build)
     - name: Upload generated artifacts
@@ -394,3 +438,101 @@ jobs:
         docker buildx inspect --bootstrap
         docker buildx ls
         bash ./docker/ci/x86_64/docker_push.sh latest "${{ github.event.release.tag_name }}"
+
+  lint:
+    name: lint
+    needs: changes
+    # Published releases previously ran only the Build jobs.
+    if: ${{ github.event_name != 'release' && !cancelled() && !github.event.pull_request.draft && needs.changes.outputs.go_unchanged != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      # no tags or depth needed for lint
+      - uses: actions/checkout@v6
+      - id: go
+        uses: ./.github/actions/setup-go-cached
+        with:
+          cache-name: lint
+
+      # generate-backend runs natively (just go generate + touch-ui) — no Docker needed
+      - name: Generate Backend
+        run: make generate-backend
+
+      ## WARN
+      ## using v1, update in a later PR
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11.4
+
+      - name: Save Go cache
+        uses: ./.github/actions/save-go-cached
+        with:
+          key: ${{ steps.go.outputs.key }}
+          cache-hit: ${{ steps.go.outputs.cache-hit }}
+
+  # A required check: a skipped job counts as passed.
+  test-postgres:
+    needs: changes
+    # Tag pushes and published releases did not trigger Test Postgres.
+    if: ${{ github.event_name != 'release' && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) && !cancelled() && !github.event.pull_request.draft && needs.changes.outputs.go_unchanged != 'true' }}
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: username
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --name postgres-db
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Setup Go
+      id: go
+      uses: ./.github/actions/setup-go-cached
+      with:
+        cache-name: postgres
+
+    - name: Generate Backend
+      run: make generate-backend
+
+    # backup tests run pg_dump and pg_restore, which must be as new as the server
+    - name: Install PostgreSQL client tools
+      run: |
+        sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+        sudo apt-get install -y postgresql-client-18
+        echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+
+    # an ordinary account, as the manual describes, so Stash can't come to need more
+    # without a test failing. It can create databases only because some tests do.
+    - name: Create an ordinary database account
+      run: |
+        docker exec postgres-db psql -U username -d testdb -c "CREATE ROLE stash LOGIN PASSWORD 'password' CREATEDB"
+        docker exec postgres-db psql -U username -d testdb -c "CREATE DATABASE stash_test OWNER stash"
+
+    # one package at a time, since they share the database
+    - name: Test
+      env:
+        PGSQL_TEST: 'postgresql://stash:password@localhost:5432/stash_test?sslmode=disable'
+      run: go test -count=1 -p 1 -tags "sqlite_stat4 sqlite_math_functions integration" -skip 'TestMigrateFromSQLite' ./pkg/database ./pkg/postgres
+
+    # the only thing that needs an extra permission, and the manual says to grant it
+    - name: Test copying from SQLite
+      env:
+        PGSQL_TEST: 'postgresql://stash:password@localhost:5432/stash_test?sslmode=disable'
+      run: |
+        docker exec postgres-db psql -U username -d testdb -c "GRANT SET ON PARAMETER session_replication_role TO stash"
+        go test -count=1 -tags "sqlite_stat4 sqlite_math_functions integration" -run 'TestMigrateFromSQLite' ./pkg/postgres
+
+    - name: Save Go cache
+      uses: ./.github/actions/save-go-cached
+      with:
+        key: ${{ steps.go.outputs.key }}
+        cache-hit: ${{ steps.go.outputs.cache-hit }}
