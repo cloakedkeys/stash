@@ -458,12 +458,14 @@ const AvailablePackagesToolbar: React.FC<{
   loading?: boolean;
   hasSelectedPackages: boolean;
   onInstallPackages: () => void;
+  onAddSource: () => void;
 
   selectedOnly: boolean;
   setSelectedOnly: (v: boolean) => void;
 }> = ({
   hasSelectedPackages,
   onInstallPackages,
+  onAddSource,
   loading,
   filter,
   setFilter,
@@ -499,6 +501,9 @@ const AvailablePackagesToolbar: React.FC<{
         onClick={() => onInstallPackages()}
       >
         <FormattedMessage id="package_manager.install" />
+      </Button>
+      <Button variant="success" onClick={onAddSource}>
+        <FormattedMessage id="package_manager.add_source" />
       </Button>
     </div>
   );
@@ -883,7 +888,7 @@ const SourcePackagesList: React.FC<{
   }
 
   return (
-    <>
+    <tbody>
       <tr className="package-source">
         <td>
           {allowSelectAll && packages !== undefined ? (
@@ -930,7 +935,7 @@ const SourcePackagesList: React.FC<{
         </td>
       </tr>
       {renderContents()}
-    </>
+    </tbody>
   );
 };
 
@@ -946,7 +951,6 @@ const AvailablePackagesList: React.FC<{
   >;
   selectedOnly: boolean;
   allowSourceSelectAll?: boolean;
-  addSource: (src: GQL.PackageSource) => void;
   editSource: (existing: GQL.PackageSource, changed: GQL.PackageSource) => void;
   deleteSource: (source: GQL.PackageSource) => void;
 }> = ({
@@ -958,14 +962,12 @@ const AvailablePackagesList: React.FC<{
   filter,
   renderDescription,
   selectedOnly,
-  addSource,
   editSource,
   deleteSource,
   allowSourceSelectAll,
 }) => {
   const [deletingSource, setDeletingSource] = useState<GQL.PackageSource>();
   const [editingSource, setEditingSource] = useState<GQL.PackageSource>();
-  const [addingSource, setAddingSource] = useState(false);
 
   function onDeleteSource() {
     if (!deletingSource) return;
@@ -992,19 +994,13 @@ const AvailablePackagesList: React.FC<{
   function renderBody() {
     if (sources.length === 0) {
       return (
-        <tr className="package-manager-no-results">
-          <td colSpan={5}>
-            <FormattedMessage id="package_manager.no_sources" />
-            <br />
-            <Button
-              size="sm"
-              variant="success"
-              onClick={() => setAddingSource(true)}
-            >
-              <FormattedMessage id="package_manager.add_source" />
-            </Button>
-          </td>
-        </tr>
+        <tbody>
+          <tr className="package-manager-no-results">
+            <td colSpan={5}>
+              <FormattedMessage id="package_manager.no_sources" />
+            </td>
+          </tr>
+        </tbody>
       );
     }
 
@@ -1026,18 +1022,6 @@ const AvailablePackagesList: React.FC<{
             allowSelectAll={allowSourceSelectAll}
           />
         ))}
-        <tr className="add-package-source">
-          <td colSpan={2}></td>
-          <td colSpan={3}>
-            <Button
-              size="sm"
-              variant="success"
-              onClick={() => setAddingSource(true)}
-            >
-              <FormattedMessage id="package_manager.add_source" />
-            </Button>
-          </td>
-        </tr>
       </>
     );
   }
@@ -1056,17 +1040,15 @@ const AvailablePackagesList: React.FC<{
         onCancel={() => setDeletingSource(undefined)}
       />
 
-      {editingSource || addingSource ? (
+      {editingSource ? (
         <EditSourceModal
           sources={sources}
           existing={editingSource}
           onClose={(v) => {
             if (v) {
-              if (addingSource) addSource(v);
-              else if (editingSource) editSource(editingSource, v);
+              editSource(editingSource, v);
             }
             setEditingSource(undefined);
-            setAddingSource(false);
           }}
         />
       ) : undefined}
@@ -1091,7 +1073,7 @@ const AvailablePackagesList: React.FC<{
               <th className="border-row" colSpan={100}></th>
             </tr>
           </thead>
-          <tbody>{renderBody()}</tbody>
+          {renderBody()}
         </Table>
       </div>
     </>
@@ -1122,6 +1104,7 @@ export const AvailablePackages: React.FC<{
   const [checkedPackages, setCheckedPackages] = useState<
     Record<string, RemotePackage[]>
   >({});
+  const [addingSource, setAddingSource] = useState(false);
   const [filter, setFilter] = useState("");
   const [selectedOnly, setSelectedOnly] = useState(false);
 
@@ -1148,12 +1131,22 @@ export const AvailablePackages: React.FC<{
 
   return (
     <div className="available-packages">
+      {addingSource && (
+        <EditSourceModal
+          sources={sources}
+          onClose={(v) => {
+            if (v) addSource(v);
+            setAddingSource(false);
+          }}
+        />
+      )}
       <AvailablePackagesToolbar
         filter={filter}
         setFilter={(f) => setFilter(f)}
         loading={loading}
         hasSelectedPackages={hasPackagesSelected}
         onInstallPackages={() => onInstallPackages(toPackageSpecInput())}
+        onAddSource={() => setAddingSource(true)}
         selectedOnly={selectedOnly}
         setSelectedOnly={(v) => setSelectedOnly(v)}
       />
@@ -1166,7 +1159,6 @@ export const AvailablePackages: React.FC<{
         selectedOnly={selectedOnly}
         selectedPackages={checkedPackages}
         setSelectedPackages={setCheckedPackages}
-        addSource={addSource}
         editSource={editSource}
         deleteSource={deleteSource}
         allowSourceSelectAll={allowSelectAll}
