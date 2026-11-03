@@ -183,6 +183,12 @@
       flex-wrap: wrap;
       width: auto;
 
+      @include media-breakpoint-down(xs) {
+        &.boolean-setting {
+          flex-wrap: nowrap;
+        }
+      }
+
       &.purge-missing-setting {
         column-gap: 1rem;
 
