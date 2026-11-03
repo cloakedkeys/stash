@@ -310,7 +310,7 @@ func (qb *SceneMarkerStore) Wall(ctx context.Context, q *string) ([]*models.Scen
 	}
 
 	table := qb.table()
-	qq := qb.selectDataset().Prepared(true).Where(table.Col("title").Like("%" + s + "%")).Order(goqu.L("RANDOM()").Asc()).Limit(80)
+	qq := qb.selectDataset().Prepared(true).Where(goqu.L("? LIKE ? ESCAPE '\\'", table.Col("title"), like(s))).Order(goqu.L("RANDOM()").Asc()).Limit(80)
 	return qb.getMany(ctx, qq)
 }
 

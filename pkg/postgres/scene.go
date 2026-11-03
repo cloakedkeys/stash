@@ -1123,7 +1123,7 @@ func (qb *SceneStore) Wall(ctx context.Context, q *string) ([]*models.Scene, err
 	}
 
 	table := qb.table()
-	qq := qb.selectDataset().Prepared(true).Where(table.Col("details").ILike("%" + s + "%")).Order(goqu.L("RANDOM()").Asc()).Limit(80)
+	qq := qb.selectDataset().Prepared(true).Where(goqu.L("? ILIKE ? ESCAPE '\\'", table.Col("details"), like(s))).Order(goqu.L("RANDOM()").Asc()).Limit(80)
 	return qb.getMany(ctx, qq)
 }
 

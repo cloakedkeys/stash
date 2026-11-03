@@ -932,9 +932,10 @@ func (qb *FileStore) allInPaths(q *goqu.SelectDataset, p []string) *goqu.SelectD
 
 	var conds []exp.Expression
 	for _, pp := range p {
-		ppWildcard := pp + string(filepath.Separator) + "%"
+		// the folder is typed text, so _ and % in it are plain characters (#2026)
+		ppWildcard := escapeLikeValue(pp+string(filepath.Separator)) + "%"
 
-		conds = append(conds, folderTable.Col("path").Eq(pp), folderTable.Col("path").Like(ppWildcard))
+		conds = append(conds, folderTable.Col("path").Eq(pp), goqu.L(`? LIKE ? ESCAPE '\'`, folderTable.Col("path"), ppWildcard))
 	}
 
 	return q.Where(

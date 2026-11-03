@@ -722,7 +722,7 @@ func (qb *PerformerStore) QueryForAutoTag(ctx context.Context, words []string) (
 	var whereClauses []exp.Expression
 
 	for _, w := range words {
-		whereClauses = append(whereClauses, table.Col("name").ILike(w+"%"))
+		whereClauses = append(whereClauses, goqu.L("? ILIKE ? ESCAPE '\\'", table.Col("name"), escapeLikeValue(w)+"%"))
 		// TODO - see above
 		// whereClauses = append(whereClauses, performersAliasesJoinTable.Col("alias").ILike(w+"%"))
 	}

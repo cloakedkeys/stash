@@ -178,15 +178,15 @@ func getStringSearchClause(columns []string, q string, not bool) sqlClause {
 		// Search for any word
 		for _, word := range queryWords {
 			for _, column := range columns {
-				likeClauses = append(likeClauses, column+notStr+" LIKE ?")
-				args = append(args, "%"+word+"%")
+				likeClauses = append(likeClauses, column+notStr+" LIKE ? ESCAPE '\\'")
+				args = append(args, "%"+escapeLikeValue(word)+"%")
 			}
 		}
 	} else {
 		// Search the exact query
 		for _, column := range columns {
-			likeClauses = append(likeClauses, column+notStr+" LIKE ?")
-			args = append(args, "%"+trimmedQuery+"%")
+			likeClauses = append(likeClauses, column+notStr+" LIKE ? ESCAPE '\\'")
+			args = append(args, "%"+escapeLikeValue(trimmedQuery)+"%")
 		}
 	}
 	likes := strings.Join(likeClauses, binaryType)
@@ -393,13 +393,13 @@ func coalesce(column string) string {
 
 // wraps a string with wildcard characters for use in LIKE queries
 func like(v string) string {
-	return "%" + v + "%"
+	return "%" + escapeLikeValue(v) + "%"
 }
 
 // wraps a string with wildcard characters and converts it to lowercase
 // for use in case-insensitive LIKE queries with the lower_unicode() SQL function.
 func likeLower(v string) string {
-	return "%" + strings.ToLower(v) + "%"
+	return "%" + escapeLikeValue(strings.ToLower(v)) + "%"
 }
 
 // isASCII reports whether s contains only ASCII bytes.

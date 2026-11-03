@@ -213,21 +213,15 @@ func pathCriterionHandler(c *models.StringCriterionInput, pathColumn string, bas
 }
 
 func getPathSearchClause(pathColumn, basenameColumn, p string, addWildcards, not, matchPrefix bool) sqlClause {
+	p = escapeLikeValue(p)
 	if addWildcards {
 		p = "%" + p + "%"
-	} else {
-		p = escapeLikeValue(p)
-		if matchPrefix {
-			p += "%"
-		}
+	} else if matchPrefix {
+		p += "%"
 	}
 
 	filepathColumn := fmt.Sprintf("%s || '%s' || %s", pathColumn, string(filepath.Separator), basenameColumn)
-	operator := " LIKE ?"
-	if !addWildcards {
-		operator = ` LIKE ? ESCAPE '\'`
-	}
-	ret := makeClause(filepathColumn+operator, p)
+	ret := makeClause(filepathColumn+` LIKE ? ESCAPE '\'`, p)
 
 	if not {
 		ret = ret.not()
@@ -643,7 +637,7 @@ func (m *stringListCriterionHandlerBuilder) handler(criterion *models.StringCrit
 				// excludes all of the provided values
 				// need to use actual join table name for this
 				// <primaryTable>.id NOT IN (select <joinTable>.<primaryFK> from <joinTable> where <joinTable>.<foreignFK> in <values>)
-				whereClause := utils.StrFormat("{primaryTable}.id NOT IN (SELECT {joinTable}.{primaryFK} from {joinTable} where {joinTable}.{stringColumn} LIKE ?)",
+				whereClause := utils.StrFormat("{primaryTable}.id NOT IN (SELECT {joinTable}.{primaryFK} from {joinTable} where {joinTable}.{stringColumn} LIKE ? ESCAPE '\\')",
 					utils.StrFormatMap{
 						"primaryTable": m.primaryTable,
 						"joinTable":    m.joinTable,
@@ -652,7 +646,7 @@ func (m *stringListCriterionHandlerBuilder) handler(criterion *models.StringCrit
 					},
 				)
 
-				f.addWhere(whereClause, "%"+criterion.Value+"%")
+				f.addWhere(whereClause, "%"+escapeLikeValue(criterion.Value)+"%")
 
 				// TODO - should we also exclude null values?
 				// m.addJoinTable(f)

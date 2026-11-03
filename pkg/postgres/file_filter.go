@@ -345,9 +345,9 @@ func (qb *videoFileFilterHandler) captionCriterionHandler(captions *models.Strin
 			excludeClause := `files.id NOT IN (
 				SELECT files.id from files 
 				INNER JOIN video_captions on video_captions.file_id = files.id 
-				WHERE video_captions.language_code LIKE ?
+				WHERE video_captions.language_code ILIKE ? ESCAPE '\'
 			)`
-			f.addWhere(excludeClause, criterion.Value)
+			f.addWhere(excludeClause, escapeLikeValue(criterion.Value))
 
 			// TODO - should we also exclude null values?
 		},

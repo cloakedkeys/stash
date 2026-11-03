@@ -174,15 +174,15 @@ func getStringSearchClause(columns []string, q string, not bool) sqlClause {
 		// Search for any word
 		for _, word := range queryWords {
 			for _, column := range columns {
-				likeClauses = append(likeClauses, column+notStr+" ILIKE ? ESCAPE ''")
-				args = append(args, "%"+word+"%")
+				likeClauses = append(likeClauses, column+notStr+" ILIKE ? ESCAPE '\\'")
+				args = append(args, "%"+escapeLikeValue(word)+"%")
 			}
 		}
 	} else {
 		// Search the exact query
 		for _, column := range columns {
-			likeClauses = append(likeClauses, column+notStr+" ILIKE ? ESCAPE ''")
-			args = append(args, "%"+trimmedQuery+"%")
+			likeClauses = append(likeClauses, column+notStr+" ILIKE ? ESCAPE '\\'")
+			args = append(args, "%"+escapeLikeValue(trimmedQuery)+"%")
 		}
 	}
 	likes := strings.Join(likeClauses, binaryType)
@@ -381,7 +381,7 @@ func coalesce(column string) string {
 }
 
 func like(v string) string {
-	return "%" + v + "%"
+	return "%" + escapeLikeValue(v) + "%"
 }
 
 type sqlTable string
