@@ -499,8 +499,9 @@ func (t *autoTagFilesTask) makeImageFilter() *models.ImageFilterType {
 		}
 
 		or.Path = &models.StringCriterionInput{
-			Modifier: models.CriterionModifierEquals,
-			Value:    p + "%",
+			Modifier:    models.CriterionModifierEquals,
+			Value:       p,
+			MatchPrefix: true,
 		}
 	}
 
@@ -536,8 +537,9 @@ func (t *autoTagFilesTask) makeGalleryFilter() *models.GalleryFilterType {
 		}
 
 		or.Path = &models.StringCriterionInput{
-			Modifier: models.CriterionModifierEquals,
-			Value:    p + "%",
+			Modifier:    models.CriterionModifierEquals,
+			Value:       p,
+			MatchPrefix: true,
 		}
 	}
 

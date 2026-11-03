@@ -68,8 +68,9 @@ func PathsFileFilter(paths []string) *FileFilterType {
 		}
 
 		or.Path = &StringCriterionInput{
-			Modifier: CriterionModifierEquals,
-			Value:    p + "%",
+			Modifier:    CriterionModifierEquals,
+			Value:       p,
+			MatchPrefix: true,
 		}
 	}
 
