@@ -17,10 +17,7 @@ import isEqual from "lodash-es/isEqual";
 import { useToast } from "src/hooks/Toast";
 import { useConfigurationContext } from "src/hooks/Config";
 import { useIsAdmin } from "src/hooks/CurrentUser";
-import {
-  handleUnsavedChanges,
-  isRedirectAfterCreate,
-} from "src/utils/navigation";
+import { handleUnsavedChanges } from "src/utils/navigation";
 import { formikUtils, useValidateAfterChange } from "src/utils/form";
 import { yupFormikValidate, yupRequiredStringArray } from "src/utils/yup";
 import { Studio, StudioSelect } from "../StudioSelect";
@@ -491,20 +488,9 @@ export const StudioEditPanel: React.FC<IStudioEditPanel> = ({
 
       <Prompt
         when={formik.dirty}
-        message={(location, action) => {
-          // Check if it's a redirect after studio creation
-          if (
-            isRedirectAfterCreate(isNew, action, location.pathname, "studios")
-          )
-            return true;
-
-          return handleUnsavedChanges(
-            intl,
-            "studios",
-            studio.id,
-            pathname
-          )(location);
-        }}
+        // While a save runs the form is replaced by a loading indicator, so this
+        // doesn't ask when a new item's page moves to it once created (#1899).
+        message={handleUnsavedChanges(intl, "studios", studio.id, pathname)}
       />
 
       {renderButtons("mb-3")}

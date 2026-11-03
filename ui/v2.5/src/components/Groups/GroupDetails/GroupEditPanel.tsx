@@ -17,10 +17,7 @@ import { useFormik } from "formik";
 import { Prompt, useLocation } from "react-router-dom";
 import { GroupScrapeDialog } from "./GroupScrapeDialog";
 import isEqual from "lodash-es/isEqual";
-import {
-  handleUnsavedChanges,
-  isRedirectAfterCreate,
-} from "src/utils/navigation";
+import { handleUnsavedChanges } from "src/utils/navigation";
 import { formikUtils, useValidateAfterChange } from "src/utils/form";
 import {
   yupDateString,
@@ -472,18 +469,9 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
 
       <Prompt
         when={formik.dirty}
-        message={(location, action) => {
-          // Check if it's a redirect after group creation
-          if (isRedirectAfterCreate(isNew, action, location.pathname, "groups"))
-            return true;
-
-          return handleUnsavedChanges(
-            intl,
-            "groups",
-            group.id,
-            pathname
-          )(location);
-        }}
+        // While a save runs the form is replaced by a loading indicator, so this
+        // doesn't ask when a new item's page moves to it once created (#1899).
+        message={handleUnsavedChanges(intl, "groups", group.id, pathname)}
       />
 
       <Form noValidate onSubmit={formik.handleSubmit} id="group-edit">

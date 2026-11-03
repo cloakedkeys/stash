@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createIntl } from "react-intl";
-import { handleUnsavedChanges, isRedirectAfterCreate } from "./navigation";
+import { handleUnsavedChanges } from "./navigation";
 
 const intl = createIntl({
   locale: "en",
@@ -68,19 +68,18 @@ it("allows the same pathname on a new performer form but warns when leaving", ()
   }
 });
 
+// The edit panels for these pass handleUnsavedChanges straight to the Prompt.
+// A new item that hasn't been saved has no id, so moving to an existing one in
+// the same section asks too (#1899). The move to a new item once it's created
+// doesn't ask because the form isn't shown while the save runs.
 describe.each(["groups", "studios", "tags"])("%s", (base) => {
-  it("doesn't ask when a new item goes to its page", () => {
-    expect(isRedirectAfterCreate(true, "PUSH", `/${base}/2`, base)).toBe(true);
+  it("asks when leaving a new, unsaved item for an existing one", () => {
+    const prompt = handleUnsavedChanges(intl, base, undefined, `/${base}/new`);
+    expect(prompt({ pathname: `/${base}/2` })).toBe("Unsaved changes");
   });
 
   it("asks when leaving an existing item for another", () => {
-    expect(isRedirectAfterCreate(false, "PUSH", `/${base}/2`, base)).toBe(
-      false
-    );
-  });
-
-  it("asks when going back from a new item, or elsewhere", () => {
-    expect(isRedirectAfterCreate(true, "POP", `/${base}/2`, base)).toBe(false);
-    expect(isRedirectAfterCreate(true, "PUSH", "/scenes", base)).toBe(false);
+    const prompt = handleUnsavedChanges(intl, base, "1", `/${base}/1`);
+    expect(prompt({ pathname: `/${base}/2` })).toBe("Unsaved changes");
   });
 });
