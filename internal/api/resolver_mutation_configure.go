@@ -85,7 +85,7 @@ func (r *mutationResolver) RemoveDownloadedFFMpeg(ctx context.Context) (bool, er
 	mgr.RefreshStreamManager()
 	if err != nil {
 		logger.Errorf("Error removing downloaded FFmpeg: %v", err)
-		return false, errors.New("Could not remove downloaded FFmpeg. Please check the logs.")
+		return false, errors.New("could not remove downloaded ffmpeg, see the logs")
 	}
 	return removed, nil
 }

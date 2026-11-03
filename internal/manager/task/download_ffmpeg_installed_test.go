@@ -24,7 +24,7 @@ func TestDownloadFFmpegAlreadyInstalled(t *testing.T) {
 			cancel()
 			job := DownloadFFmpegJob{ConfigDirectory: dir}
 			err := job.download(ctx, nil)
-			if err == nil || err.Error() != "FFmpeg is already installed." {
+			if err == nil || err.Error() != "ffmpeg is already installed" {
 				t.Fatalf("download error = %v, want a short already-installed message", err)
 			}
 			for _, name := range names {

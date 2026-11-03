@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var ErrAlreadyInstalled = errors.New("FFmpeg is already installed.")
+var ErrAlreadyInstalled = errors.New("ffmpeg is already installed")
 
 // HasDownloadedFFmpeg reports whether either binary is present in Stash's download
 // directory. Do not use executable resolution here: PATH and configured binaries
