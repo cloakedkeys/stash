@@ -2,8 +2,10 @@ name: Build
 
 on:
   push:
+    # Not develop: each pull request has already run every check before it
+    # merges, so running them again for every merge doubled the paid minutes.
+    # develop gets one run a day instead, and only if something merged.
     branches:
-      - develop
       - master
       - 'releases/**'
     tags:
@@ -13,6 +15,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   release:
     types: [ published ]
+  schedule:
+    - cron: '0 6 * * *'
+  # Run it on develop by hand: Actions > Build > Run workflow
+  workflow_dispatch:
 
 concurrency:
   # A newer push to a pull request cancels its older run. Every other run gets
@@ -30,11 +36,13 @@ jobs:
   # then. Anything else, including this check failing, means they run. Jobs using this must
   # compare with != 'true', so that an empty answer runs them too.
   # Draft pull requests skip this, as they skip every check.
+  # For the daily run it also says whether anything merged in the last day.
   changes:
-    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    if: ${{ (github.event_name == 'pull_request' && !github.event.pull_request.draft) || github.event_name == 'schedule' }}
     runs-on: ubuntu-24.04
     outputs:
       go_unchanged: ${{ steps.check.outputs.go_unchanged }}
+      quiet: ${{ steps.quiet.outputs.quiet }}
     steps:
     # a pull request's commit here is a merge, and its first parent is the branch it merges into
     - uses: actions/checkout@v6
@@ -59,13 +67,25 @@ jobs:
         echo "Go unchanged: $go_unchanged"
         echo "go_unchanged=$go_unchanged" >> "$GITHUB_OUTPUT"
 
+    # The daily run skips every other job when develop's newest commit is
+    # more than a day old: the previous day's run already checked it.
+    - id: quiet
+      if: ${{ github.event_name == 'schedule' }}
+      run: |
+        age=$(( $(date +%s) - $(git log -1 --format=%ct HEAD) ))
+        quiet=false
+        if [ "$age" -gt 90000 ]; then quiet=true; fi
+        echo "Newest commit is $age seconds old. Quiet: $quiet"
+        echo "quiet=$quiet" >> "$GITHUB_OUTPUT"
+
   # Job 1: Generate code and build UI
   # Runs natively (no Docker) — go generate/gqlgen and node don't need cross-compilers.
   # Produces artifacts (generated Go files + UI build) consumed by test and build jobs.
   generate:
+    needs: changes
     # A draft pull request skips every check; marking it ready runs them.
     # Tag pushes previously ran only lint.
-    if: ${{ !github.event.pull_request.draft && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) }}
+    if: ${{ !cancelled() && needs.changes.outputs.quiet != 'true' && !github.event.pull_request.draft && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) }}
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6
@@ -129,9 +149,9 @@ jobs:
       if: ${{ github.event_name != 'pull_request' || steps.cache-ui.outputs.cache-hit != 'true' }}
       run: make ui
 
-    # Only develop pushes save caches that other pull requests can restore.
+    # Only develop runs save caches that other pull requests can restore.
     - name: Save UI build cache
-      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' && steps.cache-ui.outputs.cache-hit != 'true' }}
+      if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/develop' && steps.cache-ui.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v5
       with:
         path: ui/v2.5/build
@@ -162,7 +182,7 @@ jobs:
   # generate, which builds the documentation into the UI and runs the UI's tests.
   test:
     needs: [changes, generate]
-    if: ${{ !cancelled() && needs.generate.result == 'success' && needs.changes.outputs.go_unchanged != 'true' }}
+    if: ${{ !cancelled() && needs.generate.result == 'success' && needs.changes.outputs.go_unchanged != 'true' && needs.changes.outputs.quiet != 'true' }}
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6
@@ -444,7 +464,7 @@ jobs:
     name: lint
     needs: changes
     # Published releases previously ran only the Build jobs.
-    if: ${{ github.event_name != 'release' && !cancelled() && !github.event.pull_request.draft && needs.changes.outputs.go_unchanged != 'true' }}
+    if: ${{ github.event_name != 'release' && !cancelled() && !github.event.pull_request.draft && needs.changes.outputs.go_unchanged != 'true' && needs.changes.outputs.quiet != 'true' }}
     runs-on: ubuntu-latest
     steps:
       # no tags or depth needed for lint
@@ -475,7 +495,7 @@ jobs:
   test-postgres:
     needs: changes
     # Tag pushes and published releases did not trigger Test Postgres.
-    if: ${{ github.event_name != 'release' && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) && !cancelled() && !github.event.pull_request.draft && needs.changes.outputs.go_unchanged != 'true' }}
+    if: ${{ github.event_name != 'release' && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) && !cancelled() && !github.event.pull_request.draft && needs.changes.outputs.go_unchanged != 'true' && needs.changes.outputs.quiet != 'true' }}
     runs-on: ubuntu-24.04
     services:
       postgres:

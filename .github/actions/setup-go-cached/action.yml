@@ -2,7 +2,7 @@ name: Set up Go with its own build cache
 description: >-
   Each job compiles different things, so each keeps its own cache. A cache can't
   change once saved, and setup-go's shared one only holds what the first job
-  to finish compiled. Pushes to develop save a new one each week, and pull requests only read.
+  to finish compiled. Runs on develop save a new one each week, and pull requests only read.
 
 inputs:
   cache-name:
