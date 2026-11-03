@@ -269,7 +269,7 @@ const _SceneFileInfoPanel: React.FC<ISceneFileInfoPanelProps> = (
       return (
         <FileInfoPanel
           sceneID={props.scene.id}
-          sceneTitle={props.scene.title ?? objectTitle(props.scene) ?? ""}
+          sceneTitle={objectTitle(props.scene)}
           file={props.scene.files[0]}
         />
       );
@@ -309,9 +309,7 @@ const _SceneFileInfoPanel: React.FC<ISceneFileInfoPanelProps> = (
               <Card.Body>
                 <FileInfoPanel
                   sceneID={props.scene.id}
-                  sceneTitle={
-                    props.scene.title ?? objectTitle(props.scene) ?? ""
-                  }
+                  sceneTitle={objectTitle(props.scene)}
                   file={file}
                   primary={index === 0}
                   ofMany
