@@ -21,4 +21,14 @@ describe("favourite heart on cards", () => {
     expect(heart).toContain("left: 0.5rem;");
     expect(heart).not.toContain("top:");
   });
+
+  it("leaves room for a scene's interactive speed beside it", () => {
+    const scenes = readFileSync(
+      new URL("../../Scenes/styles.scss", import.meta.url),
+      "utf8"
+    );
+    expect(scenes).toMatch(
+      /\n\.scene-interactive-speed-overlay \{\s*left: 4rem;/
+    );
+  });
 });
