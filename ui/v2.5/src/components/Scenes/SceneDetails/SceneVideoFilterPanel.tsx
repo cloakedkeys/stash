@@ -512,6 +512,15 @@ export const SceneVideoFilterPanel: React.FC<ISceneVideoFilterPanelProps> = (
       <div className="row form-group">
         <span className="col-12">
           <h5>
+            <FormattedMessage id="actions_name" />
+          </h5>
+        </span>
+      </div>
+      {renderRotateAndScale()}
+      {renderResetButton()}
+      <div className="row form-group">
+        <span className="col-12">
+          <h5>
             <FormattedMessage id="effect_filters.name" />
           </h5>
         </span>
@@ -634,15 +643,6 @@ export const SceneVideoFilterPanel: React.FC<ISceneVideoFilterPanelProps> = (
           aspectRatioRange.divider
         }`}
       />
-      <div className="row form-group">
-        <span className="col-12">
-          <h5>
-            <FormattedMessage id="actions_name" />
-          </h5>
-        </span>
-      </div>
-      {renderRotateAndScale()}
-      {renderResetButton()}
       {renderFilterContainer()}
     </div>
   );
