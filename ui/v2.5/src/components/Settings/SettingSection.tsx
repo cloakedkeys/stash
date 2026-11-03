@@ -2,6 +2,7 @@ import React, { PropsWithChildren } from "react";
 import { Card } from "react-bootstrap";
 import { useIntl } from "react-intl";
 import { useSettings } from "./context";
+import { SettingDescription } from "./SettingDescription";
 
 interface ISettingGroup {
   id?: string;
@@ -27,7 +28,9 @@ export const SettingSection: React.FC<PropsWithChildren<ISettingGroup>> = ({
       <h1>{headingID ? intl.formatMessage({ id: headingID }) : undefined}</h1>
       {subHeadingID ? (
         <div className="sub-heading">
-          {intl.formatMessage({ id: subHeadingID })}
+          <SettingDescription>
+            {intl.formatMessage({ id: subHeadingID })}
+          </SettingDescription>
         </div>
       ) : undefined}
       <Card>{children}</Card>

@@ -7,6 +7,7 @@ import { StringListInput } from "../Shared/StringListInput";
 import { PatchComponent } from "src/patch";
 import { useSettings, useSettingsOptional } from "./context";
 import { NumberField } from "src/utils/form";
+import { SettingDescription } from "./SettingDescription";
 
 interface ISetting {
   id?: string;
@@ -54,12 +55,18 @@ export const Setting: React.FC<PropsWithChildren<ISetting>> = PatchComponent(
       if (subHeadingID) {
         return (
           <div className="sub-heading">
-            {intl.formatMessage({ id: subHeadingID })}
+            <SettingDescription>
+              {intl.formatMessage({ id: subHeadingID })}
+            </SettingDescription>
           </div>
         );
       }
       if (subHeading) {
-        return <div className="sub-heading">{subHeading}</div>;
+        return (
+          <div className="sub-heading">
+            <SettingDescription>{subHeading}</SettingDescription>
+          </div>
+        );
       }
     }
 
@@ -249,10 +256,14 @@ const _ChangeButtonSetting = <T extends {}>(props: IDialogSetting<T>) => {
 
         {subHeadingID ? (
           <div className="sub-heading">
-            {intl.formatMessage({ id: subHeadingID })}
+            <SettingDescription>
+              {intl.formatMessage({ id: subHeadingID })}
+            </SettingDescription>
           </div>
         ) : subHeading ? (
-          <div className="sub-heading">{subHeading}</div>
+          <div className="sub-heading">
+            <SettingDescription>{subHeading}</SettingDescription>
+          </div>
         ) : undefined}
       </div>
       <div>
@@ -322,10 +333,14 @@ const _SettingModal = <T extends {}>(props: ISettingModal<T>) => {
           {renderField(currentValue, setCurrentValue, error)}
           {subHeadingID ? (
             <div className="sub-heading">
-              {intl.formatMessage({ id: subHeadingID })}
+              <SettingDescription>
+                {intl.formatMessage({ id: subHeadingID })}
+              </SettingDescription>
             </div>
           ) : subHeading ? (
-            <div className="sub-heading">{subHeading}</div>
+            <div className="sub-heading">
+              <SettingDescription>{subHeading}</SettingDescription>
+            </div>
           ) : undefined}
         </Modal.Body>
         <Modal.Footer>
@@ -555,10 +570,14 @@ export const _ConstantSetting = <T,>(props: IConstantSetting<T>) => {
 
         {subHeadingID ? (
           <div className="sub-heading">
-            {intl.formatMessage({ id: subHeadingID })}
+            <SettingDescription>
+              {intl.formatMessage({ id: subHeadingID })}
+            </SettingDescription>
           </div>
         ) : subHeading ? (
-          <div className="sub-heading">{subHeading}</div>
+          <div className="sub-heading">
+            <SettingDescription>{subHeading}</SettingDescription>
+          </div>
         ) : undefined}
       </div>
       <div />
