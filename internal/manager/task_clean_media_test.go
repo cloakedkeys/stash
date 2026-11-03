@@ -318,3 +318,128 @@ func TestCleanDetachesFileNoLongerVideoFromSharedScene(t *testing.T) {
 	require.Equal(t, second.Base().ID, *s.PrimaryFileID)
 	require.Len(t, s.Files.List(), 1)
 }
+
+// Clean removes stale images while retaining the shared video and its scene.
+func TestCleanRemovesImagesOfFileNoLongerImage(t *testing.T) {
+	for _, setting := range []string{"extension", "pattern", "library"} {
+		t.Run(setting, func(t *testing.T) {
+			mgr, library := cleanMediaManager(t)
+			path := filepath.Join(library, "clip.gif")
+			content := cleanMediaGIF(t)
+			require.NoError(t, os.WriteFile(path, content, 0644))
+			f := scanCleanMedia(t, mgr, library, path)
+			require.IsType(t, &models.VideoFile{}, f)
+			requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 1)
+
+			runMediaClean(t, mgr, file.VerifyOptions{PurgeMissing: true})
+			requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 1)
+
+			cfg := mgr.Config
+			switch setting {
+			case "extension":
+				cfg.SetInterface(config.ImageExtensions, []string{"jpg"})
+			case "pattern":
+				cfg.SetInterface(config.ImageExclude, []string{`\.gif$`})
+			case "library":
+				cfg.SetInterface(config.Stash, config.StashConfigs{{Path: library, ExcludeImage: true}})
+			}
+
+			// Verification, a clean of another folder, and a dry run leave it alone
+			runMediaClean(t, mgr, file.VerifyOptions{})
+			requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 1)
+			runMediaClean(t, mgr, file.VerifyOptions{Paths: []string{filepath.Join(library, "other")}, PurgeMissing: true})
+			requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 1)
+			runMediaClean(t, mgr, file.VerifyOptions{DryRun: true})
+			requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 1)
+
+			runMediaClean(t, mgr, file.VerifyOptions{Paths: []string{library}, PurgeMissing: true})
+			requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 0)
+			got, err := os.ReadFile(path)
+			require.NoError(t, err)
+			require.Equal(t, content, got, "the file itself stays")
+
+			runMediaClean(t, mgr, file.VerifyOptions{PurgeMissing: true})
+			requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 0)
+		})
+	}
+}
+
+// A shared image keeps its other copy and loses only the excluded file.
+func TestCleanDetachesFileNoLongerImageFromSharedImage(t *testing.T) {
+	mgr, library := cleanMediaManager(t)
+	inside := filepath.Join(library, "excluded", "clip.gif")
+	outside := filepath.Join(library, "kept", "copy.gif")
+	content := cleanMediaGIF(t)
+	for _, path := range []string{inside, outside} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+		require.NoError(t, os.WriteFile(path, content, 0644))
+	}
+	first := scanCleanMedia(t, mgr, library, inside)
+	second := scanCleanMedia(t, mgr, library, outside)
+	var imageID int
+	require.NoError(t, mgr.Repository.WithReadTxn(context.Background(), func(ctx context.Context) error {
+		images, err := mgr.Repository.Image.FindByFileID(ctx, first.Base().ID)
+		if err == nil && len(images) == 1 {
+			imageID = images[0].ID
+		}
+		return err
+	}))
+	require.NotZero(t, imageID, "both copies are one image")
+
+	mgr.Config.SetInterface(config.Stash, config.StashConfigs{{Path: library}, {Path: filepath.Dir(inside), ExcludeImage: true}})
+	runMediaClean(t, mgr, file.VerifyOptions{PurgeMissing: true})
+	requireCleanMediaCounts(t, mgr, first.Base().ID, 1, 0)
+	requireCleanMediaCounts(t, mgr, second.Base().ID, 1, 1)
+
+	var s *models.Image
+	require.NoError(t, mgr.Repository.WithReadTxn(context.Background(), func(ctx context.Context) error {
+		var err error
+		if s, err = mgr.Repository.Image.Find(ctx, imageID); err != nil || s == nil {
+			return err
+		}
+		return s.LoadFiles(ctx, mgr.Repository.Image)
+	}))
+	require.NotNil(t, s, "the image stays")
+	require.NotNil(t, s.PrimaryFileID)
+	require.Equal(t, second.Base().ID, *s.PrimaryFileID)
+	require.Len(t, s.Files.List(), 1)
+}
+
+func TestCleanRemovesImagesOfVideoRescannedAsAudio(t *testing.T) {
+	mgr, library := cleanMediaManager(t)
+	path := filepath.Join(library, "clip.gif")
+	require.NoError(t, os.WriteFile(path, cleanMediaGIF(t), 0644))
+	f := scanCleanMedia(t, mgr, library, path)
+	requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 1)
+
+	mgr.Config.SetInterface(config.VideoExtensions, []string{"mp4"})
+	mgr.Config.SetInterface(config.ImageExtensions, []string{"jpg"})
+	mgr.Config.SetInterface(config.AudioExtensions, []string{"gif"})
+	f = scanCleanMedia(t, mgr, library, path)
+	require.IsType(t, &models.AudioFile{}, f)
+	requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 1)
+
+	runMediaClean(t, mgr, file.VerifyOptions{DryRun: true})
+	requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 1)
+	runMediaClean(t, mgr, file.VerifyOptions{PurgeMissing: true})
+	requireCleanMediaCounts(t, mgr, f.Base().ID, 0, 0)
+	require.NoError(t, mgr.Repository.WithReadTxn(context.Background(), func(ctx context.Context) error {
+		audios, err := mgr.Repository.Audio.FindByFileID(ctx, f.Base().ID)
+		require.NoError(t, err)
+		require.Len(t, audios, 1, "the file stays as audio")
+		return nil
+	}))
+}
+
+func TestCleanKeepsVideoWithoutImage(t *testing.T) {
+	mgr, library := cleanMediaManager(t)
+	mgr.Config.SetInterface(config.ImageExtensions, []string{"jpg"})
+	path := filepath.Join(library, "clip.gif")
+	require.NoError(t, os.WriteFile(path, cleanMediaGIF(t), 0644))
+	f := scanCleanMedia(t, mgr, library, path)
+	requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 0)
+
+	runMediaClean(t, mgr, file.VerifyOptions{DryRun: true})
+	runMediaClean(t, mgr, file.VerifyOptions{PurgeMissing: true})
+	requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 0)
+}

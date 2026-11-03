@@ -53,3 +53,56 @@ func (f *verifyFilter) cleanScenesOfKeptFile(dryRun bool) func(context.Context, 
 		})
 	}
 }
+
+// cleanMediaOfKeptFile removes media whose settings reject a file that is
+// still kept for another media kind.
+func (f *verifyFilter) cleanMediaOfKeptFile(dryRun bool) func(context.Context, models.File) error {
+	cleanScenes := f.cleanScenesOfKeptFile(dryRun)
+	cleanImages := f.cleanImagesOfKeptFile(dryRun)
+	return func(ctx context.Context, kept models.File) error {
+		if err := cleanScenes(ctx, kept); err != nil {
+			return err
+		}
+		return cleanImages(ctx, kept)
+	}
+}
+
+func (f *verifyFilter) cleanImagesOfKeptFile(dryRun bool) func(context.Context, models.File) error {
+	return func(ctx context.Context, kept models.File) error {
+		// Images can be made from video files. A later scan can also
+		// reclassify such a file as audio without removing its image.
+		switch kept.(type) {
+		case *models.VideoFile, *models.AudioFile:
+		default:
+			return nil
+		}
+		path := kept.Base().Path
+		stash := f.stashPaths.GetStashFromPath(path)
+		if stash == nil || (useAsImage(path) && !f.shouldCleanImage(path, stash)) {
+			return nil
+		}
+
+		mgr := GetInstance()
+		// Ordinary videos have no images. Use the indexed join-table
+		// count before loading image models or opening a write transaction.
+		var images int
+		if err := mgr.Repository.WithReadTxn(ctx, func(ctx context.Context) error {
+			var err error
+			images, err = mgr.Repository.Image.CountByFileID(ctx, kept.Base().ID)
+			return err
+		}); err != nil || images == 0 {
+			return err
+		}
+
+		if dryRun {
+			logger.Infof("%q is no longer used as an image. Would remove the images made from it.", path)
+			return nil
+		}
+		return mgr.Repository.WithTxn(ctx, func(ctx context.Context) error {
+			deleter := file.NewDeleterWithTrash(mgr.Config.GetDeleteTrashPath())
+			deleter.RegisterHooks(ctx)
+			h := &purgeHandler{keepFile: true}
+			return h.handleRelatedImages(ctx, deleter, kept.Base().ID)
+		})
+	}
+}
