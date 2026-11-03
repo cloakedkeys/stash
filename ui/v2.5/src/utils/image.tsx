@@ -96,6 +96,7 @@ const getThumbnailUrl = (url: string | null | undefined) => {
 };
 
 const ImageUtils = {
+  blobToDataURL,
   getThumbnailUrl,
   onImageChange,
   usePasteImage,
