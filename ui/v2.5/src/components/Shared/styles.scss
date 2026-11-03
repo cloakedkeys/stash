@@ -618,6 +618,11 @@ div.react-datepicker {
   display: flex;
   flex-wrap: wrap;
   position: relative;
+
+  @include media-breakpoint-down(xs) {
+    // Keep the clear button aligned with the field beside taller toolbar buttons.
+    align-self: flex-start;
+  }
 }
 
 .clearable-text-field,
