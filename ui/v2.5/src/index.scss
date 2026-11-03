@@ -1548,20 +1548,40 @@ h3 .TruncatedText {
     margin: 0;
     position: fixed;
     right: calc(0.5rem + env(safe-area-inset-right));
-
-    @include media-breakpoint-down(xs) {
-      @media (orientation: portrait) {
-        bottom: calc($navbar-height + env(safe-area-inset-bottom));
-
-        & > span {
-          font-size: 0.75rem;
-        }
-      }
-    }
   }
 
   .btn {
     pointer-events: auto;
+  }
+
+  @include media-breakpoint-down(xs) {
+    border: 0;
+    // see-through on the frame and notice instead, since on this wrapper it
+    // would keep the frame beneath anything else layered (the nav bar)
+    opacity: 1;
+    position: static;
+
+    // Keep the frame over the viewport while the notice takes its own space
+    // at the top of the page. Its height can grow when the message wraps.
+    &::before {
+      border: 5px solid $danger;
+      content: "";
+      inset: 0;
+      opacity: 0.75;
+      position: fixed;
+      z-index: 1040;
+    }
+
+    .troubleshooting-mode-alert {
+      display: flex;
+      margin: 0.5rem;
+      opacity: 0.75;
+      position: static;
+
+      & > span {
+        font-size: 0.75rem;
+      }
+    }
   }
 }
 
