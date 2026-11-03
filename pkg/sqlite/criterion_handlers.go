@@ -201,12 +201,14 @@ func pathCriterionHandler(c *models.StringCriterionInput, pathColumn string, bas
 }
 
 func getPathSearchClause(pathColumn, basenameColumn, p string, addWildcards, not bool) sqlClause {
+	escapeClause := ""
 	if addWildcards {
-		p = "%" + p + "%"
+		p = "%" + escapeLikeValue(p) + "%"
+		escapeClause = " ESCAPE '\\'"
 	}
 
 	filepathColumn := fmt.Sprintf("%s || '%s' || %s", pathColumn, string(filepath.Separator), basenameColumn)
-	ret := makeClause(fmt.Sprintf("%s LIKE ?", filepathColumn), p)
+	ret := makeClause(fmt.Sprintf("%s LIKE ?%s", filepathColumn, escapeClause), p)
 
 	if not {
 		ret = ret.not()
@@ -622,7 +624,7 @@ func (m *stringListCriterionHandlerBuilder) handler(criterion *models.StringCrit
 				// excludes all of the provided values
 				// need to use actual join table name for this
 				// <primaryTable>.id NOT IN (select <joinTable>.<primaryFK> from <joinTable> where <joinTable>.<foreignFK> in <values>)
-				whereClause := utils.StrFormat("{primaryTable}.id NOT IN (SELECT {joinTable}.{primaryFK} from {joinTable} where {joinTable}.{stringColumn} LIKE ?)",
+				whereClause := utils.StrFormat("{primaryTable}.id NOT IN (SELECT {joinTable}.{primaryFK} from {joinTable} where {joinTable}.{stringColumn} LIKE ? ESCAPE '\\')",
 					utils.StrFormatMap{
 						"primaryTable": m.primaryTable,
 						"joinTable":    m.joinTable,
@@ -631,7 +633,7 @@ func (m *stringListCriterionHandlerBuilder) handler(criterion *models.StringCrit
 					},
 				)
 
-				f.addWhere(whereClause, "%"+criterion.Value+"%")
+				f.addWhere(whereClause, "%"+escapeLikeValue(criterion.Value)+"%")
 
 				// TODO - should we also exclude null values?
 				// m.addJoinTable(f)
@@ -1247,4 +1249,9 @@ func (h *phashDistanceCriterionHandler) handle(ctx context.Context, f *filterBui
 			Modifier: phashDistance.Modifier,
 		}, "fingerprints_phash.fingerprint", nil)(ctx, f)
 	}
+}
+
+// escapeLikeValue makes user text literal in a LIKE pattern with a backslash escape.
+func escapeLikeValue(value string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
 }

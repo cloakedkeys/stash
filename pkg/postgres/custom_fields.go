@@ -329,13 +329,13 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 	case models.CriterionModifierIncludes:
 		clauses := make([]sqlClause, len(cv))
 		for i, v := range cv {
-			clauses[i] = makeClause(fmt.Sprintf("%s ILIKE ? ESCAPE ''", valueAsString), fmt.Sprintf("%%%v%%", v))
+			clauses[i] = makeClause(fmt.Sprintf("%s ILIKE ? ESCAPE '\\'", valueAsString), like(fmt.Sprint(v)))
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 		f.whereClauses = append(f.whereClauses, clauses...)
 	case models.CriterionModifierExcludes:
 		for _, v := range cv {
-			f.addWhere(fmt.Sprintf("(%s NOT ILIKE ? OR %s.value IS NULL)", valueAsString, joinAs), fmt.Sprintf("%%%v%%", v))
+			f.addWhere(fmt.Sprintf("(%s NOT ILIKE ? ESCAPE '\\' OR %s.value IS NULL)", valueAsString, joinAs), like(fmt.Sprint(v)))
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierMatchesRegex:

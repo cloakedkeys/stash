@@ -227,10 +227,10 @@ func (qb *queryBuilder) parseQueryString(columns []string, q string) {
 	likeClause := func(column, term, op string) string {
 		if isASCII(term) {
 			qb.addArg(like(term))
-			return wrapColumn(column) + " " + op + " ?"
+			return wrapColumn(column) + " " + op + " ? ESCAPE '\\'"
 		}
 		qb.addArg(likeLower(term))
-		return "lower_unicode(" + wrapColumn(column) + ") " + op + " ?"
+		return "lower_unicode(" + wrapColumn(column) + ") " + op + " ? ESCAPE '\\'"
 	}
 
 	for _, t := range specs.MustHave {

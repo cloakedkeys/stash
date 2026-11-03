@@ -506,9 +506,9 @@ func (qb *sceneFilterHandler) captionCriterionHandler(captions *models.StringCri
 			excludeClause := `scenes.id NOT IN (
 				SELECT scenes_files.scene_id from scenes_files 
 				INNER JOIN video_captions on video_captions.file_id = scenes_files.file_id 
-				WHERE video_captions.language_code ILIKE ?
+				WHERE video_captions.language_code ILIKE ? ESCAPE '\'
 			)`
-			f.addWhere(excludeClause, criterion.Value)
+			f.addWhere(excludeClause, escapeLikeValue(criterion.Value))
 
 			// TODO - should we also exclude null values?
 		},

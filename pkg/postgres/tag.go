@@ -820,12 +820,12 @@ func (qb *TagStore) QueryForAutoTag(ctx context.Context, words []string) ([]*mod
 	var args []interface{}
 
 	for _, w := range words {
-		ww := w + "%"
-		whereClauses = append(whereClauses, "tags.name ILIKE ? ESCAPE ''")
+		ww := escapeLikeValue(w) + "%"
+		whereClauses = append(whereClauses, "tags.name ILIKE ? ESCAPE '\\'")
 		args = append(args, ww)
 
 		// include aliases
-		whereClauses = append(whereClauses, "tag_aliases.alias ILIKE ? ESCAPE ''")
+		whereClauses = append(whereClauses, "tag_aliases.alias ILIKE ? ESCAPE '\\'")
 		args = append(args, ww)
 	}
 

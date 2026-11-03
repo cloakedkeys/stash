@@ -471,7 +471,7 @@ func TestStringCriterionHandlerIncludes(t *testing.T) {
 	}, column))
 
 	assert.Len(f.whereClauses, 1)
-	assert.Equal(fmt.Sprintf("(%[1]s LIKE ? OR %[1]s LIKE ?)", column), f.whereClauses[0].sql)
+	assert.Equal(fmt.Sprintf("(%[1]s LIKE ? ESCAPE '\\' OR %[1]s LIKE ? ESCAPE '\\')", column), f.whereClauses[0].sql)
 	assert.Len(f.whereClauses[0].args, 2)
 	assert.Equal("%two%", f.whereClauses[0].args[0])
 	assert.Equal("%words%", f.whereClauses[0].args[1])
@@ -483,7 +483,7 @@ func TestStringCriterionHandlerIncludes(t *testing.T) {
 	}, column))
 
 	assert.Len(f.whereClauses, 1)
-	assert.Equal(fmt.Sprintf("(%[1]s LIKE ?)", column), f.whereClauses[0].sql)
+	assert.Equal(fmt.Sprintf("(%[1]s LIKE ? ESCAPE '\\')", column), f.whereClauses[0].sql)
 	assert.Len(f.whereClauses[0].args, 1)
 	assert.Equal("%two words%", f.whereClauses[0].args[0])
 }
@@ -502,7 +502,7 @@ func TestStringCriterionHandlerExcludes(t *testing.T) {
 	}, column))
 
 	assert.Len(f.whereClauses, 1)
-	assert.Equal(fmt.Sprintf("(%[1]s IS NULL OR ((%[1]s NOT LIKE ? AND %[1]s NOT LIKE ?)))", column), f.whereClauses[0].sql)
+	assert.Equal(fmt.Sprintf("(%[1]s IS NULL OR ((%[1]s NOT LIKE ? ESCAPE '\\' AND %[1]s NOT LIKE ? ESCAPE '\\')))", column), f.whereClauses[0].sql)
 	assert.Len(f.whereClauses[0].args, 2)
 	assert.Equal("%two%", f.whereClauses[0].args[0])
 	assert.Equal("%words%", f.whereClauses[0].args[1])
@@ -514,7 +514,7 @@ func TestStringCriterionHandlerExcludes(t *testing.T) {
 	}, column))
 
 	assert.Len(f.whereClauses, 1)
-	assert.Equal(fmt.Sprintf("(%[1]s IS NULL OR ((%[1]s NOT LIKE ?)))", column), f.whereClauses[0].sql)
+	assert.Equal(fmt.Sprintf("(%[1]s IS NULL OR ((%[1]s NOT LIKE ? ESCAPE '\\')))", column), f.whereClauses[0].sql)
 	assert.Len(f.whereClauses[0].args, 1)
 	assert.Equal("%two words%", f.whereClauses[0].args[0])
 }

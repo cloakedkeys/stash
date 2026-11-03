@@ -629,8 +629,8 @@ func (qb *StudioStore) QueryForAutoTag(ctx context.Context, words []string) ([]*
 	var whereClauses []exp.Expression
 
 	for _, w := range words {
-		whereClauses = append(whereClauses, table.Col(studioNameColumn).ILike(w+"%"))
-		whereClauses = append(whereClauses, studiosAliasesJoinTable.Col("alias").ILike(w+"%"))
+		whereClauses = append(whereClauses, goqu.L("? ILIKE ? ESCAPE '\\'", table.Col(studioNameColumn), escapeLikeValue(w)+"%"))
+		whereClauses = append(whereClauses, goqu.L("? ILIKE ? ESCAPE '\\'", studiosAliasesJoinTable.Col("alias"), escapeLikeValue(w)+"%"))
 	}
 
 	sq = sq.Where(

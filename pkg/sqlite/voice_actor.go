@@ -79,8 +79,8 @@ func (s *VoiceActorStore) Query(ctx context.Context, filter *models.FindFilterTy
 	order := "name COLLATE NATURAL_CI ASC, id ASC"
 	if filter != nil {
 		if filter.Q != nil && *filter.Q != "" {
-			where += " AND (name LIKE ? OR EXISTS (SELECT 1 FROM json_each(voice_actors.aliases) WHERE value LIKE ?))"
-			q := "%" + *filter.Q + "%"
+			where += " AND (name LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM json_each(voice_actors.aliases) WHERE value LIKE ? ESCAPE '\\'))"
+			q := like(*filter.Q)
 			args = append(args, q, q)
 		}
 		if filter.Page != nil && *filter.Page > 0 {

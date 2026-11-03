@@ -291,7 +291,7 @@ func (qb *queryBuilder) parseQueryString(columns []string, q string) {
 	// every scanned row.
 	likeClause := func(column, term, op string) string {
 		qb.addArg(like(term))
-		return wrapColumn(column) + " " + strings.ReplaceAll(op, "LIKE", "ILIKE") + " ?"
+		return wrapColumn(column) + " " + strings.ReplaceAll(op, "LIKE", "ILIKE") + " ? ESCAPE '\\'"
 	}
 
 	for _, t := range specs.MustHave {
