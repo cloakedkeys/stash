@@ -22,15 +22,21 @@ func TestValidateMediaExtensions(t *testing.T) {
 		ImageExtensions:   c.GetImageExtensions(),
 		StoryExtensions:   c.GetStoryExtensions(),
 		GalleryExtensions: c.GetGalleryExtensions(),
-	}))
-	require.NoError(t, validateMediaExtensions(ConfigGeneralInput{}))
+	}, ConfigGeneralInput{}))
+	require.NoError(t, validateMediaExtensions(ConfigGeneralInput{}, ConfigGeneralInput{}))
 	require.NoError(t, validateMediaExtensions(ConfigGeneralInput{
 		VideoExtensions:   []string{},
 		AudioExtensions:   []string{},
 		ImageExtensions:   []string{},
 		StoryExtensions:   []string{},
 		GalleryExtensions: []string{},
-	}))
+	}, ConfigGeneralInput{}))
+
+	// An unusual extension already saved can be kept while the list is
+	// edited, but not moved to another list.
+	saved := ConfigGeneralInput{VideoExtensions: []string{"mp4", "foo"}}
+	require.NoError(t, validateMediaExtensions(ConfigGeneralInput{VideoExtensions: []string{"mp4", "mkv", "FOO"}}, saved))
+	require.Error(t, validateMediaExtensions(ConfigGeneralInput{ImageExtensions: []string{"png", "foo"}}, saved))
 
 	for _, tt := range []struct {
 		name  string
@@ -38,20 +44,20 @@ func TestValidateMediaExtensions(t *testing.T) {
 		valid []string
 		wrong string
 	}{
-		{"video", func(i *ConfigGeneralInput, v []string) { i.VideoExtensions = v }, []string{"MP4", "ts", "m2ts", "mts", "vob", "ogv", "3gp", "gif"}, "mp3"},
-		{"audio", func(i *ConfigGeneralInput, v []string) { i.AudioExtensions = v }, []string{"MP3", "flac", "ac3", "dts", "mp2", "mp4", "webm"}, "png"},
-		{"image", func(i *ConfigGeneralInput, v []string) { i.ImageExtensions = v }, []string{"JPEG", "avif", "jxl", "bmp", "tiff", "webm", "mp4"}, "mp3"},
+		{"video", func(i *ConfigGeneralInput, v []string) { i.VideoExtensions = v }, []string{"MP4", "ts", "m2ts", "mts", "vob", "ogv", "3gp", "gif", "ogg", "qt"}, "mp3"},
+		{"audio", func(i *ConfigGeneralInput, v []string) { i.AudioExtensions = v }, []string{"MP3", "flac", "ac3", "dts", "mp2", "mp4", "webm", "m4r", "spx"}, "png"},
+		{"image", func(i *ConfigGeneralInput, v []string) { i.ImageExtensions = v }, []string{"JPEG", "avif", "jxl", "bmp", "tiff", "webm", "mp4", "jfif", "ogg"}, "mp3"},
 		{"story", func(i *ConfigGeneralInput, v []string) { i.StoryExtensions = v }, []string{"TXT", "text", "md", "markdown"}, "pdf"},
 		{"gallery ZIP", func(i *ConfigGeneralInput, v []string) { i.GalleryExtensions = v }, []string{"ZIP", "cbz"}, "rar"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var input ConfigGeneralInput
 			tt.set(&input, tt.valid)
-			require.NoError(t, validateMediaExtensions(input))
+			require.NoError(t, validateMediaExtensions(input, ConfigGeneralInput{}))
 
 			for _, extension := range []string{"exe", "docx", "mp44", "", "." + tt.valid[0], " " + tt.valid[0], "*", "foo/bar", tt.wrong} {
 				tt.set(&input, []string{tt.valid[0], extension})
-				err := validateMediaExtensions(input)
+				err := validateMediaExtensions(input, ConfigGeneralInput{})
 				require.Error(t, err, "extension %q", extension)
 				assert.Contains(t, err.Error(), "isn't a format Stash can read as "+tt.name)
 			}

@@ -88,7 +88,13 @@ func (r *mutationResolver) setConfigFloat(key string, value *float64) {
 func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGeneralInput) (*ConfigGeneralResult, error) {
 	c := config.GetInstance()
 
-	if err := validateMediaExtensions(input); err != nil {
+	if err := validateMediaExtensions(input, ConfigGeneralInput{
+		VideoExtensions:   c.GetVideoExtensions(),
+		AudioExtensions:   c.GetAudioExtensions(),
+		ImageExtensions:   c.GetImageExtensions(),
+		StoryExtensions:   c.GetStoryExtensions(),
+		GalleryExtensions: c.GetGalleryExtensions(),
+	}); err != nil {
 		return makeConfigGeneralResult(), err
 	}
 
