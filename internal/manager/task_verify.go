@@ -41,7 +41,7 @@ func (j *verifyJob) Execute(ctx context.Context, progress *job.Progress) error {
 	filter := newVerifyFilter(instance.Config)
 	options.PathFilter = filter
 	if options.PurgeMissing || options.DryRun {
-		options.OnRetainedFile = filter.cleanScenesOfKeptFile(options.DryRun)
+		options.OnRetainedFile = filter.cleanMediaOfKeptFile(options.DryRun)
 	}
 
 	j.verifier.Verify(ctx, options, progress)
@@ -154,8 +154,8 @@ func (f *verifyFilter) shouldCleanFile(path string, info fs.FileInfo, stash *con
 
 	// A file can be more than one kind, such as a .webm loop that is both a
 	// video and an image. It stays while any kind still includes it, and
-	// cleanScenesOfKeptFile removes the scenes of one that is no longer a
-	// video (#1533).
+	// cleanMediaOfKeptFile removes media whose settings no longer include
+	// that file (#1533, #1943).
 	if (video && !f.shouldCleanVideoFile(path, stash)) ||
 		(audio && !f.shouldCleanAudioFile(path, stash)) ||
 		(image && !f.shouldCleanImage(path, stash)) {

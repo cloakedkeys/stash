@@ -505,6 +505,22 @@ func (h *purgeHandler) handleRelatedImages(ctx context.Context, fileDeleter *fil
 			return err
 		}
 
+		if h.keepFile && len(i.Files.List()) > 1 {
+			// The file entry stays, so detach it explicitly rather than
+			// relying on file deletion to remove the image association.
+			var remaining []models.File
+			for _, related := range i.Files.List() {
+				if related.Base().ID != fileID {
+					remaining = append(remaining, related)
+				}
+			}
+			i.Files = models.NewRelatedFiles(remaining)
+			if err := imageQB.Update(ctx, i); err != nil {
+				return err
+			}
+			continue
+		}
+
 		if len(i.Files.List()) <= 1 {
 			logger.Infof("Deleting image %q since it has no other related files", i.DisplayName())
 			const deleteGenerated = true
