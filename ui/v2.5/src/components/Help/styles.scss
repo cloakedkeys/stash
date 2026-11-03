@@ -32,7 +32,9 @@
     overflow-y: auto;
   }
 
-  @media (max-width: 992px) {
+  // the same width as Bootstrap's stacked layout and scrollToTopic's
+  // stackedQuery, so a 992px window gets the side-by-side layout (#2015)
+  @include media-breakpoint-down(md) {
     .modal-body {
       overflow-y: auto;
 
