@@ -69,6 +69,7 @@ import {
   CustomFieldsInput,
   formatCustomFieldInput,
 } from "src/components/Shared/CustomFields";
+import { SceneFileRangeFields } from "./SceneFileRange";
 import cloneDeep from "lodash-es/cloneDeep";
 import { usePerformerPictureFromFrame } from "./usePerformerPictureFromFrame";
 
@@ -174,6 +175,8 @@ export const SceneEditPanel: React.FC<IProps> = ({
 
   const schema = yup.object({
     title: yup.string().ensure(),
+    start_time: yup.number().nullable().optional(),
+    end_time: yup.number().nullable().optional(),
     code: yup.string().ensure(),
     urls: yupUniqueStringList(intl),
     date: yupDateString(intl),
@@ -201,6 +204,10 @@ export const SceneEditPanel: React.FC<IProps> = ({
   const initialValues = useMemo(
     () => ({
       title: scene.title ?? "",
+      start_time:
+        scene.files?.length === 1 ? (scene.start_time ?? null) : undefined,
+      end_time:
+        scene.files?.length === 1 ? (scene.end_time ?? null) : undefined,
       code: scene.code ?? "",
       urls: scene.urls ?? [],
       date: scene.date ?? "",
@@ -983,6 +990,14 @@ export const SceneEditPanel: React.FC<IProps> = ({
         <Row className={cx("form-container px-3", { saving: isSaving })}>
           <Col lg={7} xl={12}>
             {renderInputField("title")}
+            {scene.files?.length === 1 && (
+              <SceneFileRangeFields
+                startTime={formik.values.start_time}
+                endTime={formik.values.end_time}
+                onStartTimeChange={(v) => formik.setFieldValue("start_time", v)}
+                onEndTimeChange={(v) => formik.setFieldValue("end_time", v)}
+              />
+            )}
             {renderInputField("code", "text", "scene_code")}
 
             {renderURLListField(

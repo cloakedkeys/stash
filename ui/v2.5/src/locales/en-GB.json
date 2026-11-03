@@ -1649,6 +1649,16 @@
   "scenes_size": "Scene Size",
   "scene_created_at": "Scene Created At",
   "scene_date": "Date of Scene",
+  "scene_file_range": {
+    "create": "Create scene from part of this file",
+    "end_time": "End time",
+    "help": "Leave a time empty to use the start or end of the file. Playback still uses the whole file.",
+    "part": "Part of {file}, from {start} to {end}",
+    "part_title": "{title} (part)",
+    "part_to_end": "Part of {file}, from {start} to the end",
+    "set_from_current_time": "Set from current time",
+    "start_time": "Start time"
+  },
   "scene_has_no_file": "This scene has no file.",
   "scene_id": "Scene ID",
   "scene_tags": "Scene Tags",
