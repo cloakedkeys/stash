@@ -1455,6 +1455,21 @@ $detailTabWidth: calc(100% / 3);
   border-top-left-radius: 0;
 }
 
+// Bootstrap raises a pressed or focused button above its neighbours only when
+// it sits directly in the group. Do the same for a dropdown's button, or the
+// next button covers its outline, as with "Scrape with…" and the search button
+// (#1981). The button is raised, not the dropdown, so the open menu isn't
+// trapped below other buttons on the page.
+.btn-group > .dropdown > .btn {
+  position: relative;
+
+  &:focus,
+  &:active,
+  &.active {
+    z-index: 1;
+  }
+}
+
 dl.details-list {
   display: grid;
   grid-column-gap: 10px;
