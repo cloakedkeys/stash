@@ -5,6 +5,13 @@ import { Icon } from "./Icon";
 import { viewportModifiers } from "./viewportPopper";
 import { faExclamationTriangle } from "@fortawesome/free-solid-svg-icons";
 
+// A phone can't hover, so there a tap opens and closes the pop-up instead,
+// and a tap elsewhere closes it (#1972). Checked on each event, as a device
+// can switch between mouse and touch.
+function canHover() {
+  return !window.matchMedia?.("(hover: none)").matches;
+}
+
 interface IHoverPopover {
   enterDelay?: number;
   leaveDelay?: number;
@@ -51,6 +58,7 @@ export const HoverPopover: React.FC<IHoverPopover> = PatchComponent(
     }, [target, triggerElement]);
 
     const handleMouseEnter = useCallback(() => {
+      if (!canHover()) return;
       window.clearTimeout(leaveTimer.current);
       enterTimer.current = window.setTimeout(() => {
         setShow(true);
@@ -59,12 +67,32 @@ export const HoverPopover: React.FC<IHoverPopover> = PatchComponent(
     }, [enterDelay, onOpen]);
 
     const handleMouseLeave = useCallback(() => {
+      if (!canHover()) return;
       window.clearTimeout(enterTimer.current);
       leaveTimer.current = window.setTimeout(() => {
         setShow(false);
         onClose?.();
       }, leaveDelay);
     }, [leaveDelay, onClose]);
+
+    const setShown = useCallback(
+      (shown: boolean) => {
+        setShow(shown);
+        if (shown) onOpen?.();
+        else onClose?.();
+      },
+      [onOpen, onClose]
+    );
+
+    const handleTap = useCallback(() => {
+      if (canHover()) return;
+      setShown(!show);
+    }, [show, setShown]);
+
+    const handleHide = useCallback(() => {
+      if (canHover()) return;
+      setShown(false);
+    }, [setShown]);
 
     useEffect(
       () => () => {
@@ -80,6 +108,7 @@ export const HoverPopover: React.FC<IHoverPopover> = PatchComponent(
           className={className}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
+          onClick={handleTap}
           ref={setTriggerRef}
         >
           {children}
@@ -91,6 +120,8 @@ export const HoverPopover: React.FC<IHoverPopover> = PatchComponent(
             target={getOverlayTarget}
             container={document.body}
             flip
+            rootClose
+            onHide={handleHide}
             popperConfig={{
               ...popperConfig,
               modifiers: [
