@@ -55,7 +55,15 @@ func IsDownloadedFile(configDir, path string) bool {
 	if path == "" {
 		return false
 	}
-	path = filepath.Clean(path)
+	// A relative path is opened from the working directory, so compare it
+	// from there too.
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	if configDir, err = filepath.Abs(configDir); err != nil {
+		return false
+	}
 	for _, name := range []string{getFFMpegFilename(), getFFProbeFilename()} {
 		downloaded := filepath.Join(configDir, name)
 		if path == downloaded || (runtime.GOOS == "windows" && strings.EqualFold(path, downloaded)) {

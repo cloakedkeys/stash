@@ -96,3 +96,22 @@ func TestIsDownloadedFile(t *testing.T) {
 		}
 	}
 }
+
+// A config path such as ./config/ffmpeg is relative to the working directory.
+func TestIsDownloadedFileRelativePath(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	configDir := filepath.Join(dir, "config")
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{filepath.Join(".", "config", getFFMpegFilename()), true},
+		{filepath.Join("config", getFFProbeFilename()), true},
+		{getFFMpegFilename(), false},
+	} {
+		if got := IsDownloadedFile(configDir, tc.path); got != tc.want {
+			t.Errorf("IsDownloadedFile(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
