@@ -414,7 +414,7 @@
         "heading": "Binary data filesystem path"
       },
       "blobs_storage": {
-        "description": "Where to store binary data such as scene covers, performer, studio and tag images. After changing this value, the existing data must be migrated using the Migrate blobs tasks. See Tasks page for migration.",
+        "description": "Where covers and performer, studio and tag images are stored. After changing it, move the existing data with the Migrate blobs task on the Tasks page.",
         "heading": "Binary data storage type"
       },
       "cache_location": "Directory location of the cache. Required if streaming using HLS (such as on Apple devices) or DASH.",
@@ -491,7 +491,7 @@
       "gallery_cover_regex_label": "Gallery cover pattern",
       "gallery_ext_desc": "Comma-delimited list of file extensions that will be identified as gallery ZIP files.",
       "gallery_ext_head": "Gallery ZIP extensions",
-      "generated_file_naming_hash_desc": "Use MD5 or oshash for generated file naming. Changing this requires that all scenes have the applicable MD5/oshash value populated. After changing this value, existing generated files will need to be migrated or regenerated. See Tasks page for migration.",
+      "generated_file_naming_hash_desc": "Name generated files by MD5 or oshash. Every scene needs that value first, and after a change existing generated files must be migrated (see Tasks) or regenerated.",
       "generated_file_naming_hash_head": "Generated file naming hash",
       "generated_files_location": "Directory location for the generated files (scene markers, scene previews, sprites, etc).",
       "generated_path_head": "Generated path",
@@ -583,7 +583,7 @@
       "supported_urls": "URLs",
       "url_conflict": {
         "confirm_uninstall": "Are you sure you want to uninstall {name}?{hasSiblings, select, 1 { This will also remove: {siblings}} other {}}",
-        "description": "These installed scrapers declare URL patterns that overlap, so Stash cannot reliably choose between them when scraping by URL. This usually happens when a scraper is replaced or consolidated upstream, uninstalling the older one is usually the correct fix.",
+        "description": "These installed scrapers claim the same web addresses, so Stash can't tell which one to use when scraping by address. Usually one replaces the other: uninstall the older one.",
         "heading": "Conflicting URL patterns",
         "no_package": "Could not determine which package provides this scraper: it must be removed manually.",
         "older": "(older)",
@@ -594,7 +594,7 @@
     "stashbox": {
       "add_instance": "Add stash-box instance",
       "api_key": "API key",
-      "description": "Stash-box facilitates automated tagging of scenes and performers based on fingerprints and filenames.\nEndpoint and API key can be found on your account page on the stash-box instance. Names are required when more than one instance is added.",
+      "description": "Stash-box tags scenes and performers automatically by fingerprint and file name. The endpoint and API key are on your account page on the stash-box site. Name each one if you add more than one.",
       "endpoint": "Endpoint",
       "graphql_endpoint": "GraphQL endpoint",
       "max_requests_per_minute": "Max requests per minute",
@@ -608,7 +608,7 @@
     "tasks": {
       "added_job_to_queue": "Added {operation_name} to job queue",
       "anonymise_and_download": "Makes an anonymised copy of the database and downloads the resulting file.",
-      "anonymise_database": "Makes a copy of the database to the backups directory, anonymising all sensitive data. This can then be provided to others for troubleshooting and debugging purposes. The original database is not modified. Anonymised database uses the filename format {filename_format}.",
+      "anonymise_database": "Save a copy of the database without private data to the backups folder, to share for troubleshooting. The original isn't changed. The copy is named {filename_format}.",
       "anonymising_database": "Anonymising database",
       "auto_tag": {
         "auto_tagging_all_paths": "Auto tagging all paths",
@@ -713,18 +713,18 @@
       "maintenance": "Maintenance",
       "migrate_blobs": {
         "delete_old": "Delete old data",
-        "description": "Migrate blobs to the current blob storage system. This migration should be run after changing the blob storage system. Can optionally delete the old data after migration."
+        "description": "Move images and other stored data to the current blob storage. Run it after changing that setting. It can delete the old copies afterwards."
       },
       "migrate_hash_files": "Used after changing the Generated file naming hash to rename existing generated files to the new hash format.",
       "migrate_scene_screenshots": {
         "delete_files": "Delete screenshot files",
-        "description": "Migrate scene screenshots into the new blob storage system. This migration should be run after migrating an existing system to 0.20. Can optionally delete the old screenshots after migration.",
+        "description": "Move scene screenshots into blob storage, on a system upgraded from before 0.20. It can delete the old screenshot files afterwards.",
         "overwrite_existing": "Overwrite existing blobs with screenshot data"
       },
       "migrations": "Migrations",
       "only_dry_run": "Only perform a dry run. Don't remove anything",
-      "optimise_database": "Attempt to improve performance by analysing and then rebuilding the entire database file.",
-      "optimise_database_warning": "Warning: while this task is running, any operations that modify the database will fail, and depending on your database size, it could take several minutes to complete. It also requires at the very minimum as much free disk space as your database is large, but 1.5x is recommended.",
+      "optimise_database": "Analyse and rebuild the database file to make Stash faster.",
+      "optimise_database_warning": "Warning: while it runs, anything that changes the database fails, and it can take several minutes. It needs free disk space of at least the database's size; 1.5 times is better.",
       "plugin_tasks": "Plugin Tasks",
       "purge_missing": "Purge missing",
       "purge_missing_desc": "Permanently remove files and folders marked missing from the database. Removes associated objects and generated files. This is a destructive action.",
@@ -942,7 +942,7 @@
         }
       },
       "preview_type": {
-        "description": "The default option is video (mp4) previews. For less CPU usage when browsing, you can use the animated image (webp) previews. However they must be generated in addition to the video previews and are larger files.",
+        "description": "Video (mp4) previews are the default. Animated image (webp) previews use less CPU when browsing, but are made in addition to the video previews and are larger.",
         "heading": "Preview type",
         "options": {
           "animated": "Animated image",
@@ -1064,7 +1064,7 @@
       },
       "title": "User Interface",
       "use_stash_hosted_funscript": {
-        "description": "When enabled, funscripts will be served directly from Stash to your Handy device without using the third party Handy server. Requires that Stash be accessible from your Handy device, and that an API key is generated if Stash has credentials configured.",
+        "description": "Send funscripts to your Handy straight from Stash instead of through the Handy server. Your Handy must be able to reach Stash, and if Stash has a login it needs an API key.",
         "heading": "Serve funscripts directly"
       }
     }
