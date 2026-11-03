@@ -849,7 +849,7 @@
       },
       "editing": {
         "auto_save_confirmed_fields": {
-          "description": "Save changes to tags, performers and other picked fields without pressing Save.",
+          "description": "Save scene changes to tags, performers and other picked fields without pressing Save.",
           "heading": "Auto-save on selection"
         },
         "disable_dropdown_create": {

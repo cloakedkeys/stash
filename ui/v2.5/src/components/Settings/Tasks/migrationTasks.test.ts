@@ -47,5 +47,7 @@ describe("auto-save on selection", () => {
   it("has a short description", () => {
     const { description } = enGB.config.ui.editing.auto_save_confirmed_fields;
     expect(description.length).toBeLessThanOrEqual(90);
+    // it only applies to the scene edit panel
+    expect(description).toMatch(/\bscene\b/);
   });
 });
