@@ -1543,3 +1543,18 @@ h3 .TruncatedText {
     pointer-events: auto;
   }
 }
+
+// A tapped button keeps focus, so on a touch screen its hint stayed until the
+// next tap. Fade it out once there has been time to read it (#1953).
+@media (hover: none) {
+  .tooltip.show {
+    animation: tooltip-fade-out 0.3s ease-in 3s forwards;
+  }
+}
+
+@keyframes tooltip-fade-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}

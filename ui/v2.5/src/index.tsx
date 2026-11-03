@@ -7,6 +7,9 @@ import { getClient } from "./core/StashService";
 import { baseURL, getPlatformURL } from "./core/createClient";
 import "./index.scss";
 import * as serviceWorker from "./serviceWorker";
+import { installTouchTooltipFade } from "./utils/touchTooltip";
+
+installTouchTooltipFade();
 
 const root = createRoot(document.getElementById("root")!);
 
