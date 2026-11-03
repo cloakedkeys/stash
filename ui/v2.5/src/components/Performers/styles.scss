@@ -361,3 +361,59 @@
     font-family: "Courier New", Courier, monospace;
   }
 }
+
+// On a phone the toolbar's controls used to wrap wherever they ran out of
+// room, which depends on the tab (how many views, how long its sort label is),
+// so switching tabs moved them around (#1976). Give every performer tab the
+// same rows instead: search and filters; sort, per page and more; then views.
+// The rows stay independent (each wraps on its own if it must); the two
+// empty items only force the line breaks between them.
+#performer-page {
+  @include media-breakpoint-down(xs) {
+    .filtered-list-toolbar:not(.has-selection) {
+      flex-wrap: wrap;
+      // each break is an empty line with a gap on both sides, so halve the
+      // gap to keep the usual 0.5rem between the rows
+      row-gap: 0.25rem;
+
+      &::before,
+      &::after {
+        content: "";
+        flex-basis: 100%;
+        height: 0;
+      }
+
+      > .search-term-input {
+        order: 1;
+      }
+
+      > .search-term-input + .btn-group {
+        order: 2;
+      }
+
+      &::before {
+        order: 3;
+      }
+
+      > .sort-by-select {
+        order: 4;
+      }
+
+      > .page-size-selector {
+        order: 5;
+      }
+
+      > .list-operations {
+        order: 6;
+      }
+
+      &::after {
+        order: 7;
+      }
+
+      > .display-mode-button-group {
+        order: 8;
+      }
+    }
+  }
+}
