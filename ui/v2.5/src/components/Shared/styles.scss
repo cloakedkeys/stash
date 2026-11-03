@@ -960,6 +960,19 @@ button.btn.favorite-button {
       margin-top: 0;
     }
   }
+
+  // Below md the open sidebar lies over the page (fixedSidebarMediaQuery in
+  // Sidebar.tsx). Dim the page and catch taps on it, so the page doesn't show
+  // through or react; a tap there closes the sidebar as a tap outside (#1961).
+  @include media-breakpoint-down(sm) {
+    &:not(.hide-sidebar) > .sidebar-pane-content::after {
+      background-color: rgba(0, 0, 0, 0.5);
+      content: "";
+      inset: 0;
+      position: fixed;
+      z-index: 99;
+    }
+  }
 }
 
 .sidebar-toggle-button-container {
