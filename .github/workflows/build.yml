@@ -7,6 +7,8 @@ on:
       - master
       - 'releases/**'
   pull_request:
+    # ready_for_review: drafts skip every check, so run them when one is marked ready
+    types: [opened, synchronize, reopened, ready_for_review]
   release:
     types: [ published ]
 
@@ -19,12 +21,14 @@ env:
 
 jobs:
   changes:
-    uses: ./.github/workflows/docs-only.yml
+    uses: ./.github/workflows/changes.yml
 
   # Job 1: Generate code and build UI
   # Runs natively (no Docker) — go generate/gqlgen and node don't need cross-compilers.
   # Produces artifacts (generated Go files + UI build) consumed by test and build jobs.
   generate:
+    # A draft pull request skips every check; marking it ready runs them.
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6
@@ -109,11 +113,11 @@ jobs:
   # Job 2: Integration tests
   # Runs natively (no Docker) — only needs Go + GCC (for CGO/SQLite), both on ubuntu-22.04.
   # Runs in parallel with the build matrix jobs.
-  # A pull request that only changes documentation skips this. It still needs generate, which
-  # builds the documentation into the UI.
+  # A pull request that only changes documentation or the web UI skips this. It still needs
+  # generate, which builds the documentation into the UI and runs the UI's tests.
   test:
     needs: [changes, generate]
-    if: ${{ !cancelled() && needs.generate.result == 'success' && needs.changes.outputs.docs_only != 'true' }}
+    if: ${{ !cancelled() && needs.generate.result == 'success' && needs.changes.outputs.go_unchanged != 'true' }}
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6

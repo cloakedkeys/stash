@@ -8,6 +8,8 @@ on:
       - develop
       - 'releases/**'
   pull_request:
+    # ready_for_review: drafts skip every check, so run them when one is marked ready
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: lint-${{ github.ref }}
@@ -16,12 +18,12 @@ concurrency:
 
 jobs:
   changes:
-    uses: ./.github/workflows/docs-only.yml
+    uses: ./.github/workflows/changes.yml
 
   golangci:
     name: lint
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
+    if: ${{ !cancelled() && !github.event.pull_request.draft && needs.changes.outputs.go_unchanged != 'true' }}
     runs-on: ubuntu-latest
     steps:
       # no tags or depth needed for lint

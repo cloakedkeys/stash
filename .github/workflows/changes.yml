@@ -1,0 +1,42 @@
+name: Changes
+
+# Says whether a pull request leaves the Go code alone: it only changes documentation and the
+# web UI (ui/v2.5, but not its translations, which the login page uses). The Go checks skip it
+# then. Anything else, including this check failing, means they run. Jobs using this must
+# compare with != 'true', so that an empty answer runs them too.
+# Draft pull requests skip this, as they skip every check.
+on:
+  workflow_call:
+    outputs:
+      go_unchanged:
+        value: ${{ jobs.changes.outputs.go_unchanged }}
+
+jobs:
+  changes:
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    runs-on: ubuntu-24.04
+    outputs:
+      go_unchanged: ${{ steps.check.outputs.go_unchanged }}
+    steps:
+    # a pull request's commit here is a merge, and its first parent is the branch it merges into
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 2
+
+    - id: check
+      run: |
+        go_unchanged=false
+        files=""
+        if git rev-parse --verify --quiet HEAD^2 > /dev/null \
+          && files=$(git diff --no-renames --name-only HEAD^1 HEAD) \
+          && [ -n "$files" ]; then
+          # grep exits 1 only when every file matched. 0 means some didn't, and 2 is an error.
+          status=0
+          printf '%s\n' "$files" | grep -qvE '^(ui/v2\.5/.*|[^/]+\.md)$' || status=$?
+          if [ "$status" -eq 1 ] && ! printf '%s\n' "$files" | grep -qE '^ui/v2\.5/src/locales/'; then
+            go_unchanged=true
+          fi
+        fi
+        printf '%s\n' "$files"
+        echo "Go unchanged: $go_unchanged"
+        echo "go_unchanged=$go_unchanged" >> "$GITHUB_OUTPUT"
