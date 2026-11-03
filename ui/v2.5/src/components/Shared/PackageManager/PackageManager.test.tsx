@@ -62,4 +62,18 @@ describe("available package source controls", () => {
       expect(group).toContain('class="package-source"');
     }
   });
+
+  // The last column is off screen on a phone once a source's packages are
+  // listed, so Edit and Delete go beside the name instead (#1948).
+  it("puts Edit and Delete in the source's name cell", () => {
+    const html = render();
+    const row = html.match(/<tr class="package-source">.*?<\/tr>/)?.[0] ?? "";
+    const cells = row.match(/<td[^>]*>.*?<\/td>/g) ?? [];
+    const nameCell = cells.find((c) => c.includes("Community (stable)"));
+
+    expect(nameCell).toContain('colSpan="3"');
+    expect(nameCell).toContain('class="source-controls"');
+    expect(nameCell?.match(/<button/g)).toHaveLength(2);
+    expect(cells.at(-1)).toBe(nameCell);
+  });
 });

@@ -13,11 +13,19 @@
       }
     }
 
-    .source-controls {
+    // Edit and Delete follow the name, wrapping under it on a narrow screen,
+    // so a wide package list can't push them out of view (#1948)
+    .source-name-row {
       align-items: center;
       display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+    }
+
+    .source-controls {
+      cursor: default;
+      display: flex;
       gap: 0.5rem;
-      justify-content: end;
     }
   }
 

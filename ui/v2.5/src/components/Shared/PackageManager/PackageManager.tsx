@@ -908,30 +908,37 @@ const SourcePackagesList: React.FC<{
             <Icon icon={sourceOpen ? faChevronDown : faChevronRight} />
           </Button>
         </td>
+        {/* the buttons sit beside the name, not in the last column, which is
+            off screen on a phone once the source's packages are listed */}
         <td
           className="source-name"
-          colSpan={2}
+          colSpan={3}
           onClick={() => toggleSourceOpen()}
         >
-          <span>{source.name ?? source.url}</span>
-        </td>
-        <td className="source-controls">
-          <Button
-            size="sm"
-            variant="primary"
-            title={intl.formatMessage({ id: "actions.edit" })}
-            onClick={() => editSource()}
-          >
-            <FormattedMessage id="actions.edit" />
-          </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            title={intl.formatMessage({ id: "actions.delete" })}
-            onClick={() => deleteSource()}
-          >
-            <FormattedMessage id="actions.delete" />
-          </Button>
+          <div className="source-name-row">
+            <span>{source.name ?? source.url}</span>
+            <span
+              className="source-controls"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Button
+                size="sm"
+                variant="primary"
+                title={intl.formatMessage({ id: "actions.edit" })}
+                onClick={() => editSource()}
+              >
+                <FormattedMessage id="actions.edit" />
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                title={intl.formatMessage({ id: "actions.delete" })}
+                onClick={() => deleteSource()}
+              >
+                <FormattedMessage id="actions.delete" />
+              </Button>
+            </span>
+          </div>
         </td>
       </tr>
       {renderContents()}
