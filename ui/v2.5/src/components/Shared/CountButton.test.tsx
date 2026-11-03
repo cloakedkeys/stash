@@ -27,7 +27,7 @@ describe("play count button (#1970)", () => {
     icon.onClick();
     count.onClick();
     expect(onValueClicked).toHaveBeenCalledTimes(2);
-    expect(icon.title).toBe("View history");
+    expect(icon.title).toBe("Play count · View history");
   });
 
   it("still adds one when it has something to add (O-counter)", () => {

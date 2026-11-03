@@ -36,7 +36,12 @@ export const CountButton: React.FC<ICountButtonProps> = ({
         className="minimal count-icon"
         variant="secondary"
         onClick={() => (onIncrement ?? onValueClicked)?.()}
-        title={onIncrement ? title : (countTitle ?? title)}
+        // still says what the number counts, and what a tap does
+        title={
+          onIncrement
+            ? title
+            : [title, countTitle].filter(Boolean).join(" · ") || undefined
+        }
       >
         {icon}
       </Button>
