@@ -58,6 +58,36 @@ function renderContent(
   );
 }
 
+// Only an error opens in the larger box, which is titled "Error". A tap on
+// any other message, easy on a phone, showed it as an error (#1973).
+export function canExpandToast(toast: Pick<IToast, "variant">) {
+  return toast.variant === "danger";
+}
+export const ToastMessage: React.FC<{
+  toast: Pick<IToast, "variant" | "content">;
+  onExpand: () => void;
+  onLinkClick: () => void;
+}> = ({ toast, onExpand, onLinkClick }) => {
+  const canExpand = canExpandToast(toast);
+
+  return (
+    <>
+      <span className="mr-auto" onClick={canExpand ? onExpand : undefined}>
+        {renderContent(toast.content, onLinkClick)}
+      </span>
+      {canExpand && (
+        <Button
+          variant="minimal"
+          className="expand-error-button"
+          onClick={onExpand}
+        >
+          <Icon icon={faArrowUpRightFromSquare} />
+        </Button>
+      )}
+    </>
+  );
+};
+
 let toastID = 0;
 
 type ToastFn = (item: IToast) => void;
@@ -87,18 +117,11 @@ export const ToastProvider: React.FC<React.PropsWithChildren<unknown>> = ({
         delay={toast.delay ?? 3000}
       >
         <Toast.Header>
-          <span className="mr-auto" onClick={() => expand()}>
-            {renderContent(toast.content, () => setHiding(true))}
-          </span>
-          {toast.variant === "danger" && (
-            <Button
-              variant="minimal"
-              className="expand-error-button"
-              onClick={() => expand()}
-            >
-              <Icon icon={faArrowUpRightFromSquare} />
-            </Button>
-          )}
+          <ToastMessage
+            toast={toast}
+            onExpand={expand}
+            onLinkClick={() => setHiding(true)}
+          />
         </Toast.Header>
       </Toast>
     );
