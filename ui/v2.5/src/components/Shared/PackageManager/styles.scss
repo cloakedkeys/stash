@@ -67,6 +67,14 @@
 
     .package-manager-toolbar {
       flex-wrap: wrap;
+
+      // on a phone the toolbar wraps, and the spacer that pushes Install to
+      // the right only left an odd gap at the end of a row (#1948)
+      @include media-breakpoint-down(xs) {
+        > .flex-grow-1 {
+          display: none;
+        }
+      }
     }
   }
 
