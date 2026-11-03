@@ -282,7 +282,15 @@ dd {
     display: flex;
     justify-content: center;
     margin: 0;
-    padding: 5px 0;
+    padding: 5px 0 0;
+
+    // Every tab gets room for the underline, so picking or hovering a tab
+    // doesn't make its row taller and move the tabs below it. The underline
+    // then sits on the bar's bottom line instead of floating just above it.
+    .nav-link {
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+    }
   }
 
   .tab-content {
