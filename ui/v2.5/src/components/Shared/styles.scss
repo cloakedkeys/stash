@@ -965,6 +965,19 @@ button.btn.favorite-button {
       margin-top: 0;
     }
   }
+
+  // Below md the open sidebar lies over the page (fixedSidebarMediaQuery in
+  // Sidebar.tsx). Dim the page and catch taps on it, so the page doesn't show
+  // through or react; a tap there closes the sidebar as a tap outside (#1961).
+  @include media-breakpoint-down(sm) {
+    &:not(.hide-sidebar) > .sidebar-pane-content::after {
+      background-color: rgba(0, 0, 0, 0.5);
+      content: "";
+      inset: 0;
+      position: fixed;
+      z-index: 99;
+    }
+  }
 }
 
 .sidebar-toggle-button-container {
@@ -1060,6 +1073,15 @@ $sticky-header-height: calc(50px + 3.3rem);
   .sidebar-pane {
     position: sticky;
     top: calc($sticky-detail-header-height + $navbar-height);
+
+    // Being sticky keeps the dim layer of an open panel (above) beneath the
+    // page header (z-index 11) and the compact one (10), which stayed bright
+    // and tappable. Lift the whole pane over them while the panel is open.
+    @include media-breakpoint-down(sm) {
+      &:not(.hide-sidebar) {
+        z-index: 12;
+      }
+    }
   }
 
   .sidebar {
