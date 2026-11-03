@@ -349,12 +349,39 @@ func (h *purgeHandler) handleRelatedScenes(ctx context.Context, fileDeleter *fil
 	}
 
 	for _, scene := range scenes {
-		if err := scene.LoadFiles(ctx, sceneQB); err != nil {
-			return err
+		var fileCount int
+		if h.keepFile {
+			// The file stays in the library and may now be read back as
+			// an audio file, which the scene's video files can't hold, so
+			// work from the IDs. The scene lets go of the file, and its
+			// first remaining file becomes the primary one.
+			ids, err := sceneQB.GetManyFileIDs(ctx, []int{scene.ID})
+			if err != nil {
+				return err
+			}
+			var remaining []*models.VideoFile
+			for _, id := range ids[0] {
+				if id != fileID {
+					remaining = append(remaining, &models.VideoFile{BaseFile: &models.BaseFile{ID: id}})
+				}
+			}
+			if len(remaining) > 0 {
+				// Update only writes the IDs of the scene's files
+				scene.Files = models.NewRelatedVideoFiles(remaining)
+				if err := sceneQB.Update(ctx, scene); err != nil {
+					return err
+				}
+				continue
+			}
+		} else {
+			if err := scene.LoadFiles(ctx, sceneQB); err != nil {
+				return err
+			}
+			fileCount = len(scene.Files.List())
 		}
 
 		// only delete if the scene has no other files
-		if len(scene.Files.List()) <= 1 {
+		if fileCount <= 1 {
 			logger.Infof("Deleting scene %q since it has no other related files", scene.DisplayName())
 			const deleteGenerated = true
 			const deleteFile = false
@@ -376,22 +403,6 @@ func (h *purgeHandler) handleRelatedScenes(ctx context.Context, fileDeleter *fil
 					newPrimaryID = f.ID
 					break
 				}
-			}
-
-			if h.keepFile {
-				// the file stays in the library, so the scene lets go of it;
-				// its first remaining file becomes the primary one
-				var remaining []*models.VideoFile
-				for _, f := range scene.Files.List() {
-					if f.ID != fileID {
-						remaining = append(remaining, f)
-					}
-				}
-				scene.Files = models.NewRelatedVideoFiles(remaining)
-				if err := sceneQB.Update(ctx, scene); err != nil {
-					return err
-				}
-				continue
 			}
 
 			scenePartial := models.NewScenePartial()

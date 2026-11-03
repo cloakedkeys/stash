@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/audio"
 	"github.com/stashapp/stash/pkg/file"
 	imagepkg "github.com/stashapp/stash/pkg/image"
 	"github.com/stashapp/stash/pkg/job"
@@ -56,6 +57,18 @@ func (cleanMediaGIFReader) Decorate(ctx context.Context, fs models.FS, f models.
 
 func (cleanMediaGIFReader) IsMissingMetadata(ctx context.Context, fs models.FS, f models.File) bool {
 	_, ok := f.(*models.VideoFile)
+	return !ok
+}
+
+// cleanMediaAudioReader stands in for FFprobe on a file scanned as audio.
+type cleanMediaAudioReader struct{}
+
+func (cleanMediaAudioReader) Decorate(ctx context.Context, fs models.FS, f models.File) (models.File, error) {
+	return &models.AudioFile{BaseFile: f.Base(), Format: "gif", AudioCodec: "aac", Duration: 0.5, SampleRate: 44100, BitRate: 128000}, nil
+}
+
+func (cleanMediaAudioReader) IsMissingMetadata(ctx context.Context, fs models.FS, f models.File) bool {
+	_, ok := f.(*models.AudioFile)
 	return !ok
 }
 
@@ -112,15 +125,28 @@ func cleanMediaGIF(t *testing.T) []byte {
 func scanCleanMedia(t *testing.T, mgr *Manager, library, path string) models.File {
 	t.Helper()
 	ctx := context.Background()
+	handlers := getScanHandlers(ScanGenerateOptions{}, nil, nil)
+	for _, h := range handlers {
+		// tags and covers are read with FFprobe, which these tests don't run
+		if fh, ok := h.(*file.FilteredHandler); ok {
+			if ah, ok := fh.Handler.(*audio.ScanHandler); ok {
+				ah.MetadataReader = nil
+			}
+		}
+	}
 	scanner := &file.Scanner{
 		FS: &file.OsFS{}, Repository: file.NewRepository(mgr.Repository),
 		RootPaths: []string{library}, ZipFileExtensions: mgr.Config.GetGalleryExtensions(),
 		FingerprintCalculator: cleanMediaFingerprints{},
 		ScanFilters:           []file.PathFilter{newScanFilter(mgr.Config, mgr.Repository, time.Time{})},
 		FileDecorators: []file.Decorator{&file.FilteredDecorator{
-			Decorator: cleanMediaGIFReader{}, Filter: file.FilterFunc(imageFileFilter),
+			Decorator: cleanMediaGIFReader{}, Filter: file.FilterFunc(func(ctx context.Context, f models.File) bool {
+				return videoFileFilter(ctx, f) || imageFileFilter(ctx, f)
+			}),
+		}, &file.FilteredDecorator{
+			Decorator: cleanMediaAudioReader{}, Filter: file.FilterFunc(audioFileFilter),
 		}},
-		FileHandlers: getScanHandlers(ScanGenerateOptions{}, nil, nil),
+		FileHandlers: handlers,
 	}
 	info, err := os.Stat(path)
 	require.NoError(t, err)
@@ -220,6 +246,35 @@ func TestCleanRemovesScenesOfFileNoLongerVideo(t *testing.T) {
 			requireCleanMediaCounts(t, mgr, f.Base().ID, 0, 1)
 		})
 	}
+}
+
+// A video moved to the audio extensions and scanned again is reported as an
+// audio file from then on, and Clean must still remove the scene made from it.
+func TestCleanRemovesScenesOfVideoRescannedAsAudio(t *testing.T) {
+	mgr, library := cleanMediaManager(t)
+	mgr.Config.SetInterface(config.ImageExtensions, []string{"jpg"})
+	path := filepath.Join(library, "clip.gif")
+	require.NoError(t, os.WriteFile(path, cleanMediaGIF(t), 0644))
+	f := scanCleanMedia(t, mgr, library, path)
+	require.IsType(t, &models.VideoFile{}, f)
+	requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 0)
+
+	mgr.Config.SetInterface(config.VideoExtensions, []string{"mp4"})
+	mgr.Config.SetInterface(config.AudioExtensions, []string{"gif"})
+	f = scanCleanMedia(t, mgr, library, path)
+	require.IsType(t, &models.AudioFile{}, f)
+	requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 0)
+
+	runMediaClean(t, mgr, file.VerifyOptions{DryRun: true})
+	requireCleanMediaCounts(t, mgr, f.Base().ID, 1, 0)
+	runMediaClean(t, mgr, file.VerifyOptions{PurgeMissing: true})
+	requireCleanMediaCounts(t, mgr, f.Base().ID, 0, 0)
+	require.NoError(t, mgr.Repository.WithReadTxn(context.Background(), func(ctx context.Context) error {
+		audios, err := mgr.Repository.Audio.FindByFileID(ctx, f.Base().ID)
+		require.NoError(t, err)
+		require.Len(t, audios, 1, "the file stays as audio")
+		return nil
+	}))
 }
 
 // A scene with another file that is still a video keeps that file and loses
