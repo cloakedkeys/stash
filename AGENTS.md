@@ -41,7 +41,7 @@ go test -count=1 -tags "sqlite_stat4 sqlite_math_functions integration" ./pkg/..
 
 Run `./internal/...` as well when a change touches shared code. Its tests use shared helpers and fixtures too.
 
-For the PostgreSQL tests, set `PGSQL_TEST` to the address of a test database and run `./pkg/database` and `./pkg/postgres` one package at a time, using `-p 1`. See `.github/workflows/test-postgres.yml`.
+For the PostgreSQL tests, set `PGSQL_TEST` to the address of a test database and run `./pkg/database` and `./pkg/postgres` one package at a time, using `-p 1`. See the `test-postgres` job in `.github/workflows/build.yml`.
 
 For the UI, run these in `ui/v2.5`. A new test file is found automatically.
 
