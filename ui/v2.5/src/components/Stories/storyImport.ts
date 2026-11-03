@@ -26,16 +26,25 @@ export function storyImportInput(
   return input;
 }
 
+// A story found by its web address, with all its addresses.
+export interface IStoryWithURLs {
+  id: string;
+  title?: string | null;
+  urls: string[];
+}
+
 export type StoryImportResult =
   | { kind: "no_scraper" }
   | { kind: "not_found" }
-  | { kind: "exists"; story: GQL.SlimStoryDataFragment }
+  | { kind: "exists"; story: IStoryWithURLs }
   | { kind: "created"; id: string };
 
 // What importing needs from the server, passed in so it can be tested.
 export interface IStoryImportSteps {
   scrapable: (url: string) => boolean;
-  findByURL: (url: string) => Promise<GQL.SlimStoryDataFragment | undefined>;
+  // stories that may have the address: the server's match ignores case and
+  // treats _ and % as wildcards, so only an exact address counts here
+  findByURL: (url: string) => Promise<IStoryWithURLs[]>;
   scrape: (
     url: string
   ) => Promise<GQL.ScrapedStoryDataFragment | null | undefined>;
@@ -51,8 +60,11 @@ export async function importStory(
 ): Promise<StoryImportResult> {
   if (!steps.scrapable(url)) return { kind: "no_scraper" };
 
+  const findExact = async (address: string) =>
+    (await steps.findByURL(address)).find((s) => s.urls.includes(address));
+
   // look before fetching, so a story already added isn't fetched again
-  const existing = await steps.findByURL(url);
+  const existing = await findExact(url);
   if (existing) return { kind: "exists", story: existing };
 
   const scraped = await steps.scrape(url);
@@ -60,7 +72,7 @@ export async function importStory(
 
   for (const other of new Set(scraped.urls ?? [])) {
     if (other === url) continue;
-    const story = await steps.findByURL(other);
+    const story = await findExact(other);
     if (story) return { kind: "exists", story };
   }
 

@@ -1273,17 +1273,12 @@ export const mutateStoryCreate = (input: GQL.StoryCreateInput) =>
     },
   });
 
-// the first story with this web address, asked of the server each time so a
+// stories that may have this web address, asked of the server each time so a
 // story added or deleted since is seen
-export const queryFindStoryByURL = (url: string) =>
-  client.query<GQL.FindStoriesQuery>({
-    query: GQL.FindStoriesDocument,
-    variables: {
-      filter: { per_page: 1 },
-      story_filter: {
-        url: { value: url, modifier: GQL.CriterionModifier.Equals },
-      },
-    },
+export const queryFindStoriesByURL = (url: string) =>
+  client.query<GQL.FindStoriesByUrlQuery>({
+    query: GQL.FindStoriesByUrlDocument,
+    variables: { url },
     fetchPolicy: "network-only",
   });
 

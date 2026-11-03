@@ -3,21 +3,20 @@ import { Form } from "react-bootstrap";
 import { useIntl } from "react-intl";
 import { Link, useHistory } from "react-router-dom";
 import { faDownload } from "@fortawesome/free-solid-svg-icons";
-import * as GQL from "src/core/generated-graphql";
 import {
   mutateStoryCreate,
-  queryFindStoryByURL,
+  queryFindStoriesByURL,
   queryScrapeStoryURL,
   useListStoryScrapers,
 } from "src/core/StashService";
 import { useToast } from "src/hooks/Toast";
 import { ModalComponent } from "../Shared/Modal";
 import { storyURLScrapable } from "./StoryDetails/storyScrape";
-import { importStory } from "./storyImport";
+import { IStoryWithURLs, importStory } from "./storyImport";
 
 interface IProblem {
   message: string;
-  existing?: GQL.SlimStoryDataFragment;
+  existing?: IStoryWithURLs;
 }
 
 // Adds a story to Stories from its web address, with the installed scraper
@@ -47,7 +46,7 @@ export const ImportStoryDialog: React.FC<{ onClose: () => void }> = ({
       const result = await importStory(address, {
         scrapable: (u) => storyURLScrapable(scrapers.data?.listScrapers, u),
         findByURL: async (u) =>
-          (await queryFindStoryByURL(u)).data.findStories.stories[0],
+          (await queryFindStoriesByURL(u)).data.findStories.stories,
         scrape: async (u) =>
           (await queryScrapeStoryURL(u)).data?.scrapeStoryURL,
         create: async (input) => {

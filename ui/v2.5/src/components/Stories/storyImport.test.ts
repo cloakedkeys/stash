@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as GQL from "src/core/generated-graphql";
 import {
   IStoryImportSteps,
+  IStoryWithURLs,
   importStory,
   storyImportInput,
 } from "./storyImport";
@@ -14,14 +15,14 @@ function scraped(
   return { __typename: "ScrapedStory", title: "A Story", ...data };
 }
 
-function story(id: string): GQL.SlimStoryDataFragment {
-  return { __typename: "Story", id, title: `Story ${id}`, files: [], tags: [] };
+function story(id: string, urls = [url]): IStoryWithURLs {
+  return { id, title: `Story ${id}`, urls };
 }
 
 function steps(over: Partial<IStoryImportSteps> = {}): IStoryImportSteps {
   return {
     scrapable: vi.fn(() => true),
-    findByURL: vi.fn(async () => undefined),
+    findByURL: vi.fn(async () => []),
     scrape: vi.fn(async () => scraped({ urls: [url], text: "Once." })),
     create: vi.fn(async () => "7"),
     ...over,
@@ -49,7 +50,7 @@ describe("importStory (#1964)", () => {
   });
 
   it("says when the story is already in Stories, without fetching it", async () => {
-    const s = steps({ findByURL: vi.fn(async () => story("3")) });
+    const s = steps({ findByURL: vi.fn(async () => [story("3")]) });
     expect(await importStory(url, s)).toEqual({
       kind: "exists",
       story: story("3"),
@@ -63,15 +64,30 @@ describe("importStory (#1964)", () => {
     const s = steps({
       scrape: vi.fn(async () => scraped({ urls: [canonical, canonical] })),
       findByURL: vi.fn(async (u: string) =>
-        u === canonical ? story("4") : undefined
+        u === canonical ? [story("4", [canonical])] : []
       ),
     });
     expect(await importStory(`${url}?page=2`, s)).toEqual({
       kind: "exists",
-      story: story("4"),
+      story: story("4", [canonical]),
     });
     expect(s.findByURL).toHaveBeenCalledTimes(2);
     expect(s.create).not.toHaveBeenCalled();
+  });
+
+  it("only counts a story with exactly that address", async () => {
+    // the server matches without case and with _ and % as wildcards, so it
+    // can return part-one for part_one
+    const s = steps({
+      findByURL: vi.fn(async () => [
+        story("5", ["https://www.literotica.com/s/a-Story"]),
+        story("6", ["https://www.literotica.com/s/a_story"]),
+      ]),
+    });
+    expect(
+      await importStory("https://www.literotica.com/s/a-story", s)
+    ).toEqual({ kind: "created", id: "7" });
+    expect(s.scrape).toHaveBeenCalledOnce();
   });
 
   it("says when the scraper finds nothing", async () => {
