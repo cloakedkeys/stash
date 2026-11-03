@@ -176,6 +176,8 @@ func fetchImage(ctx context.Context, client *http.Client, url string) (*string, 
 		return nil, err
 	}
 
+	req.Header.Set("User-Agent", utils.UserAgent())
+
 	resp, err := client.Do(req)
 
 	if err != nil {
