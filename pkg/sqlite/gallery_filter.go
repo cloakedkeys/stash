@@ -244,14 +244,14 @@ func (qb *galleryFilterHandler) pathCriterionHandler(c *models.StringCriterionIn
 					f.whereClauses = append(f.whereClauses, orClauses(clause, clause2))
 				case models.CriterionModifierEquals:
 					addWildcards = false
-					clause := getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not)
-					clause2 := makeClause(folderPathColumn+" LIKE ?", c.Value)
+					clause := getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not, c.MatchPrefix)
+					clause2 := makeClause(folderPathColumn+` LIKE ? ESCAPE '\'`, stringCriterionValue(c))
 					f.whereClauses = append(f.whereClauses, orClauses(clause, clause2))
 				case models.CriterionModifierNotEquals:
 					addWildcards = false
 					not = true
-					clause := getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not)
-					clause2 := makeClause(folderPathColumn+" NOT LIKE ?", c.Value)
+					clause := getPathSearchClause(pathColumn, basenameColumn, c.Value, addWildcards, not, c.MatchPrefix)
+					clause2 := makeClause(folderPathColumn+` NOT LIKE ? ESCAPE '\'`, stringCriterionValue(c))
 					f.whereClauses = append(f.whereClauses, orClauses(clause, clause2))
 				case models.CriterionModifierMatchesRegex:
 					if _, err := regexp.Compile(c.Value); err != nil {

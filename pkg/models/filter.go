@@ -102,8 +102,10 @@ func (e CriterionModifier) MarshalGQL(w io.Writer) {
 }
 
 type StringCriterionInput struct {
-	Value    string            `json:"value"`
-	Modifier CriterionModifier `json:"modifier"`
+	// MatchPrefix is for internal folder searches and is never saved or exposed by GraphQL.
+	MatchPrefix bool              `json:"-"`
+	Value       string            `json:"value"`
+	Modifier    CriterionModifier `json:"modifier"`
 }
 
 func (i StringCriterionInput) ValidModifier() bool {

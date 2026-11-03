@@ -69,8 +69,9 @@ func FilterFromPaths(paths []string) *models.ImageFilterType {
 		}
 
 		or.Path = &models.StringCriterionInput{
-			Modifier: models.CriterionModifierEquals,
-			Value:    p + "%",
+			Modifier:    models.CriterionModifierEquals,
+			Value:       p,
+			MatchPrefix: true,
 		}
 	}
 

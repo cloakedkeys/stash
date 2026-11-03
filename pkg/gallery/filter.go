@@ -31,8 +31,9 @@ func PathsFilter(paths []string) *models.GalleryFilterType {
 		}
 
 		or.Path = &models.StringCriterionInput{
-			Modifier: models.CriterionModifierEquals,
-			Value:    p + "%",
+			Modifier:    models.CriterionModifierEquals,
+			Value:       p,
+			MatchPrefix: true,
 		}
 	}
 
