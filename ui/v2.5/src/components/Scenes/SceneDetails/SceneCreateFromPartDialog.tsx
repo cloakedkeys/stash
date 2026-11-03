@@ -9,9 +9,11 @@ import { SceneFileRangeFields } from "./SceneFileRange";
 
 export const SceneCreateFromPartDialog: React.FC<{
   fileID: string;
+  // the file's length in seconds, when known
+  fileDuration?: number;
   sceneTitle: string;
   onClose: () => void;
-}> = ({ fileID, sceneTitle, onClose }) => {
+}> = ({ fileID, fileDuration, sceneTitle, onClose }) => {
   const intl = useIntl();
   const history = useHistory();
   const Toast = useToast();
@@ -24,6 +26,13 @@ export const SceneCreateFromPartDialog: React.FC<{
   const [startTime, setStartTime] = useState<number | null>(null);
   const [endTime, setEndTime] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // With no start and no end before the file's end, the server would make an
+  // ordinary whole-file scene and take the file from its current scene.
+  const endsEarly =
+    endTime != null &&
+    !(fileDuration && fileDuration > 0 && endTime === fileDuration);
+  const makesPart = (startTime ?? 0) > 0 || endsEarly;
 
   async function onCreate() {
     setSaving(true);
@@ -51,6 +60,7 @@ export const SceneCreateFromPartDialog: React.FC<{
       header={intl.formatMessage({ id: "scene_file_range.create" })}
       onHide={onClose}
       isRunning={saving}
+      disabled={!makesPart}
       cancel={{ onClick: onClose }}
       accept={{
         text: intl.formatMessage({ id: "actions.create" }),

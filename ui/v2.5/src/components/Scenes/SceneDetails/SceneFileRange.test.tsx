@@ -19,6 +19,7 @@ const page = vi.hoisted(() => ({
     setValue: (value: number | null) => void;
   }[],
   accept: undefined as undefined | { onClick: () => Promise<void> },
+  disabled: undefined as boolean | undefined,
   title: undefined as
     | undefined
     | {
@@ -70,8 +71,10 @@ vi.mock("src/components/Shared/Modal", () => ({
   ModalComponent: (props: {
     children: ReactNode;
     accept: typeof page.accept;
+    disabled?: boolean;
   }) => {
     page.accept = props.accept;
+    page.disabled = props.disabled;
     return <>{props.children}</>;
   },
 }));
@@ -207,10 +210,48 @@ describe("create scene from part", () => {
         onClose={close}
       />
     );
+    page.durations[0].setValue(83);
     await page.accept!.onClick();
     expect(page.error).toHaveBeenCalledWith(error);
     expect(page.push).not.toHaveBeenCalled();
     expect(close).not.toHaveBeenCalled();
+  });
+  it.each([
+    { name: "both times empty", start: null, end: null, allowed: false },
+    { name: "start 0 and no end", start: 0, end: null, allowed: false },
+    {
+      name: "start 0 and end at the file's end",
+      start: 0,
+      end: 600,
+      allowed: false,
+    },
+    { name: "only a start", start: 83, end: null, allowed: true },
+    {
+      name: "only an end before the file's end",
+      start: null,
+      end: 296,
+      allowed: true,
+    },
+    {
+      name: "an end past the file's end (server refuses)",
+      start: null,
+      end: 700,
+      allowed: true,
+    },
+  ])("allows Create only for a real part: $name", ({ start, end, allowed }) => {
+    const element = (
+      <SceneCreateFromPartDialog
+        fileID="7"
+        fileDuration={600}
+        sceneTitle="Original"
+        onClose={vi.fn()}
+      />
+    );
+    render(element);
+    page.durations[0].setValue(start);
+    page.durations[1].setValue(end);
+    render(element);
+    expect(page.disabled).toBe(!allowed);
   });
 });
 

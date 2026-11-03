@@ -162,6 +162,7 @@ const FileInfoPanel: React.FC<IFileInfoPanelProps> = (
       {creatingPart && (
         <SceneCreateFromPartDialog
           fileID={props.file.id}
+          fileDuration={props.file.duration}
           sceneTitle={props.sceneTitle}
           onClose={() => setCreatingPart(false)}
         />
