@@ -2501,13 +2501,25 @@ func TestSceneQueryPath(t *testing.T) {
 			[]int{otherSceneIdx},
 		},
 		{
-			"equals full path wildcard",
+			// folder-limited tasks match a path prefix this way (#2020)
+			"equals full path prefix",
+			models.StringCriterionInput{
+				Value:       filepath.Join(folder, "scene_0001_"),
+				Modifier:    models.CriterionModifierEquals,
+				MatchPrefix: true,
+			},
+			[]int{sceneIdx},
+			[]int{otherSceneIdx},
+		},
+		{
+			// a typed % is a plain character, not a wildcard (#2020)
+			"equals full path with percent is literal",
 			models.StringCriterionInput{
 				Value:    filepath.Join(folder, "scene_0001_%"),
 				Modifier: models.CriterionModifierEquals,
 			},
-			[]int{sceneIdx},
-			[]int{otherSceneIdx},
+			nil,
+			[]int{sceneIdx, otherSceneIdx},
 		},
 		{
 			"not equals full path",
