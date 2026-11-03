@@ -9,8 +9,24 @@
   }
 }
 
-// pinned to the top right, like the Help window's close button, so it stays in
-// reach however far down a settings page you scroll
+// Share one row so save feedback cannot cover the Settings close button.
+.settings-controls {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  position: fixed;
+  right: calc(1rem + env(safe-area-inset-right));
+  top: calc(#{$navbar-height} + 0.5rem);
+  z-index: 10;
+
+  // the nav bar is at the bottom on a phone held upright
+  @include media-breakpoint-down(xs) {
+    @media (orientation: portrait) {
+      top: calc(0.5rem + env(safe-area-inset-top));
+    }
+  }
+}
+
 .close.settings-close {
   align-items: center;
   background-color: $body-bg;
@@ -22,23 +38,12 @@
   height: 3rem;
   justify-content: center;
   opacity: 0.8;
-  position: fixed;
-  right: calc(1rem + env(safe-area-inset-right));
   text-shadow: none;
-  top: calc(#{$navbar-height} + 0.5rem);
   width: 3rem;
-  z-index: 10;
 
   &:hover,
   &:focus {
     color: $text-color;
-  }
-
-  // the nav bar is at the bottom on a phone held upright
-  @include media-breakpoint-down(xs) {
-    @media (orientation: portrait) {
-      top: calc(0.5rem + env(safe-area-inset-top));
-    }
   }
 }
 
@@ -495,16 +500,6 @@
 
 .loading-indicator {
   opacity: 50%;
-  position: fixed;
-  right: calc(30px + env(safe-area-inset-right));
-  z-index: 1051;
-
-  @include media-breakpoint-down(xs) {
-    top: 30px;
-  }
-  @include media-breakpoint-up(sm) {
-    bottom: calc(30px + env(safe-area-inset-bottom));
-  }
 
   .fa-icon {
     color: $success;

@@ -1,7 +1,7 @@
 import { ApolloError } from "@apollo/client/errors";
 import {
   faCheckCircle,
-  faTimesCircle,
+  faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Spinner } from "react-bootstrap";
@@ -25,6 +25,7 @@ import { Icon } from "../Shared/Icon";
 type PluginConfigs = Record<string, Record<string, unknown>>;
 
 export interface ISettingsContextState {
+  saveIndicator?: React.ReactNode;
   loading: boolean;
   error: ApolloError | undefined;
   general: GQL.ConfigGeneralInput;
@@ -540,7 +541,7 @@ export const SettingsContext: React.FC<React.PropsWithChildren<unknown>> = ({
     if (updateSuccess === false) {
       return (
         <div className="loading-indicator failed">
-          <Icon icon={faTimesCircle} className="fa-fw" />
+          <Icon icon={faTriangleExclamation} className="fa-fw" />
         </div>
       );
     }
@@ -575,6 +576,7 @@ export const SettingsContext: React.FC<React.PropsWithChildren<unknown>> = ({
   return (
     <SettingStateContext.Provider
       value={{
+        saveIndicator: maybeRenderLoadingIndicator(),
         loading,
         error,
         apiKey,
@@ -597,7 +599,6 @@ export const SettingsContext: React.FC<React.PropsWithChildren<unknown>> = ({
         setAdvancedMode,
       }}
     >
-      {maybeRenderLoadingIndicator()}
       {children}
     </SettingStateContext.Provider>
   );

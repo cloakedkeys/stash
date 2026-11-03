@@ -276,12 +276,27 @@ const SettingTabs: React.FC<{ tab: TabKey; tabs: readonly TabKey[] }> = ({
   );
 };
 
+const SettingsControls: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { saveIndicator } = useSettings();
+  const intl = useIntl();
+
+  return (
+    <div className="settings-controls">
+      {saveIndicator}
+      <CloseButton
+        className="settings-close"
+        label={intl.formatMessage({ id: "actions.close" })}
+        onClick={onClose}
+      />
+    </div>
+  );
+};
+
 export const Settings: React.FC<{
   returnLocation?: ReturnType<typeof useLocation>;
 }> = ({ returnLocation }) => {
   const location = useLocation();
   const history = useHistory();
-  const intl = useIntl();
   const tab = new URLSearchParams(location.search).get("tab");
   const tabs = useAllowedTabs();
 
@@ -299,10 +314,8 @@ export const Settings: React.FC<{
 
   return (
     <SettingsContext>
-      <CloseButton
-        className="settings-close"
-        label={intl.formatMessage({ id: "actions.close" })}
-        onClick={() => history.replace(returnLocation ?? "/")}
+      <SettingsControls
+        onClose={() => history.replace(returnLocation ?? "/")}
       />
       <SettingTabs tab={tab} tabs={tabs} />
     </SettingsContext>
