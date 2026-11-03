@@ -1046,11 +1046,11 @@ export const DataManagementTasks: React.FC<IDataManagementTasks> = ({
             variant="danger"
             onClick={() => onMigrateHashNaming()}
           >
-            <FormattedMessage id="actions.rename_gen_files" />
+            <FormattedMessage id="actions.rename" />
           </Button>
         </Setting>
 
-        <div className="setting-group">
+        <div className="setting-group migration-group">
           <Setting
             headingID="actions.migrate_blobs"
             subHeadingID="config.tasks.migrate_blobs.description"
@@ -1074,7 +1074,7 @@ export const DataManagementTasks: React.FC<IDataManagementTasks> = ({
           />
         </div>
 
-        <div className="setting-group">
+        <div className="setting-group migration-group">
           <Setting
             headingID="actions.migrate_scene_screenshots"
             subHeadingID="config.tasks.migrate_scene_screenshots.description"
@@ -1084,7 +1084,7 @@ export const DataManagementTasks: React.FC<IDataManagementTasks> = ({
               variant="danger"
               onClick={() => onMigrateSceneScreenshots()}
             >
-              <FormattedMessage id="actions.migrate_scene_screenshots" />
+              <FormattedMessage id="actions.migrate_screenshots" />
             </Button>
           </Setting>
 

@@ -210,6 +210,14 @@
       }
     }
 
+    // a migration's options line up with its heading and description (#1950)
+    &.migration-group > .setting:not(:first-child) {
+      margin-left: 0;
+      margin-right: 0;
+      padding-left: 15px;
+      padding-right: 15px;
+    }
+
     .setting {
       flex-wrap: wrap;
       width: auto;
