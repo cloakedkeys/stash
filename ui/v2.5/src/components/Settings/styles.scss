@@ -126,6 +126,17 @@
       border-bottom: 1px solid #000;
     }
 
+    // A drop-down is as wide as its longest choice (#1960), and its side of the
+    // row doesn't shrink below that, or the box would stick out of the card
+    // on a phone. The description wraps instead.
+    select.form-control {
+      width: auto;
+    }
+
+    > div:last-child:has(select.form-control) {
+      flex-shrink: 0;
+    }
+
     .value {
       font-family: "Courier New", Courier, monospace;
       margin-bottom: 0.5rem;
