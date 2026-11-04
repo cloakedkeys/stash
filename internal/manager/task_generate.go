@@ -3,6 +3,8 @@ package manager
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/remeh/sizedwaitgroup"
@@ -90,9 +92,6 @@ type totalsGenerate struct {
 }
 
 func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error {
-	var scenes []*models.Scene
-	var markers []*models.SceneMarker
-	var images []*models.Image
 	var err error
 
 	j.overwrite = j.input.Overwrite
@@ -106,11 +105,6 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 	queue := make(chan Task, generateQueueSize)
 	go func() {
 		defer close(queue)
-
-		sceneIDs := generateIDs(j.input.SceneIDs)
-		markerIDs := generateIDs(j.input.MarkerIDs)
-		imageIDs := generateIDs(j.input.ImageIDs)
-		galleryIDs := generateIDs(j.input.GalleryIDs)
 
 		g := &generate.Generator{
 			Encoder:      instance.FFMpeg,
@@ -133,52 +127,29 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 
 				j.queueTasks(ctx, g, nil, queue)
 			} else {
-				if len(j.input.SceneIDs) > 0 {
-					scenes, err = qb.FindMany(ctx, sceneIDs)
-					for _, s := range scenes {
-						if err := s.LoadFiles(ctx, qb); err != nil {
-							return err
-						}
-
-						j.queueSceneJobs(ctx, g, s, queue)
-					}
+				t, err := j.findTargets(ctx)
+				if err != nil {
+					return err
 				}
 
-				if len(j.input.MarkerIDs) > 0 {
-					markers, err = r.SceneMarker.FindMany(ctx, markerIDs)
-					if err != nil {
+				for _, s := range t.scenes {
+					if err := s.LoadFiles(ctx, qb); err != nil {
 						return err
 					}
-					for _, m := range markers {
-						j.queueMarkerJob(g, m, queue)
-					}
+
+					j.queueSceneJobs(ctx, g, s, queue)
 				}
 
-				if len(j.input.ImageIDs) > 0 {
-					images, err = r.Image.FindMany(ctx, imageIDs)
-					for _, i := range images {
-						if err := i.LoadFiles(ctx, r.Image); err != nil {
-							return err
-						}
-
-						j.queueImageJob(g, i, queue)
-					}
+				for _, m := range t.markers {
+					j.queueMarkerJob(g, m, queue)
 				}
 
-				if len(j.input.GalleryIDs) > 0 {
-					for _, galleryID := range galleryIDs {
-						imgs, err := r.Image.FindByGalleryID(ctx, galleryID)
-						if err != nil {
-							return err
-						}
-						for _, img := range imgs {
-							if err := img.LoadFiles(ctx, r.Image); err != nil {
-								return err
-							}
-
-							j.queueImageJob(g, img, queue)
-						}
+				for _, i := range t.images {
+					if err := i.LoadFiles(ctx, r.Image); err != nil {
+						return err
 					}
+
+					j.queueImageJob(g, i, queue)
 				}
 
 				if len(j.input.Paths) > 0 {
@@ -606,4 +577,89 @@ func generateIDs(ids []string) []int {
 	}
 
 	return sliceutil.Unique(ret)
+}
+
+// generateTargets are the items named by the id lists of a generate input.
+type generateTargets struct {
+	scenes  []*models.Scene
+	markers []*models.SceneMarker
+	// images, followed by the images of the galleries
+	images []*models.Image
+}
+
+// findTargets finds the items named by the id lists of the input. Items that
+// no longer exist are skipped, with a warning naming them.
+func (j *GenerateJob) findTargets(ctx context.Context) (*generateTargets, error) {
+	r := j.repository
+	ret := &generateTargets{}
+	var err error
+
+	if ret.scenes, err = findExisting(ctx, "scene", generateIDs(j.input.SceneIDs), r.Scene.FindMany, r.Scene.Find); err != nil {
+		return nil, err
+	}
+
+	if ret.markers, err = findExisting(ctx, "marker", generateIDs(j.input.MarkerIDs), r.SceneMarker.FindMany, r.SceneMarker.Find); err != nil {
+		return nil, err
+	}
+
+	if ret.images, err = findExisting(ctx, "image", generateIDs(j.input.ImageIDs), r.Image.FindMany, r.Image.Find); err != nil {
+		return nil, err
+	}
+
+	galleries, err := findExisting(ctx, "gallery", generateIDs(j.input.GalleryIDs), r.Gallery.FindMany, r.Gallery.Find)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, g := range galleries {
+		imgs, err := r.Image.FindByGalleryID(ctx, g.ID)
+		if err != nil {
+			return nil, err
+		}
+		ret.images = append(ret.images, imgs...)
+	}
+
+	return ret, nil
+}
+
+// findExisting finds the items with the given ids, in order. FindMany fails
+// if any item is missing, so on failure each item is looked up on its own:
+// missing items are skipped and named in a warning, and any other error is
+// returned.
+func findExisting[T any](ctx context.Context, kind string, ids []int,
+	findMany func(context.Context, []int) ([]*T, error),
+	find func(context.Context, int) (*T, error),
+) ([]*T, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	ret, findManyErr := findMany(ctx, ids)
+	if findManyErr == nil {
+		return ret, nil
+	}
+
+	ret = nil
+	var missing []string
+	for _, id := range ids {
+		v, err := find(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+
+		if v == nil {
+			missing = append(missing, strconv.Itoa(id))
+			continue
+		}
+
+		ret = append(ret, v)
+	}
+
+	if len(missing) == 0 {
+		// every item exists, so FindMany failed for another reason
+		return nil, findManyErr
+	}
+
+	logger.Warnf("Generate: skipping %s ids that no longer exist: %s", kind, strings.Join(missing, ", "))
+	return ret, nil
 }
