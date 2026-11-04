@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil"
 )
 
 const (
@@ -153,6 +153,7 @@ func (qb *GalleryChapterStore) Find(ctx context.Context, id int) (*models.Galler
 
 func (qb *GalleryChapterStore) FindMany(ctx context.Context, ids []int) ([]*models.GalleryChapter, error) {
 	ret := make([]*models.GalleryChapter, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	if len(ids) == 0 {
 		return ret, nil
@@ -165,10 +166,7 @@ func (qb *GalleryChapterStore) FindMany(ctx context.Context, ids []int) ([]*mode
 		return nil, err
 	}
 
-	for _, s := range unsorted {
-		i := slices.Index(ids, s.ID)
-		ret[i] = s
-	}
+	sliceutil.PlaceByKey(ret, positions, unsorted, func(s *models.GalleryChapter) int { return s.ID })
 
 	for i := range ret {
 		if ret[i] == nil {

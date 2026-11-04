@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/studio"
 	"github.com/stashapp/stash/pkg/utils"
 )
@@ -389,6 +389,7 @@ func (qb *StudioStore) FindMany(ctx context.Context, ids []int) ([]*models.Studi
 	}
 
 	ret := make([]*models.Studio, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	table := qb.table()
 	if err := batchExec(ids, defaultBatchSize, func(batch []int) error {
@@ -398,10 +399,7 @@ func (qb *StudioStore) FindMany(ctx context.Context, ids []int) ([]*models.Studi
 			return err
 		}
 
-		for _, s := range unsorted {
-			i := slices.Index(ids, s.ID)
-			ret[i] = s
-		}
+		sliceutil.PlaceByKey(ret, positions, unsorted, func(s *models.Studio) int { return s.ID })
 
 		return nil
 	}); err != nil {

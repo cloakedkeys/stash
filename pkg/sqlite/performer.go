@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/jmoiron/sqlx"
 	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/utils"
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
@@ -490,6 +490,7 @@ func (qb *PerformerStore) FindMany(ctx context.Context, ids []int) ([]*models.Pe
 
 	tableMgr := performerTableMgr
 	ret := make([]*models.Performer, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	if err := batchExec(ids, defaultBatchSize, func(batch []int) error {
 		q := goqu.Select("*").From(tableMgr.table).Where(tableMgr.byIDInts(batch...))
@@ -498,10 +499,7 @@ func (qb *PerformerStore) FindMany(ctx context.Context, ids []int) ([]*models.Pe
 			return err
 		}
 
-		for _, s := range unsorted {
-			i := slices.Index(ids, s.ID)
-			ret[i] = s
-		}
+		sliceutil.PlaceByKey(ret, positions, unsorted, func(s *models.Performer) int { return s.ID })
 
 		return nil
 	}); err != nil {

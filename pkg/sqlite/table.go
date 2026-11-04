@@ -1089,6 +1089,8 @@ func (t *viewHistoryTable) getManyDates(ctx context.Context, ids []int) ([][]tim
 		return nil, err
 	}
 
+	sliceutil.FillRepeats(ret, ids)
+
 	return ret, nil
 }
 
@@ -1144,6 +1146,8 @@ func (t *viewHistoryTable) getManyLastDate(ctx context.Context, ids []int) ([]*t
 		return nil, err
 	}
 
+	sliceutil.FillRepeats(ret, ids)
+
 	return ret, nil
 }
 
@@ -1193,6 +1197,8 @@ func (t *viewHistoryTable) getManyCount(ctx context.Context, ids []int) ([]int, 
 	}); err != nil {
 		return nil, err
 	}
+
+	sliceutil.FillRepeats(ret, ids)
 
 	return ret, nil
 }

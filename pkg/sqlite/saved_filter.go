@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil"
 )
 
 const (
@@ -187,6 +187,7 @@ func (qb *SavedFilterStore) Find(ctx context.Context, id int) (*models.SavedFilt
 
 func (qb *SavedFilterStore) FindMany(ctx context.Context, ids []int, ignoreNotFound bool) ([]*models.SavedFilter, error) {
 	ret := make([]*models.SavedFilter, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	table := qb.table()
 	q := qb.selectDataset(ctx).Prepared(true).Where(table.Col(idColumn).In(ids))
@@ -195,10 +196,7 @@ func (qb *SavedFilterStore) FindMany(ctx context.Context, ids []int, ignoreNotFo
 		return nil, err
 	}
 
-	for _, s := range unsorted {
-		i := slices.Index(ids, s.ID)
-		ret[i] = s
-	}
+	sliceutil.PlaceByKey(ret, positions, unsorted, func(s *models.SavedFilter) int { return s.ID })
 
 	if !ignoreNotFound {
 		for i := range ret {

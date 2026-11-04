@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/jmoiron/sqlx"
 	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil"
 	"gopkg.in/guregu/null.v4"
 	"gopkg.in/guregu/null.v4/zero"
 )
@@ -503,6 +503,7 @@ func (qb *GalleryStore) FindMany(ctx context.Context, ids []int) ([]*models.Gall
 	}
 
 	galleries := make([]*models.Gallery, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	if len(ids) == 0 {
 		return galleries, nil
@@ -515,10 +516,7 @@ func (qb *GalleryStore) FindMany(ctx context.Context, ids []int) ([]*models.Gall
 			return err
 		}
 
-		for _, s := range unsorted {
-			i := slices.Index(ids, s.ID)
-			galleries[i] = s
-		}
+		sliceutil.PlaceByKey(galleries, positions, unsorted, func(s *models.Gallery) int { return s.ID })
 
 		return nil
 	}); err != nil {

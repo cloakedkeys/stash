@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/jmoiron/sqlx"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil"
 	"gopkg.in/guregu/null.v4"
 )
 
@@ -303,16 +303,14 @@ func (qb *FolderStore) FindByIDs(ctx context.Context, ids []models.FolderID) ([]
 
 func (qb *FolderStore) FindMany(ctx context.Context, ids []models.FolderID) ([]*models.Folder, error) {
 	folders := make([]*models.Folder, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	unsorted, err := qb.FindByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, s := range unsorted {
-		i := slices.Index(ids, s.ID)
-		folders[i] = s
-	}
+	sliceutil.PlaceByKey(folders, positions, unsorted, func(s *models.Folder) models.FolderID { return s.ID })
 
 	for i := range folders {
 		if folders[i] == nil {

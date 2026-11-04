@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil"
 )
 
 const (
@@ -372,6 +372,7 @@ func (qb *GroupStore) FindMany(ctx context.Context, ids []int) ([]*models.Group,
 	}
 
 	ret := make([]*models.Group, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	if len(ids) == 0 {
 		return ret, nil
@@ -385,10 +386,7 @@ func (qb *GroupStore) FindMany(ctx context.Context, ids []int) ([]*models.Group,
 			return err
 		}
 
-		for _, s := range unsorted {
-			i := slices.Index(ids, s.ID)
-			ret[i] = s
-		}
+		sliceutil.PlaceByKey(ret, positions, unsorted, func(s *models.Group) int { return s.ID })
 
 		return nil
 	}); err != nil {
