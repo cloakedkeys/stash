@@ -389,7 +389,7 @@ func (s *Manager) RefreshFFMpeg(ctx context.Context) {
 	}
 
 	if ffprobePath != "" {
-		if err := ffmpeg.ValidateFFProbe(ffmpegPath); err != nil {
+		if err := ffmpeg.ValidateFFProbe(ffprobePath); err != nil {
 			logger.Errorf("invalid ffprobe path: %v", err)
 			return
 		}
