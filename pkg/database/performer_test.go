@@ -1688,6 +1688,26 @@ func TestPerformerQueryCustomFields(t *testing.T) {
 			false,
 		},
 		{
+			// more than two use the first two, as upstream does (#2067)
+			"not between with three values",
+			&models.PerformerFilterType{
+				Name: &models.StringCriterionInput{
+					Value:    getPerformerStringValue(performerIdx1WithScene, "Name"),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "real",
+						Modifier: models.CriterionModifierNotBetween,
+						Value:    []any{0.05, 0.15, 99},
+					},
+				},
+			},
+			nil,
+			[]int{performerIdx1WithScene},
+			false,
+		},
+		{
 			// refused, not a crash (#2067)
 			"not between with no values",
 			&models.PerformerFilterType{

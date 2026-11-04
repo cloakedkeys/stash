@@ -257,15 +257,19 @@ func (h *customFieldsFilterHandler) leftJoin(f *filterBuilder, as string, field 
 }
 
 // checkCustomFieldValueCount sets an error on f, naming the modifier, unless cv
-// holds exactly want values. A modifier that reads cv[0] or cv[1] calls this
-// first, so a short list is refused rather than indexed out of range.
-func checkCustomFieldValueCount(f *filterBuilder, modifier models.CriterionModifier, cv []interface{}, want int) bool {
-	if len(cv) == want {
+// holds exactly want values, or at least want when atLeast is set. A modifier
+// that reads cv[0] or cv[1] calls this first, so a short list is refused rather
+// than indexed out of range.
+func checkCustomFieldValueCount(f *filterBuilder, modifier models.CriterionModifier, cv []interface{}, want int, atLeast bool) bool {
+	if len(cv) == want || (atLeast && len(cv) > want) {
 		return true
 	}
 	noun := "values"
 	if want == 1 {
 		noun = "value"
+	}
+	if atLeast {
+		noun += " or more"
 	}
 	f.setError(fmt.Errorf("expected %d %s for custom field criterion modifier %s, got %d", want, noun, modifier, len(cv)))
 	return false
@@ -341,25 +345,28 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("TRIM(%[1]s.value) != ''", joinAs))
 	case models.CriterionModifierBetween:
-		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 2) {
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 2, false) {
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("%s.value BETWEEN ? AND ?", joinAs), cv[0], cv[1])
 	case models.CriterionModifierNotBetween:
-		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 2) {
+		// two or more, using the first two, unlike between: upstream took any
+		// number here and only fewer than two failed, so saved filters with more
+		// keep working
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 2, true) {
 			return
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("(%s.value NOT BETWEEN ? AND ? OR %[1]s.value IS NULL)", joinAs), cv[0], cv[1])
 	case models.CriterionModifierLessThan:
-		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 1) {
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 1, false) {
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("%s.value < ?", joinAs), cv[0])
 	case models.CriterionModifierGreaterThan:
-		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 1) {
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 1, false) {
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)
