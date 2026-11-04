@@ -36,6 +36,12 @@ const (
 
 	// environment variable to set the cache size
 	cacheSizeEnv = "STASH_SQLITE_CACHE_SIZE"
+
+	// how long a connection waits for another's lock before giving up
+	busyTimeout = 5 * time.Second
+	// the same, while recording which version opened the database, which
+	// shouldn't hold up opening it
+	stampBusyTimeout = time.Second
 )
 
 var appSchemaVersion uint = 107
@@ -251,7 +257,7 @@ func (db *Database) Close() error {
 func (db *Database) open(disableForeignKeys bool, writable bool) (*sqlx.DB, error) {
 	// https://github.com/mattn/go-sqlite3
 	// 5s timeout is the default.
-	url := "file:" + db.dbPath + "?_journal=WAL&_sync=NORMAL&_busy_timeout=5000"
+	url := "file:" + db.dbPath + fmt.Sprintf("?_journal=WAL&_sync=NORMAL&_busy_timeout=%d", busyTimeout.Milliseconds())
 	if !disableForeignKeys {
 		url += "&_fk=true"
 	}
@@ -294,11 +300,38 @@ func (db *Database) initialise() error {
 // stampAppVersion records this build as the one that last opened the database,
 // once it's at the current schema version, so that a later migration can read
 // it. Before then the stamp is the older build's, which the migration needs.
-// Failing to write it only loses the record, so it doesn't stop Stash.
+// Failing to write it only loses the record, so it doesn't stop Stash, and it
+// waits at most database.AppVersionStampTimeout.
 func (db *Database) stampAppVersion() {
-	if err := database.StampAppVersion(context.Background(), db.writeDB, database.CurrentAppVersion(), time.Now()); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), database.AppVersionStampTimeout)
+	defer cancel()
+	if err := db.stampAppVersionOn(ctx); err != nil {
 		logger.Warnf("%v", err)
 	}
+}
+
+// stampAppVersionOn records the version on one write connection, which waits
+// only stampBusyTimeout for another connection's write lock. A write is only
+// needed the first time a build opens the database.
+func (db *Database) stampAppVersionOn(ctx context.Context) error {
+	conn, err := db.writeDB.Connx(ctx)
+	if err != nil {
+		return fmt.Errorf("recording the Stash version: %w", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("PRAGMA busy_timeout = %d", stampBusyTimeout.Milliseconds())); err != nil {
+		return fmt.Errorf("recording the Stash version: %w", err)
+	}
+	defer func() {
+		// the usual wait again for the connection's next user, or a new connection
+		if _, err := conn.ExecContext(context.Background(), fmt.Sprintf("PRAGMA busy_timeout = %d", busyTimeout.Milliseconds())); err != nil {
+			retireConnections()
+		}
+	}()
+
+	_, err = database.StampAppVersion(ctx, conn, database.CurrentAppVersion(), time.Now())
+	return err
 }
 
 func (db *Database) openReadDB() error {

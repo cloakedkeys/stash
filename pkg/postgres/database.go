@@ -292,11 +292,38 @@ func (db *Database) initialise() error {
 // stampAppVersion records this build as the one that last opened the database,
 // once it's at the current schema version, so that a later migration can read
 // it. Before then the stamp is the older build's, which the migration needs.
-// Failing to write it only loses the record, so it doesn't stop Stash.
+// Failing to write it only loses the record, so it doesn't stop Stash, and it
+// waits at most database.AppVersionStampTimeout.
 func (db *Database) stampAppVersion() {
-	if err := database.StampAppVersion(context.Background(), db.writeDB, database.CurrentAppVersion(), time.Now()); err != nil {
+	if err := db.stampAppVersionTx(); err != nil {
 		logger.Warnf("%v", err)
 	}
+}
+
+// stampAppVersionTx sets the time limit on the server too. Cancelling only the
+// client's context can leave the statement waiting on the server, where it
+// would still write once the other session lets go.
+func (db *Database) stampAppVersionTx() error {
+	ctx, cancel := context.WithTimeout(context.Background(), database.AppVersionStampTimeout+time.Second)
+	defer cancel()
+
+	tx, err := db.writeDB.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("recording the Stash version: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	limit := database.AppVersionStampTimeout.Milliseconds()
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SET LOCAL lock_timeout = %d; SET LOCAL statement_timeout = %d", limit, limit)); err != nil {
+		return fmt.Errorf("recording the Stash version: %w", err)
+	}
+	if _, err := database.StampAppVersion(ctx, tx, database.CurrentAppVersion(), time.Now()); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("recording the Stash version: %w", err)
+	}
+	return nil
 }
 
 func (db *Database) openReadDB() error {
