@@ -60,6 +60,26 @@ var wildcardCases = []wildcardCase{
 	// never found; "doesn't match regex" keeps it, as it does for an empty title
 	{"path excludes", `{"path":{"value":"part_1","modifier":"EXCLUDES"}}`,
 		`EXISTS (SELECT 1 FROM scenes_files sf JOIN files f ON f.id = sf.file_id JOIN folders fo ON fo.id = f.parent_folder_id WHERE sf.scene_id = scenes.id AND NOT ({fp} ILIKE '%part_1%' ESCAPE ''))`, []int{10}},
+
+	// custom fields: includes needed every value, each as typed; excludes
+	// found scenes without the field too. A scene has one row per field.
+	{"custom field includes", `{"custom_fields":[{"field":"source","value":["site_a"],"modifier":"INCLUDES"}]}`,
+		`EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value->>0 ILIKE '%site_a%' ESCAPE '')`, nil},
+	{"custom field includes every value", `{"custom_fields":[{"field":"source","value":["site_","%a"],"modifier":"INCLUDES"}]}`,
+		`EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value->>0 ILIKE '%site_%' ESCAPE '' AND c.value->>0 ILIKE '%%a%' ESCAPE '')`, nil},
+	{"custom field includes percent", `{"custom_fields":[{"field":"source","value":["100%"],"modifier":"INCLUDES"}]}`,
+		`EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value->>0 ILIKE '%100%%' ESCAPE '')`, nil},
+	{"custom field includes a number", `{"custom_fields":[{"field":"source","value":["%5"],"modifier":"INCLUDES"}]}`,
+		`EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value->>0 ILIKE '%%5%' ESCAPE '')`, nil},
+	// ILIKE ignored case for every letter
+	{"custom field letters outside A to Z", `{"custom_fields":[{"field":"source","value":["été_a"],"modifier":"INCLUDES"}]}`,
+		`EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value->>0 ILIKE '%été_a%' ESCAPE '')`, nil},
+	// excludes had no ESCAPE clause
+	{"custom field excludes", `{"custom_fields":[{"field":"source","value":["site_a"],"modifier":"EXCLUDES"}]}`,
+		`NOT EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value->>0 ILIKE '%site_a%')`, nil},
+	// so \ escaped the next character: a\b meant ab
+	{"custom field excludes backslash", `{"custom_fields":[{"field":"source","value":["a\\b"],"modifier":"EXCLUDES"}]}`,
+		`NOT EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value->>0 ILIKE '%a\b%')`, nil},
 }
 
 // filters left as they were
@@ -67,6 +87,10 @@ var untouchedFilters = []string{
 	`{"title":{"value":"part-1","modifier":"INCLUDES"}}`,
 	`{"resolution":{"value":"FULL_HD","modifier":"EQUALS"}}`,
 	`{"url":{"value":"site_x","modifier":"EXCLUDES"}}`,
+	// equals didn't use LIKE
+	`{"custom_fields":[{"field":"source","value":["site_a"],"modifier":"EQUALS"}]}`,
+	// \ was a plain character in custom field includes (ESCAPE '')
+	`{"custom_fields":[{"field":"source","value":["a\\b"],"modifier":"INCLUDES"}]}`,
 }
 
 func migration26SceneIDs(t *testing.T, ctx context.Context, db *Database, objectFilter map[string]interface{}) []int {
@@ -197,7 +221,11 @@ INSERT INTO files(id,basename,parent_folder_id,size,mod_time,created_at,updated_
  (12,'twelve.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (13,'thirteen.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (14,'fourteen.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
-INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,true),(2,2,true),(3,3,true),(4,4,true),(5,5,true),(6,6,true),(7,7,true),(8,8,true),(9,9,true),(11,11,true),(12,12,true),(13,13,true),(14,14,true);`)
+INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,true),(2,2,true),(3,3,true),(4,4,true),(5,5,true),(6,6,true),(7,7,true),(8,8,true),(9,9,true),(11,11,true),(12,12,true),(13,13,true),(14,14,true);
+INSERT INTO scene_custom_fields(scene_id,field,value,type) VALUES
+ (1,'source','"site_a"','string'),(2,'source','"site-a"','string'),(3,'source','"site a"','string'),(4,'source','"SITE-A"','string'),
+ (5,'source','"other"','string'),(6,'source','5','int64'),(7,'source','"100% real"','string'),(8,'source','"100 real"','string'),
+ (9,'source','"a\\b"','string'),(11,'source','"ab"','string'),(13,'source','"ÉTÉ-A"','string'),(14,'source','"été-a"','string');`)
 	require.NoError(t, err)
 
 	fp := "fo.path || '" + string(filepath.Separator) + "' || f.basename"
