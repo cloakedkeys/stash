@@ -425,6 +425,12 @@ func (db *Database) Analyze(ctx context.Context) error {
 	return analyze(ctx, db.writeDB)
 }
 
+// RefreshStatistics does nothing on PostgreSQL: its autovacuum already
+// re-analyses tables as their rows change.
+func (db *Database) RefreshStatistics(ctx context.Context) error {
+	return nil
+}
+
 // analyze runs an ANALYZE on the database to improve query performance.
 func analyze(ctx context.Context, db *sqlx.DB) error {
 	_, err := db.ExecContext(ctx, "ANALYZE")

@@ -31,6 +31,9 @@ type Database interface {
 	IsLocked(err error) bool
 	Open(ctx context.Context, dbPath string) error
 	Optimise(ctx context.Context) error
+	// RefreshStatistics quickly updates the query planner's statistics after
+	// bulk changes.
+	RefreshStatistics(ctx context.Context) error
 	QuerySQL(ctx context.Context, query string, args []interface{}) ([]string, [][]interface{}, error)
 	ReInitialise() error
 	Ready() error

@@ -1,9 +1,11 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/WithoutPants/sortorder/casefolded"
 	sqlite3 "github.com/mattn/go-sqlite3"
@@ -18,8 +20,47 @@ func init() {
 
 type CustomSQLiteDriver struct{}
 
+// statisticsGeneration goes up each time ANALYZE refreshes the statistics.
+//
+// A connection reads the statistics when it opens, and a reload doesn't fully
+// replace them: SQLite marks an index "low quality" when its statistics show a
+// single value, stops using it for lookups, and never clears that mark on the
+// same connection (bLowQual). So connections opened before a refresh are
+// retired instead of reused.
+//
+// This is a workaround for SQLite 3.45.0 to 3.49.x, which have that flag; the
+// bundled 3.45.1 is one of them. 3.50.0 removed it, so after an upgrade this
+// can go.
+var statisticsGeneration atomic.Uint64
+
+// retireConnections makes every open connection be replaced by a new one
+// the next time it's returned to, or taken from, the pool.
+func retireConnections() {
+	statisticsGeneration.Add(1)
+}
+
 type CustomSQLiteConn struct {
 	*sqlite3.SQLiteConn
+	generation uint64
+}
+
+func (c *CustomSQLiteConn) current() bool {
+	return c.generation == statisticsGeneration.Load()
+}
+
+// IsValid implements driver.Validator, checked when the connection goes back
+// to the pool.
+func (c *CustomSQLiteConn) IsValid() bool {
+	return c.current()
+}
+
+// ResetSession implements driver.SessionResetter, called before an idle
+// connection is reused.
+func (c *CustomSQLiteConn) ResetSession(ctx context.Context) error {
+	if !c.current() {
+		return driver.ErrBadConn
+	}
+	return nil
 }
 
 func (d *CustomSQLiteDriver) Open(dsn string) (driver.Conn, error) {
@@ -57,12 +98,15 @@ func (d *CustomSQLiteDriver) Open(dsn string) (driver.Conn, error) {
 		},
 	}
 
+	// read before opening, so a refresh during the open retires this one too
+	generation := statisticsGeneration.Load()
+
 	conn, err := sqlite3Driver.Open(dsn)
 	if err != nil {
 		return nil, err
 	}
 
-	return &CustomSQLiteConn{conn.(*sqlite3.SQLiteConn)}, nil
+	return &CustomSQLiteConn{SQLiteConn: conn.(*sqlite3.SQLiteConn), generation: generation}, nil
 }
 
 func (c *CustomSQLiteConn) Close() error {

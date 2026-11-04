@@ -465,12 +465,43 @@ func (db *Database) Vacuum(ctx context.Context) error {
 
 // Analyze runs an ANALYZE on the database to improve query performance.
 func (db *Database) Analyze(ctx context.Context) error {
+	// open connections would keep planning with the old statistics
+	defer retireConnections()
 	return analyze(ctx, db.writeDB)
 }
 
 // analyze runs an ANALYZE on the database to improve query performance.
 func analyze(ctx context.Context, db *sqlx.DB) error {
 	_, err := db.ExecContext(ctx, "ANALYZE")
+	return err
+}
+
+// refreshStatisticsLimit is how many rows of each index a statistics refresh
+// samples. It's the same limit the automatic optimize uses on close.
+const refreshStatisticsLimit = 1000
+
+// RefreshStatistics brings the query planner's statistics up to date with a
+// quick, sampled ANALYZE. The automatic optimize only re-analyses a table when
+// its row count changes a lot, so statistics go stale when existing rows change,
+// such as images being given studios. On millions of rows it takes milliseconds.
+func (db *Database) RefreshStatistics(ctx context.Context) error {
+	db.resetMu.RLock()
+	defer db.resetMu.RUnlock()
+
+	if err := db.ready(); err != nil {
+		return err
+	}
+
+	// analysis_limit belongs to the connection, so hold one. It's retired
+	// before going back to the pool, so a later full ANALYZE isn't sampled.
+	conn, err := db.writeDB.Connx(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	defer retireConnections()
+
+	_, err = conn.ExecContext(ctx, fmt.Sprintf("PRAGMA analysis_limit=%d; ANALYZE;", refreshStatisticsLimit))
 	return err
 }
 

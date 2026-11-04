@@ -135,6 +135,8 @@ func Initialize(cfg *config.Config, l *log.Logger) (*Manager, error) {
 
 	dlnaService.SetActivityUserResolver(mgr)
 
+	refreshStatisticsAfterJobs(ctx, mgr.JobManager, db)
+
 	mgr.UserService = &user.Service{
 		Store:  db.User(),
 		Config: cfg,
