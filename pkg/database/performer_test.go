@@ -1434,6 +1434,41 @@ func TestPerformerQueryCustomFields(t *testing.T) {
 			false,
 		},
 		{
+			// a field holding a number is matched as its text, as includes does
+			"regex on a number",
+			&models.PerformerFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "int",
+						Modifier: models.CriterionModifierMatchesRegex,
+						Value:    []any{fmt.Sprintf("^%d$", performerIdxWithGallery%5)},
+					},
+				},
+			},
+			[]int{performerIdxWithGallery},
+			[]int{performerIdxWithGallery + 1},
+			false,
+		},
+		{
+			"not matches regex on a number",
+			&models.PerformerFilterType{
+				Name: &models.StringCriterionInput{
+					Value:    getPerformerStringValue(performerIdxWithGallery, "Name"),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "int",
+						Modifier: models.CriterionModifierNotMatchesRegex,
+						Value:    []any{fmt.Sprintf("^%d$", performerIdxWithGallery%5)},
+					},
+				},
+			},
+			nil,
+			[]int{performerIdxWithGallery},
+			false,
+		},
+		{
 			"invalid regex",
 			&models.PerformerFilterType{
 				CustomFields: []models.CustomFieldCriterionInput{
