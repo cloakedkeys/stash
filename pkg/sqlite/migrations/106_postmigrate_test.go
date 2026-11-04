@@ -47,6 +47,9 @@ var wildcardCases = []wildcardCase{
 	// \ was a plain character: SQLite's LIKE has no escape character unless given one
 	{"backslash", `{"title":{"value":"back\\sl_sh","modifier":"EQUALS"}}`,
 		`scenes.title LIKE 'back\sl_sh'`, nil},
+	// LIKE ignored case only for A to Z: été_a didn't find ÉTÉ-A
+	{"letters outside A to Z", `{"title":{"value":"été_a","modifier":"INCLUDES"}}`,
+		`scenes.title LIKE '%été_a%'`, nil},
 	{"details across lines", `{"details":{"value":"line_one%end","modifier":"INCLUDES"}}`,
 		`scenes.details LIKE '%line_one%end%'`, nil},
 	{"sub-filter", `{"AND":{"title":{"value":"p%1","modifier":"EQUALS"}}}`,
@@ -103,13 +106,10 @@ func decodeObject(t *testing.T, s string) map[string]interface{} {
 	return m
 }
 
-// Saved filters and default filters that used _ or % as wildcards find the
-// same scenes after the upgrade as before it.
-func TestMigration106SavedFilterWildcards(t *testing.T) {
-	ctx := context.Background()
-	config.InitializeEmpty()
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "stash.sqlite")
+// databaseAt105 makes a new database at schema 105, ready for migration 106.
+func databaseAt105(t *testing.T, ctx context.Context) (*sqlx.DB, *sqlite.Database, *sqlite.Migrator) {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "stash.sqlite")
 	raw, err := sqlx.Open("sqlite3", dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, raw.Close()) })
@@ -127,6 +127,65 @@ func TestMigration106SavedFilterWildcards(t *testing.T) {
 	for version := uint(2); version <= 105; version++ {
 		require.NoErrorf(t, m.RunMigration(ctx, version), "schema %d", version)
 	}
+	return raw, db, m
+}
+
+// The config file's default filters are rewritten once per config file, not
+// each time a database reaches schema 106.
+func TestMigration106ConfigFileOnce(t *testing.T) {
+	ctx := context.Background()
+	config.InitializeEmpty()
+	cfg := config.GetInstance()
+	cfg.SetConfigFile(filepath.Join(t.TempDir(), "config.yml"))
+
+	saveDefault := func(value string) {
+		t.Helper()
+		cfg.SetUIConfiguration(map[string]interface{}{"defaultFilters": map[string]interface{}{"scenes": map[string]interface{}{
+			"mode":          "SCENES",
+			"object_filter": map[string]interface{}{"title": map[string]interface{}{"value": value, "modifier": "EQUALS"}},
+		}}})
+		require.NoError(t, cfg.Write())
+	}
+	defaultTitle := func() interface{} {
+		t.Helper()
+		scenes := cfg.GetUIConfiguration()["defaultFilters"].(map[string]interface{})["scenes"].(map[string]interface{})
+		return scenes["object_filter"].(map[string]interface{})["title"]
+	}
+	// the default filter is saved after the earlier migrations, since 58 renames its keys
+	migrateNewDatabase := func(value string) {
+		t.Helper()
+		_, _, m := databaseAt105(t, ctx)
+		saveDefault(value)
+		require.NoError(t, m.RunMigration(ctx, 106))
+	}
+	literal := map[string]interface{}{"value": "a_b", "modifier": "EQUALS"}
+
+	t.Run("a marked config file is left alone", func(t *testing.T) {
+		cfg.SetBool(config.LegacyWildcardsConverted, true)
+		migrateNewDatabase("a_b")
+		assert.Equal(t, literal, defaultTitle())
+	})
+
+	t.Run("an unmarked one is rewritten once", func(t *testing.T) {
+		cfg.SetInterface(config.LegacyWildcardsConverted, nil)
+		migrateNewDatabase("a_b")
+		assert.Equal(t, map[string]interface{}{"value": "(?is)^a.b$", "modifier": "MATCHES_REGEX"}, defaultTitle())
+		assert.True(t, cfg.GetLegacyWildcardsConverted())
+
+		// a default filter this build saves, then another database
+		migrateNewDatabase("a_b")
+		assert.Equal(t, literal, defaultTitle())
+	})
+}
+
+// Saved filters and default filters that used _ or % as wildcards find the
+// same scenes after the upgrade as before it.
+func TestMigration106SavedFilterWildcards(t *testing.T) {
+	ctx := context.Background()
+	config.InitializeEmpty()
+	dir := t.TempDir()
+	raw, db, m := databaseAt105(t, ctx)
+	var err error
 
 	_, err = raw.Exec(`
 INSERT INTO scenes(id,title,details,created_at,updated_at) VALUES
@@ -143,7 +202,9 @@ end',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (9,'apart_12','line one end',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (10,'p1',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (11,'back\slash',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
- (12,'backslash',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+ (12,'backslash',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+ (13,'ÉTÉ-A',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+ (14,'été-a',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 INSERT INTO folders(id,basename,path,mod_time,created_at,updated_at) VALUES (1,'videos','/videos',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 INSERT INTO files(id,basename,parent_folder_id,size,mod_time,created_at,updated_at) VALUES
  (1,'part_1.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
@@ -156,8 +217,10 @@ INSERT INTO files(id,basename,parent_folder_id,size,mod_time,created_at,updated_
  (8,'eight.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (9,'apart_12.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (11,'eleven.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
- (12,'twelve.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
-INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,1),(2,2,1),(3,3,1),(4,4,1),(5,5,1),(6,6,1),(7,7,1),(8,8,1),(9,9,1),(11,11,1),(12,12,1);`)
+ (12,'twelve.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+ (13,'thirteen.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+ (14,'fourteen.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,1),(2,2,1),(3,3,1),(4,4,1),(5,5,1),(6,6,1),(7,7,1),(8,8,1),(9,9,1),(11,11,1),(12,12,1),(13,13,1),(14,14,1);`)
 	require.NoError(t, err)
 
 	fp := "fo.path || '" + string(filepath.Separator) + "' || f.basename"

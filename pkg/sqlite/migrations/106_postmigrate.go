@@ -42,7 +42,7 @@ func post106(ctx context.Context, db *sqlx.DB) error {
 
 	// after the database is migrated, so a config file that can't be written
 	// never leaves it half done; this only logs failures
-	savedfilter.ConvertLegacyWildcardConfigDefaultFilters(ctx, config.GetInstance(), "105")
+	savedfilter.ConvertLegacyWildcardConfigDefaultFilters(ctx, savedfilter.LegacySQLite, config.GetInstance(), "105")
 	return nil
 }
 
@@ -71,7 +71,7 @@ func (m *schema106Migrator) migrateSavedFilters(tx *sqlx.Tx) error {
 			logger.Warnf("Left %s as it was: %s", desc, note)
 		}
 
-		newFilter, changed, notes, err := savedfilter.ConvertLegacyWildcardsJSON(models.FilterMode(r.Mode), r.ObjectFilter)
+		newFilter, changed, notes, err := savedfilter.ConvertLegacyWildcardsJSON(savedfilter.LegacySQLite, models.FilterMode(r.Mode), r.ObjectFilter)
 		if err != nil {
 			logger.Warnf("Left %s as it was: can't read its filter: %v", desc, err)
 			continue
@@ -106,7 +106,7 @@ func (m *schema106Migrator) migrateDefaultFilters(tx *sqlx.Tx) error {
 	for _, r := range rows {
 		desc := fmt.Sprintf("user %d's default filters", r.UserID)
 
-		newConfig, changed, notes, err := savedfilter.ConvertLegacyWildcardDefaultFilters(r.Config)
+		newConfig, changed, notes, err := savedfilter.ConvertLegacyWildcardDefaultFilters(savedfilter.LegacySQLite, r.Config)
 		if err != nil {
 			logger.Warnf("Left %s as they were: can't read the UI configuration: %v", desc, err)
 			continue

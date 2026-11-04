@@ -3,6 +3,7 @@ package savedfilter
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stashapp/stash/pkg/models"
@@ -49,25 +50,76 @@ func TestConvertLegacyWildcardCriterion(t *testing.T) {
 		{"is null left alone", models.CriterionModifierIsNull, "_", models.CriterionModifierIsNull, "_", false},
 	}
 
+	// these have only ASCII, which both databases read the same way
+	for _, dialect := range []LegacyDialect{LegacySQLite, LegacyPostgres} {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				gotModifier, gotValue, ok := ConvertLegacyWildcardCriterion(dialect, tt.modifier, tt.value)
+				assert.Equal(t, tt.wantOK, ok)
+				assert.Equal(t, tt.wantModifier, gotModifier)
+				assert.Equal(t, tt.wantValue, gotValue)
+				if ok {
+					_, err := regexp.Compile(gotValue)
+					assert.NoError(t, err)
+				}
+			})
+		}
+	}
+}
+
+// SQLite's LIKE ignored case only for A to Z, PostgreSQL's ILIKE for every
+// letter.
+func TestConvertLegacyWildcardCriterionLetterCase(t *testing.T) {
+	tests := []struct {
+		name      string
+		dialect   LegacyDialect
+		modifier  models.CriterionModifier
+		value     string
+		wantValue string
+	}{
+		{"sqlite includes", LegacySQLite, includes, "été_a", `(?is)((?-i:é)t(?-i:é).a)`},
+		{"sqlite equals", LegacySQLite, equals, "Straße_", `(?is)^Stra(?-i:ß)e.$`},
+		{"sqlite letters without case", LegacySQLite, equals, "日本_", `(?is)^日本.$`},
+		{"postgres includes", LegacyPostgres, includes, "été_a", `(?is)(été.a)`},
+		{"postgres equals", LegacyPostgres, equals, "Straße_", `(?is)^Straße.$`},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotModifier, gotValue, ok := ConvertLegacyWildcardCriterion(tt.modifier, tt.value)
-			assert.Equal(t, tt.wantOK, ok)
-			assert.Equal(t, tt.wantModifier, gotModifier)
-			assert.Equal(t, tt.wantValue, gotValue)
-			if ok {
-				_, err := regexp.Compile(gotValue)
-				assert.NoError(t, err)
-			}
+			_, got, ok := ConvertLegacyWildcardCriterion(tt.dialect, tt.modifier, tt.value)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantValue, got)
 		})
 	}
+
+	_, sqlite, _ := ConvertLegacyWildcardCriterion(LegacySQLite, includes, "été_a")
+	assert.True(t, regexp.MustCompile(sqlite).MatchString("été-A"))
+	assert.False(t, regexp.MustCompile(sqlite).MatchString("ÉTÉ-A"))
+	_, postgres, _ := ConvertLegacyWildcardCriterion(LegacyPostgres, includes, "été_a")
+	assert.True(t, regexp.MustCompile(postgres).MatchString("ÉTÉ-A"))
 }
 
 // likeMatch is SQLite's LIKE without an escape character: % is any run of
 // characters, _ is one character, and ASCII letters match either case.
 func likeMatch(pattern, s string) bool {
-	p := []rune(asciiOnlyLower(pattern))
-	r := []rune(asciiOnlyLower(s))
+	return likeMatchFolded(asciiOnlyLower(pattern), asciiOnlyLower(s))
+}
+
+// ilikeMatch is PostgreSQL's ILIKE with no escape character: every letter
+// matches either case.
+func ilikeMatch(pattern, s string) bool {
+	return likeMatchFolded(strings.ToLower(pattern), strings.ToLower(s))
+}
+
+func dialectLikeMatch(dialect LegacyDialect, pattern, s string) bool {
+	if dialect == LegacyPostgres {
+		return ilikeMatch(pattern, s)
+	}
+	return likeMatch(pattern, s)
+}
+
+func likeMatchFolded(pattern, s string) bool {
+	p := []rune(pattern)
+	r := []rune(s)
 	var match func(i, j int) bool
 	match = func(i, j int) bool {
 		if i == len(p) {
@@ -101,12 +153,12 @@ func asciiOnlyLower(s string) string {
 }
 
 // oldMatch is what a criterion with a LIKE-based modifier matched before.
-func oldMatch(modifier models.CriterionModifier, value, s string) bool {
+func oldMatch(dialect LegacyDialect, modifier models.CriterionModifier, value, s string) bool {
 	switch modifier {
 	case includes, excludes:
 		any := false
 		for _, t := range legacySearchTerms(value) {
-			if likeMatch("%"+t+"%", s) {
+			if dialectLikeMatch(dialect, "%"+t+"%", s) {
 				any = true
 			}
 		}
@@ -115,9 +167,9 @@ func oldMatch(modifier models.CriterionModifier, value, s string) bool {
 		}
 		return any
 	case equals:
-		return likeMatch(value, s)
+		return dialectLikeMatch(dialect, value, s)
 	case notEquals:
-		return !likeMatch(value, s)
+		return !dialectLikeMatch(dialect, value, s)
 	}
 	panic("unexpected modifier")
 }
@@ -135,30 +187,26 @@ func TestConvertLegacyWildcardCriterionMatchesTheSame(t *testing.T) {
 	values := []string{
 		"part_1", "PART_1", "part%", "%1", "_art_1", "p%1", "foo part_1", `"part 1%"`, `"100% real"`,
 		"a.b_", "(x)_", `C:\v_`, "line_one%end", "%", "_", "__",
+		"été_a", "ÉTÉ%", "Straße_", "日本_",
 	}
 	texts := []string{
 		"", "part_1", "part-1", "part 1", "parts", "Part-1", "PART 1", "apart_12", "part1", "part",
 		"100% real", "100 percent real", "100real", "a.b!", "axb!", "(x)y", "xx(x)y", `C:\v1`, `C:v1`,
 		"line-one\nmiddle\nend", "line one end", "x", "xy", "foo",
+		"été_a", "été-A", "ÉTÉ-A", "Été-a", "ÉTÉ", "étéx", "Straße!", "STRASSE!", "straẞe!", "日本語",
 	}
-	for _, modifier := range []models.CriterionModifier{includes, excludes, equals, notEquals} {
-		for _, value := range values {
-			newModifier, newValue, ok := ConvertLegacyWildcardCriterion(modifier, value)
-			require.True(t, ok, value)
-			for _, s := range texts {
-				assert.Equalf(t, oldMatch(modifier, value, s), newMatch(newModifier, newValue, s), "%s %q on %q (regex %q)", modifier, value, s, newValue)
+	for _, dialect := range []LegacyDialect{LegacySQLite, LegacyPostgres} {
+		for _, modifier := range []models.CriterionModifier{includes, excludes, equals, notEquals} {
+			for _, value := range values {
+				newModifier, newValue, ok := ConvertLegacyWildcardCriterion(dialect, modifier, value)
+				require.True(t, ok, value)
+				for _, s := range texts {
+					assert.Equalf(t, oldMatch(dialect, modifier, value, s), newMatch(newModifier, newValue, s),
+						"dialect %d %s %q on %q (regex %q)", dialect, modifier, value, s, newValue)
+				}
 			}
 		}
 	}
-}
-
-// LIKE ignored case only for ASCII letters on SQLite; the regex ignores it for
-// every letter, as PostgreSQL's ILIKE did.
-func TestConvertLegacyWildcardCriterionNonASCIICase(t *testing.T) {
-	_, value, ok := ConvertLegacyWildcardCriterion(equals, "É_")
-	require.True(t, ok)
-	assert.False(t, likeMatch("É_", "é-"))
-	assert.True(t, regexp.MustCompile(value).MatchString("é-"))
 }
 
 func decode(t *testing.T, s string) map[string]interface{} {
@@ -319,7 +367,7 @@ func TestConvertLegacyWildcards(t *testing.T) {
 func TestConvertLegacyWildcardsJSON(t *testing.T) {
 	t.Run("keeps other values as they were", func(t *testing.T) {
 		in := `{"title":{"value":"a_<b>&","modifier":"EQUALS"},"rating100":{"value":12345678901234567890,"modifier":"EQUALS"},"tags":{"value":{"items":[{"id":"1","label":"x"}],"depth":0},"modifier":"INCLUDES"}}`
-		out, changed, notes, err := ConvertLegacyWildcardsJSON(models.FilterModeScenes, in)
+		out, changed, notes, err := ConvertLegacyWildcardsJSON(LegacySQLite, models.FilterModeScenes, in)
 		require.NoError(t, err)
 		assert.True(t, changed)
 		assert.Empty(t, notes)
@@ -327,21 +375,21 @@ func TestConvertLegacyWildcardsJSON(t *testing.T) {
 	})
 	t.Run("unchanged returns the input", func(t *testing.T) {
 		in := `{ "title": {"value":"x","modifier":"EQUALS"} }`
-		out, changed, _, err := ConvertLegacyWildcardsJSON(models.FilterModeScenes, in)
+		out, changed, _, err := ConvertLegacyWildcardsJSON(LegacySQLite, models.FilterModeScenes, in)
 		require.NoError(t, err)
 		assert.False(t, changed)
 		assert.Equal(t, in, out)
 	})
 	t.Run("empty and null", func(t *testing.T) {
 		for _, in := range []string{"", "null"} {
-			out, changed, _, err := ConvertLegacyWildcardsJSON(models.FilterModeScenes, in)
+			out, changed, _, err := ConvertLegacyWildcardsJSON(LegacySQLite, models.FilterModeScenes, in)
 			require.NoError(t, err)
 			assert.False(t, changed)
 			assert.Equal(t, in, out)
 		}
 	})
 	t.Run("bad json", func(t *testing.T) {
-		_, changed, _, err := ConvertLegacyWildcardsJSON(models.FilterModeScenes, "{")
+		_, changed, _, err := ConvertLegacyWildcardsJSON(LegacySQLite, models.FilterModeScenes, "{")
 		assert.Error(t, err)
 		assert.False(t, changed)
 	})
@@ -360,7 +408,7 @@ func TestConvertLegacyWildcardDefaultFilters(t *testing.T) {
 		`"scenes":{"mode":"SCENES","find_filter":{"q":"x_y","per_page":40},"object_filter":{"title":{"value":"part_1","modifier":"INCLUDES"},"url":{"value":"a_","modifier":"EXCLUDES"}},"ui_options":{"display_mode":0}},` +
 		`"scene_markers":{"object_filter":{"scene_filter":{"title":{"value":"m%","modifier":"EQUALS"}}}},` +
 		`"tags":{"mode":"TAGS","object_filter":{"name":{"value":"plain","modifier":"EQUALS"}}}}}`
-	out, changed, notes, err := ConvertLegacyWildcardDefaultFilters(in)
+	out, changed, notes, err := ConvertLegacyWildcardDefaultFilters(LegacySQLite, in)
 	require.NoError(t, err)
 	assert.True(t, changed)
 	assert.Equal(t, []string{
@@ -387,7 +435,7 @@ func TestConvertLegacyWildcardDefaultFilters(t *testing.T) {
 
 	t.Run("nothing to change", func(t *testing.T) {
 		for _, in := range []string{"", `{"theme":"dark"}`, `{"defaultFilters":{"scenes":{"object_filter":{"title":{"value":"x","modifier":"EQUALS"}}}}}`} {
-			out, changed, notes, err := ConvertLegacyWildcardDefaultFilters(in)
+			out, changed, notes, err := ConvertLegacyWildcardDefaultFilters(LegacySQLite, in)
 			require.NoError(t, err)
 			assert.False(t, changed)
 			assert.Empty(t, notes)

@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/stashapp/stash/pkg/models"
 )
@@ -22,8 +24,19 @@ import (
 //   - includes split the value on whitespace and matched any of the words;
 //     a value wrapped in double quotes was one phrase. Excludes matched none.
 //   - equals and not equals compared the whole value.
-//   - matching ignored case. \ was a plain character (PostgreSQL used
-//     ESCAPE '', SQLite has no escape character by default).
+//   - matching ignored case: on SQLite only for A to Z, on PostgreSQL (ILIKE)
+//     for every letter.
+//   - \ was a plain character (PostgreSQL used ESCAPE '', SQLite has no escape
+//     character by default).
+
+// LegacyDialect is the database a saved filter was used with before the
+// change, since their LIKE differed.
+type LegacyDialect int
+
+const (
+	LegacySQLite LegacyDialect = iota
+	LegacyPostgres
+)
 
 // HasLegacyWildcard reports whether s has a character that LIKE used to treat
 // as a wildcard.
@@ -31,24 +44,39 @@ func HasLegacyWildcard(s string) bool {
 	return strings.ContainsAny(s, "_%")
 }
 
+// literalRegex is the regular expression for the character r as LIKE matched
+// it, inside a pattern that ignores case. SQLite's LIKE ignored case only for
+// A to Z, so on SQLite a letter outside them that has another case matches
+// only itself.
+//
+// (?i) also matches k and s to the Kelvin sign and the long s, which SQLite
+// didn't; those are left, rather than making every k and s harder to read.
+func literalRegex(dialect LegacyDialect, r rune) string {
+	if dialect == LegacySQLite && r >= utf8.RuneSelf && unicode.SimpleFold(r) != r {
+		return "(?-i:" + string(r) + ")"
+	}
+	return regexp.QuoteMeta(string(r))
+}
+
 // likeToRegex turns a LIKE pattern into the regular expression for it: % is any
 // run of characters, _ is one character, and everything else is itself.
-func likeToRegex(s string) string {
+func likeToRegex(dialect LegacyDialect, s string) string {
 	var b strings.Builder
-	start := 0
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '%':
-			b.WriteString(regexp.QuoteMeta(s[start:i]))
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == '%':
 			b.WriteString(".*")
-			start = i + 1
-		case '_':
-			b.WriteString(regexp.QuoteMeta(s[start:i]))
+		case r == '_':
 			b.WriteString(".")
-			start = i + 1
+		case r == utf8.RuneError && size == 1:
+			// not UTF-8: keep the byte
+			b.WriteString(s[i : i+1])
+		default:
+			b.WriteString(literalRegex(dialect, r))
 		}
+		i += size
 	}
-	b.WriteString(regexp.QuoteMeta(s[start:]))
 	return b.String()
 }
 
@@ -71,7 +99,7 @@ func legacySearchTerms(value string) []string {
 // no _ or %, or its modifier didn't use LIKE.
 //
 // (?i) ignores case and (?s) lets . match a line break, as LIKE's _ and % did.
-func ConvertLegacyWildcardCriterion(modifier models.CriterionModifier, value string) (newModifier models.CriterionModifier, newValue string, ok bool) {
+func ConvertLegacyWildcardCriterion(dialect LegacyDialect, modifier models.CriterionModifier, value string) (newModifier models.CriterionModifier, newValue string, ok bool) {
 	if !HasLegacyWildcard(value) {
 		return modifier, value, false
 	}
@@ -80,11 +108,11 @@ func ConvertLegacyWildcardCriterion(modifier models.CriterionModifier, value str
 	case models.CriterionModifierIncludes, models.CriterionModifierExcludes:
 		terms := legacySearchTerms(value)
 		for i, t := range terms {
-			terms[i] = likeToRegex(t)
+			terms[i] = likeToRegex(dialect, t)
 		}
 		newValue = "(?is)(" + strings.Join(terms, "|") + ")"
 	case models.CriterionModifierEquals, models.CriterionModifierNotEquals:
-		newValue = "(?is)^" + likeToRegex(value) + "$"
+		newValue = "(?is)^" + likeToRegex(dialect, value) + "$"
 	default:
 		return modifier, value, false
 	}
@@ -205,7 +233,7 @@ func sortedKeys(m map[string]interface{}) []string {
 // in place, along with those of its sub-filters. It returns whether anything
 // changed, and appends a note for each criterion left as it was that now finds
 // something different.
-func convertObjectFilter(t reflect.Type, filter map[string]interface{}, path string, notes *[]string) bool {
+func convertObjectFilter(dialect LegacyDialect, t reflect.Type, filter map[string]interface{}, path string, notes *[]string) bool {
 	changed := false
 	for _, name := range sortedKeys(filter) {
 		sub, isMap := filter[name].(map[string]interface{})
@@ -218,7 +246,7 @@ func convertObjectFilter(t reflect.Type, filter map[string]interface{}, path str
 		}
 
 		if f.Type == stringCriterionType {
-			if convertCriterion(t, f, sub, path+name, notes) {
+			if convertCriterion(dialect, t, f, sub, path+name, notes) {
 				changed = true
 			}
 			continue
@@ -229,7 +257,7 @@ func convertObjectFilter(t reflect.Type, filter map[string]interface{}, path str
 			ft = ft.Elem()
 		}
 		if ft.Kind() == reflect.Struct {
-			if convertObjectFilter(ft, sub, path+name+".", notes) {
+			if convertObjectFilter(dialect, ft, sub, path+name+".", notes) {
 				changed = true
 			}
 		}
@@ -237,7 +265,7 @@ func convertObjectFilter(t reflect.Type, filter map[string]interface{}, path str
 	return changed
 }
 
-func convertCriterion(owner reflect.Type, f reflect.StructField, criterion map[string]interface{}, path string, notes *[]string) bool {
+func convertCriterion(dialect LegacyDialect, owner reflect.Type, f reflect.StructField, criterion map[string]interface{}, path string, notes *[]string) bool {
 	value, ok := criterion["value"].(string)
 	if !ok || !HasLegacyWildcard(value) {
 		return false
@@ -258,7 +286,7 @@ func convertCriterion(owner reflect.Type, f reflect.StructField, criterion map[s
 		return false
 	}
 
-	newModifier, newValue, ok := ConvertLegacyWildcardCriterion(modifier, value)
+	newModifier, newValue, ok := ConvertLegacyWildcardCriterion(dialect, modifier, value)
 	if !ok {
 		return false
 	}
@@ -268,15 +296,21 @@ func convertCriterion(owner reflect.Type, f reflect.StructField, criterion map[s
 }
 
 // ConvertLegacyWildcards rewrites, in place, the text criteria of a saved
-// object filter for the given mode that used _ or % as wildcards. It returns
-// whether anything changed, and a note for each criterion it left as it was
-// that now finds something different.
+// object filter for the given mode that used _ or % as wildcards, as they
+// worked on SQLite. It returns whether anything changed, and a note for each
+// criterion it left as it was that now finds something different.
 func ConvertLegacyWildcards(mode models.FilterMode, objectFilter map[string]interface{}) (changed bool, notes []string) {
+	return ConvertLegacyWildcardsFor(LegacySQLite, mode, objectFilter)
+}
+
+// ConvertLegacyWildcardsFor is ConvertLegacyWildcards for a filter used with
+// the given database.
+func ConvertLegacyWildcardsFor(dialect LegacyDialect, mode models.FilterMode, objectFilter map[string]interface{}) (changed bool, notes []string) {
 	t, ok := filterTypes[mode]
 	if !ok || objectFilter == nil {
 		return false, nil
 	}
-	changed = convertObjectFilter(t, objectFilter, "", &notes)
+	changed = convertObjectFilter(dialect, t, objectFilter, "", &notes)
 	return changed, notes
 }
 
@@ -303,7 +337,7 @@ func encodeJSON(v interface{}) (string, error) {
 
 // ConvertLegacyWildcardsJSON is ConvertLegacyWildcards for an object filter
 // stored as JSON. It returns the new JSON when something changed.
-func ConvertLegacyWildcardsJSON(mode models.FilterMode, objectFilter string) (newObjectFilter string, changed bool, notes []string, err error) {
+func ConvertLegacyWildcardsJSON(dialect LegacyDialect, mode models.FilterMode, objectFilter string) (newObjectFilter string, changed bool, notes []string, err error) {
 	if strings.TrimSpace(objectFilter) == "" {
 		return objectFilter, false, nil, nil
 	}
@@ -311,7 +345,7 @@ func ConvertLegacyWildcardsJSON(mode models.FilterMode, objectFilter string) (ne
 	if err != nil || m == nil {
 		return objectFilter, false, nil, err
 	}
-	changed, notes = ConvertLegacyWildcards(mode, m)
+	changed, notes = ConvertLegacyWildcardsFor(dialect, mode, m)
 	if !changed {
 		return objectFilter, false, notes, nil
 	}
@@ -348,7 +382,7 @@ func searchNote(findFilter map[string]interface{}) string {
 // UI configuration, stored as JSON, as ConvertLegacyWildcards does. It returns
 // the new JSON when something changed. Each note starts with the default
 // filter it's about.
-func ConvertLegacyWildcardDefaultFilters(uiConfig string) (newUIConfig string, changed bool, notes []string, err error) {
+func ConvertLegacyWildcardDefaultFilters(dialect LegacyDialect, uiConfig string) (newUIConfig string, changed bool, notes []string, err error) {
 	if strings.TrimSpace(uiConfig) == "" {
 		return uiConfig, false, nil, nil
 	}
@@ -356,7 +390,7 @@ func ConvertLegacyWildcardDefaultFilters(uiConfig string) (newUIConfig string, c
 	if err != nil || m == nil {
 		return uiConfig, false, nil, err
 	}
-	changed, notes = ConvertLegacyWildcardDefaultFiltersMap(m)
+	changed, notes = ConvertLegacyWildcardDefaultFiltersMap(dialect, m)
 	if !changed {
 		return uiConfig, false, notes, nil
 	}
@@ -370,7 +404,7 @@ func ConvertLegacyWildcardDefaultFilters(uiConfig string) (newUIConfig string, c
 // ConvertLegacyWildcardDefaultFiltersMap rewrites, in place, the default
 // filters in a UI configuration, as ConvertLegacyWildcards does. Each note
 // starts with the default filter it's about.
-func ConvertLegacyWildcardDefaultFiltersMap(uiConfig map[string]interface{}) (changed bool, notes []string) {
+func ConvertLegacyWildcardDefaultFiltersMap(dialect LegacyDialect, uiConfig map[string]interface{}) (changed bool, notes []string) {
 	defaults, _ := uiConfig["defaultFilters"].(map[string]interface{})
 	for _, view := range sortedKeys(defaults) {
 		entry, ok := defaults[view].(map[string]interface{})
@@ -383,7 +417,7 @@ func ConvertLegacyWildcardDefaultFiltersMap(uiConfig map[string]interface{}) (ch
 		}
 		prefix := "default filter for " + view + ": "
 		if objectFilter, ok := entry["object_filter"].(map[string]interface{}); ok {
-			c, n := ConvertLegacyWildcards(models.FilterMode(mode), objectFilter)
+			c, n := ConvertLegacyWildcardsFor(dialect, models.FilterMode(mode), objectFilter)
 			changed = changed || c
 			for _, note := range n {
 				notes = append(notes, prefix+note)

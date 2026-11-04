@@ -45,6 +45,9 @@ var wildcardCases = []wildcardCase{
 	// \ was a plain character: ESCAPE ''
 	{"backslash", `{"title":{"value":"back\\sl_sh","modifier":"EQUALS"}}`,
 		`scenes.title ILIKE 'back\sl_sh' ESCAPE ''`, nil},
+	// ILIKE ignored case for every letter: été_a found ÉTÉ-A
+	{"letters outside A to Z", `{"title":{"value":"été_a","modifier":"INCLUDES"}}`,
+		`scenes.title ILIKE '%été_a%' ESCAPE ''`, nil},
 	{"details across lines", `{"details":{"value":"line_one%end","modifier":"INCLUDES"}}`,
 		`scenes.details ILIKE '%line_one%end%' ESCAPE ''`, nil},
 	{"sub-filter", `{"AND":{"title":{"value":"p%1","modifier":"EQUALS"}}}`,
@@ -90,6 +93,58 @@ func migration26SceneIDs(t *testing.T, ctx context.Context, db *Database, object
 	return ids
 }
 
+// The config file's default filters are rewritten once per config file, not
+// each time a new database is created: a new database runs migration 26 too,
+// and so does the PostgreSQL database a SQLite one is copied to.
+func TestMigration26ConfigFileOnce(t *testing.T) {
+	ctx := context.Background()
+	config.InitializeEmpty()
+	cfg := config.GetInstance()
+	cfg.SetConfigFile(filepath.Join(t.TempDir(), "config.yml"))
+
+	saveDefault := func(value string) {
+		t.Helper()
+		cfg.SetUIConfiguration(map[string]interface{}{"defaultFilters": map[string]interface{}{"scenes": map[string]interface{}{
+			"mode":          "SCENES",
+			"object_filter": map[string]interface{}{"title": map[string]interface{}{"value": value, "modifier": "EQUALS"}},
+		}}})
+		require.NoError(t, cfg.Write())
+	}
+	defaultTitle := func() interface{} {
+		t.Helper()
+		scenes := cfg.GetUIConfiguration()["defaultFilters"].(map[string]interface{})["scenes"].(map[string]interface{})
+		return scenes["object_filter"].(map[string]interface{})["title"]
+	}
+	newDatabase := func() {
+		t.Helper()
+		db := NewDatabase()
+		require.NoError(t, db.Open(ctx, migrationFixture(t)))
+		require.Equal(t, appSchemaVersion, db.schemaVersion)
+		require.NoError(t, db.Close())
+	}
+	literal := map[string]interface{}{"value": "a_b", "modifier": "EQUALS"}
+
+	t.Run("a marked config file is left alone", func(t *testing.T) {
+		cfg.SetBool(config.LegacyWildcardsConverted, true)
+		saveDefault("a_b")
+		newDatabase()
+		assert.Equal(t, literal, defaultTitle())
+	})
+
+	t.Run("an unmarked one is rewritten once", func(t *testing.T) {
+		cfg.SetInterface(config.LegacyWildcardsConverted, nil)
+		saveDefault("a_b")
+		newDatabase()
+		assert.Equal(t, map[string]interface{}{"value": "(?is)^a.b$", "modifier": "MATCHES_REGEX"}, defaultTitle())
+		assert.True(t, cfg.GetLegacyWildcardsConverted())
+
+		// a default filter this build saves, then another new database
+		saveDefault("a_b")
+		newDatabase()
+		assert.Equal(t, literal, defaultTitle())
+	})
+}
+
 // Saved filters and default filters that used _ or % as wildcards find the
 // same scenes after the upgrade as before it.
 func TestMigration26SavedFilterWildcards(t *testing.T) {
@@ -120,7 +175,9 @@ end',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (9,'apart_12','line one end',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (10,'p1',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (11,'back\slash',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
- (12,'backslash',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+ (12,'backslash',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+ (13,'ÉTÉ-A',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+ (14,'été-a',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 INSERT INTO folders(id,basename,path,mod_time,created_at,updated_at) VALUES (1,'videos','/videos',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 INSERT INTO files(id,basename,parent_folder_id,size,mod_time,created_at,updated_at) VALUES
  (1,'part_1.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
@@ -133,8 +190,10 @@ INSERT INTO files(id,basename,parent_folder_id,size,mod_time,created_at,updated_
  (8,'eight.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (9,'apart_12.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (11,'eleven.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
- (12,'twelve.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
-INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,true),(2,2,true),(3,3,true),(4,4,true),(5,5,true),(6,6,true),(7,7,true),(8,8,true),(9,9,true),(11,11,true),(12,12,true);`)
+ (12,'twelve.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+ (13,'thirteen.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+ (14,'fourteen.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,true),(2,2,true),(3,3,true),(4,4,true),(5,5,true),(6,6,true),(7,7,true),(8,8,true),(9,9,true),(11,11,true),(12,12,true),(13,13,true),(14,14,true);`)
 	require.NoError(t, err)
 
 	fp := "fo.path || '" + string(filepath.Separator) + "' || f.basename"

@@ -335,6 +335,12 @@ const (
 	ShowOneTimeMovedNotification        = "show_one_time_moved_notification"
 	ShowOneTimeMovedNotificationDefault = false
 
+	// LegacyWildcardsConverted is set once the default filters in the config
+	// file read _ and % as themselves: after the upgrade rewrote the old ones,
+	// or from the start in a new config file. It's top level, because the UI
+	// replaces the whole ui map when it saves.
+	LegacyWildcardsConverted = "legacy_wildcards_converted"
+
 	// File upload options
 	MaxUploadSize = "max_upload_size"
 
@@ -553,6 +559,12 @@ func (i *Config) GetNotificationsEnabled() bool {
 // It is true when an existing system is started after upgrading, and set to false forever after it is shown.
 func (i *Config) GetShowOneTimeMovedNotification() bool {
 	return i.getBool(ShowOneTimeMovedNotification)
+}
+
+// GetLegacyWildcardsConverted reports whether the default filters in the
+// config file already read _ and % as themselves. See LegacyWildcardsConverted.
+func (i *Config) GetLegacyWildcardsConverted() bool {
+	return i.getBool(LegacyWildcardsConverted)
 }
 
 // these methods are intended to ensure type safety (ie no primitive pointers)
@@ -2184,6 +2196,9 @@ func (i *Config) setNewSystemDefaults() {
 	defer i.Unlock()
 
 	// add new system defaults here
+
+	// this build writes any default filters, so there's nothing to rewrite
+	i.set(LegacyWildcardsConverted, true)
 }
 
 // setExistingSystemDefaults sets config options that are new and unset in an existing install,
