@@ -480,6 +480,10 @@ func (r *mutationResolver) BulkSceneUpdate(ctx context.Context, input BulkSceneU
 		qb := r.repository.Scene
 
 		for _, sceneID := range sceneIDs {
+			if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+				return err
+			}
+
 			scene, err := qb.UpdatePartial(ctx, sceneID, updatedScene)
 			if err != nil {
 				return err
@@ -1146,6 +1150,10 @@ func (r *mutationResolver) SceneSaveActivity(ctx context.Context, id string, res
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
 
+		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+			return err
+		}
+
 		ret, err = qb.SaveActivity(ctx, sceneID, resumeTime, playDuration)
 		return err
 	}); err != nil {
@@ -1163,6 +1171,10 @@ func (r *mutationResolver) SceneResetActivity(ctx context.Context, id string, re
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
+
+		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+			return err
+		}
 
 		ret, err = qb.ResetActivity(ctx, sceneID, utils.IsTrue(resetResume), utils.IsTrue(resetDuration))
 		return err
@@ -1184,6 +1196,10 @@ func (r *mutationResolver) SceneIncrementPlayCount(ctx context.Context, id strin
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
+
+		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+			return err
+		}
 
 		updatedTimes, err = qb.AddViews(ctx, sceneID, nil)
 		return err
@@ -1211,6 +1227,10 @@ func (r *mutationResolver) SceneAddPlay(ctx context.Context, id string, t []*tim
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
+
+		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+			return err
+		}
 
 		updatedTimes, err = qb.AddViews(ctx, sceneID, times)
 		return err
@@ -1241,6 +1261,10 @@ func (r *mutationResolver) SceneDeletePlay(ctx context.Context, id string, t []*
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
 
+		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+			return err
+		}
+
 		updatedTimes, err = qb.DeleteViews(ctx, sceneID, times)
 		return err
 	}); err != nil {
@@ -1261,6 +1285,10 @@ func (r *mutationResolver) SceneResetPlayCount(ctx context.Context, id string) (
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
+
+		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+			return err
+		}
 
 		ret, err = qb.DeleteAllViews(ctx, sceneID)
 		return err
@@ -1283,6 +1311,10 @@ func (r *mutationResolver) SceneIncrementO(ctx context.Context, id string) (ret 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
 
+		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+			return err
+		}
+
 		updatedTimes, err = qb.AddO(ctx, sceneID, nil)
 		return err
 	}); err != nil {
@@ -1304,6 +1336,10 @@ func (r *mutationResolver) SceneDecrementO(ctx context.Context, id string) (ret 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
 
+		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+			return err
+		}
+
 		updatedTimes, err = qb.DeleteO(ctx, sceneID, nil)
 		return err
 	}); err != nil {
@@ -1321,6 +1357,10 @@ func (r *mutationResolver) SceneResetO(ctx context.Context, id string) (ret int,
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
+
+		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+			return err
+		}
 
 		ret, err = qb.ResetO(ctx, sceneID)
 		return err
@@ -1348,6 +1388,10 @@ func (r *mutationResolver) SceneAddO(ctx context.Context, id string, t []*time.T
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
+
+		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+			return err
+		}
 
 		updatedTimes, err = qb.AddO(ctx, sceneID, times)
 		return err
@@ -1377,6 +1421,10 @@ func (r *mutationResolver) SceneDeleteO(ctx context.Context, id string, t []*tim
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
+
+		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
+			return err
+		}
 
 		updatedTimes, err = qb.DeleteO(ctx, sceneID, times)
 		return err

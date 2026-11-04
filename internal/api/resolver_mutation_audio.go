@@ -406,6 +406,10 @@ func (r *mutationResolver) BulkAudioUpdate(ctx context.Context, input BulkAudioU
 		qb := r.repository.Audio
 
 		for _, audioID := range audioIDs {
+			if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+				return err
+			}
+
 			audio, err := qb.UpdatePartial(ctx, audioID, updatedAudio)
 			if err != nil {
 				return err
@@ -605,6 +609,10 @@ func (r *mutationResolver) AudioSaveActivity(ctx context.Context, id string, res
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
 
+		if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+			return err
+		}
+
 		ret, err = qb.SaveActivity(ctx, audioID, resumeTime, playDuration)
 		return err
 	}); err != nil {
@@ -622,6 +630,10 @@ func (r *mutationResolver) AudioResetActivity(ctx context.Context, id string, re
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
+
+		if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+			return err
+		}
 
 		ret, err = qb.ResetActivity(ctx, audioID, utils.IsTrue(resetResume), utils.IsTrue(resetDuration))
 		return err
@@ -643,6 +655,10 @@ func (r *mutationResolver) AudioIncrementPlayCount(ctx context.Context, id strin
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
+
+		if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+			return err
+		}
 
 		updatedTimes, err = qb.AddViews(ctx, audioID, nil)
 		return err
@@ -670,6 +686,10 @@ func (r *mutationResolver) AudioAddPlay(ctx context.Context, id string, t []*tim
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
+
+		if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+			return err
+		}
 
 		updatedTimes, err = qb.AddViews(ctx, audioID, times)
 		return err
@@ -700,6 +720,10 @@ func (r *mutationResolver) AudioDeletePlay(ctx context.Context, id string, t []*
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
 
+		if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+			return err
+		}
+
 		updatedTimes, err = qb.DeleteViews(ctx, audioID, times)
 		return err
 	}); err != nil {
@@ -720,6 +744,10 @@ func (r *mutationResolver) AudioResetPlayCount(ctx context.Context, id string) (
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
+
+		if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+			return err
+		}
 
 		ret, err = qb.DeleteAllViews(ctx, audioID)
 		return err
@@ -742,6 +770,10 @@ func (r *mutationResolver) AudioIncrementO(ctx context.Context, id string) (ret 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
 
+		if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+			return err
+		}
+
 		updatedTimes, err = qb.AddO(ctx, audioID, nil)
 		return err
 	}); err != nil {
@@ -763,6 +795,10 @@ func (r *mutationResolver) AudioDecrementO(ctx context.Context, id string) (ret 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
 
+		if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+			return err
+		}
+
 		updatedTimes, err = qb.DeleteO(ctx, audioID, nil)
 		return err
 	}); err != nil {
@@ -780,6 +816,10 @@ func (r *mutationResolver) AudioResetO(ctx context.Context, id string) (ret int,
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
+
+		if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+			return err
+		}
 
 		ret, err = qb.ResetO(ctx, audioID)
 		return err
@@ -807,6 +847,10 @@ func (r *mutationResolver) AudioAddO(ctx context.Context, id string, t []*time.T
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
+
+		if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+			return err
+		}
 
 		updatedTimes, err = qb.AddO(ctx, audioID, times)
 		return err
@@ -836,6 +880,10 @@ func (r *mutationResolver) AudioDeleteO(ctx context.Context, id string, t []*tim
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
+
+		if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {
+			return err
+		}
 
 		updatedTimes, err = qb.DeleteO(ctx, audioID, times)
 		return err

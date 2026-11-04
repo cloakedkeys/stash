@@ -227,7 +227,7 @@ func (r *mutationResolver) VoiceActorUserDataUpdate(ctx context.Context, input U
 			return err
 		}
 		if ret == nil {
-			return fmt.Errorf("voice actor %d not found", id)
+			return fmt.Errorf("voice actor with id %d not found", id)
 		}
 
 		ret.Favorite = input.Favorite
@@ -238,8 +238,9 @@ func (r *mutationResolver) VoiceActorUserDataUpdate(ctx context.Context, input U
 }
 
 // userDataObjectExists returns a not-found error when there is no object with the id.
-// The user data is stored apart from the object, so without this a missing object
-// was refused with the database's own foreign key error.
+// The user data, such as ratings, O and play history and resume points, is stored
+// apart from the object, so without this a missing object was refused with the
+// database's own foreign key error, or a store error naming the table.
 func userDataObjectExists[T any](ctx context.Context, find func(context.Context, int) (*T, error), kind string, id int) error {
 	o, err := find(ctx, id)
 	if err != nil {

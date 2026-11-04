@@ -47,7 +47,7 @@ func (r *mutationResolver) VoiceActorUpdate(ctx context.Context, input models.Vo
 			return err
 		}
 		if ret == nil {
-			return fmt.Errorf("voice actor %d not found", id)
+			return fmt.Errorf("voice actor with id %d not found", id)
 		}
 		if input.Name != nil {
 			ret.Name = *input.Name

@@ -332,6 +332,10 @@ func (r *mutationResolver) BulkGalleryUpdate(ctx context.Context, input BulkGall
 		qb := r.repository.Gallery
 
 		for _, galleryID := range galleryIDs {
+			if err := userDataObjectExists(ctx, qb.Find, "gallery", galleryID); err != nil {
+				return err
+			}
+
 			gallery, err := qb.UpdatePartial(ctx, galleryID, updatedGallery)
 			if err != nil {
 				return err
@@ -718,6 +722,10 @@ func (r *mutationResolver) GalleryIncrementO(ctx context.Context, id string) (re
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := userDataObjectExists(ctx, r.repository.Gallery.Find, "gallery", galleryID); err != nil {
+			return err
+		}
+
 		ret, err = r.repository.Gallery.IncrementOCounter(ctx, galleryID)
 		return err
 	}); err != nil {
@@ -734,6 +742,10 @@ func (r *mutationResolver) GalleryDecrementO(ctx context.Context, id string) (re
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := userDataObjectExists(ctx, r.repository.Gallery.Find, "gallery", galleryID); err != nil {
+			return err
+		}
+
 		ret, err = r.repository.Gallery.DecrementOCounter(ctx, galleryID)
 		return err
 	}); err != nil {
@@ -750,6 +762,10 @@ func (r *mutationResolver) GalleryResetO(ctx context.Context, id string) (ret in
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := userDataObjectExists(ctx, r.repository.Gallery.Find, "gallery", galleryID); err != nil {
+			return err
+		}
+
 		ret, err = r.repository.Gallery.ResetOCounter(ctx, galleryID)
 		return err
 	}); err != nil {
