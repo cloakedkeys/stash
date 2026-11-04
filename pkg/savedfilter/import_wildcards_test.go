@@ -55,6 +55,17 @@ func TestImportOldExportRewritesWildcards(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"display_mode": float64(0), "zoom_index": float64(1)}, i.savedFilter.UIOptions)
 }
 
+// An export doesn't say which database it came from, so it's read as SQLite,
+// and upstream Stash, did: case is ignored only for A to Z.
+func TestImportReadsFiltersAsSQLiteDid(t *testing.T) {
+	input := loadExport(t, `{"mode":"SCENES","name":"accents","object_filter":{"title":{"value":"été_a","modifier":"INCLUDES"}}}`)
+	i := Importer{Input: *input}
+	require.NoError(t, i.PreImport(testCtx))
+	assert.Equal(t, map[string]interface{}{
+		"title": map[string]interface{}{"value": "(?is)((?-i:é)t(?-i:é).a)", "modifier": "MATCHES_REGEX"},
+	}, i.savedFilter.ObjectFilter)
+}
+
 func TestImportNewExportIsUnchanged(t *testing.T) {
 	q := "x_y"
 	original := models.SavedFilter{
