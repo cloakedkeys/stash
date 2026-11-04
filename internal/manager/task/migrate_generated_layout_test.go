@@ -58,6 +58,8 @@ func TestMigrateGeneratedLayout(t *testing.T) {
 	others := []string{
 		p.Scene.GetLegacyScreenshotPath(oshash), // goes to blobs, by its own migration
 		filepath.Join(p.Generated.Vtt, "notes.txt"),
+		filepath.Join(p.Generated.Screenshots, "foo.mp4"), // where a preview of a video hashed "foo" would be
+		filepath.Join(p.Generated.Markers, "foo", "30.mp4"),
 		filepath.Join(p.Generated.Markers, oshash+"x", "30.mp4"),
 		filepath.Join(p.Generated.Markers, md5, "notes.txt"),
 		filepath.Join(p.Generated.Thumbnails, "ff", "ff", checksum+"_640.jpg"), // in the wrong folder
@@ -108,6 +110,21 @@ func TestMigrateGeneratedLayoutRemovesEmptyImageFolders(t *testing.T) {
 	requireContent(t, thumb.Path, "x")
 	require.NoDirExists(t, filepath.Join(p.Generated.Thumbnails, "01"))
 	require.DirExists(t, p.Generated.Thumbnails)
+}
+
+// A stopped task moves nothing more.
+func TestMigrateGeneratedLayoutCancelled(t *testing.T) {
+	p := paths.NewPaths(t.TempDir(), "")
+	preview := p.Scene.VideoPreview("0123456789abcdef")
+	writeContent(t, preview.Legacy, "x")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	j := MigrateGeneratedLayoutJob{Paths: &p}
+	require.NoError(t, j.Execute(ctx, nil))
+
+	requireContent(t, preview.Legacy, "x")
+	require.Zero(t, j.moved)
 }
 
 // A library started after the hash layout has no legacy folders.
