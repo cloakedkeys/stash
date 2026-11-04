@@ -1450,6 +1450,21 @@ func TestPerformerQueryCustomFields(t *testing.T) {
 			false,
 		},
 		{
+			"regex on a decimal",
+			&models.PerformerFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "real",
+						Modifier: models.CriterionModifierMatchesRegex,
+						Value:    []any{`^1\.3$`},
+					},
+				},
+			},
+			[]int{13},
+			[]int{14},
+			false,
+		},
+		{
 			"not matches regex on a number",
 			&models.PerformerFilterType{
 				Name: &models.StringCriterionInput{
