@@ -801,7 +801,10 @@ func (s *Scanner) onExistingFile(ctx context.Context, f ScannedFile, existing mo
 		return s.onUnchangedFile(ctx, f, existing)
 	}
 
+	// #2043: the handlers compare the old fingerprints with the new ones, so
+	// they need a copy that SetFingerprints below doesn't change
 	oldBase := *base
+	oldBase.Fingerprints = slices.Clone(base.Fingerprints)
 
 	if !updated && forceRescan {
 		logger.Infof("rescanning %s", path)

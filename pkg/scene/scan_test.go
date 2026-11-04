@@ -284,6 +284,7 @@ func TestHandle_ContentChangedAtSamePath(t *testing.T) {
 			db.Scene.On("UpdatePartial", mock.Anything, testSceneID, mock.Anything).
 				Return(&models.Scene{ID: testSceneID}, nil)
 			db.Gallery.On("FindByPath", mock.Anything, mock.Anything).Return(nil, nil)
+			db.Scene.On("FindByFingerprints", mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 			if tt.generatedCover && tt.expectInvalidation {
 				db.Scene.On("UpdateCover", mock.Anything, testSceneID, []byte(nil)).Return(nil).Once()
 			}
@@ -490,6 +491,7 @@ func TestHandle_ContentChangedAtSamePath_RollbackDoesNotDeleteFiles(t *testing.T
 	// a later step (gallery association) fails, forcing Handle() to
 	// return an error and the transaction to roll back
 	db.Gallery.On("FindByPath", mock.Anything, mock.Anything).Return(nil, assert.AnError)
+	db.Scene.On("FindByFingerprints", mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 
 	h := newTestScanHandler(db, &p)
 

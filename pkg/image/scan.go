@@ -153,15 +153,14 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 		existing = []*models.Image{&newImage}
 	}
 
-	// remove the old thumbnail if the checksum changed - we'll regenerate it
+	// remove the old generated files if the checksum changed - we'll regenerate them
 	if oldFile != nil {
 		oldHash := oldFile.Base().Fingerprints.GetString(models.FingerprintTypeMD5)
 		newHash := f.Base().Fingerprints.GetString(models.FingerprintTypeMD5)
 
 		if oldHash != "" && newHash != "" && oldHash != newHash {
-			// remove cache dir of gallery
-			for _, path := range h.Paths.Generated.Thumbnail(oldHash, models.DefaultGthumbWidth).Both() {
-				_ = os.Remove(path)
+			if err := h.removeUnusedGeneratedFiles(ctx, oldHash); err != nil {
+				return err
 			}
 		}
 	}
@@ -176,6 +175,26 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 		}
 	})
 
+	return nil
+}
+
+// removeUnusedGeneratedFiles removes the generated files named after
+// checksum, unless a file of an image still has that checksum: files with the
+// same content share them.
+func (h *ScanHandler) removeUnusedGeneratedFiles(ctx context.Context, checksum string) error {
+	users, err := h.CreatorUpdater.FindByFingerprints(ctx, []models.Fingerprint{{Type: models.FingerprintTypeMD5, Fingerprint: checksum}})
+	if err != nil {
+		return fmt.Errorf("finding images with checksum %s: %w", checksum, err)
+	}
+	if len(users) > 0 {
+		return nil
+	}
+
+	for _, gf := range generatedFiles(h.Paths, checksum) {
+		for _, path := range gf.Both() {
+			_ = os.Remove(path)
+		}
+	}
 	return nil
 }
 
