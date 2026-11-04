@@ -2,35 +2,37 @@ package api
 
 import (
 	"encoding/json"
-	"strings"
+	"fmt"
+
+	"github.com/stashapp/stash/pkg/models"
 )
 
-// jsonNumberToNumber converts a JSON number to either a float64 or int64.
-func jsonNumberToNumber(n json.Number) interface{} {
-	if strings.Contains(string(n), ".") {
-		f, _ := n.Float64()
-		return f
-	}
-	ret, _ := n.Int64()
-	return ret
-}
-
-// ConvertMapJSONNumbers converts all JSON numbers in a map to either float64 or int64.
-func convertMapJSONNumbers(m map[string]interface{}) (ret map[string]interface{}) {
+// convertMapJSONNumbers converts all JSON numbers in a map, and in maps nested
+// in it, to either int64 or float64 as models.JSONNumberValue does. The error
+// names the key of a number that cannot be converted, such as 1e400.
+func convertMapJSONNumbers(m map[string]interface{}) (map[string]interface{}, error) {
 	if m == nil {
-		return nil
+		return nil, nil
 	}
 
-	ret = make(map[string]interface{})
+	ret := make(map[string]interface{})
 	for k, v := range m {
 		if n, ok := v.(json.Number); ok {
-			ret[k] = jsonNumberToNumber(n)
+			num, err := models.JSONNumberValue(n)
+			if err != nil {
+				return nil, fmt.Errorf("%q: %w", k, err)
+			}
+			ret[k] = num
 		} else if mm, ok := v.(map[string]interface{}); ok {
-			ret[k] = convertMapJSONNumbers(mm)
+			converted, err := convertMapJSONNumbers(mm)
+			if err != nil {
+				return nil, fmt.Errorf("%q.%w", k, err)
+			}
+			ret[k] = converted
 		} else {
 			ret[k] = v
 		}
 	}
 
-	return ret
+	return ret, nil
 }

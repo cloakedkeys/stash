@@ -87,7 +87,10 @@ func groupFromGroupCreateInput(ctx context.Context, input GroupCreateInput) (*mo
 		newGroup.URLs = models.NewRelatedStrings(stringslice.TrimSpace(input.Urls))
 	}
 
-	newGroupInput.CustomFields = convertMapJSONNumbers(input.CustomFields)
+	newGroupInput.CustomFields, err = convertCustomFields(input.CustomFields)
+	if err != nil {
+		return nil, err
+	}
 
 	// Process the base 64 encoded image string
 	if input.FrontImage != nil {
@@ -186,10 +189,10 @@ func groupPartialFromGroupUpdateInput(translator changesetTranslator, input Grou
 
 	updatedGroup.URLs = translator.updateStrings(input.Urls, "urls")
 	if input.CustomFields != nil {
-		updatedGroup.CustomFields = *input.CustomFields
-		// convert json.Numbers to int/float
-		updatedGroup.CustomFields.Full = convertMapJSONNumbers(updatedGroup.CustomFields.Full)
-		updatedGroup.CustomFields.Partial = convertMapJSONNumbers(updatedGroup.CustomFields.Partial)
+		updatedGroup.CustomFields, err = handleUpdateCustomFields(*input.CustomFields)
+		if err != nil {
+			return
+		}
 	}
 
 	return updatedGroup, nil
@@ -322,10 +325,10 @@ func groupPartialFromBulkGroupUpdateInput(translator changesetTranslator, input 
 	updatedGroup.URLs = translator.optionalURLsBulk(input.Urls, nil)
 
 	if input.CustomFields != nil {
-		updatedGroup.CustomFields = *input.CustomFields
-		// convert json.Numbers to int/float
-		updatedGroup.CustomFields.Full = convertMapJSONNumbers(updatedGroup.CustomFields.Full)
-		updatedGroup.CustomFields.Partial = convertMapJSONNumbers(updatedGroup.CustomFields.Partial)
+		updatedGroup.CustomFields, err = handleUpdateCustomFields(*input.CustomFields)
+		if err != nil {
+			return
+		}
 	}
 
 	return updatedGroup, nil
