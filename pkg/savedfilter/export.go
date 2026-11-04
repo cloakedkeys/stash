@@ -15,5 +15,7 @@ func ToJSON(ctx context.Context, filter *models.SavedFilter) (*jsonschema.SavedF
 		FindFilter:   filter.FindFilter,
 		ObjectFilter: filter.ObjectFilter,
 		UIOptions:    filter.UIOptions,
+		// _ and % in this version's filters match only themselves
+		LiteralWildcards: true,
 	}, nil
 }
