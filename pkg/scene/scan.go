@@ -156,7 +156,18 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 				}
 			}
 
-			if isPrimary {
+			// #2043: copies of a file in other scenes share its generated
+			// files, so they're kept while one of those still has the old hash
+			invalidate := isPrimary
+			if invalidate {
+				stillUsed, err := h.hashStillUsed(ctx, oldHash)
+				if err != nil {
+					return err
+				}
+				invalidate = !stillUsed
+			}
+
+			if invalidate {
 				// delete, don't rename - stale content shouldn't pass as
 				// valid under the new hash. Deferred to a post-commit
 				// hook since disk deletes can't roll back with the
@@ -220,6 +231,22 @@ func (h *ScanHandler) associateExisting(ctx context.Context, existing []*models.
 	}
 
 	return nil
+}
+
+// hashStillUsed reports whether a scene still has a file with hash, under the
+// file naming algorithm. The changed file's new fingerprints are already
+// saved, so it isn't counted.
+func (h *ScanHandler) hashStillUsed(ctx context.Context, hash string) (bool, error) {
+	fpType := models.FingerprintTypeOshash
+	if h.FileNamingAlgorithm == models.HashAlgorithmMd5 {
+		fpType = models.FingerprintTypeMD5
+	}
+
+	scenes, err := h.CreatorUpdater.FindByFingerprints(ctx, []models.Fingerprint{{Type: fpType, Fingerprint: hash}})
+	if err != nil {
+		return false, fmt.Errorf("finding scenes with hash %s: %w", hash, err)
+	}
+	return len(scenes) > 0, nil
 }
 
 func (h *ScanHandler) associateGallery(ctx context.Context, existing []*models.Scene, f models.File) error {
