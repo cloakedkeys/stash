@@ -2846,7 +2846,7 @@ func TestGalleryQueryPerformerTags(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			results, _, err := db.Gallery().Query(ctx, tt.filter, tt.findFilter)
+			results, _, err := db.Gallery().Query(ctx, tt.filter, findAllIfNil(tt.findFilter))
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ImageStore.Query() error = %v, wantErr %v", err, tt.wantErr)
 				return

@@ -152,7 +152,7 @@ func TestFileQuery(t *testing.T) {
 			results, err := db.File().Query(ctx, models.FileQueryOptions{
 				FileFilter: tt.filter,
 				QueryOptions: models.QueryOptions{
-					FindFilter: tt.findFilter,
+					FindFilter: findAllIfNil(tt.findFilter),
 				},
 			})
 			if (err != nil) != tt.wantErr {

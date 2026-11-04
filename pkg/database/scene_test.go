@@ -2455,7 +2455,7 @@ func TestSceneQuery(t *testing.T) {
 			results, err := db.Scene().Query(ctx, models.SceneQueryOptions{
 				SceneFilter: tt.filter,
 				QueryOptions: models.QueryOptions{
-					FindFilter: tt.findFilter,
+					FindFilter: findAllIfNil(tt.findFilter),
 				},
 			})
 			if (err != nil) != tt.wantErr {
@@ -2584,6 +2584,9 @@ func TestSceneQueryPath(t *testing.T) {
 			got, err := qb.Query(ctx, models.SceneQueryOptions{
 				SceneFilter: &models.SceneFilterType{
 					Path: &tt.input,
+				},
+				QueryOptions: models.QueryOptions{
+					FindFilter: perPageAll(),
 				},
 			})
 
@@ -4068,7 +4071,7 @@ func TestSceneQueryPerformerTags(t *testing.T) {
 			results, err := db.Scene().Query(ctx, models.SceneQueryOptions{
 				SceneFilter: tt.filter,
 				QueryOptions: models.QueryOptions{
-					FindFilter: tt.findFilter,
+					FindFilter: findAllIfNil(tt.findFilter),
 				},
 			})
 			if (err != nil) != tt.wantErr {

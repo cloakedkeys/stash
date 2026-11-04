@@ -1887,6 +1887,9 @@ func TestAudioQueryPath(t *testing.T) {
 				AudioFilter: &models.AudioFilterType{
 					Path: &tt.input,
 				},
+				QueryOptions: models.QueryOptions{
+					FindFilter: perPageAll(),
+				},
 			})
 
 			if err != nil {
@@ -3072,7 +3075,7 @@ func TestAudioQueryPerformerTags(t *testing.T) {
 			results, err := db.Audio().Query(ctx, models.AudioQueryOptions{
 				AudioFilter: tt.filter,
 				QueryOptions: models.QueryOptions{
-					FindFilter: tt.findFilter,
+					FindFilter: findAllIfNil(tt.findFilter),
 				},
 			})
 			if (err != nil) != tt.wantErr {
