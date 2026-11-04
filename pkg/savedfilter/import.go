@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/jsonschema"
 )
@@ -29,7 +30,32 @@ func (i *Importer) PreImport(ctx context.Context) error {
 		UIOptions:    i.Input.UIOptions,
 	}
 
+	if !i.Input.LiteralWildcards {
+		i.convertLegacyWildcards()
+	}
+
 	return nil
+}
+
+// convertLegacyWildcards rewrites the text filters of a filter exported by a
+// version where _ and % in them were wildcards, as the upgrade does for saved
+// filters in the database.
+func (i *Importer) convertLegacyWildcards() {
+	desc := fmt.Sprintf("imported saved filter %q", i.savedFilter.Name)
+
+	if f := i.savedFilter.FindFilter; f != nil && f.Q != nil {
+		if note := searchNote(map[string]interface{}{"q": *f.Q}); note != "" {
+			logger.Warnf("Left %s as it was: %s", desc, note)
+		}
+	}
+
+	changed, notes := ConvertLegacyWildcards(i.savedFilter.Mode, i.savedFilter.ObjectFilter)
+	for _, note := range notes {
+		logger.Warnf("Left part of %s as it was: %s", desc, note)
+	}
+	if changed {
+		logger.Infof("Rewrote the text filters in %s that used _ or %% as wildcards as regular expressions", desc)
+	}
 }
 
 func (i *Importer) PostImport(ctx context.Context, id int) error {

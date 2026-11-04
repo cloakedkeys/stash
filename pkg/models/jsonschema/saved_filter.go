@@ -11,6 +11,10 @@ type SavedFilter struct {
 	FindFilter   *models.FindFilterType `json:"find_filter"`
 	ObjectFilter map[string]interface{} `json:"object_filter"`
 	UIOptions    map[string]interface{} `json:"ui_options"`
+	// LiteralWildcards is set by exports from versions where _ and % in text
+	// filters match only themselves. Older exports, and exports from upstream
+	// Stash, don't have it: there they were wildcards.
+	LiteralWildcards bool `json:"literal_wildcards,omitempty"`
 }
 
 func (s SavedFilter) Filename() string {

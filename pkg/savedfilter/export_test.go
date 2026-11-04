@@ -47,6 +47,8 @@ func createJSONSavedFilter() *jsonschema.SavedFilter {
 		FindFilter:   &findFilter,
 		ObjectFilter: objectFilter,
 		UIOptions:    uiOptions,
+
+		LiteralWildcards: true,
 	}
 }
 
