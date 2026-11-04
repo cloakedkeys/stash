@@ -22,6 +22,10 @@ type Migrator struct {
 }
 
 func NewMigrator(db *Database) (*Migrator, error) {
+	return newMigrator(db, sqlite3Driver)
+}
+
+func newMigrator(db *Database, driverName string) (*Migrator, error) {
 	m := &Migrator{
 		db: db,
 	}
@@ -29,7 +33,7 @@ func NewMigrator(db *Database) (*Migrator, error) {
 	const disableForeignKeys = true
 	const writable = true
 	var err error
-	m.conn, err = m.db.open(disableForeignKeys, writable)
+	m.conn, err = m.db.openWithDriver(driverName, disableForeignKeys, writable)
 	if err != nil {
 		return nil, err
 	}
@@ -151,8 +155,12 @@ func (m *Migrator) PostMigrate(ctx context.Context) error {
 	return nil
 }
 
+// getDatabaseSchemaVersion only reads the version, apart from creating the
+// empty version table in a new database, so its connection doesn't run PRAGMA
+// optimize on close, which would wait the busy timeout while another
+// connection holds the write lock (#2071).
 func (db *Database) getDatabaseSchemaVersion() (uint, error) {
-	m, err := NewMigrator(db)
+	m, err := newMigrator(db, sqlite3DriverNoOptimize)
 	if err != nil {
 		return 0, err
 	}

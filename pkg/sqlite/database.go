@@ -255,6 +255,10 @@ func (db *Database) Close() error {
 }
 
 func (db *Database) open(disableForeignKeys bool, writable bool) (*sqlx.DB, error) {
+	return db.openWithDriver(sqlite3Driver, disableForeignKeys, writable)
+}
+
+func (db *Database) openWithDriver(driverName string, disableForeignKeys bool, writable bool) (*sqlx.DB, error) {
 	// https://github.com/mattn/go-sqlite3
 	// 5s timeout is the default.
 	url := "file:" + db.dbPath + fmt.Sprintf("?_journal=WAL&_sync=NORMAL&_busy_timeout=%d", busyTimeout.Milliseconds())
@@ -274,7 +278,7 @@ func (db *Database) open(disableForeignKeys bool, writable bool) (*sqlx.DB, erro
 		url += "&_cache_size=" + cacheSize
 	}
 
-	conn, err := sqlx.Open(sqlite3Driver, url)
+	conn, err := sqlx.Open(driverName, url)
 	if err != nil {
 		return nil, fmt.Errorf("db.Open(): %w", err)
 	}

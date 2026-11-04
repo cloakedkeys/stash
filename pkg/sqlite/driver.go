@@ -11,14 +11,29 @@ import (
 	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
-const sqlite3Driver = "sqlite3ex"
+const (
+	sqlite3Driver = "sqlite3ex"
+
+	// sqlite3DriverNoOptimize is sqlite3Driver without the PRAGMA optimize when
+	// a connection closes, for connections that only read.
+	sqlite3DriverNoOptimize = "sqlite3ex_nooptimize"
+)
 
 func init() {
 	// register custom driver
 	sql.Register(sqlite3Driver, &CustomSQLiteDriver{})
+	sql.Register(sqlite3DriverNoOptimize, &CustomSQLiteDriver{noOptimize: true})
 }
 
-type CustomSQLiteDriver struct{}
+type CustomSQLiteDriver struct {
+	// noOptimize skips the PRAGMA optimize on close. PRAGMA optimize takes the
+	// write lock up front when two or more tables might need analysing: a
+	// table counts if a query on the connection used it, or if any of its
+	// indexes has no sqlite_stat1 row, which is most of the indexes in a new
+	// Stash database. So even a connection that queried nothing waits the busy
+	// timeout while another connection is writing (#2071).
+	noOptimize bool
+}
 
 // statisticsGeneration goes up each time ANALYZE refreshes the statistics.
 //
@@ -44,6 +59,7 @@ func retireConnections() {
 type CustomSQLiteConn struct {
 	*sqlite3.SQLiteConn
 	generation uint64
+	noOptimize bool
 }
 
 func (c *CustomSQLiteConn) current() bool {
@@ -108,13 +124,15 @@ func (d *CustomSQLiteDriver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
-	return &CustomSQLiteConn{SQLiteConn: conn.(*sqlite3.SQLiteConn), generation: generation}, nil
+	return &CustomSQLiteConn{SQLiteConn: conn.(*sqlite3.SQLiteConn), generation: generation, noOptimize: d.noOptimize}, nil
 }
 
 func (c *CustomSQLiteConn) Close() error {
 	conn := c.SQLiteConn
 
-	_, _ = conn.Exec("PRAGMA analysis_limit=1000; PRAGMA optimize;", []driver.Value{})
+	if !c.noOptimize {
+		_, _ = conn.Exec("PRAGMA analysis_limit=1000; PRAGMA optimize;", []driver.Value{})
+	}
 
 	return conn.Close()
 }
