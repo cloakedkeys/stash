@@ -401,3 +401,35 @@ func TestQueryStableOrderRandom(t *testing.T) {
 		})
 	}
 }
+
+// Tags that a sort ranks the same come back in order of their sort name, or
+// their name when they have none, as on SQLite.
+func TestQueryTagTiesBySortName(t *testing.T) {
+	createdAt := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	for _, sort := range []string{"created_at", "scenes_count", "updated_at"} {
+		for _, direction := range []models.SortDirectionEnum{models.SortDirectionEnumAsc, models.SortDirectionEnumDesc} {
+			runWithRollbackTxn(t, fmt.Sprintf("%s %s", sort, direction), func(t *testing.T, ctx context.Context) {
+				create := func(name, sortName string) int {
+					o := &models.Tag{Name: name, SortName: sortName, CreatedAt: createdAt, UpdatedAt: createdAt}
+					require.NoError(t, db.Tag().Create(ctx, &models.CreateTagInput{Tag: o}))
+					return o.ID
+				}
+				// by name alone, the order would be second, third, first
+				first := create("tagsortkey 3", "1")
+				second := create("tagsortkey 1", "3")
+				third := create("tagsortkey 2", "")
+
+				q := "tagsortkey"
+				s, d := sort, direction
+				perPage := models.PerPageAll
+				tags, _, err := db.Tag().Query(ctx, nil, &models.FindFilterType{Q: &q, Sort: &s, Direction: &d, PerPage: &perPage})
+				require.NoError(t, err)
+				ids := make([]int, len(tags))
+				for i, tag := range tags {
+					ids[i] = tag.ID
+				}
+				assert.Equal(t, []int{first, second, third}, ids)
+			})
+		}
+	}
+}
