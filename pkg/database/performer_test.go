@@ -1687,6 +1687,37 @@ func TestPerformerQueryCustomFields(t *testing.T) {
 			[]int{performerIdx1WithScene},
 			false,
 		},
+		{
+			// refused, not a crash (#2067)
+			"not between with no values",
+			&models.PerformerFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "real",
+						Modifier: models.CriterionModifierNotBetween,
+						Value:    []any{},
+					},
+				},
+			},
+			nil,
+			nil,
+			true,
+		},
+		{
+			"not between with one value",
+			&models.PerformerFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "real",
+						Modifier: models.CriterionModifierNotBetween,
+						Value:    []any{0.05},
+					},
+				},
+			},
+			nil,
+			nil,
+			true,
+		},
 	}
 
 	for _, tt := range tests {

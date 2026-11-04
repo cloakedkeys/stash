@@ -366,6 +366,21 @@ func customFieldSearchText(v interface{}) string {
 	return fmt.Sprint(v)
 }
 
+// checkCustomFieldValueCount sets an error on f, naming the modifier, unless cv
+// holds exactly want values. A modifier that reads cv[0] or cv[1] calls this
+// first, so a short list is refused rather than indexed out of range.
+func checkCustomFieldValueCount(f *filterBuilder, modifier models.CriterionModifier, cv []interface{}, want int) bool {
+	if len(cv) == want {
+		return true
+	}
+	noun := "values"
+	if want == 1 {
+		noun = "value"
+	}
+	f.setError(fmt.Errorf("expected %d %s for custom field criterion modifier %s, got %d", want, noun, modifier, len(cv)))
+	return false
+}
+
 func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs string, cc models.CustomFieldCriterionInput) {
 	// convert values
 	cv := append([]interface{}{}, cc.Value...)
@@ -432,27 +447,27 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("TRIM(%s) != ''", valueAsString))
 	case models.CriterionModifierBetween:
-		if len(cv) != 2 {
-			f.setError(fmt.Errorf("expected 2 values for custom field criterion modifier BETWEEN, got %d", len(cv)))
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 2) {
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(valueIsNumber)
 		f.addWhere(fmt.Sprintf("%s BETWEEN ? AND ?", valueAsNumber), cv[0], cv[1])
 	case models.CriterionModifierNotBetween:
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 2) {
+			return
+		}
 		h.leftJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("((%s AND %s NOT BETWEEN ? AND ?) OR %s.value IS NULL)", valueIsNumber, valueAsNumber, joinAs), cv[0], cv[1])
 	case models.CriterionModifierLessThan:
-		if len(cv) != 1 {
-			f.setError(fmt.Errorf("expected 1 value for custom field criterion modifier LESS_THAN, got %d", len(cv)))
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 1) {
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(valueIsNumber)
 		f.addWhere(fmt.Sprintf("%s < ?", valueAsNumber), cv[0])
 	case models.CriterionModifierGreaterThan:
-		if len(cv) != 1 {
-			f.setError(fmt.Errorf("expected 1 value for custom field criterion modifier LESS_THAN, got %d", len(cv)))
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 1) {
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)
