@@ -519,6 +519,9 @@ func (r *mutationResolver) AudioAssignFile(ctx context.Context, input AssignAudi
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := userDataObjectExists(ctx, r.repository.Audio.Find, "audio", audioID); err != nil {
+			return err
+		}
 		return r.Resolver.audioService.AssignFile(ctx, audioID, models.FileID(fileID))
 	}); err != nil {
 		return false, fmt.Errorf("assigning file to audio: %w", err)

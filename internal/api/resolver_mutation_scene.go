@@ -650,6 +650,9 @@ func (r *mutationResolver) SceneAssignFile(ctx context.Context, input AssignScen
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := userDataObjectExists(ctx, r.repository.Scene.Find, "scene", sceneID); err != nil {
+			return err
+		}
 		return r.Resolver.sceneService.AssignFile(ctx, sceneID, models.FileID(fileID))
 	}); err != nil {
 		return false, fmt.Errorf("assigning file to scene: %w", err)
@@ -806,6 +809,16 @@ func (r *mutationResolver) SceneMarkerCreate(ctx context.Context, input SceneMar
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.SceneMarker
+
+		if err := userDataObjectExists(ctx, r.repository.Scene.Find, "scene", sceneID); err != nil {
+			return err
+		}
+		if err := userDataObjectExists(ctx, r.repository.Tag.Find, "tag", primaryTagID); err != nil {
+			return err
+		}
+		if err := objectsExist(ctx, r.repository.Tag.FindMany, tagIDs); err != nil {
+			return err
+		}
 
 		err := qb.Create(ctx, &newMarker)
 		if err != nil {
@@ -988,7 +1001,17 @@ func (r *mutationResolver) BulkSceneMarkerUpdate(ctx context.Context, input Bulk
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.SceneMarker
 
+		if partial.PrimaryTagID.Set && !partial.PrimaryTagID.Null {
+			if err := userDataObjectExists(ctx, r.repository.Tag.Find, "tag", partial.PrimaryTagID.Value); err != nil {
+				return err
+			}
+		}
+
 		for _, id := range ids {
+			if err := userDataObjectExists(ctx, qb.Find, "scene marker", id); err != nil {
+				return err
+			}
+
 			l := partial
 
 			if err := adjustMarkerPartialForTagExclusion(ctx, r.repository.SceneMarker, id, &l); err != nil {
