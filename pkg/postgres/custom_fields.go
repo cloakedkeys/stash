@@ -366,6 +366,25 @@ func customFieldSearchText(v interface{}) string {
 	return fmt.Sprint(v)
 }
 
+// checkCustomFieldValueCount sets an error on f, naming the modifier, unless cv
+// holds exactly want values, or at least want when atLeast is set. A modifier
+// that reads cv[0] or cv[1] calls this first, so a short list is refused rather
+// than indexed out of range.
+func checkCustomFieldValueCount(f *filterBuilder, modifier models.CriterionModifier, cv []interface{}, want int, atLeast bool) bool {
+	if len(cv) == want || (atLeast && len(cv) > want) {
+		return true
+	}
+	noun := "values"
+	if want == 1 {
+		noun = "value"
+	}
+	if atLeast {
+		noun += " or more"
+	}
+	f.setError(fmt.Errorf("expected %d %s for custom field criterion modifier %s, got %d", want, noun, modifier, len(cv)))
+	return false
+}
+
 func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs string, cc models.CustomFieldCriterionInput) {
 	// convert values
 	cv := append([]interface{}{}, cc.Value...)
@@ -379,9 +398,20 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 	switch cc.Modifier {
 	case models.CriterionModifierEquals:
 		h.innerJoin(f, joinAs, cc.Field)
+		if len(cv) == 0 {
+			// PostgreSQL has no empty IN list; SQLite reads IN () as false, so
+			// equals with no values finds nothing there (#2067)
+			f.addWhere("FALSE")
+			break
+		}
 		f.addWhere(fmt.Sprintf("%s IN %s", valueAsString, getInBinding(len(cv))), customFieldStrings(cv)...)
 	case models.CriterionModifierNotEquals:
 		h.leftJoin(f, joinAs, cc.Field)
+		if len(cv) == 0 {
+			// and NOT IN () as true, so not equals with no values finds
+			// everything
+			break
+		}
 		f.addWhere(fmt.Sprintf("(%s NOT IN %s OR %s.value IS NULL)", valueAsString, getInBinding(len(cv)), joinAs), customFieldStrings(cv)...)
 	case models.CriterionModifierIncludes:
 		clauses := make([]sqlClause, len(cv))
@@ -432,27 +462,30 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("TRIM(%s) != ''", valueAsString))
 	case models.CriterionModifierBetween:
-		if len(cv) != 2 {
-			f.setError(fmt.Errorf("expected 2 values for custom field criterion modifier BETWEEN, got %d", len(cv)))
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 2, false) {
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(valueIsNumber)
 		f.addWhere(fmt.Sprintf("%s BETWEEN ? AND ?", valueAsNumber), cv[0], cv[1])
 	case models.CriterionModifierNotBetween:
+		// two or more, using the first two, unlike between: upstream took any
+		// number here and only fewer than two failed, so saved filters with more
+		// keep working
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 2, true) {
+			return
+		}
 		h.leftJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("((%s AND %s NOT BETWEEN ? AND ?) OR %s.value IS NULL)", valueIsNumber, valueAsNumber, joinAs), cv[0], cv[1])
 	case models.CriterionModifierLessThan:
-		if len(cv) != 1 {
-			f.setError(fmt.Errorf("expected 1 value for custom field criterion modifier LESS_THAN, got %d", len(cv)))
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 1, false) {
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(valueIsNumber)
 		f.addWhere(fmt.Sprintf("%s < ?", valueAsNumber), cv[0])
 	case models.CriterionModifierGreaterThan:
-		if len(cv) != 1 {
-			f.setError(fmt.Errorf("expected 1 value for custom field criterion modifier LESS_THAN, got %d", len(cv)))
+		if !checkCustomFieldValueCount(f, cc.Modifier, cv, 1, false) {
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)

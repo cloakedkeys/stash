@@ -1687,6 +1687,57 @@ func TestPerformerQueryCustomFields(t *testing.T) {
 			[]int{performerIdx1WithScene},
 			false,
 		},
+		{
+			// more than two use the first two, as upstream does (#2067)
+			"not between with three values",
+			&models.PerformerFilterType{
+				Name: &models.StringCriterionInput{
+					Value:    getPerformerStringValue(performerIdx1WithScene, "Name"),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "real",
+						Modifier: models.CriterionModifierNotBetween,
+						Value:    []any{0.05, 0.15, 99},
+					},
+				},
+			},
+			nil,
+			[]int{performerIdx1WithScene},
+			false,
+		},
+		{
+			// refused, not a crash (#2067)
+			"not between with no values",
+			&models.PerformerFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "real",
+						Modifier: models.CriterionModifierNotBetween,
+						Value:    []any{},
+					},
+				},
+			},
+			nil,
+			nil,
+			true,
+		},
+		{
+			"not between with one value",
+			&models.PerformerFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "real",
+						Modifier: models.CriterionModifierNotBetween,
+						Value:    []any{0.05},
+					},
+				},
+			},
+			nil,
+			nil,
+			true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1710,6 +1761,65 @@ func TestPerformerQueryCustomFields(t *testing.T) {
 				assert.NotContains(ids, e)
 			}
 		})
+	}
+}
+
+// A custom field criterion with no values finds the same performers on both
+// databases, as SQLite and upstream always have: the UI sends one when a field
+// is confirmed without typing a value, and saved filters keep it. Equals finds
+// none, not equals and excludes find every performer, and includes finds those
+// that have the field (#2067).
+func TestPerformerQueryCustomFieldsNoValues(t *testing.T) {
+	perPage := -1
+	all := &models.FindFilterType{PerPage: &perPage}
+	query := func(t *testing.T, ctx context.Context, c models.CustomFieldCriterionInput) []int {
+		t.Helper()
+		performers, _, err := db.Performer().Query(ctx, &models.PerformerFilterType{CustomFields: []models.CustomFieldCriterionInput{c}}, all)
+		require.NoError(t, err)
+		return performersToIDs(performers)
+	}
+
+	const (
+		none = iota
+		everyone
+		withField
+	)
+	for _, values := range [][]any{nil, {}} {
+		valuesName := "empty values"
+		if values == nil {
+			valuesName = "no values"
+		}
+		for _, tt := range []struct {
+			modifier models.CriterionModifier
+			want     int
+		}{
+			{models.CriterionModifierEquals, none},
+			{models.CriterionModifierNotEquals, everyone},
+			{models.CriterionModifierIncludes, withField},
+			{models.CriterionModifierExcludes, everyone},
+		} {
+			// each in its own transaction, as an error ends a PostgreSQL one
+			runWithRollbackTxn(t, fmt.Sprintf("%s %s", tt.modifier, valuesName), func(t *testing.T, ctx context.Context) {
+				var want []int
+				switch tt.want {
+				case everyone:
+					performers, _, err := db.Performer().Query(ctx, nil, all)
+					require.NoError(t, err)
+					want = performersToIDs(performers)
+				case withField:
+					// includes "" finds every value with the field
+					want = query(t, ctx, models.CustomFieldCriterionInput{Field: "string", Modifier: models.CriterionModifierIncludes, Value: []any{""}})
+					require.NotEmpty(t, want)
+					// and not every performer has it, so the case tells
+					// includes from excludes
+					_, count, err := db.Performer().Query(ctx, nil, all)
+					require.NoError(t, err)
+					require.Less(t, len(want), count)
+				}
+				got := query(t, ctx, models.CustomFieldCriterionInput{Field: "string", Modifier: tt.modifier, Value: values})
+				assert.ElementsMatch(t, want, got)
+			})
+		}
 	}
 }
 
