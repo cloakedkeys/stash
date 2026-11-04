@@ -177,6 +177,17 @@ INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,1),(2,2,1),(3,3
 	_, err = raw.Exec("INSERT INTO user_ui_config(user_id,config) VALUES(1,?)", uiConfig)
 	require.NoError(t, err)
 
+	// the config file's default filters, which users without their own use
+	cfg := config.GetInstance()
+	cfg.SetConfigFile(filepath.Join(dir, "config.yml"))
+	var fileFilter map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(wildcardCases[0].filter), &fileFilter))
+	cfg.SetUIConfiguration(map[string]interface{}{
+		"theme":          "file",
+		"defaultFilters": map[string]interface{}{"scenes": map[string]interface{}{"mode": "SCENES", "object_filter": fileFilter}},
+	})
+	require.NoError(t, cfg.Write())
+
 	require.NoError(t, m.RunMigration(ctx, 106))
 	require.Equal(t, uint(106), m.CurrentSchemaVersion())
 
@@ -214,4 +225,15 @@ INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,1),(2,2,1),(3,3
 	scenes := ui["defaultFilters"].(map[string]interface{})["scenes"].(map[string]interface{})
 	assert.Equal(t, map[string]interface{}{"q": "a_b"}, scenes["find_filter"])
 	assert.Equal(t, expected[0], querySceneIDs(t, userCtx, db, scenes["object_filter"].(map[string]interface{})))
+
+	fileUI := cfg.GetUIConfiguration()
+	assert.Equal(t, "file", fileUI["theme"])
+	fileScenes := fileUI["defaultFilters"].(map[string]interface{})["scenes"].(map[string]interface{})
+	assert.Equal(t, expected[0], querySceneIDs(t, userCtx, db, fileScenes["object_filter"].(map[string]interface{})))
+	saved, err := os.ReadFile(cfg.GetConfigFile())
+	require.NoError(t, err)
+	assert.Contains(t, string(saved), "MATCHES_REGEX")
+	backups, err := filepath.Glob(cfg.GetConfigFile() + ".105.*")
+	require.NoError(t, err)
+	assert.Len(t, backups, 1)
 }

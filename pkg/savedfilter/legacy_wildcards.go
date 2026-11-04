@@ -356,7 +356,22 @@ func ConvertLegacyWildcardDefaultFilters(uiConfig string) (newUIConfig string, c
 	if err != nil || m == nil {
 		return uiConfig, false, nil, err
 	}
-	defaults, _ := m["defaultFilters"].(map[string]interface{})
+	changed, notes = ConvertLegacyWildcardDefaultFiltersMap(m)
+	if !changed {
+		return uiConfig, false, notes, nil
+	}
+	newUIConfig, err = encodeJSON(m)
+	if err != nil {
+		return uiConfig, false, nil, err
+	}
+	return newUIConfig, true, notes, nil
+}
+
+// ConvertLegacyWildcardDefaultFiltersMap rewrites, in place, the default
+// filters in a UI configuration, as ConvertLegacyWildcards does. Each note
+// starts with the default filter it's about.
+func ConvertLegacyWildcardDefaultFiltersMap(uiConfig map[string]interface{}) (changed bool, notes []string) {
+	defaults, _ := uiConfig["defaultFilters"].(map[string]interface{})
 	for _, view := range sortedKeys(defaults) {
 		entry, ok := defaults[view].(map[string]interface{})
 		if !ok {
@@ -380,12 +395,5 @@ func ConvertLegacyWildcardDefaultFilters(uiConfig string) (newUIConfig string, c
 			}
 		}
 	}
-	if !changed {
-		return uiConfig, false, notes, nil
-	}
-	newUIConfig, err = encodeJSON(m)
-	if err != nil {
-		return uiConfig, false, nil, err
-	}
-	return newUIConfig, true, notes, nil
+	return changed, notes
 }

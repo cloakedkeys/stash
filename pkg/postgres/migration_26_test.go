@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -157,6 +158,17 @@ INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,true),(2,2,true
 	var untouchedBefore []string
 	require.NoError(t, m.conn.Select(&untouchedBefore, `SELECT object_filter::text FROM saved_filters WHERE id >= 100 ORDER BY id`))
 
+	// the config file's default filters, which users without their own use
+	cfg := config.GetInstance()
+	cfg.SetConfigFile(filepath.Join(t.TempDir(), "config.yml"))
+	var fileFilter map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(wildcardCases[0].filter), &fileFilter))
+	cfg.SetUIConfiguration(map[string]interface{}{
+		"theme":          "file",
+		"defaultFilters": map[string]interface{}{"scenes": map[string]interface{}{"mode": "SCENES", "object_filter": fileFilter}},
+	})
+	require.NoError(t, cfg.Write())
+
 	require.NoError(t, m.RunMigration(ctx, 26))
 	m.Close()
 	require.NoError(t, db.ReInitialise())
@@ -195,4 +207,15 @@ INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,true),(2,2,true
 	scenes := ui["defaultFilters"].(map[string]interface{})["scenes"].(map[string]interface{})
 	assert.Equal(t, map[string]interface{}{"q": "a_b"}, scenes["find_filter"])
 	assert.Equal(t, expected[0], migration26SceneIDs(t, userCtx, db, scenes["object_filter"].(map[string]interface{})))
+
+	fileUI := cfg.GetUIConfiguration()
+	assert.Equal(t, "file", fileUI["theme"])
+	fileScenes := fileUI["defaultFilters"].(map[string]interface{})["scenes"].(map[string]interface{})
+	assert.Equal(t, expected[0], migration26SceneIDs(t, userCtx, db, fileScenes["object_filter"].(map[string]interface{})))
+	saved, err := os.ReadFile(cfg.GetConfigFile())
+	require.NoError(t, err)
+	assert.Contains(t, string(saved), "MATCHES_REGEX")
+	backups, err := filepath.Glob(cfg.GetConfigFile() + ".pg25.*")
+	require.NoError(t, err)
+	assert.Len(t, backups, 1)
 }

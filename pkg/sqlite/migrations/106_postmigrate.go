@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/savedfilter"
@@ -23,15 +24,26 @@ func post106(ctx context.Context, db *sqlx.DB) error {
 		},
 	}
 
-	return m.withTxn(ctx, func(tx *sqlx.Tx) error {
-		if err := m.migrateSavedFilters(tx); err != nil {
-			return fmt.Errorf("rewriting saved filters: %w", err)
-		}
-		if err := m.migrateDefaultFilters(tx); err != nil {
-			return fmt.Errorf("rewriting default filters: %w", err)
-		}
-		return nil
-	})
+	// not withTxn, which doesn't return a failed commit
+	tx, err := db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := m.migrateSavedFilters(tx); err != nil {
+		return fmt.Errorf("rewriting saved filters: %w", err)
+	}
+	if err := m.migrateDefaultFilters(tx); err != nil {
+		return fmt.Errorf("rewriting default filters: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing: %w", err)
+	}
+
+	// after the database is migrated, so a config file that can't be written
+	// never leaves it half done; this only logs failures
+	savedfilter.ConvertLegacyWildcardConfigDefaultFilters(ctx, config.GetInstance(), "105")
+	return nil
 }
 
 type schema106Migrator struct {

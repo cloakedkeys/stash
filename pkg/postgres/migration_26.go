@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/savedfilter"
@@ -29,7 +30,14 @@ func post26(ctx context.Context, db *sqlx.DB) error {
 		return fmt.Errorf("rewriting default filters: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// after the database is migrated, so a config file that can't be written
+	// never leaves it half done; this only logs failures
+	savedfilter.ConvertLegacyWildcardConfigDefaultFilters(ctx, config.GetInstance(), "pg25")
+	return nil
 }
 
 type migration26SavedFilter struct {
