@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 	"unicode"
 
@@ -94,6 +95,46 @@ func (m *schema58Migrator) fromSnakeCaseValue(val interface{}) interface{} {
 	}
 }
 
+// isSnakeCaseConfig reports whether a UI configuration was saved before schema
+// 58. The config library used then made every key lowercase, at any depth, and
+// the UI settings were saved with snake_case keys to survive that. A config
+// file saved since has camelCase keys, such as defaultFilters. So the settings
+// are old when no key has an uppercase letter and at least one key has an _
+// after its first character.
+func (m *schema58Migrator) isSnakeCaseConfig(ui map[string]interface{}) bool {
+	hasUpper, hasUnderscore := false, false
+	var walk func(val interface{})
+	checkKey := func(k string) {
+		if strings.IndexFunc(k, unicode.IsUpper) >= 0 {
+			hasUpper = true
+		}
+		if strings.Contains(strings.TrimLeft(k, "_"), "_") {
+			hasUnderscore = true
+		}
+	}
+	walk = func(val interface{}) {
+		switch v := val.(type) {
+		case map[interface{}]interface{}:
+			for k, vv := range v {
+				checkKey(cast.ToString(k))
+				walk(vv)
+			}
+		case map[string]interface{}:
+			for k, vv := range v {
+				checkKey(k)
+				walk(vv)
+			}
+		case []interface{}:
+			for _, vv := range v {
+				walk(vv)
+			}
+		}
+	}
+	walk(ui)
+
+	return !hasUpper && hasUnderscore
+}
+
 // renameKey renames a fully qualified key name in a map
 func (m *schema58Migrator) renameKey(mm map[string]interface{}, from, to string) {
 	nm := utils.NestedMap(mm)
@@ -132,6 +173,15 @@ func (m *schema58Migrator) migrateConfig() error {
 	ui := c.GetUIConfiguration()
 	if len(ui) == 0 {
 		// no UI config to migrate
+		return nil
+	}
+
+	// This step can meet a config file of any age: a new database, a reset or
+	// a restored old database can each come with a config file this build
+	// wrote. Converting one of those breaks the settings that use _, such as
+	// default filters and plugin IDs.
+	if !m.isSnakeCaseConfig(ui) {
+		logger.Info("The UI settings in the config file are already in camelCase, leaving the config file as it is")
 		return nil
 	}
 
