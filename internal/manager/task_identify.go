@@ -15,6 +15,7 @@ import (
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/scraper"
+	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 	"github.com/stashapp/stash/pkg/stashbox"
 	"github.com/stashapp/stash/pkg/txn"
@@ -99,6 +100,8 @@ func (j *IdentifyJob) Execute(ctx context.Context, progress *job.Progress) error
 				if err != nil {
 					return fmt.Errorf("invalid scene IDs: %w", err)
 				}
+				// identify each scene once, even if its id is listed more than once
+				sceneIDs = sliceutil.Unique(sceneIDs)
 
 				j.addProgressTotal(len(sceneIDs))
 				for _, id := range sceneIDs {
@@ -154,6 +157,8 @@ func (j *IdentifyJob) executeGalleryIDs(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("invalid gallery IDs: %w", err)
 		}
+		// identify each gallery once, even if its id is listed more than once
+		galleryIDs = sliceutil.Unique(galleryIDs)
 
 		j.addProgressTotal(len(galleryIDs))
 		for _, id := range galleryIDs {

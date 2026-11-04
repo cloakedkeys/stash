@@ -678,7 +678,8 @@ func (s *Manager) batchTagPerformersByIds(ctx context.Context, input StashBoxBat
 			ids = input.PerformerIds //nolint:staticcheck
 		}
 
-		for _, performerID := range ids {
+		// tag each performer once, even if its id is listed more than once
+		for _, performerID := range uniqueIDStrings(ids) {
 			if id, err := strconv.Atoi(performerID); err == nil {
 				performer, err := performerQuery.Find(ctx, id)
 				if err != nil {
@@ -883,7 +884,8 @@ func (s *Manager) batchTagStudiosByIds(ctx context.Context, input StashBoxBatchT
 	err := s.Repository.WithTxn(ctx, func(ctx context.Context) error {
 		studioQuery := s.Repository.Studio
 
-		for _, studioID := range input.Ids {
+		// tag each studio once, even if its id is listed more than once
+		for _, studioID := range uniqueIDStrings(input.Ids) {
 			if id, err := strconv.Atoi(studioID); err == nil {
 				studio, err := studioQuery.Find(ctx, id)
 				if err != nil {
@@ -1021,7 +1023,8 @@ func (s *Manager) batchTagTagsByIds(ctx context.Context, input StashBoxBatchTagI
 	err := s.Repository.WithTxn(ctx, func(ctx context.Context) error {
 		tagQuery := s.Repository.Tag
 
-		for _, tagID := range input.Ids {
+		// tag each tag once, even if its id is listed more than once
+		for _, tagID := range uniqueIDStrings(input.Ids) {
 			if id, err := strconv.Atoi(tagID); err == nil {
 				t, err := tagQuery.Find(ctx, id)
 				if err != nil {

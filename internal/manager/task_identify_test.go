@@ -88,6 +88,15 @@ func TestIdentifyJob_Execute(t *testing.T) {
 			galleryFIDs: []int{2},
 		},
 		{
+			// each item is identified once, even if listed again or written differently (#2092)
+			name:        "repeated IDs",
+			sources:     []*identify.Source{source},
+			sceneIDs:    []string{"1", "2", "01", "1"},
+			galleryIDs:  []string{"3", "03", "3"},
+			sceneFIDs:   []int{1, 2},
+			galleryFIDs: []int{3},
+		},
+		{
 			name:     "scene ID not found",
 			sources:  []*identify.Source{source},
 			sceneIDs: []string{"999"},
