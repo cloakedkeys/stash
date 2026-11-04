@@ -66,7 +66,10 @@ func (s *Store) MakePluginCookie(ctx context.Context) *http.Cookie {
 
 	session := sessions.NewSession(s.sessionStore, cookieName)
 	if currentUser != nil {
-		session.Values[userIDKey] = *currentUser
+		// Store the username, the same string value Login stores and
+		// GetSession reads. The user struct can't be gob-encoded into the
+		// cookie, which left plugins without a session cookie.
+		session.Values[userIDKey] = currentUser.Username
 	}
 
 	session.Values[visitedPluginHooksKey] = visitedPlugins
