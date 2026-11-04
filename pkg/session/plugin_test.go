@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/plugin/hook"
@@ -74,6 +75,52 @@ func TestMakePluginCookieWithCurrentUser(t *testing.T) {
 	}
 }
 
+// A request authenticated by a session cookie: the plugin cookie keeps that
+// session's login time, to the nanosecond.
+func TestMakePluginCookieKeepsSessionLoginTime(t *testing.T) {
+	s := newTestStore()
+
+	loginTime := time.Unix(0, 1700000000123456789)
+	ctx := SetCurrentUser(context.Background(), models.User{ID: 7, Username: "admin"})
+	ctx = SetSessionLoginTime(ctx, loginTime)
+
+	cookie := s.MakePluginCookie(ctx)
+	if cookie == nil {
+		t.Fatal("MakePluginCookie returned nil")
+	}
+
+	sess, _ := readPluginCookie(t, s, cookie)
+	if sess == nil || sess.UserID != "admin" {
+		t.Fatalf("session = %+v, want user admin", sess)
+	}
+	if !sess.LoginTime.Equal(loginTime) {
+		t.Errorf("login time = %v, want %v", sess.LoginTime, loginTime)
+	}
+}
+
+// A request with a user but no session (API key, signed URL, single user
+// mode): the plugin cookie uses the time it was made.
+func TestMakePluginCookieWithoutSessionUsesNow(t *testing.T) {
+	s := newTestStore()
+
+	ctx := SetCurrentUser(context.Background(), models.User{ID: 7, Username: "admin"})
+
+	before := time.Now()
+	cookie := s.MakePluginCookie(ctx)
+	after := time.Now()
+	if cookie == nil {
+		t.Fatal("MakePluginCookie returned nil")
+	}
+
+	sess, _ := readPluginCookie(t, s, cookie)
+	if sess == nil {
+		t.Fatal("plugin cookie did not decode to a session")
+	}
+	if sess.LoginTime.Before(before) || sess.LoginTime.After(after) {
+		t.Errorf("login time = %v, want between %v and %v", sess.LoginTime, before, after)
+	}
+}
+
 func TestMakePluginCookieWithoutCurrentUser(t *testing.T) {
 	s := newTestStore()
 
@@ -91,6 +138,10 @@ func TestMakePluginCookieWithoutCurrentUser(t *testing.T) {
 	}
 	if sess.UserID != "" {
 		t.Errorf("session user = %q, want empty", sess.UserID)
+	}
+	// no login time is stored, as before
+	if !sess.LoginTime.Equal(time.Unix(0, 0)) {
+		t.Errorf("login time = %v, want none", sess.LoginTime)
 	}
 	if len(visited) != 2 {
 		t.Errorf("visited hooks = %v, want 2 entries", visited)

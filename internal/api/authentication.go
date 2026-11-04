@@ -211,6 +211,8 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 
 			var u *models.User
 			var err error
+			// login time of the session cookie that authenticated u, if any
+			var sessionLoginTime time.Time
 
 			if defaultUser != nil {
 				u = defaultUser
@@ -292,6 +294,8 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 								httpError(w, r, "internal server error", http.StatusInternalServerError)
 								return
 							}
+						} else if u != nil {
+							sessionLoginTime = session.LoginTime
 						}
 					}
 				}
@@ -319,6 +323,10 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 			if u != nil {
 				// set the user object in the context
 				ctx = session.SetCurrentUser(ctx, *u)
+				if !sessionLoginTime.IsZero() {
+					// plugin cookies made for this request keep the session's login time
+					ctx = session.SetSessionLoginTime(ctx, sessionLoginTime)
+				}
 			}
 
 			r = r.WithContext(ctx)
