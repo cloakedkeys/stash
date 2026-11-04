@@ -28,11 +28,11 @@ type CustomSQLiteDriver struct{}
 // are retired instead of reused, and busy pools that never sit idle long
 // enough to close still pick up the new statistics.
 //
-// SQLite 3.45.0 to 3.49.x, including the bundled 3.45.1, add a second reason
-// for the connection that runs the ANALYZE: when an index's statistics show a
-// single value, SQLite marks it "low quality" (bLowQual), stops using it for
-// lookups, and never clears the mark, even after reloading. 3.50.0 removed
-// that, but the first reason still applies.
+// SQLite 3.45.0 to 3.49.x, which Stash bundled before #2032, added a second
+// reason for the connection that runs the ANALYZE: when an index's statistics
+// showed a single value, SQLite marked it "low quality" (bLowQual), stopped
+// using it for lookups, and never cleared the mark, even after reloading.
+// 3.50.0 removed that, but the first reason still applies.
 var statisticsGeneration atomic.Uint64
 
 // retireConnections makes every open connection be replaced by a new one

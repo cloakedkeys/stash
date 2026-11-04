@@ -68,20 +68,40 @@ func openTestDatabase(t *testing.T) *Database {
 	return db
 }
 
+// markReadConnection marks the read connection, which is the only one, with a
+// temporary table: those belong to the connection that made them.
+func markReadConnection(t *testing.T, db *Database) {
+	t.Helper()
+	_, err := db.readDB.Exec("CREATE TEMP TABLE connection_marker (x)")
+	require.NoError(t, err)
+	require.True(t, readConnectionMarked(t, db))
+}
+
+// readConnectionMarked reports whether the read connection is still the one
+// markReadConnection marked. A connection opened since loaded the statistics
+// as they are now; one opened before still plans with the old ones.
+func readConnectionMarked(t *testing.T, db *Database) bool {
+	t.Helper()
+	var n int
+	require.NoError(t, db.readDB.Get(&n, "SELECT COUNT(*) FROM temp.sqlite_master WHERE name = 'connection_marker'"))
+	return n > 0
+}
+
 // staleImageStatistics gathers statistics while 2,000 of 20,000 images all have
-// the same studio, has the read connections load them, then spreads those
+// the same studio, has the read connection load them, then spreads those
 // images over 200 studios. The number of images doesn't change, so the
-// automatic optimize never notices.
+// automatic optimize never notices. The read connection is marked.
 func staleImageStatistics(t *testing.T) *Database {
 	t.Helper()
 	db := openTestDatabase(t)
+	db.readDB.SetMaxOpenConns(1)
 	write(t, db, addStudiosAndImages)
 	_, err := db.writeDB.Exec("ANALYZE")
 	require.NoError(t, err)
 	require.Equal(t, "2000 2000", imageStudioIndexStat(t, db), "every image with a studio has the same one")
 
 	write(t, db, "UPDATE images SET studio_id = 1 + id % 200 WHERE studio_id IS NOT NULL")
-	require.NotContains(t, imageStudioCountPlan(t, db), lookUpStudio, "stale statistics: the studio index isn't used for lookups")
+	markReadConnection(t, db)
 	return db
 }
 
@@ -96,6 +116,7 @@ func TestRefreshStatistics(t *testing.T) {
 	require.Len(t, fields, 2)
 	require.Equal(t, "2000", fields[0])
 	require.NotEqual(t, "2000", fields[1], "about 10 images per studio, sampled so not exact")
+	require.False(t, readConnectionMarked(t, db), "the read connection that was open is replaced")
 	require.Contains(t, imageStudioCountPlan(t, db), lookUpStudio)
 
 	// The sample limit must not stay on the write connection, or a later full
@@ -113,6 +134,7 @@ func TestAnalyzeReachesOpenConnections(t *testing.T) {
 	require.NoError(t, db.Analyze(context.Background()))
 
 	require.Equal(t, "2000 10", imageStudioIndexStat(t, db))
+	require.False(t, readConnectionMarked(t, db), "the read connection that was open is replaced")
 	require.Contains(t, imageStudioCountPlan(t, db), lookUpStudio)
 }
 
