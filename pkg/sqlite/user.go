@@ -336,13 +336,19 @@ func (qb *UserStore) FindMany(ctx context.Context, ids []int) ([]*models.User, e
 	positions := sliceutil.KeyPositions(ids)
 
 	table := qb.table()
-	q := qb.selectDataset().Prepared(true).Where(table.Col(idColumn).In(ids))
-	unsorted, err := qb.getMany(ctx, q)
-	if err != nil {
+	if err := batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := qb.selectDataset().Prepared(true).Where(table.Col(idColumn).In(batch))
+		unsorted, err := qb.getMany(ctx, q)
+		if err != nil {
+			return err
+		}
+
+		sliceutil.PlaceByKey(ret, positions, unsorted, func(s *models.User) int { return s.ID })
+
+		return nil
+	}); err != nil {
 		return nil, err
 	}
-
-	sliceutil.PlaceByKey(ret, positions, unsorted, func(s *models.User) int { return s.ID })
 
 	for i := range ret {
 		if ret[i] == nil {

@@ -180,6 +180,28 @@ func TestFindManyRepeatedIDs(t *testing.T) {
 	}
 }
 
+// TestUserFindManyLongList checks that a list of ids longer than one query
+// can take is looked up in batches.
+func TestUserFindManyLongList(t *testing.T) {
+	runWithRollbackTxn(t, "user", func(t *testing.T, ctx context.Context) {
+		store, ok := db.User().(userFindMany)
+		require.True(t, ok, "user store has no FindMany")
+
+		// more than SQLite's and PostgreSQL's limits on query parameters
+		const n = 70000
+		ids := make([]int, n)
+		for i := range ids {
+			ids[i] = testUserID
+		}
+
+		got, err := store.FindMany(ctx, ids)
+		require.NoError(t, err)
+		require.Len(t, got, n)
+		assert.Equal(t, testUserID, got[0].ID)
+		assert.Same(t, got[0], got[n-1])
+	})
+}
+
 // TestFindManyRepeatedIDsIgnoreNotFound checks that a saved filter lookup
 // that ignores missing ids still fills every position of a repeated id.
 func TestFindManyRepeatedIDsIgnoreNotFound(t *testing.T) {
