@@ -234,15 +234,28 @@ func notifyTasksFinished(ctx context.Context, jobs *job.Manager, enabled func() 
 					continue
 				}
 
-				cleanDesc := strings.TrimRight(j.Description, ".")
-				timeElapsed := j.EndTime.Sub(*j.StartTime)
-				msg := fmt.Sprintf("Task \"%s\" finished in %s.", cleanDesc, formatDuration(timeElapsed))
-				send("Task Finished", msg)
+				send(taskFinishedNotification(j))
 			case <-ctx.Done():
 				return
 			}
 		}
 	}()
+}
+
+// taskFinishedNotification returns the title and text of the notification
+// for a task that ran, saying whether it finished, failed or was stopped.
+func taskFinishedNotification(j job.Job) (title, text string) {
+	cleanDesc := strings.TrimRight(j.Description, ".")
+	elapsed := formatDuration(j.EndTime.Sub(*j.StartTime))
+
+	switch j.Status {
+	case job.StatusFailed:
+		return "Task Failed", fmt.Sprintf("Task \"%s\" failed after %s.", cleanDesc, elapsed)
+	case job.StatusCancelled:
+		return "Task Stopped", fmt.Sprintf("Task \"%s\" was stopped after %s.", cleanDesc, elapsed)
+	default:
+		return "Task Finished", fmt.Sprintf("Task \"%s\" finished in %s.", cleanDesc, elapsed)
+	}
 }
 
 // postInit initialises the paths, caches and database after the initial
