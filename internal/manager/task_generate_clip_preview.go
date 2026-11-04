@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/image"
@@ -36,6 +37,12 @@ func (t *GenerateClipPreviewTask) Start(ctx context.Context) {
 		OutputArgs: GetInstance().Config.GetTranscodeOutputArgs(),
 		Preset:     GetInstance().Config.GetPreviewPreset().String(),
 		HWAccel:    GetInstance().Config.GetGenerationHardwareAcceleration(),
+	}
+
+	// ffmpeg writes straight to the file, so its folder must exist
+	if err := fsutil.EnsureDirAll(filepath.Dir(prevPath)); err != nil {
+		logger.Errorf("creating folder for %s: %v", prevPath, err)
+		return
 	}
 
 	encoder := image.NewThumbnailEncoder(GetInstance().FFMpeg, GetInstance().FFProbe, clipPreviewOptions)

@@ -13,11 +13,13 @@ const thumbDirDepth int = 2
 const thumbDirLength int = 2 // thumbDirDepth * thumbDirLength must be smaller than the length of checksum
 
 type generatedPaths struct {
-	// Video holds videos' generated files, grouped by hash. See videoFile.
+	// Video and Image hold videos' and images' generated files, grouped by
+	// hash. See videoFile and imageFile.
 	Video string
+	Image string
 
-	// Screenshots, Vtt, Markers, Transcodes and InteractiveHeatmap are the
-	// legacy folders of videos' generated files. Files made before the hash
+	// Screenshots, Vtt, Markers, Transcodes, InteractiveHeatmap and Thumbnails
+	// are the legacy folders of generated files. Files made before the hash
 	// layout may still be there.
 
 	EmbeddedSubtitles  string
@@ -34,6 +36,7 @@ type generatedPaths struct {
 func newGeneratedPaths(path string) *generatedPaths {
 	gp := generatedPaths{}
 	gp.Video = filepath.Join(path, "video")
+	gp.Image = filepath.Join(path, "image")
 	gp.EmbeddedSubtitles = filepath.Join(path, "embedded_subtitles")
 	gp.Screenshots = filepath.Join(path, "screenshots")
 	gp.Thumbnails = filepath.Join(path, "thumbnails")
@@ -87,12 +90,36 @@ func (gp *generatedPaths) TempDir(pattern string) (string, error) {
 	return ret, nil
 }
 
-func (gp *generatedPaths) GetThumbnailPath(checksum string, width int) string {
-	fname := fmt.Sprintf("%s_%d.jpg", checksum, width)
-	return filepath.Join(gp.Thumbnails, fsutil.GetIntraDir(checksum, thumbDirDepth, thumbDirLength), fname)
+// imageFile returns the path of an image's generated file in the hash layout:
+// image/ab/cd/<checksum>_<kind>.
+func (gp *generatedPaths) imageFile(checksum, kind string) string {
+	return filepath.Join(hashDir(gp.Image, checksum), checksum+"_"+kind)
 }
 
+// Thumbnail is an image's thumbnail, in the hash layout and where it was kept before.
+func (gp *generatedPaths) Thumbnail(checksum string, width int) GeneratedFile {
+	return GeneratedFile{
+		Path:   gp.imageFile(checksum, fmt.Sprintf("thumb_%d.jpg", width)),
+		Legacy: filepath.Join(gp.Thumbnails, fsutil.GetIntraDir(checksum, thumbDirDepth, thumbDirLength), fmt.Sprintf("%s_%d.jpg", checksum, width)),
+	}
+}
+
+// ClipPreview is a video image's preview, in the hash layout and where it was kept before.
+func (gp *generatedPaths) ClipPreview(checksum string, width int) GeneratedFile {
+	return GeneratedFile{
+		Path:   gp.imageFile(checksum, fmt.Sprintf("preview_%d.webm", width)),
+		Legacy: filepath.Join(gp.Thumbnails, fsutil.GetIntraDir(checksum, thumbDirDepth, thumbDirLength), fmt.Sprintf("%s_%d.webm", checksum, width)),
+	}
+}
+
+// GetThumbnailPath returns where the image's thumbnail is, or where a new one
+// goes. See GeneratedFile.Find.
+func (gp *generatedPaths) GetThumbnailPath(checksum string, width int) string {
+	return gp.Thumbnail(checksum, width).Find()
+}
+
+// GetClipPreviewPath returns where the image's clip preview is, or where a new
+// one goes. See GeneratedFile.Find.
 func (gp *generatedPaths) GetClipPreviewPath(checksum string, width int) string {
-	fname := fmt.Sprintf("%s_%d.webm", checksum, width)
-	return filepath.Join(gp.Thumbnails, fsutil.GetIntraDir(checksum, thumbDirDepth, thumbDirLength), fname)
+	return gp.ClipPreview(checksum, width).Find()
 }

@@ -23,15 +23,16 @@ type FileDeleter struct {
 // Generated files bypass trash and are permanently deleted since they can be regenerated.
 func (d *FileDeleter) MarkGeneratedFiles(image *models.Image) error {
 	var files []string
-	thumbPath := d.Paths.Generated.GetThumbnailPath(image.Checksum, models.DefaultGthumbWidth)
-	exists, _ := fsutil.FileExists(thumbPath)
-	if exists {
-		files = append(files, thumbPath)
-	}
-	prevPath := d.Paths.Generated.GetClipPreviewPath(image.Checksum, models.DefaultGthumbWidth)
-	exists, _ = fsutil.FileExists(prevPath)
-	if exists {
-		files = append(files, prevPath)
+	for _, f := range []paths.GeneratedFile{
+		d.Paths.Generated.Thumbnail(image.Checksum, models.DefaultGthumbWidth),
+		d.Paths.Generated.ClipPreview(image.Checksum, models.DefaultGthumbWidth),
+	} {
+		// in either layout
+		for _, path := range f.Both() {
+			if exists, _ := fsutil.FileExists(path); exists {
+				files = append(files, path)
+			}
+		}
 	}
 
 	return d.FilesWithoutTrash(files)
