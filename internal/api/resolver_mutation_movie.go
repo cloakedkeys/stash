@@ -262,8 +262,11 @@ func (r *mutationResolver) BulkMovieUpdate(ctx context.Context, input BulkMovieU
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Group
 
-		if err := r.linkedStudioExists(ctx, updatedGroup.StudioID); err != nil {
-			return err
+		// with no ids nothing is written, so a missing studio is not refused, as before
+		if len(groupIDs) > 0 {
+			if err := r.linkedStudioExists(ctx, updatedGroup.StudioID); err != nil {
+				return err
+			}
 		}
 
 		for _, groupID := range groupIDs {

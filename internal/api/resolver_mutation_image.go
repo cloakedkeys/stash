@@ -262,8 +262,11 @@ func (r *mutationResolver) BulkImageUpdate(ctx context.Context, input BulkImageU
 		var updatedGalleryIDs []int
 		qb := r.repository.Image
 
-		if err := r.linkedStudioExists(ctx, updatedImage.StudioID); err != nil {
-			return err
+		// with no ids nothing is written, so a missing studio is not refused, as before
+		if len(imageIDs) > 0 {
+			if err := r.linkedStudioExists(ctx, updatedImage.StudioID); err != nil {
+				return err
+			}
 		}
 
 		for _, imageID := range imageIDs {

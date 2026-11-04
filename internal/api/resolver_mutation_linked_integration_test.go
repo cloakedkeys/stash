@@ -194,4 +194,12 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 			require.NotContains(t, body, `"errors"`)
 		})
 	}
+
+	// a bulk edit of no items writes nothing, so a missing studio isn't refused
+	for _, call := range []string{"bulkSceneUpdate", "bulkAudioUpdate", "bulkGalleryUpdate", "bulkImageUpdate", "bulkGroupUpdate", "bulkMovieUpdate"} {
+		t.Run(call+" with no ids", func(t *testing.T) {
+			body := storyRequest(t, gql, editor, "mutation { "+call+`(input:{ids:[],studio_id:"999"}) { id } }`)
+			require.JSONEq(t, `{"data":{"`+call+`":null}}`, body)
+		})
+	}
 }

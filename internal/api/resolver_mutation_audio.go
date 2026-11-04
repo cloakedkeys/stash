@@ -419,8 +419,11 @@ func (r *mutationResolver) BulkAudioUpdate(ctx context.Context, input BulkAudioU
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
 
-		if err := r.linkedStudioExists(ctx, updatedAudio.StudioID); err != nil {
-			return err
+		// with no ids nothing is written, so a missing studio is not refused, as before
+		if len(audioIDs) > 0 {
+			if err := r.linkedStudioExists(ctx, updatedAudio.StudioID); err != nil {
+				return err
+			}
 		}
 
 		for _, audioID := range audioIDs {

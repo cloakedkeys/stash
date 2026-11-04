@@ -347,8 +347,11 @@ func (r *mutationResolver) BulkGalleryUpdate(ctx context.Context, input BulkGall
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Gallery
 
-		if err := r.linkedStudioExists(ctx, updatedGallery.StudioID); err != nil {
-			return err
+		// with no ids nothing is written, so a missing studio is not refused, as before
+		if len(galleryIDs) > 0 {
+			if err := r.linkedStudioExists(ctx, updatedGallery.StudioID); err != nil {
+				return err
+			}
 		}
 
 		for _, galleryID := range galleryIDs {

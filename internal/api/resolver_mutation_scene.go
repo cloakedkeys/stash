@@ -493,8 +493,11 @@ func (r *mutationResolver) BulkSceneUpdate(ctx context.Context, input BulkSceneU
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
 
-		if err := r.linkedStudioExists(ctx, updatedScene.StudioID); err != nil {
-			return err
+		// with no ids nothing is written, so a missing studio is not refused, as before
+		if len(sceneIDs) > 0 {
+			if err := r.linkedStudioExists(ctx, updatedScene.StudioID); err != nil {
+				return err
+			}
 		}
 
 		for _, sceneID := range sceneIDs {

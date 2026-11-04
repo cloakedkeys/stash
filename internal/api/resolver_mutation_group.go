@@ -365,8 +365,11 @@ func (r *mutationResolver) BulkGroupUpdate(ctx context.Context, input BulkGroupU
 	ret := []*models.Group{}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
-		if err := r.linkedStudioExists(ctx, updatedGroup.StudioID); err != nil {
-			return err
+		// with no ids nothing is written, so a missing studio is not refused, as before
+		if len(groupIDs) > 0 {
+			if err := r.linkedStudioExists(ctx, updatedGroup.StudioID); err != nil {
+				return err
+			}
 		}
 
 		for _, groupID := range groupIDs {
