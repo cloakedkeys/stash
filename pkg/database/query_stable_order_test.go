@@ -298,7 +298,9 @@ func stableOrderCases() []stableOrderCase {
 }
 
 // Items that a list's sort ranks the same, or every item when there is no sort,
-// must come back in a set id order, the one SQLite gives. Paging through the
+// must come back in a set id order: with a sort, the one SQLite gives, and
+// with no sort, id order (SQLite's depends on which index it reads, and for
+// these items it is id order too). Paging through the
 // list then gives every item exactly once, in the same order every time.
 func TestQueryStableOrder(t *testing.T) {
 	const items = 7
@@ -336,7 +338,7 @@ func TestQueryStableOrder(t *testing.T) {
 						require.Equal(t, items, count, "count")
 						assert.ElementsMatch(t, created, all, "all results, run %d", run)
 						if tt.idOrder {
-							assert.Equal(t, want, all, "all results in SQLite's order, run %d", run)
+							assert.Equal(t, want, all, "all results in the set order, run %d", run)
 						}
 						if run == 0 {
 							first = all
@@ -391,13 +393,8 @@ func TestQueryStableOrderRandom(t *testing.T) {
 				}
 			}
 
-			// SQLite's seeded random sort gives id order: its % binds before
-			// the +, so the sort key grows with the id. Only PostgreSQL is
-			// checked for a shuffled order here.
-			if IsPostgresTest() != nil {
-				assert.NotEqual(t, created, orders["1234"], "a random sort is not id order")
-				assert.NotEqual(t, orders["1234"], orders["98765"], "seeds give different orders")
-			}
+			assert.NotEqual(t, created, orders["1234"], "a random sort is not id order")
+			assert.NotEqual(t, orders["1234"], orders["98765"], "seeds give different orders")
 		})
 	}
 }
@@ -429,6 +426,88 @@ func TestQueryTagTiesBySortName(t *testing.T) {
 					ids[i] = tag.ID
 				}
 				assert.Equal(t, []int{first, second, third}, ids)
+			})
+		}
+	}
+}
+
+// Sorted by studio, items with the same title come back as on SQLite. With a
+// studio, the studio name decides: newest first ascending, oldest first
+// descending. With no studio, SQLite moves on to the ascending title, so they
+// come back newest first either way.
+func TestQueryStudioSortTies(t *testing.T) {
+	tests := []struct {
+		name   string
+		create func(t *testing.T, ctx context.Context, studioID *int) int
+		query  func(t *testing.T, ctx context.Context, find *models.FindFilterType) []int
+	}{
+		{
+			name: "scene",
+			create: func(t *testing.T, ctx context.Context, studioID *int) int {
+				o := models.NewScene()
+				o.Title = stableOrderToken
+				o.StudioID = studioID
+				require.NoError(t, db.Scene().Create(ctx, &o, nil))
+				return o.ID
+			},
+			query: func(t *testing.T, ctx context.Context, find *models.FindFilterType) []int {
+				r, err := db.Scene().Query(ctx, models.SceneQueryOptions{QueryOptions: models.QueryOptions{FindFilter: find}})
+				require.NoError(t, err)
+				return r.IDs
+			},
+		},
+		{
+			name: "audio",
+			create: func(t *testing.T, ctx context.Context, studioID *int) int {
+				o := &models.Audio{Title: stableOrderToken, StudioID: studioID}
+				require.NoError(t, db.Audio().Create(ctx, o, nil))
+				return o.ID
+			},
+			query: func(t *testing.T, ctx context.Context, find *models.FindFilterType) []int {
+				r, err := db.Audio().Query(ctx, models.AudioQueryOptions{QueryOptions: models.QueryOptions{FindFilter: find}})
+				require.NoError(t, err)
+				return r.IDs
+			},
+		},
+	}
+
+	// only returns the ids in want, in the order of got
+	only := func(got, want []int) []int {
+		var ret []int
+		for _, id := range got {
+			if slices.Contains(want, id) {
+				ret = append(ret, id)
+			}
+		}
+		return ret
+	}
+
+	for _, tt := range tests {
+		for _, direction := range []models.SortDirectionEnum{models.SortDirectionEnumAsc, models.SortDirectionEnumDesc} {
+			runWithRollbackTxn(t, tt.name+" "+direction.String(), func(t *testing.T, ctx context.Context) {
+				studio := &models.Studio{Name: stableOrderToken + " studio"}
+				require.NoError(t, db.Studio().Create(ctx, &models.CreateStudioInput{Studio: studio}))
+
+				var withStudio, noStudio []int
+				for i := 0; i < 4; i++ {
+					withStudio = append(withStudio, tt.create(t, ctx, &studio.ID))
+					noStudio = append(noStudio, tt.create(t, ctx, nil))
+				}
+
+				q, sort, d := stableOrderToken, "studio", direction
+				perPage := models.PerPageAll
+				got := tt.query(t, ctx, &models.FindFilterType{Q: &q, Sort: &sort, Direction: &d, PerPage: &perPage})
+				require.Len(t, got, 8)
+
+				wantStudio := slices.Clone(withStudio)
+				if direction == models.SortDirectionEnumAsc {
+					slices.Reverse(wantStudio)
+				}
+				wantNone := slices.Clone(noStudio)
+				slices.Reverse(wantNone)
+
+				assert.Equal(t, wantStudio, only(got, withStudio), "with a studio")
+				assert.Equal(t, wantNone, only(got, noStudio), "with no studio")
 			})
 		}
 	}
