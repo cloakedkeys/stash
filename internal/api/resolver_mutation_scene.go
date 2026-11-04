@@ -742,6 +742,10 @@ func (r *mutationResolver) SceneMerge(ctx context.Context, input SceneMergeInput
 
 	var ret *models.Scene
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := r.linkedStudioExists(ctx, values.StudioID); err != nil {
+			return err
+		}
+
 		if voiceActorIDs != nil {
 			if err := r.repository.VoiceActor.SetScene(ctx, destID, *voiceActorIDs); err != nil {
 				return err

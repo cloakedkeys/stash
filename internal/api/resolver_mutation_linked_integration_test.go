@@ -116,7 +116,13 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 		{f(`bulkSceneUpdate(input:{ids:["%d"],group_ids:{ids:["999"],mode:ADD}}) { id }`, sc.ID), "group with id 999 not found"},
 		{f(`audioUpdate(input:{id:"%d",groups:[{group_id:"999"}]}) { id }`, au.ID), "group with id 999 not found"},
 
-		// a group's sub-groups
+		// a group's containing and sub-groups
+		{`groupCreate(input:{name:"x",containing_groups:[{group_id:"999"}]}) { id }`, "group with id 999 not found"},
+		{`groupCreate(input:{name:"x",sub_groups:[{group_id:"999"}]}) { id }`, "group with id 999 not found"},
+		{f(`groupCreate(input:{name:"x",sub_groups:[{group_id:"%d"},{group_id:"%d"}]}) { id }`, g2.ID, g2.ID), f("group with id %d is listed more than once", g2.ID)},
+		{f(`groupUpdate(input:{id:"%d",sub_groups:[{group_id:"999"}]}) { id }`, g1.ID), "group with id 999 not found"},
+		{f(`groupUpdate(input:{id:"%d",sub_groups:[{group_id:"%d"},{group_id:"%d"}]}) { id }`, g1.ID, g2.ID, g2.ID), f("group with id %d is listed more than once", g2.ID)},
+		{f(`bulkGroupUpdate(input:{ids:["%d"],sub_groups:{groups:[{group_id:"999"}],mode:ADD}}) { id }`, g1.ID), "group with id 999 not found"},
 		{f(`addGroupSubGroups(input:{containing_group_id:"%d",sub_groups:[{group_id:"%d"},{group_id:"%d"}]})`, g1.ID, g2.ID, g2.ID), f("group with id %d is listed more than once", g2.ID)},
 
 		// join tables: the old error had no id
