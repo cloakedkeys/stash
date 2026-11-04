@@ -124,7 +124,8 @@ func (s *groupRelationshipStore) createRelationships(ctx context.Context, id int
 				if isUniqueError(err) {
 					return groupRelationExistsError(v.GroupID, id, idIsContaining, true)
 				}
-				return fmt.Errorf("inserting into %s: %w", s.table.table.GetTable(), err)
+				// insert already says which table
+				return err
 			}
 		}
 
@@ -235,7 +236,8 @@ func (s *groupRelationshipStore) addJoins(ctx context.Context, id int, groups []
 			if isUniqueError(err) {
 				return groupRelationExistsError(vv.GroupID, id, idIsContaining, groupListedBefore(groups, i))
 			}
-			return fmt.Errorf("inserting into %s: %w", s.table.table.GetTable(), err)
+			// insert already says which table
+			return err
 		}
 	}
 
