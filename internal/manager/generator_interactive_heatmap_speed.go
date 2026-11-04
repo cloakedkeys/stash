@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/lucasb-eyer/go-colorful"
@@ -191,6 +192,11 @@ func (g *InteractiveHeatmapSpeedGenerator) RenderHeatmap(heatmapPath string, sce
 		x := int(float64(ts) / float64(maxts) * float64(g.Width))
 		draw.Draw(img, image.Rect(x-1, g.Height/2, x+1, g.Height), &image.Uniform{c}, image.Point{}, draw.Src)
 		ts += tick
+	}
+
+	// in the hash layout, the folder may not exist yet
+	if err := fsutil.EnsureDirAll(filepath.Dir(heatmapPath)); err != nil {
+		return err
 	}
 
 	outpng, err := os.Create(heatmapPath)

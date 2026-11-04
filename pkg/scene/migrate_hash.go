@@ -10,56 +10,46 @@ import (
 	"github.com/stashapp/stash/pkg/models/paths"
 )
 
+// MigrateHash renames the generated files named after oldHash to newHash.
+// Files in the hash layout are renamed within it, and files in a legacy
+// location within that.
 func MigrateHash(p *paths.Paths, oldHash string, newHash string) {
-	oldPath := filepath.Join(p.Generated.Markers, oldHash)
-	newPath := filepath.Join(p.Generated.Markers, newHash)
-	migrateSceneFiles(oldPath, newPath)
-
 	scenePaths := p.Scene
-	oldPath = scenePaths.GetVideoPreviewPath(oldHash)
-	newPath = scenePaths.GetVideoPreviewPath(newHash)
-	migrateSceneFiles(oldPath, newPath)
+	oldFiles := scenePaths.GeneratedFiles(oldHash)
+	newFiles := scenePaths.GeneratedFiles(newHash)
+	for i := range oldFiles {
+		migrateSceneFiles(oldFiles[i].Path, newFiles[i].Path)
+		migrateSceneFiles(oldFiles[i].Legacy, newFiles[i].Legacy)
+	}
 
-	oldPath = scenePaths.GetWebpPreviewPath(oldHash)
-	newPath = scenePaths.GetWebpPreviewPath(newHash)
-	migrateSceneFiles(oldPath, newPath)
-
-	oldPath = scenePaths.GetTranscodePath(oldHash)
-	newPath = scenePaths.GetTranscodePath(newHash)
-	migrateSceneFiles(oldPath, newPath)
-
-	oldVttPath := scenePaths.GetSpriteVttFilePath(oldHash)
-	newVttPath := scenePaths.GetSpriteVttFilePath(newHash)
-	migrateSceneFiles(oldVttPath, newVttPath)
-
-	oldPath = scenePaths.GetSpriteImageFilePath(oldHash)
-	newPath = scenePaths.GetSpriteImageFilePath(newHash)
-	migrateSceneFiles(oldPath, newPath)
-	migrateVttFile(newVttPath, oldPath, newPath)
-
-	oldPath = scenePaths.GetInteractiveHeatmapPath(oldHash)
-	newPath = scenePaths.GetInteractiveHeatmapPath(newHash)
-	migrateSceneFiles(oldPath, newPath)
+	// #2481: the vtt file names the sprite image
+	oldSprite := filepath.Base(scenePaths.SpriteImage(oldHash).Path)
+	newSprite := filepath.Base(scenePaths.SpriteImage(newHash).Path)
+	for _, vtt := range scenePaths.SpriteVtt(newHash).Both() {
+		migrateVttFile(vtt, oldSprite, newSprite)
+	}
 
 	// #3986 - migrate scene marker files
 	markerPaths := p.SceneMarkers
-	oldPath = markerPaths.GetFolderPath(oldHash)
-	newPath = markerPaths.GetFolderPath(newHash)
-	migrateSceneFolder(oldPath, newPath)
+	for _, oldPath := range markerPaths.ListMarkerFiles(oldHash) {
+		migrateSceneFiles(oldPath, markerPaths.RenamedMarkerFile(oldPath, oldHash, newHash))
+	}
+	migrateSceneFolder(markerPaths.GetFolderPath(oldHash), markerPaths.GetFolderPath(newHash))
 }
 
 // InvalidateGeneratedFiles removes the generated files for hash. Used
 // instead of MigrateHash when content changed at the same path - the old
 // hash's files are stale, not valid to rename onto the new one.
 func InvalidateGeneratedFiles(p *paths.Paths, hash string) {
-	scenePaths := p.Scene
-	removeSceneFile(scenePaths.GetVideoPreviewPath(hash))
-	removeSceneFile(scenePaths.GetWebpPreviewPath(hash))
-	removeSceneFile(scenePaths.GetTranscodePath(hash))
-	removeSceneFile(scenePaths.GetSpriteVttFilePath(hash))
-	removeSceneFile(scenePaths.GetSpriteImageFilePath(hash))
-	removeSceneFile(scenePaths.GetInteractiveHeatmapPath(hash))
+	for _, f := range p.Scene.GeneratedFiles(hash) {
+		for _, path := range f.Both() {
+			removeSceneFile(path)
+		}
+	}
 
+	for _, path := range p.SceneMarkers.ListMarkerFiles(hash) {
+		removeSceneFile(path)
+	}
 	removeSceneFolder(p.SceneMarkers.GetFolderPath(hash))
 }
 
@@ -100,6 +90,12 @@ func migrateSceneFiles(oldName, newName string) {
 		return
 	}
 
+	// in the hash layout, the new name may be in a folder that doesn't exist yet
+	if err := fsutil.EnsureDirAll(filepath.Dir(newName)); err != nil {
+		logger.Errorf("error creating folder for %s: %s", newName, err.Error())
+		return
+	}
+
 	logger.Infof("renaming %s to %s", oldName, newName)
 	if err := os.Rename(oldName, newName); err != nil {
 		logger.Errorf("error renaming %s to %s: %s", oldName, newName, err.Error())
@@ -107,7 +103,7 @@ func migrateSceneFiles(oldName, newName string) {
 }
 
 // #2481: migrate vtt file contents in addition to renaming
-func migrateVttFile(vttPath, oldSpritePath, newSpritePath string) {
+func migrateVttFile(vttPath, oldSpriteBasename, newSpriteBasename string) {
 	// #3356 - don't try to migrate if the file doesn't exist
 	if !existsForAction(fsutil.FileExists, vttPath) {
 		return
@@ -118,9 +114,6 @@ func migrateVttFile(vttPath, oldSpritePath, newSpritePath string) {
 		logger.Errorf("Error reading %s for vtt migration: %v", vttPath, err)
 		return
 	}
-
-	oldSpriteBasename := filepath.Base(oldSpritePath)
-	newSpriteBasename := filepath.Base(newSpritePath)
 
 	contents = bytes.ReplaceAll(contents, []byte(oldSpriteBasename), []byte(newSpriteBasename))
 

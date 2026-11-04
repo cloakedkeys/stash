@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/stashapp/stash/pkg/ffmpeg"
@@ -136,6 +137,11 @@ func (g Generator) generateFile(lockCtx *fsutil.LockContext, p Paths, pattern st
 
 	if stat.Size() == 0 {
 		return fmt.Errorf("ffmpeg command produced no output")
+	}
+
+	// in the hash layout, the output's folder may not exist yet
+	if err := fsutil.EnsureDirAll(filepath.Dir(output)); err != nil {
+		return fmt.Errorf("creating folder for %s: %w", output, err)
 	}
 
 	if err := fsutil.SafeMove(tmpFn, output); err != nil {

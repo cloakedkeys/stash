@@ -3,7 +3,6 @@ package manager
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"github.com/stashapp/stash/pkg/ffmpeg"
@@ -137,13 +136,6 @@ func (t *GenerateMarkersTask) generateSceneMarkers(ctx context.Context, scene *m
 
 	codec, fullhw := t.determineMarkerCodec(ctx, videoFile)
 	sceneHash := scene.GetHash(t.fileNamingAlgorithm)
-
-	// Make the folder for the scenes markers
-	markersFolder := filepath.Join(instance.Paths.Generated.Markers, sceneHash)
-	if err := fsutil.EnsureDir(markersFolder); err != nil {
-		logger.Errorf("could not create the markers folder (%v): %v", markersFolder, err)
-		return
-	}
 
 	for i, sceneMarker := range sceneMarkers {
 		index := i + 1

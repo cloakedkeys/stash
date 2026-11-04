@@ -94,6 +94,9 @@ func (j *CleanGeneratedJob) countTasks() int {
 	if j.Options.ImageThumbnails {
 		tasks++
 	}
+	if j.cleansVideoFiles() {
+		tasks++
+	}
 	return tasks
 }
 
@@ -167,6 +170,15 @@ func (j *CleanGeneratedJob) Execute(ctx context.Context, progress *job.Progress)
 		progress.ExecuteTask("Cleaning marker files", func() {
 			if err := j.cleanMarkerFiles(ctx, progress); err != nil {
 				j.logError(fmt.Errorf("error cleaning marker files: %w", err))
+			}
+		})
+		j.taskComplete(progress)
+	}
+
+	if j.cleansVideoFiles() {
+		progress.ExecuteTask("Cleaning video files", func() {
+			if err := j.cleanVideoFiles(ctx, progress); err != nil {
+				j.logError(fmt.Errorf("error cleaning video files: %w", err))
 			}
 		})
 		j.taskComplete(progress)

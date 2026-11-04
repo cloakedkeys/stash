@@ -103,23 +103,12 @@ func (s *Manager) RefreshConfig() {
 	cfg := s.Config
 	*s.Paths = paths.NewPaths(cfg.GetGeneratedPath(), cfg.GetBlobsPath())
 	if cfg.Validate() == nil {
-		if err := fsutil.EnsureDir(s.Paths.Generated.Screenshots); err != nil {
-			logger.Warnf("could not create screenshots directory: %v", err)
-		}
-		if err := fsutil.EnsureDir(s.Paths.Generated.Vtt); err != nil {
-			logger.Warnf("could not create VTT directory: %v", err)
-		}
-		if err := fsutil.EnsureDir(s.Paths.Generated.Markers); err != nil {
-			logger.Warnf("could not create markers directory: %v", err)
-		}
-		if err := fsutil.EnsureDir(s.Paths.Generated.Transcodes); err != nil {
-			logger.Warnf("could not create transcodes directory: %v", err)
+		// videos' generated files; the legacy folders are only read
+		if err := fsutil.EnsureDir(s.Paths.Generated.Video); err != nil {
+			logger.Warnf("could not create video directory: %v", err)
 		}
 		if err := fsutil.EnsureDir(s.Paths.Generated.Downloads); err != nil {
 			logger.Warnf("could not create downloads directory: %v", err)
-		}
-		if err := fsutil.EnsureDir(s.Paths.Generated.InteractiveHeatmap); err != nil {
-			logger.Warnf("could not create interactive heatmaps directory: %v", err)
 		}
 
 		s.ImageThumbnailGenerateWaitGroup.Size = cfg.GetParallelTasksWithAutoDetection()
