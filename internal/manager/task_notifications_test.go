@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -68,6 +69,30 @@ func TestNotificationsAfterCancelledQueuedTask(t *testing.T) {
 	require.NoError(t, jobs.AddAndWait(ctx, "Auto tagging...", job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error { return nil })))
 	msg = nextNotification(t, sent)
 	require.True(t, strings.HasPrefix(msg, `Task Finished: Task "Auto tagging" finished in `), msg)
+}
+
+// #2036: a task that failed or was stopped used to be reported as finished.
+func TestNotificationsSayFailed(t *testing.T) {
+	ctx, jobs, sent := startNotifying(t, func() bool { return true })
+	require.Error(t, jobs.AddAndWait(ctx, "Scanning...", job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error {
+		return errors.New("disk unplugged")
+	})))
+	msg := nextNotification(t, sent)
+	require.True(t, strings.HasPrefix(msg, `Task Failed: Task "Scanning" failed after `), msg)
+}
+
+func TestNotificationsSayStopped(t *testing.T) {
+	ctx, jobs, sent := startNotifying(t, func() bool { return true })
+	started := make(chan struct{})
+	id := jobs.Add(ctx, "Scanning...", job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error {
+		close(started)
+		<-ctx.Done()
+		return nil
+	}))
+	<-started
+	jobs.CancelJob(id)
+	msg := nextNotification(t, sent)
+	require.True(t, strings.HasPrefix(msg, `Task Stopped: Task "Scanning" was stopped after `), msg)
 }
 
 func TestNotificationsOff(t *testing.T) {
