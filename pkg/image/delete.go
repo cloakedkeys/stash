@@ -19,14 +19,19 @@ type FileDeleter struct {
 	Paths *paths.Paths
 }
 
+// generatedFiles returns the generated files of the image with checksum.
+func generatedFiles(p *paths.Paths, checksum string) []paths.GeneratedFile {
+	return []paths.GeneratedFile{
+		p.Generated.Thumbnail(checksum, models.DefaultGthumbWidth),
+		p.Generated.ClipPreview(checksum, models.DefaultGthumbWidth),
+	}
+}
+
 // MarkGeneratedFiles marks for deletion the generated files for the provided image.
 // Generated files bypass trash and are permanently deleted since they can be regenerated.
 func (d *FileDeleter) MarkGeneratedFiles(image *models.Image) error {
 	var files []string
-	for _, f := range []paths.GeneratedFile{
-		d.Paths.Generated.Thumbnail(image.Checksum, models.DefaultGthumbWidth),
-		d.Paths.Generated.ClipPreview(image.Checksum, models.DefaultGthumbWidth),
-	} {
+	for _, f := range generatedFiles(d.Paths, image.Checksum) {
 		// in either layout
 		for _, path := range f.Both() {
 			if exists, _ := fsutil.FileExists(path); exists {
