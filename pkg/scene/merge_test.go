@@ -55,3 +55,37 @@ func TestMergeMovesMarkerFiles(t *testing.T) {
 		require.NoFileExists(t, files(src.OSHash)[i], "not left behind")
 	}
 }
+
+// A kept scene without a file takes the source's file, and its hash, so the
+// marker files are already in the right place.
+func TestMergeIntoSceneWithoutFileKeepsMarkerFiles(t *testing.T) {
+	const seconds = 30
+	src := &models.Scene{ID: 1, OSHash: "1111111111111111"}
+	dest := &models.Scene{ID: 2}
+
+	p := paths.NewPaths(t.TempDir(), "")
+	files := []string{
+		p.SceneMarkers.GetVideoPreviewPath(src.OSHash, seconds),
+		p.SceneMarkers.GetWebpPreviewPath(src.OSHash, seconds),
+		p.SceneMarkers.GetScreenshotPath(src.OSHash, seconds),
+	}
+	for _, f := range files {
+		require.NoError(t, os.MkdirAll(filepath.Dir(f), 0o755))
+		require.NoError(t, os.WriteFile(f, []byte(f), 0o644))
+	}
+
+	db := mocks.NewDatabase()
+	marker := &models.SceneMarker{ID: 10, SceneID: src.ID, Seconds: seconds}
+	db.SceneMarker.On("FindBySceneID", mock.Anything, src.ID).Return([]*models.SceneMarker{marker}, nil)
+	db.SceneMarker.On("Update", mock.Anything, marker).Return(nil)
+
+	svc := &Service{MarkerRepository: db.SceneMarker, Paths: &p, Config: oshashNaming{}}
+	require.NoError(t, txn.WithTxn(context.Background(), db, func(ctx context.Context) error {
+		return svc.mergeSceneMarkers(ctx, dest, src)
+	}))
+
+	require.Equal(t, dest.ID, marker.SceneID)
+	for _, f := range files {
+		require.FileExists(t, f, "left where the kept scene will look")
+	}
+}

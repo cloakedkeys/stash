@@ -117,15 +117,27 @@ func (s *Service) mergeSceneMarkers(ctx context.Context, dest *models.Scene, src
 	var toRename []rename
 
 	destHash := dest.GetHash(s.Config.GetVideoFileNamingAlgorithm())
+	srcHash := src.GetHash(s.Config.GetVideoFileNamingAlgorithm())
+
+	// The files are moved after the commit. This relies on Destroy not
+	// deleting the source's generated files: by then its file has been
+	// assigned to the destination, so the files are shared.
+	//
+	// A scene without a file has no hash. If the destination has none, it
+	// takes the source's file, and its hash, so the files are already in the
+	// right place.
+	moveFiles := srcHash != "" && destHash != "" && srcHash != destHash
 
 	for _, m := range markers {
-		srcHash := src.GetHash(s.Config.GetVideoFileNamingAlgorithm())
-
 		// updated the scene id
 		m.SceneID = dest.ID
 
 		if err := s.MarkerRepository.Update(ctx, m); err != nil {
 			return fmt.Errorf("updating scene marker %d: %w", m.ID, err)
+		}
+
+		if !moveFiles {
+			continue
 		}
 
 		// move generated files to new location
