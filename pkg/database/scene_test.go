@@ -2455,7 +2455,7 @@ func TestSceneQuery(t *testing.T) {
 			results, err := db.Scene().Query(ctx, models.SceneQueryOptions{
 				SceneFilter: tt.filter,
 				QueryOptions: models.QueryOptions{
-					FindFilter: tt.findFilter,
+					FindFilter: findAllIfNil(tt.findFilter),
 				},
 			})
 			if (err != nil) != tt.wantErr {
@@ -2585,6 +2585,9 @@ func TestSceneQueryPath(t *testing.T) {
 				SceneFilter: &models.SceneFilterType{
 					Path: &tt.input,
 				},
+				QueryOptions: models.QueryOptions{
+					FindFilter: perPageAll(),
+				},
 			})
 
 			if err != nil {
@@ -2683,8 +2686,8 @@ func TestSceneQueryPathOr(t *testing.T) {
 		if !assert.Len(t, scenes, 2) {
 			return nil
 		}
-		assert.Equal(t, scene1Path, scenes[0].Path)
-		assert.Equal(t, scene2Path, scenes[1].Path)
+		// no sort, so the order is not set
+		assert.ElementsMatch(t, indexesToIDs(sceneIDs, []int{scene1Idx, scene2Idx}), scenesToIDs(scenes))
 
 		return nil
 	})
@@ -4068,7 +4071,7 @@ func TestSceneQueryPerformerTags(t *testing.T) {
 			results, err := db.Scene().Query(ctx, models.SceneQueryOptions{
 				SceneFilter: tt.filter,
 				QueryOptions: models.QueryOptions{
-					FindFilter: tt.findFilter,
+					FindFilter: findAllIfNil(tt.findFilter),
 				},
 			})
 			if (err != nil) != tt.wantErr {

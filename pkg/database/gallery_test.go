@@ -1860,8 +1860,8 @@ func TestGalleryQueryPathOr(t *testing.T) {
 			return nil
 		}
 
-		assert.Equal(t, gallery1Path, galleries[0].Path)
-		assert.Equal(t, gallery2Path, galleries[1].Path)
+		// no sort, so the order is not set
+		assert.ElementsMatch(t, indexesToIDs(galleryIDs, []int{gallery1Idx, gallery2Idx}), galleriesToIDs(galleries))
 
 		return nil
 	})
@@ -2846,7 +2846,7 @@ func TestGalleryQueryPerformerTags(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			results, _, err := db.Gallery().Query(ctx, tt.filter, tt.findFilter)
+			results, _, err := db.Gallery().Query(ctx, tt.filter, findAllIfNil(tt.findFilter))
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ImageStore.Query() error = %v, wantErr %v", err, tt.wantErr)
 				return

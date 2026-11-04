@@ -1887,6 +1887,9 @@ func TestAudioQueryPath(t *testing.T) {
 				AudioFilter: &models.AudioFilterType{
 					Path: &tt.input,
 				},
+				QueryOptions: models.QueryOptions{
+					FindFilter: perPageAll(),
+				},
 			})
 
 			if err != nil {
@@ -1985,8 +1988,8 @@ func TestAudioQueryPathOr(t *testing.T) {
 		if !assert.Len(t, audios, 2) {
 			return nil
 		}
-		assert.Equal(t, audio1Path, audios[0].Path)
-		assert.Equal(t, audio2Path, audios[1].Path)
+		// no sort, so the order is not set
+		assert.ElementsMatch(t, indexesToIDs(audioIDs, []int{audio1Idx, audio2Idx}), audiosToIDs(audios))
 
 		return nil
 	})
@@ -3072,7 +3075,7 @@ func TestAudioQueryPerformerTags(t *testing.T) {
 			results, err := db.Audio().Query(ctx, models.AudioQueryOptions{
 				AudioFilter: tt.filter,
 				QueryOptions: models.QueryOptions{
-					FindFilter: tt.findFilter,
+					FindFilter: findAllIfNil(tt.findFilter),
 				},
 			})
 			if (err != nil) != tt.wantErr {

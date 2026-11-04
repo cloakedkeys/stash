@@ -733,6 +733,16 @@ func ptr[T any](v T) *T {
 	return &v
 }
 
+// findAllIfNil returns f, or a filter for all results if f is nil. Without a
+// sort, PostgreSQL returns rows in no set order, so a check that a result
+// contains an item must not look at only the first page.
+func findAllIfNil(f *models.FindFilterType) *models.FindFilterType {
+	if f != nil {
+		return f
+	}
+	return perPageAll()
+}
+
 var db database.Database
 
 func TestMain(m *testing.M) {
