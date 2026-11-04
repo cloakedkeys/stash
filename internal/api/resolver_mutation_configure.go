@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -795,14 +794,10 @@ func (r *mutationResolver) ConfigureUISetting(ctx context.Context, key string, v
 
 	cfg := utils.NestedMap(uiConfig)
 
-	// #5483 - convert JSON numbers to float64 or int64
-	if m, ok := value.(map[string]interface{}); ok {
-		value, err = convertMapJSONNumbers(m)
-	} else if n, ok := value.(json.Number); ok {
-		value, err = models.JSONNumberValue(n)
-	}
+	// #5483, #2079 - convert JSON numbers, including those in lists, to float64 or int64
+	value, err = convertJSONNumbers(value, strconv.Quote(key))
 	if err != nil {
-		return nil, fmt.Errorf("%q: %w", key, err)
+		return nil, err
 	}
 
 	cfg.Set(key, value)

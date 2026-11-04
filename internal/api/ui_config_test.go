@@ -2,6 +2,9 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stashapp/stash/internal/manager/config"
@@ -11,7 +14,111 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
+
+// #2079: numbers inside lists in UI and plugin settings were written to the
+// config file as quoted strings, and came back as strings after a restart.
+func TestConfigureUINumbersInLists(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "config.yml")
+	c := config.InitializeEmpty()
+	c.SetConfigFile(configFile)
+	c.SetString(config.Database, filepath.Join(dir, "stash-go.sqlite"))
+	c.SetString(config.Generated, filepath.Join(dir, "generated"))
+	c.SetString(config.BlobsPath, filepath.Join(dir, "blobs"))
+
+	db := mocks.NewDatabase()
+	db.UserUIConfig.On("Get", mock.Anything).Return(nil, nil)
+	r := &mutationResolver{newResolver(db)}
+
+	adminCtx := session.SetCurrentUser(context.Background(), models.User{
+		Username: "admin",
+		Roles:    models.Roles{models.RoleEnumAdmin},
+	})
+
+	_, err := r.ConfigureUI(adminCtx, map[string]interface{}{
+		"plain": json.Number("7"),
+		"frontPageContent": []interface{}{
+			map[string]interface{}{"savedFilterId": json.Number("3"), "__typename": "SavedFilter"},
+			map[string]interface{}{"nested": []interface{}{json.Number("4"), []interface{}{json.Number("5.5")}}},
+		},
+		"list": []interface{}{json.Number("1"), json.Number("2.5"), "text"},
+		"map":  map[string]interface{}{"list": []interface{}{json.Number("6")}},
+	}, nil)
+	require.NoError(t, err)
+
+	_, err = r.ConfigureUISetting(adminCtx, "setting", []interface{}{json.Number("8")})
+	require.NoError(t, err)
+
+	_, err = r.ConfigurePlugin(adminCtx, "plugin", map[string]interface{}{"ids": []interface{}{json.Number("9")}})
+	require.NoError(t, err)
+
+	want := map[string]interface{}{
+		"plain": int64(7),
+		"frontPageContent": []interface{}{
+			map[string]interface{}{"savedFilterId": int64(3), "__typename": "SavedFilter"},
+			map[string]interface{}{"nested": []interface{}{int64(4), []interface{}{5.5}}},
+		},
+		"list":    []interface{}{int64(1), 2.5, "text"},
+		"map":     map[string]interface{}{"list": []interface{}{int64(6)}},
+		"setting": []interface{}{int64(8)},
+	}
+	assert.Equal(t, want, c.GetUIConfiguration())
+
+	data, err := os.ReadFile(configFile)
+	require.NoError(t, err)
+	for _, quoted := range []string{`"3"`, `"4"`, `"5.5"`, `"1"`, `"2.5"`, `"6"`, `"8"`, `"9"`} {
+		assert.NotContains(t, string(data), quoted)
+	}
+	assert.Contains(t, string(data), "savedFilterId: 3")
+
+	// reload the config file as stash does at startup
+	t.Setenv("STASH_CONFIG_FILE", configFile)
+	reloaded, err := config.Initialize()
+	require.NoError(t, err)
+
+	// YAML numbers come back as int or float64
+	assert.Equal(t, map[string]interface{}{
+		"plain": 7,
+		"frontPageContent": []interface{}{
+			map[string]interface{}{"savedFilterId": 3, "__typename": "SavedFilter"},
+			map[string]interface{}{"nested": []interface{}{4, []interface{}{5.5}}},
+		},
+		"list":    []interface{}{1, 2.5, "text"},
+		"map":     map[string]interface{}{"list": []interface{}{6}},
+		"setting": []interface{}{8},
+	}, reloaded.GetUIConfiguration())
+	assert.Equal(t, map[string]interface{}{"ids": []interface{}{9}}, reloaded.GetPluginConfiguration("plugin"))
+}
+
+// #2079: an invalid number inside a list is refused, naming where it is.
+func TestConfigureUINumbersInListsError(t *testing.T) {
+	c := config.InitializeEmpty()
+	c.SetConfigFile(filepath.Join(t.TempDir(), "config.yml"))
+
+	db := mocks.NewDatabase()
+	db.UserUIConfig.On("Get", mock.Anything).Return(nil, nil)
+	r := &mutationResolver{newResolver(db)}
+	adminCtx := session.SetCurrentUser(context.Background(), models.User{
+		Username: "admin",
+		Roles:    models.Roles{models.RoleEnumAdmin},
+	})
+
+	_, err := r.ConfigureUI(adminCtx, map[string]interface{}{
+		"list": []interface{}{json.Number("1"), map[string]interface{}{"huge": json.Number("1e400")}},
+	}, nil)
+	assert.ErrorContains(t, err, `"list"[1]."huge": invalid number "1e400"`)
+
+	_, err = r.ConfigureUISetting(adminCtx, "setting", []interface{}{json.Number("1e400")})
+	assert.ErrorContains(t, err, `"setting"[0]: invalid number "1e400"`)
+
+	_, err = r.ConfigurePlugin(adminCtx, "plugin", map[string]interface{}{"ids": []interface{}{json.Number("1e400")}})
+	assert.ErrorContains(t, err, `"ids"[0]: invalid number "1e400"`)
+
+	assert.Empty(t, c.GetUIConfiguration())
+	assert.Empty(t, c.GetPluginConfiguration("plugin"))
+}
 
 func TestUIConfig(t *testing.T) {
 	c := config.InitializeEmpty()
