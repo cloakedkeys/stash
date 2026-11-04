@@ -41,7 +41,7 @@ func LookPathFFProbe() string {
 
 	if ret != "" {
 		if err := ValidateFFProbe(ret); err != nil {
-			logger.Warnf("ffprobe found in PATH (%s), but it is missing required flags: %v", ret, err)
+			logger.Warnf("ffprobe found in PATH (%s), could not be executed: %v", ret, err)
 			ret = ""
 		}
 	}
@@ -54,7 +54,7 @@ func FindFFProbe(path string) string {
 
 	if ret != "" {
 		if err := ValidateFFProbe(ret); err != nil {
-			logger.Warnf("ffprobe found (%s), but it is missing required flags: %v", ret, err)
+			logger.Warnf("ffprobe found (%s), could not be executed: %v", ret, err)
 			ret = ""
 		}
 	}
