@@ -121,6 +121,17 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 		{`sceneCreate(input:{title:"x",groups:[{group_id:"999"}]}) { id }`, "creating new scene: group with id 999 not found"},
 		{f(`bulkSceneUpdate(input:{ids:["%d"],group_ids:{ids:["999"],mode:ADD}}) { id }`, sc.ID), "group with id 999 not found"},
 		{f(`audioUpdate(input:{id:"%d",groups:[{group_id:"999"}]}) { id }`, au.ID), "group with id 999 not found"},
+		{f(`sceneUpdate(input:{id:"%d",groups:[{group_id:"%d"},{group_id:"%d"}]}) { id }`, sc.ID, g1.ID, g1.ID), f("group with id %d is listed more than once", g1.ID)},
+		{f(`sceneUpdate(input:{id:"%d",movies:[{movie_id:"%d"},{movie_id:"%d"}]}) { id }`, sc.ID, g1.ID, g1.ID), f("group with id %d is listed more than once", g1.ID)},
+		{f(`scenesUpdate(input:[{id:"%d",groups:[{group_id:"%d"},{group_id:"%d"}]}]) { id }`, sc.ID, g1.ID, g1.ID), f("group with id %d is listed more than once", g1.ID)},
+		{f(`sceneCreate(input:{title:"x",groups:[{group_id:"%d"},{group_id:"%d"}]}) { id }`, g1.ID, g1.ID), f("creating new scene: group with id %d is listed more than once", g1.ID)},
+		{f(`bulkSceneUpdate(input:{ids:["%d"],group_ids:{ids:["%d","%d"],mode:SET}}) { id }`, sc.ID, g1.ID, g1.ID), f("group with id %d is listed more than once", g1.ID)},
+		{f(`bulkSceneUpdate(input:{ids:["%d"],group_ids:{ids:["%d","%d"],mode:ADD}}) { id }`, sc.ID, g2.ID, g2.ID), f("group with id %d is listed more than once", g2.ID)},
+		{f(`audioUpdate(input:{id:"%d",groups:[{group_id:"%d"},{group_id:"%d"}]}) { id }`, au.ID, g1.ID, g1.ID), f("group with id %d is listed more than once", g1.ID)},
+		{f(`audiosUpdate(input:[{id:"%d",groups:[{group_id:"%d"},{group_id:"%d"}]}]) { id }`, au.ID, g1.ID, g1.ID), f("group with id %d is listed more than once", g1.ID)},
+		{f(`audioCreate(input:{title:"x",groups:[{group_id:"%d"},{group_id:"%d"}]}) { id }`, g1.ID, g1.ID), f("creating new audio: group with id %d is listed more than once", g1.ID)},
+		{f(`bulkAudioUpdate(input:{ids:["%d"],group_ids:{ids:["%d","%d"],mode:SET}}) { id }`, au.ID, g1.ID, g1.ID), f("group with id %d is listed more than once", g1.ID)},
+		{f(`bulkAudioUpdate(input:{ids:["%d"],group_ids:{ids:["%d","%d"],mode:ADD}}) { id }`, au.ID, g2.ID, g2.ID), f("group with id %d is listed more than once", g2.ID)},
 
 		// a group's containing and sub-groups
 		{`groupCreate(input:{name:"x",containing_groups:[{group_id:"999"}]}) { id }`, "group with id 999 not found"},
@@ -130,6 +141,10 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 		{f(`groupUpdate(input:{id:"%d",sub_groups:[{group_id:"%d"},{group_id:"%d"}]}) { id }`, g1.ID, g2.ID, g2.ID), f("group with id %d is listed more than once", g2.ID)},
 		{f(`bulkGroupUpdate(input:{ids:["%d"],sub_groups:{groups:[{group_id:"999"}],mode:ADD}}) { id }`, g1.ID), "group with id 999 not found"},
 		{f(`addGroupSubGroups(input:{containing_group_id:"%d",sub_groups:[{group_id:"%d"},{group_id:"%d"}]})`, g1.ID, g2.ID, g2.ID), f("group with id %d is listed more than once", g2.ID)},
+		// adding a group that is already linked: G3 is a sub-group of G1
+		{f(`bulkGroupUpdate(input:{ids:["%d"],containing_groups:{groups:[{group_id:"%d"}],mode:ADD}}) { id }`, g3.ID, g1.ID), f("group with id %d is already a containing group of group with id %d", g1.ID, g3.ID)},
+		{f(`bulkGroupUpdate(input:{ids:["%d"],containing_groups:{groups:[{group_id:"%d",description:"new"}],mode:ADD}}) { id }`, g3.ID, g1.ID), f("group with id %d is already a containing group of group with id %d", g1.ID, g3.ID)},
+		{f(`bulkGroupUpdate(input:{ids:["%d"],sub_groups:{groups:[{group_id:"%d"}],mode:ADD}}) { id }`, g1.ID, g3.ID), f("group with id %d is already a sub-group of group with id %d", g3.ID, g1.ID)},
 
 		// join tables: the old error had no id
 		{f(`sceneUpdate(input:{id:"%d",tag_ids:["999"]}) { id }`, sc.ID), "tag with id 999 not found"},
@@ -188,6 +203,14 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 		f(`bulkSceneUpdate(input:{ids:["%d"],tag_ids:{ids:["999"],mode:REMOVE}}) { id }`, sc.ID),
 		f(`bulkSceneUpdate(input:{ids:["%d"],group_ids:{ids:["999"],mode:REMOVE}}) { id }`, sc.ID),
 		f(`sceneUpdate(input:{id:"%d",groups:[{group_id:"%d"}]}) { id }`, sc.ID, g1.ID),
+		// adding a group that is already linked, even twice, adds nothing
+		f(`bulkSceneUpdate(input:{ids:["%d"],group_ids:{ids:["%d","%d"],mode:ADD}}) { id }`, sc.ID, g1.ID, g1.ID),
+		f(`bulkSceneUpdate(input:{ids:["%d"],group_ids:{ids:["%d","%d"],mode:REMOVE}}) { id }`, sc.ID, g2.ID, g2.ID),
+		f(`audioUpdate(input:{id:"%d",groups:[{group_id:"%d"}]}) { id }`, au.ID, g1.ID),
+		f(`bulkAudioUpdate(input:{ids:["%d"],group_ids:{ids:["%d","%d"],mode:ADD}}) { id }`, au.ID, g1.ID, g1.ID),
+		// setting a group's links to the ones it has, and removing one twice
+		f(`bulkGroupUpdate(input:{ids:["%d"],containing_groups:{groups:[{group_id:"%d"}],mode:SET}}) { id }`, g3.ID, g1.ID),
+		f(`bulkGroupUpdate(input:{ids:["%d"],containing_groups:{groups:[{group_id:"%d"},{group_id:"%d"}],mode:REMOVE}}) { id }`, g3.ID, g2.ID, g2.ID),
 		f(`imageUpdate(input:{id:"%d",studio_id:"%d"}) { id }`, img.ID, st.ID),
 		f(`groupUpdate(input:{id:"%d",studio_id:"%d"}) { id }`, g2.ID, st.ID),
 		f(`bulkGroupUpdate(input:{ids:["%d"],sub_groups:{groups:[{group_id:"999"}],mode:REMOVE}}) { id }`, g1.ID),
@@ -219,6 +242,17 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, merged)
 		require.Equal(t, &st.ID, merged.StudioID)
+
+		// the scene, audio track and G3 are each linked to G1 once
+		sceneGroups, err := db.Scene().GetGroups(ctx, sc.ID)
+		require.NoError(t, err)
+		require.Equal(t, []models.GroupsScenes{{GroupID: g1.ID}}, sceneGroups)
+		audioGroups, err := db.Audio().GetGroups(ctx, au.ID)
+		require.NoError(t, err)
+		require.Equal(t, []models.GroupsAudios{{GroupID: g1.ID}}, audioGroups)
+		containing, err := db.Group().GetContainingGroupDescriptions(ctx, g3.ID)
+		require.NoError(t, err)
+		require.Equal(t, []models.GroupIDDescription{{GroupID: g1.ID}}, containing)
 		return nil
 	}))
 }
