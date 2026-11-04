@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -76,6 +77,9 @@ type Database struct {
 	resetMu sync.RWMutex
 
 	lockChan chan struct{}
+
+	// lastFullAnalyze is when a full ANALYZE last finished, in Unix nanoseconds.
+	lastFullAnalyze atomic.Int64
 }
 
 func NewDatabase() *Database {
@@ -465,9 +469,18 @@ func (db *Database) Vacuum(ctx context.Context) error {
 
 // Analyze runs an ANALYZE on the database to improve query performance.
 func (db *Database) Analyze(ctx context.Context) error {
-	// open connections would keep planning with the old statistics
-	defer retireConnections()
-	return analyze(ctx, db.writeDB)
+	err := analyze(ctx, db.writeDB)
+	db.fullAnalyzeDone(err)
+	return err
+}
+
+// fullAnalyzeDone is called after a full ANALYZE. Open connections would keep
+// planning with the old statistics, so they're retired either way.
+func (db *Database) fullAnalyzeDone(err error) {
+	if err == nil {
+		db.lastFullAnalyze.Store(time.Now().UnixNano())
+	}
+	retireConnections()
 }
 
 // analyze runs an ANALYZE on the database to improve query performance.
@@ -484,12 +497,21 @@ const refreshStatisticsLimit = 1000
 // quick, sampled ANALYZE. The automatic optimize only re-analyses a table when
 // its row count changes a lot, so statistics go stale when existing rows change,
 // such as images being given studios. On millions of rows it takes milliseconds.
-func (db *Database) RefreshStatistics(ctx context.Context) error {
+//
+// changedSince is when the changes started. If a full ANALYZE has finished
+// since then, such as from Tasks -> Optimise Database or a migration, the
+// statistics are already up to date, and a sampled ANALYZE would only make
+// them less exact, so nothing is done.
+func (db *Database) RefreshStatistics(ctx context.Context, changedSince time.Time) error {
 	db.resetMu.RLock()
 	defer db.resetMu.RUnlock()
 
 	if err := db.ready(); err != nil {
 		return err
+	}
+
+	if !changedSince.IsZero() && db.lastFullAnalyze.Load() >= changedSince.UnixNano() {
+		return nil
 	}
 
 	// analysis_limit belongs to the connection, so hold one. It's retired

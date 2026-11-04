@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/job"
@@ -10,7 +11,7 @@ import (
 )
 
 type statisticsRefresher interface {
-	RefreshStatistics(ctx context.Context) error
+	RefreshStatistics(ctx context.Context, changedSince time.Time) error
 }
 
 // refreshStatisticsAfterJobs refreshes the database statistics each time a task
@@ -18,29 +19,59 @@ type statisticsRefresher interface {
 // rows, such as giving images studios, without changing how many rows there
 // are. SQLite's automatic refresh only notices the number of rows changing, so
 // without this the statistics go stale and some lists get slow.
+//
+// Tasks that finish together, such as the generate task queued for each
+// uploaded file, share one refresh.
 func refreshStatisticsAfterJobs(ctx context.Context, jobs *job.Manager, db statisticsRefresher) {
 	sub := jobs.Subscribe(ctx)
 	go func() {
 		for {
+			var since time.Time
 			select {
 			case j, ok := <-sub.RemovedJob:
 				if !ok {
 					return
 				}
-				if j.StartTime == nil {
-					// cancelled before it started, so nothing changed
-					continue
-				}
-				refreshStatistics(ctx, db)
+				since = earliestStart(since, j)
 			case <-ctx.Done():
 				return
+			}
+
+			// take any other tasks that have finished meanwhile
+		drain:
+			for {
+				select {
+				case j, ok := <-sub.RemovedJob:
+					if !ok {
+						break drain
+					}
+					since = earliestStart(since, j)
+				default:
+					break drain
+				}
+			}
+
+			if !since.IsZero() {
+				refreshStatistics(ctx, db, since)
 			}
 		}
 	}()
 }
 
-func refreshStatistics(ctx context.Context, db statisticsRefresher) {
-	err := db.RefreshStatistics(ctx)
+// earliestStart returns the earlier of since and when j started. A task that
+// was cancelled before it started changed nothing, so it's left out.
+func earliestStart(since time.Time, j job.Job) time.Time {
+	if j.StartTime == nil {
+		return since
+	}
+	if since.IsZero() || j.StartTime.Before(since) {
+		return *j.StartTime
+	}
+	return since
+}
+
+func refreshStatistics(ctx context.Context, db statisticsRefresher, since time.Time) {
+	err := db.RefreshStatistics(ctx, since)
 	var migrationNeeded *database.MigrationNeededError
 	switch {
 	case err == nil:

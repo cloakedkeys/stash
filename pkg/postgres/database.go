@@ -427,7 +427,7 @@ func (db *Database) Analyze(ctx context.Context) error {
 
 // RefreshStatistics does nothing on PostgreSQL: its autovacuum already
 // re-analyses tables as their rows change.
-func (db *Database) RefreshStatistics(ctx context.Context) error {
+func (db *Database) RefreshStatistics(ctx context.Context, changedSince time.Time) error {
 	return nil
 }
 

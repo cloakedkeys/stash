@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/stashapp/stash/pkg/models"
 )
@@ -32,8 +33,9 @@ type Database interface {
 	Open(ctx context.Context, dbPath string) error
 	Optimise(ctx context.Context) error
 	// RefreshStatistics quickly updates the query planner's statistics after
-	// bulk changes.
-	RefreshStatistics(ctx context.Context) error
+	// bulk changes that started at changedSince. It does nothing if a full
+	// ANALYZE has run since then.
+	RefreshStatistics(ctx context.Context, changedSince time.Time) error
 	QuerySQL(ctx context.Context, query string, args []interface{}) ([]string, [][]interface{}, error)
 	ReInitialise() error
 	Ready() error

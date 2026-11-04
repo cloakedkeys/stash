@@ -22,15 +22,17 @@ type CustomSQLiteDriver struct{}
 
 // statisticsGeneration goes up each time ANALYZE refreshes the statistics.
 //
-// A connection reads the statistics when it opens, and a reload doesn't fully
-// replace them: SQLite marks an index "low quality" when its statistics show a
-// single value, stops using it for lookups, and never clears that mark on the
-// same connection (bLowQual). So connections opened before a refresh are
-// retired instead of reused.
+// A connection reads the statistics when it opens. On every SQLite version,
+// other connections don't reload them after an ANALYZE, because ANALYZE
+// doesn't change the schema version. So connections opened before a refresh
+// are retired instead of reused, and busy pools that never sit idle long
+// enough to close still pick up the new statistics.
 //
-// This is a workaround for SQLite 3.45.0 to 3.49.x, which have that flag; the
-// bundled 3.45.1 is one of them. 3.50.0 removed it, so after an upgrade this
-// can go.
+// SQLite 3.45.0 to 3.49.x, including the bundled 3.45.1, add a second reason
+// for the connection that runs the ANALYZE: when an index's statistics show a
+// single value, SQLite marks it "low quality" (bLowQual), stops using it for
+// lookups, and never clears the mark, even after reloading. 3.50.0 removed
+// that, but the first reason still applies.
 var statisticsGeneration atomic.Uint64
 
 // retireConnections makes every open connection be replaced by a new one

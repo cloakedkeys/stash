@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +43,7 @@ const lookUpStudio = "SEARCH images USING COVERING INDEX index_images_on_studio_
 // the same studio, has the read connections load them, then spreads those
 // images over 200 studios. The number of images doesn't change, so the
 // automatic optimize never notices.
-func staleImageStatistics(t *testing.T) *Database {
+func staleImageStatistics(t *testing.T) (*Database, time.Time) {
 	t.Helper()
 	ctx := context.Background()
 	db := NewDatabase()
@@ -57,18 +58,19 @@ ANALYZE;`)
 	require.NoError(t, err)
 	require.Equal(t, "2000 2000", imageStudioIndexStat(t, db), "every image with a studio has the same one")
 
+	changed := time.Now()
 	_, err = db.writeDB.Exec("UPDATE images SET studio_id = 1 + id % 200 WHERE studio_id IS NOT NULL")
 	require.NoError(t, err)
 	require.NotContains(t, imageStudioCountPlan(t, db), lookUpStudio, "stale statistics: the studio index isn't used for lookups")
-	return db
+	return db, changed
 }
 
 // #2030: after a refresh, the statistics are right and the connections that
 // were already open use them.
 func TestRefreshStatistics(t *testing.T) {
-	db := staleImageStatistics(t)
+	db, changed := staleImageStatistics(t)
 
-	require.NoError(t, db.RefreshStatistics(context.Background()))
+	require.NoError(t, db.RefreshStatistics(context.Background(), changed))
 
 	fields := strings.Fields(imageStudioIndexStat(t, db))
 	require.Len(t, fields, 2)
@@ -86,7 +88,7 @@ func TestRefreshStatistics(t *testing.T) {
 // The full ANALYZE of Tasks -> Optimise Database used to update the statistics
 // without the open connections using them.
 func TestAnalyzeReachesOpenConnections(t *testing.T) {
-	db := staleImageStatistics(t)
+	db, _ := staleImageStatistics(t)
 
 	require.NoError(t, db.Analyze(context.Background()))
 
@@ -94,6 +96,29 @@ func TestAnalyzeReachesOpenConnections(t *testing.T) {
 	require.Contains(t, imageStudioCountPlan(t, db), lookUpStudio)
 }
 
+// After Tasks -> Optimise Database, the refresh when that task ends must not
+// replace its full statistics with sampled ones.
+func TestRefreshStatisticsKeepsFullAnalyze(t *testing.T) {
+	ctx := context.Background()
+	db, changed := staleImageStatistics(t)
+	require.NoError(t, db.Analyze(ctx))
+	var stat4 int
+	require.NoError(t, db.readDB.Get(&stat4, "SELECT COUNT(*) FROM sqlite_stat4 WHERE tbl = 'images'"))
+	require.NotZero(t, stat4, "a full ANALYZE keeps detailed samples")
+
+	require.NoError(t, db.RefreshStatistics(ctx, changed))
+
+	var after int
+	require.NoError(t, db.readDB.Get(&after, "SELECT COUNT(*) FROM sqlite_stat4 WHERE tbl = 'images'"))
+	require.Equal(t, stat4, after, "a sampled ANALYZE would have removed them")
+	require.Equal(t, "2000 10", imageStudioIndexStat(t, db))
+
+	// changes after the full ANALYZE are still refreshed
+	require.NoError(t, db.RefreshStatistics(ctx, time.Now()))
+	require.NoError(t, db.readDB.Get(&after, "SELECT COUNT(*) FROM sqlite_stat4 WHERE tbl = 'images'"))
+	require.Zero(t, after)
+}
+
 func TestRefreshStatisticsNotOpen(t *testing.T) {
-	require.Error(t, NewDatabase().RefreshStatistics(context.Background()))
+	require.Error(t, NewDatabase().RefreshStatistics(context.Background(), time.Now()))
 }

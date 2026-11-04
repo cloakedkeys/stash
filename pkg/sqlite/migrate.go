@@ -138,6 +138,7 @@ func (m *Migrator) PostMigrate(ctx context.Context) error {
 	// don't use Optimize/vacuum as this adds a significant amount of time
 	// to the migration
 	err = analyze(ctx, m.conn)
+	m.db.fullAnalyzeDone(err)
 
 	if err == nil {
 		logger.Debug("Flushing WAL")
