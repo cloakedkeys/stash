@@ -183,11 +183,17 @@ func (m *schema58Migrator) renameFrontPageContentKeys(ui map[string]interface{})
 	}
 }
 
+// schema58WalkPlugins walks the plugin folder. Tests replace it to make
+// entries fail to read.
+var schema58WalkPlugins = fsutil.SymWalk
+
 // installedPluginIDs lists the IDs of the plugins in the plugin folder. As in
 // pkg/plugin, a plugin's ID is the name of its .yml file without the extension,
 // case-sensitive, and the folder is read with its subfolders. The files are not
 // parsed: a .yml file that is not a plugin only keeps a stored key with its own
 // name as it is, and only when no installed plugin has the camelCase form.
+// Like pkg/plugin, it skips what it can't read, such as a locked subfolder or
+// a broken link; only a plugin folder that can't be read at all is an error.
 func (m *schema58Migrator) installedPluginIDs(path string) (map[string]bool, error) {
 	if path == "" {
 		return nil, fmt.Errorf("no plugin folder set")
@@ -199,9 +205,17 @@ func (m *schema58Migrator) installedPluginIDs(path string) (map[string]bool, err
 		return ids, nil
 	}
 
-	err := fsutil.SymWalk(path, func(fp string, info os.FileInfo, err error) error {
-		if err != nil {
+	root := filepath.Clean(path)
+	err := schema58WalkPlugins(path, func(fp string, info os.FileInfo, err error) error {
+		switch {
+		case err != nil && filepath.Clean(fp) == root:
 			return err
+		case err != nil && info != nil && info.IsDir():
+			logger.Debugf("Skipping %s: %v", fp, err)
+			return filepath.SkipDir
+		case err != nil:
+			logger.Debugf("Skipping %s: %v", fp, err)
+			return nil
 		}
 		if !info.IsDir() && filepath.Ext(fp) == ".yml" {
 			name := filepath.Base(fp)
@@ -221,9 +235,12 @@ func (m *schema58Migrator) installedPluginIDs(path string) (map[string]bool, err
 // and My_plugin were all saved as my_plugin, and each read the same settings.
 // Those settings go to the camelCase ID, as before, unless an installed plugin
 // with an _ in its ID was saved under key. Each such plugin gets a copy, with
-// its ID spelled as installed, and so does the camelCase ID when that plugin
-// is installed too, as each read the settings before. Without the installed
-// IDs every key is converted.
+// its ID spelled as installed. The camelCase ID gets a copy too when that
+// plugin is installed, as upstream gives it one. For a key such as
+// my_plugin that is what myPlugin read before. For a key such as my__plugin
+// (My_Plugin) myPlugin never read it, and the copy only keeps the result the
+// same as before; migrateConfig prefers the my_plugin settings when both are
+// saved. Without the installed IDs every key is converted.
 func (m *schema58Migrator) pluginKeys(key string, installed map[string]bool) []string {
 	converted := m.fromSnakeCase(key)
 

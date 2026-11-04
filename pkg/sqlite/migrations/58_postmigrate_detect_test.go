@@ -1,8 +1,12 @@
 package migrations
 
 import (
+	"io/fs"
 	"os"
+	"os/exec"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -73,6 +77,91 @@ func TestMigration58ToSnakeCase(t *testing.T) {
 	} {
 		assert.Equal(t, want, m.toSnakeCase(id), id)
 	}
+}
+
+// schema58PluginFolder makes a plugin folder holding my_plugin/my_plugin.yml.
+func schema58PluginFolder(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "my_plugin"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "my_plugin", "my_plugin.yml"), []byte("name: x\n"), 0644))
+	return dir
+}
+
+func assertSchema58FindsMyPlugin(t *testing.T, dir string) {
+	t.Helper()
+	ids, err := (&schema58Migrator{}).installedPluginIDs(dir)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]bool{"my_plugin": true}, ids)
+}
+
+// A subfolder that can't be read is skipped, as pkg/plugin skips it.
+func TestMigration58InstalledPluginIDsLockedFolder(t *testing.T) {
+	dir := schema58PluginFolder(t)
+	locked := filepath.Join(dir, "locked")
+	require.NoError(t, os.MkdirAll(locked, 0755))
+	if runtime.GOOS == "windows" {
+		u, err := user.Current()
+		require.NoError(t, err)
+		if out, err := exec.Command("icacls", locked, "/deny", u.Username+":(OI)(CI)(RD)").CombinedOutput(); err != nil {
+			t.Skipf("icacls: %v %s", err, out)
+		}
+		t.Cleanup(func() { _ = exec.Command("icacls", locked, "/remove:d", u.Username).Run() })
+	} else {
+		require.NoError(t, os.Chmod(locked, 0))
+		t.Cleanup(func() { _ = os.Chmod(locked, 0755) })
+	}
+	if _, err := os.ReadDir(locked); err == nil {
+		t.Skip("the folder can still be read, as by root")
+	}
+
+	assertSchema58FindsMyPlugin(t, dir)
+}
+
+// A broken link, as in a Python plugin's virtualenv, is skipped.
+func TestMigration58InstalledPluginIDsBrokenLink(t *testing.T) {
+	dir := schema58PluginFolder(t)
+	if err := os.Symlink(filepath.Join(dir, "missing"), filepath.Join(dir, "my_plugin", "broken")); err != nil {
+		t.Skipf("can't make a link: %v", err)
+	}
+
+	assertSchema58FindsMyPlugin(t, dir)
+}
+
+// The same, without OS permissions: entries that fail to read, as the walk
+// reports them.
+func TestMigration58InstalledPluginIDsReadErrors(t *testing.T) {
+	dir := schema58PluginFolder(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "locked"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "locked", "hidden.yml"), []byte("name: x\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "my_plugin", "broken"), nil, 0644))
+
+	walk := schema58WalkPlugins
+	t.Cleanup(func() { schema58WalkPlugins = walk })
+	schema58WalkPlugins = func(path string, walkFn filepath.WalkFunc) error {
+		return walk(path, func(fp string, info os.FileInfo, err error) error {
+			switch filepath.Base(fp) {
+			case "locked":
+				// a folder that can't be listed, so its files go unseen
+				if info.IsDir() {
+					return walkFn(fp, info, fs.ErrPermission)
+				}
+			case "broken":
+				// a link that can't be followed
+				return walkFn(fp, info, fs.ErrNotExist)
+			}
+			return walkFn(fp, info, err)
+		})
+	}
+
+	assertSchema58FindsMyPlugin(t, dir)
+
+	// the plugin folder itself is still an error
+	schema58WalkPlugins = func(path string, walkFn filepath.WalkFunc) error {
+		return walkFn(path, nil, fs.ErrPermission)
+	}
+	_, err := (&schema58Migrator{}).installedPluginIDs(dir)
+	assert.ErrorIs(t, err, fs.ErrPermission)
 }
 
 func TestMigration58InstalledPluginIDs(t *testing.T) {
