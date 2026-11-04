@@ -277,7 +277,7 @@ func (qb *SavedFilterStore) FindByMode(ctx context.Context, mode models.FilterMo
 		whereClause = table.Col("mode").Eq(mode)
 	}
 
-	sq := qb.selectDataset(ctx).Prepared(true).Where(whereClause).Order(table.Col("name").Asc())
+	sq := qb.selectDataset(ctx).Prepared(true).Where(whereClause).Order(savedFilterByteOrder(table.Col("name")).Asc())
 	ret, err := qb.getMany(ctx, sq)
 
 	if err != nil {
@@ -287,9 +287,17 @@ func (qb *SavedFilterStore) FindByMode(ctx context.Context, mode models.FilterMo
 	return ret, nil
 }
 
+// savedFilterByteOrder sorts col by its bytes, as SQLite's BINARY collation
+// does, rather than by the database's language collation. So SCENES comes
+// before SCENE_MARKERS, capitals before lower case, and _ and accented letters
+// are not skipped or folded, as on SQLite.
+func savedFilterByteOrder(col exp.IdentifierExpression) exp.LiteralExpression {
+	return goqu.L(`? COLLATE "C"`, col)
+}
+
 // All returns the current user's saved filters ordered by mode and then name,
 // on both databases.
 func (qb *SavedFilterStore) All(ctx context.Context) ([]*models.SavedFilter, error) {
 	table := qb.table()
-	return qb.getMany(ctx, qb.selectDataset(ctx).Order(table.Col("mode").Asc(), table.Col("name").Asc()))
+	return qb.getMany(ctx, qb.selectDataset(ctx).Order(savedFilterByteOrder(table.Col("mode")).Asc(), savedFilterByteOrder(table.Col("name")).Asc()))
 }
