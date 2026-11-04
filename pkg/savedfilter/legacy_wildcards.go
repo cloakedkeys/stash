@@ -28,6 +28,14 @@ import (
 //     for every letter.
 //   - \ was a plain character (PostgreSQL used ESCAPE '', SQLite has no escape
 //     character by default).
+//
+// Custom field criteria (custom_fields) also used LIKE, differently:
+//   - includes matched objects whose value had every one of the values in it,
+//     each as typed, without splitting on whitespace. Excludes matched objects
+//     whose value had none of them, or that didn't have the field.
+//   - equals and not equals didn't use LIKE.
+//   - on PostgreSQL, excludes had no ESCAPE clause, so \ escaped the character
+//     after it. Includes used ESCAPE '', and SQLite has no escape character.
 
 // LegacyDialect is the database a saved filter was used with before the
 // change, since their LIKE differed.
@@ -77,6 +85,32 @@ func likeToRegex(dialect LegacyDialect, s string) string {
 		}
 		i += size
 	}
+	return b.String()
+}
+
+// likeEscapedToRegex is likeToRegex for a PostgreSQL LIKE pattern in which \
+// makes the character after it match only itself, as in PostgreSQL's default.
+// The pattern is matched against the whole value, so the result is anchored.
+// PostgreSQL ignored case for every letter, so letters need nothing special.
+func likeEscapedToRegex(s string) string {
+	var b strings.Builder
+	b.WriteString("^")
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '\\' && i+1 < len(s):
+			// the escaped character; the rest of a multi-byte character is
+			// copied as it is by the loop
+			i++
+			b.WriteString(regexp.QuoteMeta(s[i : i+1]))
+		case c == '%':
+			b.WriteString(".*")
+		case c == '_':
+			b.WriteString(".")
+		default:
+			b.WriteString(regexp.QuoteMeta(s[i : i+1]))
+		}
+	}
+	b.WriteString("$")
 	return b.String()
 }
 
@@ -236,12 +270,20 @@ func sortedKeys(m map[string]interface{}) []string {
 func convertObjectFilter(dialect LegacyDialect, t reflect.Type, filter map[string]interface{}, path string, notes *[]string) bool {
 	changed := false
 	for _, name := range sortedKeys(filter) {
-		sub, isMap := filter[name].(map[string]interface{})
-		if !isMap {
-			continue
-		}
 		f, found := findField(t, name)
 		if !found {
+			continue
+		}
+
+		if f.Type == customFieldsType {
+			if list, ok := filter[name].([]interface{}); ok && convertCustomFields(dialect, list, path+name, notes) {
+				changed = true
+			}
+			continue
+		}
+
+		sub, isMap := filter[name].(map[string]interface{})
+		if !isMap {
 			continue
 		}
 
@@ -292,6 +334,104 @@ func convertCriterion(dialect LegacyDialect, owner reflect.Type, f reflect.Struc
 	}
 	criterion["modifier"] = string(newModifier)
 	criterion["value"] = newValue
+	return true
+}
+
+var customFieldsType = reflect.TypeOf([]models.CustomFieldCriterionInput{})
+
+// convertCustomFields rewrites the custom field criteria in list, each
+// {"field", "value": [...], "modifier"}, in place.
+func convertCustomFields(dialect LegacyDialect, list []interface{}, path string, notes *[]string) bool {
+	changed := false
+	for i, item := range list {
+		criterion, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		field, _ := criterion["field"].(string)
+		if convertCustomFieldCriterion(dialect, criterion, fmt.Sprintf("%s[%d] (%s)", path, i, field), notes) {
+			changed = true
+		}
+	}
+	return changed
+}
+
+// ConvertLegacyCustomFieldValue returns the regular expression that matches
+// what a custom field includes or excludes value used to match: a value with
+// the text in it. ok is false when the value needs no change.
+func ConvertLegacyCustomFieldValue(dialect LegacyDialect, modifier models.CriterionModifier, value string) (newValue string, ok bool) {
+	backslashEscapes := dialect == LegacyPostgres && modifier == models.CriterionModifierExcludes
+	switch {
+	case modifier != models.CriterionModifierIncludes && modifier != models.CriterionModifierExcludes:
+		return value, false
+	case backslashEscapes:
+		if !HasLegacyWildcard(value) && !strings.Contains(value, `\`) {
+			return value, false
+		}
+		// the value was put between two % and then read with \ as the escape
+		// character, so a \ at its end escaped the last %
+		return "(?is)" + likeEscapedToRegex("%"+value+"%"), true
+	default:
+		if !HasLegacyWildcard(value) {
+			return value, false
+		}
+		return "(?is)" + likeToRegex(dialect, value), true
+	}
+}
+
+func convertCustomFieldCriterion(dialect LegacyDialect, criterion map[string]interface{}, path string, notes *[]string) bool {
+	modifierStr, _ := criterion["modifier"].(string)
+	modifier := models.CriterionModifier(modifierStr)
+
+	var values []interface{}
+	single := false
+	switch v := criterion["value"].(type) {
+	case []interface{}:
+		values = v
+	case string:
+		values = []interface{}{v}
+		single = true
+	default:
+		return false
+	}
+
+	newValues := make([]interface{}, len(values))
+	needed, allText := false, true
+	for i, v := range values {
+		s, isText := v.(string)
+		if !isText {
+			allText = false
+			continue
+		}
+		newValue, ok := ConvertLegacyCustomFieldValue(dialect, modifier, s)
+		if ok {
+			needed = true
+			newValues[i] = newValue
+		} else {
+			// a value with no wildcard, as a regular expression too, since all
+			// the values share the modifier
+			newValues[i] = "(?is)" + likeToRegex(dialect, s)
+		}
+	}
+	if !needed {
+		return false
+	}
+	if !allText {
+		// a number can't go to a regular expression modifier
+		*notes = append(*notes, fmt.Sprintf("%s: values that aren't text are mixed with text that used _ or %%, which can't be rewritten as regular expressions", path))
+		return false
+	}
+
+	if modifier == models.CriterionModifierIncludes {
+		criterion["modifier"] = string(models.CriterionModifierMatchesRegex)
+	} else {
+		criterion["modifier"] = string(models.CriterionModifierNotMatchesRegex)
+	}
+	if single {
+		criterion["value"] = newValues[0]
+	} else {
+		criterion["value"] = newValues
+	}
 	return true
 }
 

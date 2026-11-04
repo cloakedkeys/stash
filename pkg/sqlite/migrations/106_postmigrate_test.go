@@ -62,6 +62,23 @@ var wildcardCases = []wildcardCase{
 	// never found; "doesn't match regex" keeps it, as it does for an empty title
 	{"path excludes", `{"path":{"value":"part_1","modifier":"EXCLUDES"}}`,
 		`EXISTS (SELECT 1 FROM scenes_files sf JOIN files f ON f.id = sf.file_id JOIN folders fo ON fo.id = f.parent_folder_id WHERE sf.scene_id = scenes.id AND NOT ({fp} LIKE '%part_1%'))`, []int{10}},
+
+	// custom fields: includes needed every value, each as typed; excludes
+	// found scenes without the field too. A scene has one row per field.
+	{"custom field includes", `{"custom_fields":[{"field":"source","value":["site_a"],"modifier":"INCLUDES"}]}`,
+		`EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value LIKE '%site_a%')`, nil},
+	{"custom field includes every value", `{"custom_fields":[{"field":"source","value":["site_","%a"],"modifier":"INCLUDES"}]}`,
+		`EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value LIKE '%site_%' AND c.value LIKE '%%a%')`, nil},
+	{"custom field includes percent", `{"custom_fields":[{"field":"source","value":["100%"],"modifier":"INCLUDES"}]}`,
+		`EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value LIKE '%100%%')`, nil},
+	// LIKE read a number as text
+	{"custom field includes a number", `{"custom_fields":[{"field":"source","value":["%5"],"modifier":"INCLUDES"}]}`,
+		`EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value LIKE '%%5%')`, nil},
+	// case was ignored only for A to Z
+	{"custom field letters outside A to Z", `{"custom_fields":[{"field":"source","value":["été_a"],"modifier":"INCLUDES"}]}`,
+		`EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value LIKE '%été_a%')`, nil},
+	{"custom field excludes", `{"custom_fields":[{"field":"source","value":["site_a"],"modifier":"EXCLUDES"}]}`,
+		`NOT EXISTS (SELECT 1 FROM scene_custom_fields c WHERE c.scene_id = scenes.id AND c.field = 'source' AND c.value LIKE '%site_a%')`, nil},
 }
 
 // filters left as they were, and the JSON they must keep
@@ -69,6 +86,10 @@ var untouchedFilters = []string{
 	`{"title":{"value":"part-1","modifier":"INCLUDES"}}`,
 	`{"resolution":{"value":"FULL_HD","modifier":"EQUALS"}}`,
 	`{"url":{"value":"site_x","modifier":"EXCLUDES"}}`,
+	// equals didn't use LIKE
+	`{"custom_fields":[{"field":"source","value":["site_a"],"modifier":"EQUALS"}]}`,
+	// \ was a plain character in custom field excludes on SQLite
+	`{"custom_fields":[{"field":"source","value":["a\\b"],"modifier":"EXCLUDES"}]}`,
 }
 
 func sortedIDs(ids []int) []int {
@@ -220,7 +241,11 @@ INSERT INTO files(id,basename,parent_folder_id,size,mod_time,created_at,updated_
  (12,'twelve.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (13,'thirteen.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
  (14,'fourteen.mp4',1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
-INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,1),(2,2,1),(3,3,1),(4,4,1),(5,5,1),(6,6,1),(7,7,1),(8,8,1),(9,9,1),(11,11,1),(12,12,1),(13,13,1),(14,14,1);`)
+INSERT INTO scenes_files(scene_id,file_id,"primary") VALUES (1,1,1),(2,2,1),(3,3,1),(4,4,1),(5,5,1),(6,6,1),(7,7,1),(8,8,1),(9,9,1),(11,11,1),(12,12,1),(13,13,1),(14,14,1);
+INSERT INTO scene_custom_fields(scene_id,field,value) VALUES
+ (1,'source','site_a'),(2,'source','site-a'),(3,'source','site a'),(4,'source','SITE-A'),(5,'source','other'),
+ (6,'source',5),(7,'source','100% real'),(8,'source','100 real'),(9,'source','a\b'),(11,'source','ab'),
+ (13,'source','ÉTÉ-A'),(14,'source','été-a');`)
 	require.NoError(t, err)
 
 	fp := "fo.path || '" + string(filepath.Separator) + "' || f.basename"
