@@ -529,17 +529,21 @@ func (db *Database) RestoreFromBackup(backupPath string) error {
 	logger.Infof("Restoring backup database %s into %s", backupPath, db.dbPath)
 
 	wasOpen := db.readDB != nil || db.writeDB != nil
-	if err := db.Close(); err != nil {
-		return fmt.Errorf("closing the database to restore the backup %s, which is left as it was: %w", backupPath, err)
-	}
 
-	err := db.checkClosed()
+	err := db.Close()
+	if err != nil {
+		// a pool that failed to close can't be used again either
+		db.dropPools()
+		err = fmt.Errorf("closing the database: %w", err)
+	} else {
+		err = db.checkClosed()
+	}
 	if err == nil {
 		err = os.Rename(backupPath, db.dbPath)
 		if err == nil {
 			if wasOpen {
 				if err := db.Open(context.Background(), db.dbPath); err != nil {
-					return fmt.Errorf("the backup %s was restored, but opening it failed: %w", backupPath, err)
+					return fmt.Errorf("%w (from %s): %w", database.ErrRestoredNotReopened, backupPath, err)
 				}
 			}
 			return nil
@@ -547,12 +551,27 @@ func (db *Database) RestoreFromBackup(backupPath string) error {
 	}
 	err = fmt.Errorf("restoring the backup %s, which is left as it was: %w", backupPath, err)
 
+	// back to the database as it was
 	if wasOpen {
 		if openErr := db.Open(context.Background(), db.dbPath); openErr != nil {
 			err = fmt.Errorf("%w; opening the database again also failed: %v", err, openErr)
 		}
 	}
 	return err
+}
+
+// dropPools closes whatever Close left open after an error, ignoring further
+// errors, so that the pools can be opened again.
+func (db *Database) dropPools() {
+	db.lock()
+	defer db.unlock()
+
+	for _, pool := range []**sqlx.DB{&db.readDB, &db.writeDB} {
+		if *pool != nil {
+			_ = (*pool).Close()
+			*pool = nil
+		}
+	}
 }
 
 // checkClosed returns an error if the database's -wal or -shm file is still

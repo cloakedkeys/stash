@@ -109,14 +109,7 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 		}
 
 		// roll back to the backed up version
-		restoreErr := db.RestoreFromBackup(backupPath)
-		if restoreErr != nil {
-			errStr = fmt.Sprintf("ERROR: unable to restore database from backup after migration failure: %s\n%s", restoreErr.Error(), errStr)
-		} else {
-			errStr = "An error occurred migrating the database to the latest schema version. The database was automatically restored from the backup.\n" + errStr
-		}
-
-		return errors.New(errStr)
+		return errors.New(restoreMessage(db.RestoreFromBackup(backupPath), errStr))
 	}
 
 	// if no backup path was provided, then delete the created backup
@@ -138,6 +131,19 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 	logger.Infof("Database migration complete")
 
 	return nil
+}
+
+// restoreMessage says what happened when the backup was put back after the
+// migration failed with errStr.
+func restoreMessage(restoreErr error, errStr string) string {
+	switch {
+	case restoreErr == nil:
+		return "An error occurred migrating the database to the latest schema version. The database was automatically restored from the backup.\n" + errStr
+	case errors.Is(restoreErr, database.ErrRestoredNotReopened):
+		return fmt.Sprintf("ERROR: the database was restored from the backup after the migration failed, but it couldn't be opened again. Restart Stash: %s\n%s", restoreErr.Error(), errStr)
+	default:
+		return fmt.Sprintf("ERROR: unable to restore database from backup after migration failure: %s\n%s", restoreErr.Error(), errStr)
+	}
 }
 
 func (s *MigrateJob) required() (ret databaseSchemaInfo, err error) {

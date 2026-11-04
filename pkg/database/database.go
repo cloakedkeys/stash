@@ -78,6 +78,9 @@ var (
 	// ErrBackupToolNotFound is returned when a program needed to back up or restore
 	// the database isn't installed. Nothing has been changed when it is returned.
 	ErrBackupToolNotFound = errors.New("database backup tool not found")
+	// ErrRestoredNotReopened is returned by RestoreFromBackup when the backup
+	// is back in place, but the database couldn't be opened again.
+	ErrRestoredNotReopened = errors.New("the backup was restored, but the database couldn't be opened again")
 )
 
 // ErrMigrationNeeded indicates that a database migration is needed
