@@ -160,7 +160,9 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 
 		if oldHash != "" && newHash != "" && oldHash != newHash {
 			// remove cache dir of gallery
-			_ = os.Remove(h.Paths.Generated.GetThumbnailPath(oldHash, models.DefaultGthumbWidth))
+			for _, path := range h.Paths.Generated.Thumbnail(oldHash, models.DefaultGthumbWidth).Both() {
+				_ = os.Remove(path)
+			}
 		}
 	}
 

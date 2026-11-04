@@ -728,6 +728,23 @@ func (j *CleanGeneratedJob) getThumbnailFileHash(basename string) (string, error
 	return fmt.Sprintf("%x", hash), nil
 }
 
+// getImageFileHash returns the checksum of an image's generated file in the
+// hash layout: <checksum>_thumb_<width>.jpg or <checksum>_preview_<width>.webm.
+func (j *CleanGeneratedJob) getImageFileHash(basename string) (string, error) {
+	var (
+		hash  string
+		width int
+		ext   string
+	)
+	for _, kind := range []string{"thumb", "preview"} {
+		if _, err := fmt.Sscanf(basename, "%32x_"+kind+"_%d.%s", &hash, &width, &ext); err == nil {
+			return fmt.Sprintf("%x", hash), nil
+		}
+	}
+
+	return "", fmt.Errorf("not an image file: %s", basename)
+}
+
 func (j *CleanGeneratedJob) cleanThumbnailFiles(ctx context.Context, progress *job.Progress) error {
 	if job.IsCancelled(ctx) {
 		return nil
@@ -735,8 +752,22 @@ func (j *CleanGeneratedJob) cleanThumbnailFiles(ctx context.Context, progress *j
 
 	logger.Infof("Cleaning image thumbnail files")
 
-	// walk through the sprite directory
-	if err := walkExisting(j.Paths.Generated.Thumbnails, func(path string, info fs.FileInfo, err error) error {
+	// the hash layout, then the legacy folder
+	if err := j.cleanImageFiles(ctx, j.Paths.Generated.Image, j.getImageFileHash, progress); err != nil {
+		return err
+	}
+	if err := j.cleanImageFiles(ctx, j.Paths.Generated.Thumbnails, j.getThumbnailFileHash, progress); err != nil {
+		return err
+	}
+
+	j.removeEmptyHashDirs(j.Paths.Generated.Image)
+	j.removeEmptyDirs(j.Paths.Generated.Thumbnails)
+
+	return nil
+}
+
+func (j *CleanGeneratedJob) cleanImageFiles(ctx context.Context, root string, getFileHash func(string) (string, error), progress *job.Progress) error {
+	return walkExisting(root, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -746,7 +777,7 @@ func (j *CleanGeneratedJob) cleanThumbnailFiles(ctx context.Context, progress *j
 		}
 
 		if info.IsDir() {
-			if path == j.Paths.Generated.Thumbnails {
+			if path == root {
 				return nil
 			}
 
@@ -758,7 +789,7 @@ func (j *CleanGeneratedJob) cleanThumbnailFiles(ctx context.Context, progress *j
 			}
 
 			// estimate progress by the hash prefix
-			if filepath.Dir(path) == j.Paths.Generated.Thumbnails {
+			if filepath.Dir(path) == root {
 				hashPrefix := filepath.Base(path)
 				j.setProgressFromFilename(hashPrefix, progress)
 			}
@@ -767,7 +798,7 @@ func (j *CleanGeneratedJob) cleanThumbnailFiles(ctx context.Context, progress *j
 		}
 
 		filename := info.Name()
-		checksum, err := j.getThumbnailFileHash(filename)
+		checksum, err := getFileHash(filename)
 		if err != nil {
 			logger.Warnf("Ignoring unknown thumbnail file: %s", filename)
 			return nil
@@ -785,13 +816,7 @@ func (j *CleanGeneratedJob) cleanThumbnailFiles(ctx context.Context, progress *j
 		}
 
 		return nil
-	}); err != nil {
-		return err
-	}
-
-	j.removeEmptyDirs(j.Paths.Generated.Thumbnails)
-
-	return nil
+	})
 }
 
 func (j *CleanGeneratedJob) cleanEmbeddedSubtitleFiles(ctx context.Context) error {
