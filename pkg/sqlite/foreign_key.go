@@ -50,3 +50,18 @@ func joinInsertError(err error, col interface{}, id int) error {
 	}
 	return err
 }
+
+// groupRelationExistsError replaces the database's own UNIQUE error for a
+// containing or sub-group row of group id that is already there. repeated says
+// whether the list gave groupID before; otherwise the two were already linked.
+// idIsContaining says whether groupID is being added as a sub-group of id.
+func groupRelationExistsError(groupID int, id int, idIsContaining bool, repeated bool) error {
+	switch {
+	case repeated:
+		return fmt.Errorf("group with id %d is listed more than once", groupID)
+	case idIsContaining:
+		return fmt.Errorf("group with id %d is already a sub-group of group with id %d", groupID, id)
+	default:
+		return fmt.Errorf("group with id %d is already a containing group of group with id %d", groupID, id)
+	}
+}

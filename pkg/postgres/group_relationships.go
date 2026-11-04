@@ -120,6 +120,10 @@ func (s *groupRelationshipStore) createRelationships(ctx context.Context, id int
 
 			_, err := s.table.insert(ctx, r)
 			if err != nil {
+				// the old links were removed first, so only a repeat is already there
+				if isUniqueError(err) {
+					return groupRelationExistsError(v.GroupID, id, idIsContaining, true)
+				}
 				return fmt.Errorf("inserting into %s: %w", s.table.table.GetTable(), err)
 			}
 		}
@@ -228,11 +232,24 @@ func (s *groupRelationshipStore) addJoins(ctx context.Context, id int, groups []
 
 		_, err := s.table.insert(ctx, r)
 		if err != nil {
+			if isUniqueError(err) {
+				return groupRelationExistsError(vv.GroupID, id, idIsContaining, groupListedBefore(groups, i))
+			}
 			return fmt.Errorf("inserting into %s: %w", s.table.table.GetTable(), err)
 		}
 	}
 
 	return nil
+}
+
+// groupListedBefore reports whether groups lists the i-th group's id earlier.
+func groupListedBefore(groups []models.GroupIDDescription, i int) bool {
+	for _, g := range groups[:i] {
+		if g.GroupID == groups[i].GroupID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *groupRelationshipStore) destroyAllJoins(ctx context.Context, id int, idIsContaining bool) error {
