@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 )
@@ -22,14 +23,25 @@ func handleIDList(idList []string, field string) ([]int, error) {
 	return ids, nil
 }
 
-// validateIDList returns an error if there are any duplicate ids in the list
+// validateIDList returns an error if there are any duplicate ids in the list.
+// Ids that are numbers are compared by value, so "1" and "01" are the same id.
+// Ids that are not numbers are compared as written; converting them fails later.
 func validateIDList(ids []string) error {
-	seen := make(map[string]struct{})
+	seenNumbers := make(map[int]struct{})
+	seenOthers := make(map[string]struct{})
 	for _, id := range ids {
-		if _, exists := seen[id]; exists {
+		exists := false
+		if n, err := strconv.Atoi(id); err == nil {
+			_, exists = seenNumbers[n]
+			seenNumbers[n] = struct{}{}
+		} else {
+			_, exists = seenOthers[id]
+			seenOthers[id] = struct{}{}
+		}
+
+		if exists {
 			return fmt.Errorf("duplicate id found: %s", id)
 		}
-		seen[id] = struct{}{}
 	}
 	return nil
 }
