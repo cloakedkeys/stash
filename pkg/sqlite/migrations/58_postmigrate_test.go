@@ -4,8 +4,10 @@ package migrations
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
@@ -88,6 +90,8 @@ func schema58NewDatabase(ctx context.Context, t *testing.T, dir string) {
 // migrate task upgrades it.
 func schema58OldDatabase(ctx context.Context, t *testing.T, dir string) *sqlite.Migrator {
 	t.Helper()
+	// the earlier steps read the config, so a test can run on its own
+	config.InitializeEmpty()
 	dbPath := filepath.Join(dir, "stash.sqlite")
 	raw, err := sqlx.Open("sqlite3", dbPath)
 	require.NoError(t, err)
@@ -225,6 +229,50 @@ func TestMigration58OldConfigBothPluginForms(t *testing.T) {
 		"my_plugin": {"skipExisting": true},
 		"myPlugin":  {"skipExisting": true},
 	}, cfg.GetAllPluginConfiguration())
+}
+
+// Plugins with uppercase letters and an _ in their ID get the settings saved
+// under their ID in snake_case, with the ID spelled as installed.
+func TestMigration58OldConfigMixedCasePlugins(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	m := schema58OldDatabase(ctx, t, dir)
+	cfg, _ := schema58Config(t, dir, schema58OldUI())
+	// as saved for My_plugin and My_Plugin before schema 58
+	cfg.SetInterface(config.PluginsSetting, map[string]interface{}{
+		"my_plugin":    map[string]interface{}{"skip_existing": true},
+		"other__thing": map[string]interface{}{"dry_run": true},
+	})
+	schema58InstallPlugins(t, cfg, dir, "My_plugin", "Other_Thing")
+	require.NoError(t, m.RunMigration(ctx, 58))
+
+	assert.Equal(t, map[string]map[string]interface{}{
+		"My_plugin":   {"skipExisting": true},
+		"Other_Thing": {"dryRun": true},
+	}, cfg.GetAllPluginConfiguration())
+}
+
+// my_plugin and my__plugin (My_Plugin) both convert to myPlugin, which gets
+// the settings it read before, saved as my_plugin, every time.
+func TestMigration58OldConfigConvertedKeysCollide(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	m := schema58OldDatabase(ctx, t, dir)
+	cfg, _ := schema58Config(t, dir, schema58OldUI())
+	// ten pairs, so that map order can't pass the test by chance
+	saved := make(map[string]interface{})
+	want := make(map[string]map[string]interface{})
+	for i := 0; i < 10; i++ {
+		name := fmt.Sprintf("plugin%d", i)
+		saved["my_"+name] = map[string]interface{}{"from": "my_" + name}
+		saved["my__"+name] = map[string]interface{}{"from": "my__" + name}
+		want["my"+strings.ToUpper(name[:1])+name[1:]] = map[string]interface{}{"from": "my_" + name}
+	}
+	cfg.SetInterface(config.PluginsSetting, saved)
+	require.NoError(t, cfg.Write())
+	require.NoError(t, m.RunMigration(ctx, 58))
+
+	assert.Equal(t, want, cfg.GetAllPluginConfiguration())
 }
 
 // When the plugin folder can't be read, every plugin ID is converted, as before.

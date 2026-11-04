@@ -42,17 +42,36 @@ func TestMigration58PluginKeys(t *testing.T) {
 		{"not installed", "my_plugin", nil, []string{"myPlugin"}},
 		{"camelCase installed", "my_plugin", []string{"myPlugin"}, []string{"myPlugin"}},
 		{"snake_case installed", "my_plugin", []string{"my_plugin"}, []string{"my_plugin"}},
-		{"both installed", "my_plugin", []string{"my_plugin", "myPlugin"}, []string{"my_plugin", "myPlugin"}},
+		{"both installed", "my_plugin", []string{"my_plugin", "myPlugin"}, []string{"myPlugin", "my_plugin"}},
 		{"other plugin installed", "my_plugin", []string{"other_plugin"}, []string{"myPlugin"}},
 		{"no _", "plugin", []string{"plugin"}, []string{"plugin"}},
-		// IDs are case-sensitive
-		{"case differs", "my_plugin", []string{"My_Plugin"}, []string{"myPlugin"}},
+		// mixed case, as saved through toSnakeCase
+		{"mixed case installed", "my_plugin", []string{"My_plugin"}, []string{"My_plugin"}},
+		{"mixed case saved with __", "my__plugin", []string{"My_Plugin"}, []string{"My_Plugin"}},
+		{"My_Plugin was not saved as my_plugin", "my_plugin", []string{"My_Plugin"}, []string{"myPlugin"}},
+		{"two spellings installed", "my_plugin", []string{"My_plugin", "my_plugin"}, []string{"My_plugin", "my_plugin"}},
+		{"three spellings installed", "my_plugin", []string{"My_plugin", "my_plugin", "myPlugin"}, []string{"My_plugin", "myPlugin", "my_plugin"}},
+		// an ID without _ is converted as before
+		{"PascalCase installed", "my_plugin", []string{"MyPlugin"}, []string{"myPlugin"}},
 	} {
 		installed := make(map[string]bool)
 		for _, id := range c.installed {
 			installed[id] = true
 		}
 		assert.Equal(t, c.want, m.pluginKeys(c.key, installed), c.name)
+	}
+}
+
+func TestMigration58ToSnakeCase(t *testing.T) {
+	m := schema58Migrator{}
+	for id, want := range map[string]string{
+		"myPlugin":  "my_plugin",
+		"my_plugin": "my_plugin",
+		"My_plugin": "my_plugin",
+		"My_Plugin": "my__plugin",
+		"someIDs":   "some_ids",
+	} {
+		assert.Equal(t, want, m.toSnakeCase(id), id)
 	}
 }
 

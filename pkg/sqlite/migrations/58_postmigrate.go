@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -43,6 +44,24 @@ func (m *schema58Migrator) migrate() error {
 	}
 
 	return nil
+}
+
+// toSnakeCase converts a string from camelCase to snake_case, as the versions
+// before schema 58 did to save a plugin ID: My_Plugin was saved as my__plugin.
+func (m *schema58Migrator) toSnakeCase(v string) string {
+	var buf bytes.Buffer
+	underscored := false
+	for i, c := range v {
+		if !underscored && unicode.IsUpper(c) && i > 0 {
+			buf.WriteByte('_')
+			underscored = true
+		} else {
+			underscored = false
+		}
+
+		buf.WriteRune(unicode.ToLower(c))
+	}
+	return buf.String()
 }
 
 // fromSnakeCase converts a string from snake_case to camelCase
@@ -198,22 +217,31 @@ func (m *schema58Migrator) installedPluginIDs(path string) (map[string]bool, err
 }
 
 // pluginKeys returns the IDs to store the settings saved under key at. Before
-// schema 58 a plugin ID was saved in snake_case, so myPlugin and my_plugin
-// were both saved as my_plugin, and both plugins read the same settings. Those
-// settings go to the camelCase ID, as before, unless key is the ID of an
-// installed plugin, which keeps them. When both plugins are installed, each
-// gets a copy, as each read them before. Without the installed IDs every key
-// is converted.
+// schema 58 a plugin ID was saved through toSnakeCase, so myPlugin, my_plugin
+// and My_plugin were all saved as my_plugin, and each read the same settings.
+// Those settings go to the camelCase ID, as before, unless an installed plugin
+// with an _ in its ID was saved under key. Each such plugin gets a copy, with
+// its ID spelled as installed, and so does the camelCase ID when that plugin
+// is installed too, as each read the settings before. Without the installed
+// IDs every key is converted.
 func (m *schema58Migrator) pluginKeys(key string, installed map[string]bool) []string {
 	converted := m.fromSnakeCase(key)
-	switch {
-	case converted == key || !installed[key]:
-		return []string{converted}
-	case installed[converted]:
-		return []string{key, converted}
-	default:
-		return []string{key}
+
+	var ret []string
+	for id := range installed {
+		if strings.Contains(id, "_") && m.toSnakeCase(id) == key {
+			ret = append(ret, id)
+		}
 	}
+	if len(ret) == 0 {
+		return []string{converted}
+	}
+
+	if installed[converted] && !slices.Contains(ret, converted) {
+		ret = append(ret, converted)
+	}
+	slices.Sort(ret)
+	return ret
 }
 
 func (m *schema58Migrator) migrateConfig() error {
@@ -273,6 +301,11 @@ func (m *schema58Migrator) migrateConfig() error {
 	newPlugins := make(map[string]interface{})
 	for key, value := range plugins {
 		for _, newKey := range m.pluginKeys(key, installed) {
+			// my_plugin and my__plugin both convert to myPlugin, which read
+			// my_plugin before
+			if _, found := newPlugins[newKey]; found && m.toSnakeCase(newKey) != key {
+				continue
+			}
 			newPlugins[newKey] = m.fromSnakeCaseMap(value)
 		}
 	}
