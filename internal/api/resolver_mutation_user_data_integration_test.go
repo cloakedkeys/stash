@@ -71,6 +71,7 @@ func TestUserDataUpdateMissingObjectOnDatabase(t *testing.T) {
 	performer.Name = "Someone"
 	scene := models.Scene{Title: "A scene"}
 	img := models.Image{Title: "An image"}
+	grp := models.Group{Name: "A group"}
 	require.NoError(t, txn.WithTxn(ctx, db, func(ctx context.Context) error {
 		if err := db.User().Create(ctx, &user, ""); err != nil {
 			return err
@@ -82,6 +83,9 @@ func TestUserDataUpdateMissingObjectOnDatabase(t *testing.T) {
 			return err
 		}
 		if err := db.Image().Create(ctx, &models.CreateImageInput{Image: &img}); err != nil {
+			return err
+		}
+		if err := db.Group().Create(ctx, &grp); err != nil {
 			return err
 		}
 		return db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &performer})
@@ -106,6 +110,14 @@ func TestUserDataUpdateMissingObjectOnDatabase(t *testing.T) {
 	check(user, userDataMissingMutations)
 	check(editor, missingObjectUpdateMutations)
 
+	// removing or resetting on a missing scene or track gives 0, as upstream does
+	for mutation, want := range missingObjectNoOpMutations {
+		t.Run(mutation, func(t *testing.T) {
+			body := storyRequest(t, gql, user, "mutation { "+mutation+" }")
+			require.JSONEq(t, want, body)
+		})
+	}
+
 	// an object that exists is rated as before
 	body := storyRequest(t, gql, user, fmt.Sprintf(`mutation { performerUserDataUpdate(input:{id:"%d",rating100:80,favorite:true}) { rating100 favorite } }`, performer.ID))
 	require.JSONEq(t, `{"data":{"performerUserDataUpdate":{"rating100":80,"favorite":true}}}`, body)
@@ -119,4 +131,8 @@ func TestUserDataUpdateMissingObjectOnDatabase(t *testing.T) {
 	require.JSONEq(t, `{"data":{"sceneSaveActivity":true}}`, body)
 	body = storyRequest(t, gql, user, fmt.Sprintf(`mutation { imageIncrementO(id:"%d") }`, img.ID))
 	require.JSONEq(t, `{"data":{"imageIncrementO":1}}`, body)
+
+	// a group's aliases are still tidied, leaving out its name and repeats
+	body = storyRequest(t, gql, editor, fmt.Sprintf(`mutation { groupUpdate(input:{id:"%d",alias_list:["Other","a group","other"]}) { alias_list } }`, grp.ID))
+	require.JSONEq(t, `{"data":{"groupUpdate":{"alias_list":["Other"]}}}`, body)
 }

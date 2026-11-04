@@ -1261,10 +1261,6 @@ func (r *mutationResolver) SceneDeletePlay(ctx context.Context, id string, t []*
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
 
-		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
-			return err
-		}
-
 		updatedTimes, err = qb.DeleteViews(ctx, sceneID, times)
 		return err
 	}); err != nil {
@@ -1285,10 +1281,6 @@ func (r *mutationResolver) SceneResetPlayCount(ctx context.Context, id string) (
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
-
-		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
-			return err
-		}
 
 		ret, err = qb.DeleteAllViews(ctx, sceneID)
 		return err
@@ -1336,10 +1328,6 @@ func (r *mutationResolver) SceneDecrementO(ctx context.Context, id string) (ret 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
 
-		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
-			return err
-		}
-
 		updatedTimes, err = qb.DeleteO(ctx, sceneID, nil)
 		return err
 	}); err != nil {
@@ -1357,10 +1345,6 @@ func (r *mutationResolver) SceneResetO(ctx context.Context, id string) (ret int,
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
-
-		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
-			return err
-		}
 
 		ret, err = qb.ResetO(ctx, sceneID)
 		return err
@@ -1421,10 +1405,6 @@ func (r *mutationResolver) SceneDeleteO(ctx context.Context, id string, t []*tim
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
-
-		if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
-			return err
-		}
 
 		updatedTimes, err = qb.DeleteO(ctx, sceneID, times)
 		return err

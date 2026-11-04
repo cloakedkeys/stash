@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/mocks"
@@ -34,21 +35,22 @@ func userDataMissingMocks(r *Resolver, db *mocks.Database, id int) {
 	db.Tag.On("UpdatePartial", mock.Anything, id, mock.Anything).Maybe().Return(nil, errForeignKey)
 	db.Story.On("Find", mock.Anything, id).Return(nil, nil)
 
-	// O and play history and resume points
+	// O and play history and resume points. Removing from a missing object removes
+	// nothing, as the stores do.
 	db.Scene.On("AddO", mock.Anything, id, mock.Anything).Maybe().Return(nil, errForeignKey)
-	db.Scene.On("DeleteO", mock.Anything, id, mock.Anything).Maybe().Return(nil, errForeignKey)
-	db.Scene.On("ResetO", mock.Anything, id).Maybe().Return(0, errForeignKey)
+	db.Scene.On("DeleteO", mock.Anything, id, mock.Anything).Maybe().Return([]time.Time{}, nil)
+	db.Scene.On("ResetO", mock.Anything, id).Maybe().Return(0, nil)
 	db.Scene.On("AddViews", mock.Anything, id, mock.Anything).Maybe().Return(nil, errForeignKey)
-	db.Scene.On("DeleteViews", mock.Anything, id, mock.Anything).Maybe().Return(nil, errForeignKey)
-	db.Scene.On("DeleteAllViews", mock.Anything, id).Maybe().Return(0, errForeignKey)
+	db.Scene.On("DeleteViews", mock.Anything, id, mock.Anything).Maybe().Return([]time.Time{}, nil)
+	db.Scene.On("DeleteAllViews", mock.Anything, id).Maybe().Return(0, nil)
 	db.Scene.On("SaveActivity", mock.Anything, id, mock.Anything, mock.Anything).Maybe().Return(false, errForeignKey)
 	db.Scene.On("ResetActivity", mock.Anything, id, mock.Anything, mock.Anything).Maybe().Return(false, errForeignKey)
 	db.Audio.On("AddO", mock.Anything, id, mock.Anything).Maybe().Return(nil, errForeignKey)
-	db.Audio.On("DeleteO", mock.Anything, id, mock.Anything).Maybe().Return(nil, errForeignKey)
-	db.Audio.On("ResetO", mock.Anything, id).Maybe().Return(0, errForeignKey)
+	db.Audio.On("DeleteO", mock.Anything, id, mock.Anything).Maybe().Return([]time.Time{}, nil)
+	db.Audio.On("ResetO", mock.Anything, id).Maybe().Return(0, nil)
 	db.Audio.On("AddViews", mock.Anything, id, mock.Anything).Maybe().Return(nil, errForeignKey)
-	db.Audio.On("DeleteViews", mock.Anything, id, mock.Anything).Maybe().Return(nil, errForeignKey)
-	db.Audio.On("DeleteAllViews", mock.Anything, id).Maybe().Return(0, errForeignKey)
+	db.Audio.On("DeleteViews", mock.Anything, id, mock.Anything).Maybe().Return([]time.Time{}, nil)
+	db.Audio.On("DeleteAllViews", mock.Anything, id).Maybe().Return(0, nil)
 	db.Audio.On("SaveActivity", mock.Anything, id, mock.Anything, mock.Anything).Maybe().Return(false, errForeignKey)
 	db.Audio.On("ResetActivity", mock.Anything, id, mock.Anything, mock.Anything).Maybe().Return(false, errForeignKey)
 	db.Image.On("IncrementOCounter", mock.Anything, id).Maybe().Return(0, errForeignKey)
@@ -74,30 +76,36 @@ var userDataMissingMutations = map[string]string{
 
 	// O and play history and resume points
 	`sceneIncrementO(id:"999")`:                                          "scene with id 999 not found",
-	`sceneDecrementO(id:"999")`:                                          "scene with id 999 not found",
 	`sceneAddO(id:"999") { count }`:                                      "scene with id 999 not found",
-	`sceneDeleteO(id:"999") { count }`:                                   "scene with id 999 not found",
-	`sceneResetO(id:"999")`:                                              "scene with id 999 not found",
 	`sceneSaveActivity(id:"999",resume_time:5,playDuration:5)`:           "scene with id 999 not found",
 	`sceneResetActivity(id:"999",reset_resume:true,reset_duration:true)`: "scene with id 999 not found",
 	`sceneIncrementPlayCount(id:"999")`:                                  "scene with id 999 not found",
 	`sceneAddPlay(id:"999") { count }`:                                   "scene with id 999 not found",
-	`sceneDeletePlay(id:"999") { count }`:                                "scene with id 999 not found",
-	`sceneResetPlayCount(id:"999")`:                                      "scene with id 999 not found",
 	`audioAddO(id:"999") { count }`:                                      "audio with id 999 not found",
-	`audioDeleteO(id:"999") { count }`:                                   "audio with id 999 not found",
-	`audioResetO(id:"999")`:                                              "audio with id 999 not found",
 	`audioSaveActivity(id:"999",resume_time:5,playDuration:5)`:           "audio with id 999 not found",
 	`audioResetActivity(id:"999",reset_resume:true,reset_duration:true)`: "audio with id 999 not found",
 	`audioAddPlay(id:"999") { count }`:                                   "audio with id 999 not found",
-	`audioDeletePlay(id:"999") { count }`:                                "audio with id 999 not found",
-	`audioResetPlayCount(id:"999")`:                                      "audio with id 999 not found",
 	`imageIncrementO(id:"999")`:                                          "image with id 999 not found",
 	`imageDecrementO(id:"999")`:                                          "image with id 999 not found",
 	`imageResetO(id:"999")`:                                              "image with id 999 not found",
 	`galleryIncrementO(id:"999")`:                                        "gallery with id 999 not found",
 	`galleryDecrementO(id:"999")`:                                        "gallery with id 999 not found",
 	`galleryResetO(id:"999")`:                                            "gallery with id 999 not found",
+}
+
+// Removing or resetting an O or a play on a scene or track that doesn't exist removes
+// nothing and gives 0, as upstream does. Keep it that way: clients may rely on it.
+// Images and galleries refused these upstream, so they are in the list above.
+var missingObjectNoOpMutations = map[string]string{
+	`sceneDecrementO(id:"999")`:           `{"data":{"sceneDecrementO":0}}`,
+	`sceneDeleteO(id:"999") { count }`:    `{"data":{"sceneDeleteO":{"count":0}}}`,
+	`sceneResetO(id:"999")`:               `{"data":{"sceneResetO":0}}`,
+	`sceneDeletePlay(id:"999") { count }`: `{"data":{"sceneDeletePlay":{"count":0}}}`,
+	`sceneResetPlayCount(id:"999")`:       `{"data":{"sceneResetPlayCount":0}}`,
+	`audioDeleteO(id:"999") { count }`:    `{"data":{"audioDeleteO":{"count":0}}}`,
+	`audioResetO(id:"999")`:               `{"data":{"audioResetO":0}}`,
+	`audioDeletePlay(id:"999") { count }`: `{"data":{"audioDeletePlay":{"count":0}}}`,
+	`audioResetPlayCount(id:"999")`:       `{"data":{"audioResetPlayCount":0}}`,
 }
 
 // The edit calls need an account that can change the library, so a limited account
@@ -126,6 +134,13 @@ func TestUserDataUpdateMissingObject(t *testing.T) {
 			body := storyRequest(t, gql, reader, "mutation { "+mutation+" }")
 			require.Contains(t, body, `"message":"`+want+`"`)
 			require.NotContains(t, body, "FOREIGN KEY")
+		})
+	}
+
+	for mutation, want := range missingObjectNoOpMutations {
+		t.Run(mutation, func(t *testing.T) {
+			body := storyRequest(t, gql, reader, "mutation { "+mutation+" }")
+			require.JSONEq(t, want, body)
 		})
 	}
 
@@ -175,7 +190,15 @@ func TestUserDataUpdateMissingObjectWithLibraryLimit(t *testing.T) {
 
 	limit := &models.LibraryLimit{TagIDs: []int{7}}
 	reader := models.User{ID: 3, Username: "reader", Roles: models.Roles{models.RoleEnumRead}, LibraryLimit: limit}
+	var mutations []string
 	for mutation := range userDataMissingMutations {
+		mutations = append(mutations, mutation)
+	}
+	// these give 0 for a missing object, but a hidden one must not be touched
+	for mutation := range missingObjectNoOpMutations {
+		mutations = append(mutations, mutation)
+	}
+	for _, mutation := range mutations {
 		body := storyRequest(t, gql, reader, "mutation { "+mutation+" }")
 		require.Contains(t, body, `"message":"not found"`, mutation)
 		require.NotContains(t, body, "with id", mutation)
