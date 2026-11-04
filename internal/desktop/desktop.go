@@ -48,6 +48,17 @@ func Start(exit chan int, faviconProvider FaviconProvider) {
 	}
 }
 
+// forwardExit takes an exit code from exit, waits until the tray is ready,
+// quits the tray and then passes the exit code back on exit.
+// Quitting the tray before it is ready has no effect, which would leave the
+// tray running and Stash unable to stop.
+func forwardExit(exit chan int, ready <-chan struct{}, quit func()) {
+	exitCode := <-exit
+	<-ready
+	quit()
+	exit <- exitCode
+}
+
 // openURLInBrowser opens a browser to the Stash UI. Path can be an empty string for main page.
 func openURLInBrowser(path string) {
 	// This can be done before actually starting the server, as modern browsers will
