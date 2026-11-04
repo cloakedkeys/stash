@@ -120,6 +120,44 @@ func TestConfigureUINumbersInListsError(t *testing.T) {
 	assert.Empty(t, c.GetPluginConfiguration("plugin"))
 }
 
+// The deprecated setDefaultFilter mutation wrote the numbers in object_filter
+// and ui_options to the config file as quoted strings.
+func TestSetDefaultFilterNumbers(t *testing.T) {
+	configFile := filepath.Join(t.TempDir(), "config.yml")
+	c := config.InitializeEmpty()
+	c.SetConfigFile(configFile)
+
+	db := mocks.NewDatabase()
+	db.UserUIConfig.On("Get", mock.Anything).Return(nil, nil)
+	r := &mutationResolver{newResolver(db)}
+	adminCtx := session.SetCurrentUser(context.Background(), models.User{
+		Username: "admin",
+		Roles:    models.Roles{models.RoleEnumAdmin},
+	})
+
+	_, err := r.SetDefaultFilter(adminCtx, SetDefaultFilterInput{
+		Mode: models.FilterModeScenes,
+		ObjectFilter: map[string]interface{}{
+			"rating100":     map[string]interface{}{"value": json.Number("60"), "modifier": "GREATER_THAN"},
+			"custom_fields": []interface{}{map[string]interface{}{"field": "f", "modifier": "EQUALS", "value": []interface{}{json.Number("5")}}},
+		},
+		UIOptions: map[string]interface{}{"zoom_index": json.Number("2")},
+	})
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(configFile)
+	require.NoError(t, err)
+	for _, quoted := range []string{`"60"`, `"5"`, `"2"`} {
+		assert.NotContains(t, string(data), quoted)
+	}
+
+	_, err = r.SetDefaultFilter(adminCtx, SetDefaultFilterInput{
+		Mode:         models.FilterModeScenes,
+		ObjectFilter: map[string]interface{}{"huge": json.Number("1e400")},
+	})
+	assert.ErrorContains(t, err, `object_filter "huge": invalid number "1e400"`)
+}
+
 func TestUIConfig(t *testing.T) {
 	c := config.InitializeEmpty()
 	globalConfig := map[string]interface{}{"abbreviateCounters": true}

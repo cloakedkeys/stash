@@ -91,6 +91,14 @@ func (r *mutationResolver) SetDefaultFilter(ctx context.Context, input SetDefaul
 		return true, nil
 	}
 
+	// convert JSON numbers to float64 or int64, as ConfigureUISetting does
+	if input.ObjectFilter, err = convertMapJSONNumbers(input.ObjectFilter); err != nil {
+		return false, fmt.Errorf("object_filter %w", err)
+	}
+	if input.UIOptions, err = convertMapJSONNumbers(input.UIOptions); err != nil {
+		return false, fmt.Errorf("ui_options %w", err)
+	}
+
 	subMap := make(map[string]interface{})
 	d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		TagName:          "json",
