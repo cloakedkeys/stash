@@ -237,6 +237,57 @@ func TestGroupRelationConcurrentEdits(t *testing.T) {
 		}
 	})
 
+	// a bulk edit goes through its groups in the order given, so it must not
+	// lock them one by one: a create inside two of them, at the same moment,
+	// would lock them in another order and deadlock (40P01)
+	t.Run("bulk edit in descending order with creates", func(t *testing.T) {
+		svc := &group.Service{Repository: db.Group()}
+		for round := 0; round < 6; round++ {
+			g := newGroups(5, fmt.Sprintf("concurrent bulk desc %d", round))
+			leaf := g[0]
+			created := func(a, b int) func(ctx context.Context) error {
+				return func(ctx context.Context) error {
+					n := models.NewGroup()
+					n.Name = fmt.Sprintf("concurrent bulk desc new %d", round)
+					n.ContainingGroups = models.NewRelatedGroupDescriptions(groupDescriptions(a, b))
+					// as groupCreate gives it, with no sub-groups
+					n.SubGroups = models.NewRelatedGroupDescriptions([]models.GroupIDDescription{})
+					if err := svc.Create(ctx, &models.CreateGroupInput{Group: &n}); err != nil {
+						return err
+					}
+					track(n.ID)
+					return nil
+				}
+			}
+			edits := []func(ctx context.Context) error{
+				// as bulkGroupUpdate does, one group at a time, in one transaction
+				func(ctx context.Context) error {
+					for _, id := range []int{g[4], g[3], g[2], g[1]} {
+						p := models.NewGroupPartial()
+						p.SubGroups = &models.UpdateGroupDescriptions{Groups: groupDescriptions(leaf), Mode: models.RelationshipUpdateModeAdd}
+						if _, err := svc.UpdatePartial(ctx, id, p, group.ImageInput{}, group.ImageInput{}); err != nil {
+							return err
+						}
+					}
+					return nil
+				},
+				created(g[4], g[3]),
+				created(g[3], g[2]),
+				created(g[2], g[1]),
+				created(g[4], g[1]),
+			}
+
+			for i, err := range runAtOnce(edits) {
+				assert.NoError(t, err, "round %d edit %d", round, i)
+			}
+			for _, id := range g[1:] {
+				subs, orderIndexes := subGroupOrder(t, id)
+				assert.Len(t, subs, 3, "round %d group %d", round, id)
+				assert.Equal(t, []int{1, 2, 3}, orderIndexes, "round %d group %d", round, id)
+			}
+		}
+	})
+
 	// two edits at once that would together put groups inside each other: one
 	// must be refused with the usual message, as one at a time (#2113)
 	t.Run("loops", func(t *testing.T) {

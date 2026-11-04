@@ -214,10 +214,10 @@ func (qb *GroupStore) Create(ctx context.Context, newObject *models.Group) error
 	var r groupRow
 	r.fromGroup(*newObject)
 
-	// the new group is added to the end of each containing group's sub-groups.
-	// Its own sub-groups need no lock: no other transaction can see it yet.
-	if newObject.ContainingGroups.Loaded() {
-		if err := lockSubGroupOrder(ctx, groupIDs(newObject.ContainingGroups.List())); err != nil {
+	// lock before changing anything, so the lock comes first
+	hasLinks := func(d models.RelatedGroupDescriptions) bool { return d.Loaded() && len(d.List()) > 0 }
+	if hasLinks(newObject.ContainingGroups) || hasLinks(newObject.SubGroups) {
+		if err := lockGroupLinks(ctx); err != nil {
 			return err
 		}
 	}
@@ -275,16 +275,11 @@ func (qb *GroupStore) UpdatePartial(ctx context.Context, id int, partial models.
 
 	r.fromPartial(partial)
 
-	// lock before changing the group's row, so the locks come first
-	var locks []int
-	if partial.ContainingGroups != nil {
-		locks = groupIDs(partial.ContainingGroups.Groups)
-	}
-	if partial.SubGroups != nil {
-		locks = append(locks, id)
-	}
-	if err := lockSubGroupOrder(ctx, locks); err != nil {
-		return nil, err
+	// lock before changing the group's row, so the lock comes first
+	if partial.ContainingGroups != nil || partial.SubGroups != nil {
+		if err := lockGroupLinks(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	if len(r.Record) > 0 {
@@ -332,13 +327,9 @@ func (qb *GroupStore) Update(ctx context.Context, updatedObject *models.Group) e
 	var r groupRow
 	r.fromGroup(*updatedObject)
 
-	// the group's sub-groups are always replaced, so its own lock is always
-	// taken. Lock before changing the group's row, so the locks come first.
-	locks := []int{updatedObject.ID}
-	if updatedObject.ContainingGroups.Loaded() {
-		locks = append(locks, groupIDs(updatedObject.ContainingGroups.List())...)
-	}
-	if err := lockSubGroupOrder(ctx, locks); err != nil {
+	// the group's links are always replaced, so the lock is always taken.
+	// Lock before changing the group's row, so the lock comes first.
+	if err := lockGroupLinks(ctx); err != nil {
 		return err
 	}
 

@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
@@ -76,71 +75,43 @@ func (s *groupRelationshipStore) getGroupRelationships(ctx context.Context, id i
 	return ret, nil
 }
 
-// groupRelationsLockSpace is the first key of the advisory locks taken by
-// lockSubGroupOrder, so they can't be mistaken for other advisory locks.
-const groupRelationsLockSpace = 0x67727270 // "grrp"
+// groupLinksLockSpace and groupLinksLockID are the keys of the one advisory
+// lock lockGroupLinks takes, in PostgreSQL's two-number form.
+const (
+	groupLinksLockSpace = 0x67727270 // "grrp"
+	groupLinksLockID    = 0
+)
 
-// lockSubGroupOrder makes edits to the sub-groups of the given containing groups
-// take turns: each waits for any other transaction holding one of these locks
-// to end. Each edit works out the next order_index from the rows it can see, so
-// on PostgreSQL two edits at once could pick the same one and break
-// index_groups_relations_order_index_unique (#2100).
+// lockGroupLinks makes every edit that changes containing or sub-group links
+// take turns with the others: it waits for any other transaction holding the
+// lock to end, and holds it until its own transaction ends. On PostgreSQL
+// edits otherwise run at the same time, and:
+//   - each works out the next order_index from the rows it can see, so two
+//     could pick the same one and break index_groups_relations_order_index_unique
+//     (#2100);
+//   - the group service's loop check could pass for two edits that together
+//     put groups inside each other (#2113). The service takes the lock before
+//     it reads the links.
 //
-// The locks are held until the transaction ends. Only this function takes
-// them. They are taken in ascending id order, and the group store takes them
-// before it changes the group's row, so an edit waiting for one holds no lock
-// from that edit yet: two edits can't each wait for the other. A transaction
-// that edits several groups, as a bulk edit does, takes each group's locks as
-// it reaches it; when the containing groups are the same for every group, as
-// in a bulk edit, the later ones are already held.
-//
-// Removals take the lock too, so every change to a group's sub-group list takes
-// turns. The exceptions are links deleted under groups that aren't known up
-// front: those a SET of a group's containing groups drops, and those removed
-// when a group is destroyed. A delete adds no order_index, so it can't clash.
+// It is the only lock of its kind, and every edit takes it before it changes a
+// group's row or links. So an edit waiting for it holds no other lock from
+// that edit, and it can't be part of a wait in a circle. A bulk edit gives
+// every group the same links, so it takes the lock for its first group, before
+// changing anything, and holds it for the rest. Links deleted when a group is
+// destroyed don't take it: a delete adds no order_index and no loop.
 //
 // SQLite needs none of this: it writes one transaction at a time.
-func lockSubGroupOrder(ctx context.Context, containingIDs []int) error {
-	ids := slices.Clone(containingIDs)
-	slices.Sort(ids)
-	ids = slices.Compact(ids)
-
-	for _, id := range ids {
-		if _, err := dbWrapper.Exec(ctx, "SELECT pg_advisory_xact_lock(?, ?)", groupRelationsLockSpace, id); err != nil {
-			return fmt.Errorf("locking sub-groups of group %d: %w", id, err)
-		}
+func lockGroupLinks(ctx context.Context) error {
+	if _, err := dbWrapper.Exec(ctx, "SELECT pg_advisory_xact_lock(?, ?)", groupLinksLockSpace, groupLinksLockID); err != nil {
+		return fmt.Errorf("locking group links: %w", err)
 	}
-
 	return nil
 }
 
-// hierarchyLockID is the second key of the one lock LockGroupHierarchy takes.
-// No group has id 0, so it can't be one of lockSubGroupOrder's locks.
-const hierarchyLockID = 0
-
-// LockGroupHierarchy makes edits that may add containing or sub-group links
-// take turns, from the group service's loop check until their transactions
-// end, so each check sees the links the edit before it saved (#2113).
-//
-// The service takes it before the edit changes anything, so before any
-// lockSubGroupOrder lock or row lock: an edit waiting for it holds no lock yet
-// from that edit. A bulk edit gives every group the same links, so it takes
-// this lock on its first group, before anything else. Edits that don't take it,
-// such as an import, a reorder or a removal, never wait for it.
+// LockGroupHierarchy takes lockGroupLinks' lock for the group service, before
+// its loop check reads the links.
 func (qb *GroupStore) LockGroupHierarchy(ctx context.Context) error {
-	if _, err := dbWrapper.Exec(ctx, "SELECT pg_advisory_xact_lock(?, ?)", groupRelationsLockSpace, hierarchyLockID); err != nil {
-		return fmt.Errorf("locking group hierarchy: %w", err)
-	}
-	return nil
-}
-
-// groupIDs returns the group ids in groups.
-func groupIDs(groups []models.GroupIDDescription) []int {
-	ret := make([]int, len(groups))
-	for i, g := range groups {
-		ret[i] = g.GroupID
-	}
-	return ret
+	return lockGroupLinks(ctx)
 }
 
 // getMaxOrderIndex gets the maximum order index for the containing group with the given id
@@ -498,7 +469,7 @@ func (s *groupRelationshipStore) reorderSubGroup(ctx context.Context, groupID in
 func (s *groupRelationshipStore) AddSubGroups(ctx context.Context, groupID int, subGroups []models.GroupIDDescription, insertIndex *int) error {
 	const idIsContaining = true
 
-	if err := lockSubGroupOrder(ctx, []int{groupID}); err != nil {
+	if err := lockGroupLinks(ctx); err != nil {
 		return err
 	}
 
@@ -535,16 +506,14 @@ func (s *groupRelationshipStore) AddSubGroups(ctx context.Context, groupID int, 
 
 func (s *groupRelationshipStore) RemoveSubGroups(ctx context.Context, groupID int, subGroupIDs []int) error {
 	const idIsContaining = true
-	if err := lockSubGroupOrder(ctx, []int{groupID}); err != nil {
+	if err := lockGroupLinks(ctx); err != nil {
 		return err
 	}
 	return s.destroyJoins(ctx, groupID, subGroupIDs, idIsContaining)
 }
 
 func (s *groupRelationshipStore) ReorderSubGroups(ctx context.Context, groupID int, subGroupIDs []int, insertPointID int, insertAfter bool) error {
-	// reordering reads order indexes and then moves them, so it takes turns
-	// with other edits to the group's sub-groups
-	if err := lockSubGroupOrder(ctx, []int{groupID}); err != nil {
+	if err := lockGroupLinks(ctx); err != nil {
 		return err
 	}
 
