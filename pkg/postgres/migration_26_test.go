@@ -97,6 +97,10 @@ func migration26SceneIDs(t *testing.T, ctx context.Context, db *Database, object
 // each time a new database is created: a new database runs migration 26 too,
 // and so does the PostgreSQL database a SQLite one is copied to.
 func TestMigration26ConfigFileOnce(t *testing.T) {
+	// the subtests open databases with the parent t, so skip here rather than in them
+	if os.Getenv("PGSQL_TEST") == "" {
+		t.Skip("PGSQL_TEST is required")
+	}
 	ctx := context.Background()
 	config.InitializeEmpty()
 	cfg := config.GetInstance()

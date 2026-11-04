@@ -156,16 +156,16 @@ func asciiOnlyLower(s string) string {
 func oldMatch(dialect LegacyDialect, modifier models.CriterionModifier, value, s string) bool {
 	switch modifier {
 	case includes, excludes:
-		any := false
+		found := false
 		for _, t := range legacySearchTerms(value) {
 			if dialectLikeMatch(dialect, "%"+t+"%", s) {
-				any = true
+				found = true
 			}
 		}
 		if modifier == excludes {
-			return !any
+			return !found
 		}
-		return any
+		return found
 	case equals:
 		return dialectLikeMatch(dialect, value, s)
 	case notEquals:
