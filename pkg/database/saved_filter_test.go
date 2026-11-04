@@ -163,3 +163,47 @@ func TestSavedFilterPerUser(t *testing.T) {
 		return nil
 	})
 }
+
+// All lists a user's saved filters by mode and then name on both databases,
+// whatever order they were created or changed in.
+func TestSavedFilterAllOrder(t *testing.T) {
+	withRollbackTxn(func(ctx context.Context) error {
+		qb := db.SavedFilter()
+
+		owner := models.User{
+			Username: "filter order",
+			Roles:    models.Roles{models.RoleEnumModify},
+		}
+		require.NoError(t, db.User().Create(ctx, &owner, ""))
+		ctx = models.WithUserID(ctx, owner.ID)
+
+		created := map[string]*models.SavedFilter{}
+		for _, f := range []struct {
+			mode models.FilterMode
+			name string
+		}{
+			{models.FilterModeScenes, "b"},
+			{models.FilterModeImages, "z"},
+			{models.FilterModeScenes, "a"},
+			{models.FilterModeGalleries, "m"},
+		} {
+			sf := &models.SavedFilter{Mode: f.mode, Name: f.name}
+			require.NoError(t, qb.Create(ctx, sf))
+			created[f.name] = sf
+		}
+
+		// changing a filter doesn't move it
+		created["b"].UIOptions = map[string]interface{}{"zoom_index": 2}
+		require.NoError(t, qb.Update(ctx, created["b"]))
+
+		all, err := qb.All(ctx)
+		require.NoError(t, err)
+		var got []string
+		for _, f := range all {
+			got = append(got, string(f.Mode)+" "+f.Name)
+		}
+		assert.Equal(t, []string{"GALLERIES m", "IMAGES z", "SCENES a", "SCENES b"}, got)
+
+		return nil
+	})
+}

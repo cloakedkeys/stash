@@ -287,6 +287,9 @@ func (qb *SavedFilterStore) FindByMode(ctx context.Context, mode models.FilterMo
 	return ret, nil
 }
 
+// All returns the current user's saved filters ordered by mode and then name,
+// on both databases.
 func (qb *SavedFilterStore) All(ctx context.Context) ([]*models.SavedFilter, error) {
-	return qb.getMany(ctx, qb.selectDataset(ctx))
+	table := qb.table()
+	return qb.getMany(ctx, qb.selectDataset(ctx).Order(table.Col("mode").Asc(), table.Col("name").Asc()))
 }
