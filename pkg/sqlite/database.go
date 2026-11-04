@@ -517,9 +517,54 @@ func (db *Database) Anonymise(outPath string) error {
 	return anon.Anonymise(context.Background())
 }
 
+// RestoreFromBackup replaces the database file with the backup, which is moved
+// into its place. The database is closed first: Windows won't replace a file
+// that's open (#2117), and an old -wal file left beside the restored database
+// would be applied to it. If it was open, it's opened again afterwards. If the
+// backup can't be moved into place, it's left where it was.
 func (db *Database) RestoreFromBackup(backupPath string) error {
+	db.resetMu.Lock()
+	defer db.resetMu.Unlock()
+
 	logger.Infof("Restoring backup database %s into %s", backupPath, db.dbPath)
-	return os.Rename(backupPath, db.dbPath)
+
+	wasOpen := db.readDB != nil || db.writeDB != nil
+	if err := db.Close(); err != nil {
+		return fmt.Errorf("closing the database to restore the backup %s, which is left as it was: %w", backupPath, err)
+	}
+
+	err := db.checkClosed()
+	if err == nil {
+		err = os.Rename(backupPath, db.dbPath)
+		if err == nil {
+			if wasOpen {
+				if err := db.Open(context.Background(), db.dbPath); err != nil {
+					return fmt.Errorf("the backup %s was restored, but opening it failed: %w", backupPath, err)
+				}
+			}
+			return nil
+		}
+	}
+	err = fmt.Errorf("restoring the backup %s, which is left as it was: %w", backupPath, err)
+
+	if wasOpen {
+		if openErr := db.Open(context.Background(), db.dbPath); openErr != nil {
+			err = fmt.Errorf("%w; opening the database again also failed: %v", err, openErr)
+		}
+	}
+	return err
+}
+
+// checkClosed returns an error if the database's -wal or -shm file is still
+// there after closing it, which means another connection still has it open.
+// Restoring over it then would mix the backup with that connection's changes.
+func (db *Database) checkClosed() error {
+	for _, f := range []string{db.dbPath + "-wal", db.dbPath + "-shm"} {
+		if exists, _ := fsutil.FileExists(f); exists {
+			return fmt.Errorf("the database is still open elsewhere: %s is still there", f)
+		}
+	}
+	return nil
 }
 
 func (db *Database) AppSchemaVersion() uint {
