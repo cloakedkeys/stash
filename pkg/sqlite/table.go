@@ -685,9 +685,12 @@ func (t *scenesGroupsTable) insertJoin(ctx context.Context, id int, v models.Gro
 	)
 	ret, err := exec(ctx, q)
 	if err != nil {
+		if isForeignKeyError(err) {
+			return nil, foreignKeyNotFoundError("group_id", v.GroupID)
+		}
 		// a group the list gave twice is already there
-		if isForeignKeyError(err) || isUniqueError(err) {
-			return nil, joinInsertError(err, "group_id", v.GroupID)
+		if isPrimaryKeyError(err, "groups_scenes", "group_id", "scene_id") {
+			return nil, fmt.Errorf("group with id %d is listed more than once", v.GroupID)
 		}
 		return nil, fmt.Errorf("inserting into %s: %w", t.table.table.GetTable(), err)
 	}
@@ -811,9 +814,12 @@ func (t *audiosGroupsTable) insertJoin(ctx context.Context, id int, v models.Gro
 	)
 	ret, err := exec(ctx, q)
 	if err != nil {
+		if isForeignKeyError(err) {
+			return nil, foreignKeyNotFoundError("group_id", v.GroupID)
+		}
 		// a group the list gave twice is already there
-		if isForeignKeyError(err) || isUniqueError(err) {
-			return nil, joinInsertError(err, "group_id", v.GroupID)
+		if isPrimaryKeyError(err, "groups_audios", "group_id", "audio_id") {
+			return nil, fmt.Errorf("group with id %d is listed more than once", v.GroupID)
 		}
 		return nil, fmt.Errorf("inserting into %s: %w", t.table.table.GetTable(), err)
 	}

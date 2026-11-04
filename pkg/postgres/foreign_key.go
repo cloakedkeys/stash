@@ -29,6 +29,14 @@ func isUniqueError(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == uniqueViolation
 }
 
+// isPrimaryKeyError reports whether err is the database refusing a row of table
+// whose primary key is already there. A UNIQUE rule on other columns doesn't
+// match. The primary key keeps PostgreSQL's default name, table_pkey.
+func isPrimaryKeyError(err error, table string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == uniqueViolation && pgErr.ConstraintName == table+"_pkey"
+}
+
 // joinColumnKind names what a join table's column points at, as the API's errors
 // do: "tag" for tag_id, and for the tag hierarchy's parent_id and child_id.
 func joinColumnKind(col interface{}) string {
@@ -58,7 +66,7 @@ func joinInsertError(err error, col interface{}, id int) error {
 	return err
 }
 
-// groupRelationExistsError replaces the database's own UNIQUE error for a
+// groupRelationExistsError replaces the database's own primary key error for a
 // containing or sub-group row of group id that is already there. repeated says
 // whether the list gave groupID before; otherwise the two were already linked.
 // idIsContaining says whether groupID is being added as a sub-group of id.

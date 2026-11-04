@@ -120,8 +120,9 @@ func (s *groupRelationshipStore) createRelationships(ctx context.Context, id int
 
 			_, err := s.table.insert(ctx, r)
 			if err != nil {
-				// the old links were removed first, so only a repeat is already there
-				if isUniqueError(err) {
+				// the group's old links were removed first, so a link that is already
+				// there is one the list gave twice
+				if isPrimaryKeyError(err, groupRelationsTable) {
 					return groupRelationExistsError(v.GroupID, id, idIsContaining, true)
 				}
 				// insert already says which table
@@ -233,7 +234,7 @@ func (s *groupRelationshipStore) addJoins(ctx context.Context, id int, groups []
 
 		_, err := s.table.insert(ctx, r)
 		if err != nil {
-			if isUniqueError(err) {
+			if isPrimaryKeyError(err, groupRelationsTable) {
 				return groupRelationExistsError(vv.GroupID, id, idIsContaining, groupListedBefore(groups, i))
 			}
 			// insert already says which table
