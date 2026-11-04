@@ -127,3 +127,39 @@ func TestCleanGeneratedVideoFilesRemovesEmptyFolders(t *testing.T) {
 	require.NoDirExists(t, filepath.Join(p.Generated.Video, "ab"))
 	require.DirExists(t, p.Generated.Video)
 }
+
+// Files named after the other naming algorithm's hash aren't this algorithm's
+// to judge, so they're left alone.
+func TestCleanGeneratedVideoFilesKeepsOtherAlgorithm(t *testing.T) {
+	const (
+		oshash = "0123456789abcdef"
+		md5    = "0123456789abcdef0123456789abcdef"
+	)
+
+	for _, algo := range []models.HashAlgorithm{models.HashAlgorithmOshash, models.HashAlgorithmMd5} {
+		t.Run(algo.String(), func(t *testing.T) {
+			p := paths.NewPaths(t.TempDir(), "")
+			other := p.Scene.SpriteImage(md5).Path
+			if algo == models.HashAlgorithmMd5 {
+				other = p.Scene.SpriteImage(oshash).Path
+			}
+			writeFiles(t, other)
+
+			// no scene has any hash
+			db := mocks.NewDatabase()
+			db.Scene.On("FindByFingerprints", mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+
+			j := CleanGeneratedJob{
+				Options:                  CleanGeneratedOptions{Sprites: true},
+				Paths:                    &p,
+				Repository:               db.Repository(),
+				BlobsStorageType:         config.BlobStorageTypeFilesystem,
+				VideoFileNamingAlgorithm: algo,
+			}
+			require.NoError(t, j.Execute(context.Background(), nil))
+
+			require.FileExists(t, other)
+			db.Scene.AssertNotCalled(t, "FindByFingerprints", mock.Anything, mock.Anything)
+		})
+	}
+}
