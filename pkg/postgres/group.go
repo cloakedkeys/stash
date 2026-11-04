@@ -214,6 +214,14 @@ func (qb *GroupStore) Create(ctx context.Context, newObject *models.Group) error
 	var r groupRow
 	r.fromGroup(*newObject)
 
+	// the new group is added to the end of each containing group's sub-groups.
+	// Its own sub-groups need no lock: no other transaction can see it yet.
+	if newObject.ContainingGroups.Loaded() {
+		if err := lockSubGroupOrder(ctx, groupIDs(newObject.ContainingGroups.List())); err != nil {
+			return err
+		}
+	}
+
 	id, err := qb.tableMgr.insertID(ctx, r)
 	if err != nil {
 		return err
@@ -267,6 +275,18 @@ func (qb *GroupStore) UpdatePartial(ctx context.Context, id int, partial models.
 
 	r.fromPartial(partial)
 
+	// lock before changing the group's row, so the locks come first
+	var locks []int
+	if partial.ContainingGroups != nil {
+		locks = groupIDs(partial.ContainingGroups.Groups)
+	}
+	if partial.SubGroups != nil {
+		locks = append(locks, id)
+	}
+	if err := lockSubGroupOrder(ctx, locks); err != nil {
+		return nil, err
+	}
+
 	if len(r.Record) > 0 {
 		if err := qb.tableMgr.updateByID(ctx, id, r.Record); err != nil {
 			return nil, err
@@ -311,6 +331,16 @@ func (qb *GroupStore) UpdatePartial(ctx context.Context, id int, partial models.
 func (qb *GroupStore) Update(ctx context.Context, updatedObject *models.Group) error {
 	var r groupRow
 	r.fromGroup(*updatedObject)
+
+	// the group's sub-groups are always replaced, so its own lock is always
+	// taken. Lock before changing the group's row, so the locks come first.
+	locks := []int{updatedObject.ID}
+	if updatedObject.ContainingGroups.Loaded() {
+		locks = append(locks, groupIDs(updatedObject.ContainingGroups.List())...)
+	}
+	if err := lockSubGroupOrder(ctx, locks); err != nil {
+		return err
+	}
 
 	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
 		return err
