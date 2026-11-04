@@ -138,7 +138,8 @@ func TestMultiUserHTTPPermissions(t *testing.T) {
 	db.Audio.On("UpdatePartial", mock.Anything, 42, mock.MatchedBy(func(p models.AudioPartial) bool {
 		return p.Rating.Set && p.Rating.Value == 60 && !p.UpdatedAt.Set && !p.Title.Set
 	})).Return(&models.Audio{ID: 42}, nil).Once()
-	db.Audio.On("Find", mock.Anything, 42).Return(&models.Audio{ID: 42}, nil).Once()
+	// once to check the track exists, and once to return it
+	db.Audio.On("Find", mock.Anything, 42).Return(&models.Audio{ID: 42}, nil).Twice()
 	w = request(`mutation { audioUserDataUpdate(input:{id:"42",rating100:60}) { id } }`, "read-key", nil)
 	require.Equal(t, http.StatusOK, w.Code)
 	require.NotContains(t, w.Body.String(), "unauthorized")
