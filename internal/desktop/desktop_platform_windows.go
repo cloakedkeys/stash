@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/go-toast/toast"
 	"github.com/stashapp/stash/pkg/logger"
 	"golang.org/x/sys/windows/svc"
 )
@@ -67,18 +66,18 @@ func isServerDockerized() bool {
 }
 
 func sendNotification(notificationTitle string, notificationText string) {
-	notification := toast.Notification{
+	notification := toastNotification{
 		AppID:   "Stash",
 		Title:   notificationTitle,
 		Message: notificationText,
 		Icon:    getIconPath(),
-		Actions: []toast.Action{{
+		Actions: []toastAction{{
 			Type:      "protocol",
 			Label:     "Open Stash",
 			Arguments: getServerURL(""),
 		}},
 	}
-	err := notification.Push()
+	err := notification.push()
 	if err != nil {
 		logger.Errorf("Error creating Windows notification: %s", err.Error())
 	}
