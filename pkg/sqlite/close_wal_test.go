@@ -3,10 +3,13 @@
 package sqlite
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +20,9 @@ import (
 const oldSchemaVersion = 100
 
 // createDatabase makes a current database and closes it. With an old schema
-// version, it's marked as needing an upgrade.
+// version, it's marked as needing an upgrade, and some of its statistics are
+// removed, as in a real older database, so that a PRAGMA optimize on close
+// would add them back.
 func createDatabase(t *testing.T, version uint) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stash-go.sqlite")
@@ -30,6 +35,14 @@ func createDatabase(t *testing.T, version uint) string {
 		require.NoError(t, err)
 		_, err = conn.Exec("UPDATE schema_migrations SET version = ?", version)
 		require.NoError(t, err)
+		// a tag, so that the tags table has statistics to lose
+		_, err = conn.Exec("INSERT INTO tags (name, created_at, updated_at) VALUES ('t', '2026-01-01', '2026-01-01'); ANALYZE")
+		require.NoError(t, err)
+		res, err := conn.Exec("DELETE FROM sqlite_stat1 WHERE tbl = 'tags'")
+		require.NoError(t, err)
+		deleted, err := res.RowsAffected()
+		require.NoError(t, err)
+		require.Positive(t, deleted, "no statistics to remove")
 		require.NoError(t, conn.Close())
 	}
 	requireNoWAL(t, path)
@@ -77,6 +90,8 @@ func schemaState(t *testing.T, path string) (version uint, dirty bool, stats int
 func TestCloseBeforeUpgradeRemovesWAL(t *testing.T) {
 	path := createDatabase(t, oldSchemaVersion)
 	_, _, statsBefore := schemaState(t, path)
+	before, err := os.ReadFile(path)
+	require.NoError(t, err)
 
 	db := openAndRead(t, path)
 	require.Error(t, db.Ready(), "should need an upgrade")
@@ -88,6 +103,9 @@ func TestCloseBeforeUpgradeRemovesWAL(t *testing.T) {
 	wal, shm := walFiles(path)
 	assert.False(t, wal, "-wal file left behind")
 	assert.False(t, shm, "-shm file left behind")
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.True(t, bytes.Equal(before, after), "the database file changed")
 
 	version, dirty, stats := schemaState(t, path)
 	assert.Equal(t, uint(oldSchemaVersion), version)
@@ -154,10 +172,41 @@ func TestCloseKeepsWALWhileOpenElsewhere(t *testing.T) {
 	_, err = other.Exec("INSERT INTO tags (name, created_at, updated_at) VALUES ('x', '2026-01-01', '2026-01-01')")
 	require.NoError(t, err)
 	require.NoError(t, other.QueryRow("SELECT COUNT(*) FROM tags").Scan(&n))
-	assert.Equal(t, 1, n)
+	assert.Equal(t, 2, n, "createDatabase's tag and this one")
 }
 
-// Closing a database that was never opened doesn't create one.
+// While another program holds the database with locking_mode=EXCLUSIVE,
+// closing gives up on the files at once, instead of waiting the busy timeout,
+// and leaves that program working.
+func TestCloseDoesNotWaitForExclusiveHolder(t *testing.T) {
+	path := createDatabase(t, oldSchemaVersion)
+	db := openAndRead(t, path)
+	// it can only take the lock once Stash's own connections have closed
+	closePools(t, db)
+
+	other, err := sql.Open("sqlite3", "file:"+path+"?_journal=WAL&_locking_mode=EXCLUSIVE")
+	require.NoError(t, err)
+	defer other.Close()
+	other.SetMaxOpenConns(1)
+	// the first write takes the lock, which it then keeps
+	_, err = other.Exec("INSERT INTO tags (name, created_at, updated_at) VALUES ('x', '2026-01-01', '2026-01-01')")
+	require.NoError(t, err)
+
+	started := time.Now()
+	require.NoError(t, db.Close())
+	elapsed := time.Since(started)
+	t.Logf("closed in %v", elapsed)
+	// well under the busy timeout
+	assert.Less(t, elapsed, busyTimeout/5, "waited %v", elapsed)
+
+	var n int
+	require.NoError(t, other.QueryRow("SELECT COUNT(*) FROM tags").Scan(&n))
+	assert.Equal(t, 2, n, "createDatabase's tag and this one")
+}
+
+// Closing never creates a database file: not when it was never opened, and
+// not when the file has gone but its -wal file is still there, as when it's
+// deleted while Stash is running on Linux or macOS.
 func TestCloseUnopenedCreatesNothing(t *testing.T) {
 	db := NewDatabase()
 	require.NoError(t, db.Close())
@@ -166,4 +215,30 @@ func TestCloseUnopenedCreatesNothing(t *testing.T) {
 	require.NoError(t, db.Close())
 	exists, _ := fsutil.FileExists(db.dbPath)
 	assert.False(t, exists)
+}
+
+// closePools closes the pools without the clean-up that Close does, which
+// leaves the -wal file.
+func closePools(t *testing.T, db *Database) {
+	t.Helper()
+	require.NoError(t, db.readDB.Close())
+	db.readDB = nil
+	require.NoError(t, db.writeDB.Close())
+	db.writeDB = nil
+	wal, _ := walFiles(db.dbPath)
+	require.True(t, wal)
+}
+
+func TestCloseWithOnlyWALCreatesNothing(t *testing.T) {
+	path := createDatabase(t, oldSchemaVersion)
+	db := openAndRead(t, path)
+	// the -wal file stays, then delete the database, which Windows only allows
+	// once it's closed
+	closePools(t, db)
+	require.NoError(t, os.Remove(path))
+	_ = os.Remove(path + "-shm")
+
+	require.NoError(t, db.Close())
+	exists, _ := fsutil.FileExists(path)
+	assert.False(t, exists, "Close created a database file")
 }

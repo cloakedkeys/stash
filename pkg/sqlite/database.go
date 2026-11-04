@@ -270,12 +270,15 @@ func (db *Database) removeWAL() {
 	if exists, _ := fsutil.FileExists(db.dbPath + "-wal"); !exists {
 		return
 	}
+	// never create a database: the file may have been deleted while Stash ran
+	if exists, _ := fsutil.FileExists(db.dbPath); !exists {
+		return
+	}
 
-	const (
-		disableForeignKeys = true
-		writable           = true
-	)
-	conn, err := db.openWithDriver(sqlite3DriverNoOptimize, disableForeignKeys, writable)
+	// mode=rw can't create the file either. Don't wait for another program's
+	// lock: if it has the database, the files are its to keep, so give up at
+	// once, as PRAGMA optimize on close does (#2082).
+	conn, err := sqlx.Open(sqlite3DriverNoOptimize, "file:"+db.dbPath+"?mode=rw&_journal=WAL&_busy_timeout=0")
 	if err != nil {
 		logger.Warnf("removing the database's temporary files: %v", err)
 		return
