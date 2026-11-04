@@ -16,6 +16,16 @@ import (
 // they're kept when the file changes while the copy still has the old hash.
 // The changed scene's generated cover is still cleared.
 func TestHandle_ContentChangedAtSamePath_CopyInAnotherScene(t *testing.T) {
+	for _, algo := range []models.HashAlgorithm{models.HashAlgorithmOshash, models.HashAlgorithmMd5} {
+		t.Run(algo.String(), func(t *testing.T) { testCopyInAnotherScene(t, algo) })
+	}
+}
+
+func testCopyInAnotherScene(t *testing.T, algo models.HashAlgorithm) {
+	fpType := models.FingerprintTypeOshash
+	if algo == models.HashAlgorithmMd5 {
+		fpType = models.FingerprintTypeMD5
+	}
 	const (
 		testSceneID  = 1
 		otherSceneID = 2
@@ -26,7 +36,7 @@ func TestHandle_ContentChangedAtSamePath_CopyInAnotherScene(t *testing.T) {
 		return &models.VideoFile{BaseFile: &models.BaseFile{
 			ID:           models.FileID(testFileID),
 			Path:         "test.mp4",
-			Fingerprints: models.Fingerprints{{Type: models.FingerprintTypeOshash, Fingerprint: hash}},
+			Fingerprints: models.Fingerprints{{Type: fpType, Fingerprint: hash}},
 		}}
 	}
 	oldFile, newFile := file(oldHash), file(newHash)
@@ -50,11 +60,12 @@ func TestHandle_ContentChangedAtSamePath_CopyInAnotherScene(t *testing.T) {
 	db.Scene.On("GetFiles", mock.Anything, testSceneID).Return([]*models.VideoFile{oldFile}, nil)
 	db.Scene.On("UpdatePartial", mock.Anything, testSceneID, mock.Anything).Return(&models.Scene{ID: testSceneID}, nil)
 	db.Scene.On("UpdateCover", mock.Anything, testSceneID, []byte(nil)).Return(nil).Once()
-	db.Scene.On("FindByFingerprints", mock.Anything, []models.Fingerprint{{Type: models.FingerprintTypeOshash, Fingerprint: oldHash}}).
+	db.Scene.On("FindByFingerprints", mock.Anything, []models.Fingerprint{{Type: fpType, Fingerprint: oldHash}}).
 		Return([]*models.Scene{{ID: otherSceneID}}, nil)
 	db.Gallery.On("FindByPath", mock.Anything, mock.Anything).Return(nil, nil)
 
 	h := newTestScanHandler(db, &p)
+	h.FileNamingAlgorithm = algo
 
 	withCommittedTxn(t, db, func(ctx context.Context) error {
 		return h.Handle(ctx, newFile, oldFile)
