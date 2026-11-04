@@ -186,6 +186,8 @@ func limitedMutationObjectID(args map[string]any) (int, bool) {
 			s = input.ID
 		case UserRatingInput:
 			s = input.ID
+		case StoryUserRatingInput:
+			s = input.ID
 		default:
 			return 0, false
 		}

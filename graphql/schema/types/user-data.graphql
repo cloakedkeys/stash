@@ -6,8 +6,20 @@ input UserRatingFavoriteInput {
   favorite: Boolean
 }
 
-"The current user's own rating for an object that has no favourite"
+"""
+The current user's own rating and favourite for a scene, image, gallery, group
+or audio. Kept under this name, which these took before favourites, so requests
+that name it keep working.
+"""
 input UserRatingInput {
+  id: ID!
+  # rating expressed as 1-100
+  rating100: Int
+  favorite: Boolean
+}
+
+"The current user's own rating for a story, which has no favourite"
+input StoryUserRatingInput {
   id: ID!
   # rating expressed as 1-100
   rating100: Int

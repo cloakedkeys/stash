@@ -10,7 +10,7 @@ mutation StoryUpdate($input: StoryUpdateInput!) {
   }
 }
 
-mutation StoryUserDataUpdate($input: UserRatingInput!) {
+mutation StoryUserDataUpdate($input: StoryUserRatingInput!) {
   storyUserDataUpdate(input: $input) {
     ...StoryData
   }
