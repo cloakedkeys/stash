@@ -189,6 +189,10 @@ func (r *mutationResolver) MovieUpdate(ctx context.Context, input MovieUpdateInp
 	var group *models.Group
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Group
+		if err := userDataObjectExists(ctx, qb.Find, "movie", groupID); err != nil {
+			return err
+		}
+
 		group, err = qb.UpdatePartial(ctx, groupID, updatedGroup)
 		if err != nil {
 			return err
@@ -252,6 +256,10 @@ func (r *mutationResolver) BulkMovieUpdate(ctx context.Context, input BulkMovieU
 		qb := r.repository.Group
 
 		for _, groupID := range groupIDs {
+			if err := userDataObjectExists(ctx, qb.Find, "movie", groupID); err != nil {
+				return err
+			}
+
 			group, err := qb.UpdatePartial(ctx, groupID, updatedGroup)
 			if err != nil {
 				return err

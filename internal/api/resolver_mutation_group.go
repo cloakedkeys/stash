@@ -231,6 +231,10 @@ func (r *mutationResolver) GroupUpdate(ctx context.Context, input GroupUpdateInp
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Group
 
+		if err := userDataObjectExists(ctx, qb.Find, "group", groupID); err != nil {
+			return err
+		}
+
 		// make sure to deduplicate and exclude name from aliases
 		// in update flow
 		if updatedGroup.Aliases != nil {
@@ -238,21 +242,20 @@ func (r *mutationResolver) GroupUpdate(ctx context.Context, input GroupUpdateInp
 			if err != nil {
 				return err
 			}
-			if g != nil {
-				if err := g.LoadAliases(ctx, qb); err != nil {
-					return err
-				}
-
-				effectiveAliases := updatedGroup.Aliases.Apply(g.Aliases.List())
-				name := g.Name
-				if updatedGroup.Name.Set {
-					name = updatedGroup.Name.Value
-				}
-
-				sanitized := stringslice.UniqueExcludeFold(effectiveAliases, name)
-				updatedGroup.Aliases.Values = sanitized
-				updatedGroup.Aliases.Mode = models.RelationshipUpdateModeSet
+			// the group was found above, in this transaction
+			if err := g.LoadAliases(ctx, qb); err != nil {
+				return err
 			}
+
+			effectiveAliases := updatedGroup.Aliases.Apply(g.Aliases.List())
+			name := g.Name
+			if updatedGroup.Name.Set {
+				name = updatedGroup.Name.Value
+			}
+
+			sanitized := stringslice.UniqueExcludeFold(effectiveAliases, name)
+			updatedGroup.Aliases.Values = sanitized
+			updatedGroup.Aliases.Mode = models.RelationshipUpdateModeSet
 		}
 
 		frontImage := group.ImageInput{
@@ -351,6 +354,10 @@ func (r *mutationResolver) BulkGroupUpdate(ctx context.Context, input BulkGroupU
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		for _, groupID := range groupIDs {
+			if err := userDataObjectExists(ctx, r.repository.Group.Find, "group", groupID); err != nil {
+				return err
+			}
+
 			group, err := r.groupService.UpdatePartial(ctx, groupID, updatedGroup, group.ImageInput{}, group.ImageInput{})
 			if err != nil {
 				return err

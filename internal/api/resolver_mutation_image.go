@@ -428,6 +428,10 @@ func (r *mutationResolver) ImageIncrementO(ctx context.Context, id string) (ret 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Image
 
+		if err := userDataObjectExists(ctx, qb.Find, "image", imageID); err != nil {
+			return err
+		}
+
 		ret, err = qb.IncrementOCounter(ctx, imageID)
 		return err
 	}); err != nil {
@@ -446,6 +450,10 @@ func (r *mutationResolver) ImageDecrementO(ctx context.Context, id string) (ret 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Image
 
+		if err := userDataObjectExists(ctx, qb.Find, "image", imageID); err != nil {
+			return err
+		}
+
 		ret, err = qb.DecrementOCounter(ctx, imageID)
 		return err
 	}); err != nil {
@@ -463,6 +471,10 @@ func (r *mutationResolver) ImageResetO(ctx context.Context, id string) (ret int,
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Image
+
+		if err := userDataObjectExists(ctx, qb.Find, "image", imageID); err != nil {
+			return err
+		}
 
 		ret, err = qb.ResetOCounter(ctx, imageID)
 		return err

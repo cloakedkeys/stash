@@ -123,12 +123,15 @@ func TestMultiUserHTTPPermissions(t *testing.T) {
 		require.Contains(t, w.Body.String(), `"id":"42"`)
 		require.NotContains(t, w.Body.String(), `"errors"`)
 	}
+	// the track is checked to exist before its O or play is saved
+	db.Audio.On("Find", mock.Anything, 42).Return(&models.Audio{ID: 42}, nil).Once()
 	db.Audio.On("AddO", mock.Anything, 42, []time.Time(nil)).Return([]time.Time{}, nil).Once()
 	w = request(`mutation { audioAddO(id:"42") { count } }`, "read-key", nil)
 	require.Equal(t, http.StatusOK, w.Code)
 	require.NotContains(t, w.Body.String(), "unauthorized")
 	require.NotContains(t, w.Body.String(), `"errors"`)
 
+	db.Audio.On("Find", mock.Anything, 42).Return(&models.Audio{ID: 42}, nil).Once()
 	db.Audio.On("SaveActivity", mock.Anything, 42, mock.Anything, mock.Anything).Return(true, nil).Once()
 	w = request(`mutation { audioSaveActivity(id:"42",resume_time:12.5,playDuration:3.2) }`, "read-key", nil)
 	require.Equal(t, http.StatusOK, w.Code)
