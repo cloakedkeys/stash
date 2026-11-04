@@ -91,6 +91,10 @@ func (r *mutationResolver) MovieCreate(ctx context.Context, input MovieCreateInp
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Group
 
+		if err := r.linkedStudioExists(ctx, models.NewOptionalIntPtr(newGroup.StudioID)); err != nil {
+			return err
+		}
+
 		err = qb.Create(ctx, &newGroup)
 		if err != nil {
 			return err
@@ -192,6 +196,9 @@ func (r *mutationResolver) MovieUpdate(ctx context.Context, input MovieUpdateInp
 		if err := userDataObjectExists(ctx, qb.Find, "movie", groupID); err != nil {
 			return err
 		}
+		if err := r.linkedStudioExists(ctx, updatedGroup.StudioID); err != nil {
+			return err
+		}
 
 		group, err = qb.UpdatePartial(ctx, groupID, updatedGroup)
 		if err != nil {
@@ -254,6 +261,13 @@ func (r *mutationResolver) BulkMovieUpdate(ctx context.Context, input BulkMovieU
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Group
+
+		// with no ids nothing is written, so a missing studio is not refused, as before
+		if len(groupIDs) > 0 {
+			if err := r.linkedStudioExists(ctx, updatedGroup.StudioID); err != nil {
+				return err
+			}
+		}
 
 		for _, groupID := range groupIDs {
 			if err := userDataObjectExists(ctx, qb.Find, "movie", groupID); err != nil {

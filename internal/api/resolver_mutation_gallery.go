@@ -101,6 +101,9 @@ func (r *mutationResolver) GalleryCreate(ctx context.Context, input GalleryCreat
 	// Start the transaction and save the gallery
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Gallery
+		if err := r.linkedStudioExists(ctx, models.NewOptionalIntPtr(newGallery.StudioID)); err != nil {
+			return err
+		}
 		if err := qb.Create(ctx, &newGallery); err != nil {
 			return err
 		}
@@ -272,6 +275,10 @@ func (r *mutationResolver) galleryUpdate(ctx context.Context, input models.Galle
 
 	// gallery scene is set from the scene only
 
+	if err := r.linkedStudioExists(ctx, updatedGallery.StudioID); err != nil {
+		return nil, err
+	}
+
 	gallery, err := qb.UpdatePartial(ctx, galleryID, updatedGallery)
 	if err != nil {
 		return nil, err
@@ -339,6 +346,13 @@ func (r *mutationResolver) BulkGalleryUpdate(ctx context.Context, input BulkGall
 	// Start the transaction and save the galleries
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Gallery
+
+		// with no ids nothing is written, so a missing studio is not refused, as before
+		if len(galleryIDs) > 0 {
+			if err := r.linkedStudioExists(ctx, updatedGallery.StudioID); err != nil {
+				return err
+			}
+		}
 
 		for _, galleryID := range galleryIDs {
 			if err := userDataObjectExists(ctx, qb.Find, "gallery", galleryID); err != nil {

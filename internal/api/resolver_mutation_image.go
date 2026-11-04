@@ -185,6 +185,10 @@ func (r *mutationResolver) imageUpdate(ctx context.Context, input models.ImageUp
 		}
 	}
 
+	if err := r.linkedStudioExists(ctx, updatedImage.StudioID); err != nil {
+		return nil, err
+	}
+
 	qb := r.repository.Image
 	image, err := qb.UpdatePartial(ctx, imageID, updatedImage)
 	if err != nil {
@@ -257,6 +261,13 @@ func (r *mutationResolver) BulkImageUpdate(ctx context.Context, input BulkImageU
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		var updatedGalleryIDs []int
 		qb := r.repository.Image
+
+		// with no ids nothing is written, so a missing studio is not refused, as before
+		if len(imageIDs) > 0 {
+			if err := r.linkedStudioExists(ctx, updatedImage.StudioID); err != nil {
+				return err
+			}
+		}
 
 		for _, imageID := range imageIDs {
 			i, err := r.repository.Image.Find(ctx, imageID)

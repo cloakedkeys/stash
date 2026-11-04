@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
@@ -235,7 +234,7 @@ func (t *joinTable) insertJoins(ctx context.Context, id int, foreignIDs []int) e
 		if _, err := dbWrapper.ExecStmt(ctx, stmt, id, fk); err != nil {
 			// the database's own error names its command; say what wasn't found
 			if isForeignKeyError(err) {
-				return fmt.Errorf("%s not found", strings.ReplaceAll(strings.TrimSuffix(fmt.Sprint(t.fkColumn.GetCol()), "_id"), "_", " "))
+				return foreignKeyNotFoundError(t.fkColumn.GetCol(), fk)
 			}
 			return err
 		}
@@ -686,6 +685,9 @@ func (t *scenesGroupsTable) insertJoin(ctx context.Context, id int, v models.Gro
 	)
 	ret, err := exec(ctx, q)
 	if err != nil {
+		if isForeignKeyError(err) {
+			return nil, foreignKeyNotFoundError("group_id", v.GroupID)
+		}
 		return nil, fmt.Errorf("inserting into %s: %w", t.table.table.GetTable(), err)
 	}
 
@@ -808,6 +810,9 @@ func (t *audiosGroupsTable) insertJoin(ctx context.Context, id int, v models.Gro
 	)
 	ret, err := exec(ctx, q)
 	if err != nil {
+		if isForeignKeyError(err) {
+			return nil, foreignKeyNotFoundError("group_id", v.GroupID)
+		}
 		return nil, fmt.Errorf("inserting into %s: %w", t.table.table.GetTable(), err)
 	}
 

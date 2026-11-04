@@ -146,6 +146,9 @@ func (r *mutationResolver) StudioCreate(ctx context.Context, input models.Studio
 		if err := studio.ValidateCreate(ctx, newStudio, qb); err != nil {
 			return err
 		}
+		if err := r.linkedStudioExists(ctx, models.NewOptionalIntPtr(newStudio.ParentID)); err != nil {
+			return err
+		}
 
 		err = qb.Create(ctx, &newStudio)
 		if err != nil {

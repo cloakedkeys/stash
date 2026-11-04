@@ -118,6 +118,10 @@ func (r *mutationResolver) SceneCreate(ctx context.Context, input models.SceneCr
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := r.linkedStudioExists(ctx, models.NewOptionalIntPtr(newScene.StudioID)); err != nil {
+			return err
+		}
+
 		ret, err = r.Resolver.sceneService.Create(ctx, models.CreateSceneInput{
 			Scene:        &newScene,
 			FileIDs:      fileIDs,
@@ -297,6 +301,10 @@ func (r *mutationResolver) sceneUpdate(ctx context.Context, input models.SceneUp
 	// Populate scene from the input
 	updatedScene, err := scenePartialFromInput(input, translator)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := r.linkedStudioExists(ctx, updatedScene.StudioID); err != nil {
 		return nil, err
 	}
 
@@ -484,6 +492,13 @@ func (r *mutationResolver) BulkSceneUpdate(ctx context.Context, input BulkSceneU
 	// Start the transaction and save the scenes
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Scene
+
+		// with no ids nothing is written, so a missing studio is not refused, as before
+		if len(sceneIDs) > 0 {
+			if err := r.linkedStudioExists(ctx, updatedScene.StudioID); err != nil {
+				return err
+			}
+		}
 
 		for _, sceneID := range sceneIDs {
 			if err := userDataObjectExists(ctx, qb.Find, "scene", sceneID); err != nil {
@@ -720,16 +735,14 @@ func (r *mutationResolver) SceneMerge(ctx context.Context, input SceneMergeInput
 		values = &v
 	}
 
-	mgr := manager.GetInstance()
-	trashPath := mgr.Config.GetDeleteTrashPath()
-	fileDeleter := &scene.FileDeleter{
-		Deleter:        file.NewDeleterWithTrash(trashPath),
-		FileNamingAlgo: mgr.Config.GetVideoFileNamingAlgorithm(),
-		Paths:          mgr.Paths,
-	}
+	fileDeleter := newSceneFileDeleter()
 
 	var ret *models.Scene
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := r.linkedStudioExists(ctx, values.StudioID); err != nil {
+			return err
+		}
+
 		if voiceActorIDs != nil {
 			if err := r.repository.VoiceActor.SetScene(ctx, destID, *voiceActorIDs); err != nil {
 				return err
@@ -860,6 +873,17 @@ func float64OrZero(f *float64) float64 {
 	return *f
 }
 
+// newSceneFileDeleter makes the deleter for a scene's or marker's generated files.
+// It reads the manager's settings, so the tests swap it to run without a manager.
+var newSceneFileDeleter = func() *scene.FileDeleter {
+	mgr := manager.GetInstance()
+	return &scene.FileDeleter{
+		Deleter:        file.NewDeleterWithTrash(mgr.Config.GetDeleteTrashPath()),
+		FileNamingAlgo: mgr.Config.GetVideoFileNamingAlgorithm(),
+		Paths:          mgr.Paths,
+	}
+}
+
 func (r *mutationResolver) SceneMarkerUpdate(ctx context.Context, input SceneMarkerUpdateInput) (*models.SceneMarker, error) {
 	markerID, err := strconv.Atoi(input.ID)
 	if err != nil {
@@ -894,14 +918,7 @@ func (r *mutationResolver) SceneMarkerUpdate(ctx context.Context, input SceneMar
 		}
 	}
 
-	mgr := manager.GetInstance()
-	trashPath := mgr.Config.GetDeleteTrashPath()
-
-	fileDeleter := &scene.FileDeleter{
-		Deleter:        file.NewDeleterWithTrash(trashPath),
-		FileNamingAlgo: mgr.Config.GetVideoFileNamingAlgorithm(),
-		Paths:          mgr.Paths,
-	}
+	fileDeleter := newSceneFileDeleter()
 
 	// Start the transaction and save the scene marker
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
@@ -915,6 +932,13 @@ func (r *mutationResolver) SceneMarkerUpdate(ctx context.Context, input SceneMar
 		}
 		if existingMarker == nil {
 			return fmt.Errorf("scene marker with id %d not found", markerID)
+		}
+
+		if err := linkedObjectExists(ctx, sqb.Find, "scene", updatedMarker.SceneID); err != nil {
+			return err
+		}
+		if err := linkedObjectExists(ctx, r.repository.Tag.Find, "tag", updatedMarker.PrimaryTagID); err != nil {
+			return err
 		}
 
 		// Validate end_seconds

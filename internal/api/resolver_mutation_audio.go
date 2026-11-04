@@ -104,6 +104,10 @@ func (r *mutationResolver) AudioCreate(ctx context.Context, input models.AudioCr
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := r.linkedStudioExists(ctx, models.NewOptionalIntPtr(newAudio.StudioID)); err != nil {
+			return err
+		}
+
 		ret, err = r.Resolver.audioService.Create(ctx, models.CreateAudioInput{
 			Audio:        &newAudio,
 			FileIDs:      fileIDs,
@@ -314,6 +318,10 @@ func (r *mutationResolver) audioUpdate(ctx context.Context, input models.AudioUp
 		customFields = &cf
 	}
 
+	if err := r.linkedStudioExists(ctx, updatedAudio.StudioID); err != nil {
+		return nil, err
+	}
+
 	audio, err := qb.UpdatePartial(ctx, audioID, *updatedAudio)
 	if err != nil {
 		return nil, err
@@ -410,6 +418,13 @@ func (r *mutationResolver) BulkAudioUpdate(ctx context.Context, input BulkAudioU
 	// Start the transaction and save the audios
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Audio
+
+		// with no ids nothing is written, so a missing studio is not refused, as before
+		if len(audioIDs) > 0 {
+			if err := r.linkedStudioExists(ctx, updatedAudio.StudioID); err != nil {
+				return err
+			}
+		}
 
 		for _, audioID := range audioIDs {
 			if err := userDataObjectExists(ctx, qb.Find, "audio", audioID); err != nil {

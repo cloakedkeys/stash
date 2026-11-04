@@ -3,6 +3,7 @@ package group
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -28,6 +29,13 @@ func (s *Service) validateCreate(ctx context.Context, group *models.Group) error
 
 	containingIDs := group.ContainingGroups.IDs()
 	subIDs := group.SubGroups.IDs()
+
+	if err := s.validateLinkedGroups(ctx, containingIDs); err != nil {
+		return err
+	}
+	if err := s.validateLinkedGroups(ctx, subIDs); err != nil {
+		return err
+	}
 
 	if err := s.validateGroupHierarchy(ctx, containingIDs, subIDs); err != nil {
 		return err
@@ -59,10 +67,46 @@ func (s *Service) validateUpdate(ctx context.Context, id int, partial models.Gro
 		}
 	}
 
+	for _, d := range []*models.UpdateGroupDescriptions{partial.ContainingGroups, partial.SubGroups} {
+		// removing a group that doesn't exist removes nothing, as upstream
+		if d != nil && d.Mode != models.RelationshipUpdateModeRemove {
+			if err := s.validateLinkedGroups(ctx, idsFromGroupDescriptions(d.Groups)); err != nil {
+				return err
+			}
+		}
+	}
+
 	if err := s.validateUpdateGroupHierarchy(ctx, existing, partial.ContainingGroups, partial.SubGroups); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+// validateLinkedGroups refuses containing or sub-groups that don't exist, saying
+// "group with id 999 not found" as FindMany does, and a group listed twice. The
+// database refused both with its own foreign key or UNIQUE error.
+func (s *Service) validateLinkedGroups(ctx context.Context, ids []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := validateNoRepeatedGroups(ids); err != nil {
+		return err
+	}
+	_, err := s.Repository.FindMany(ctx, ids)
+	return err
+}
+
+// validateNoRepeatedGroups refuses a group listed twice. Each group can be linked
+// once, so the database refused the second with its own UNIQUE error.
+func validateNoRepeatedGroups(ids []int) error {
+	seen := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			return fmt.Errorf("group with id %d is listed more than once", id)
+		}
+		seen[id] = struct{}{}
+	}
 	return nil
 }
 
