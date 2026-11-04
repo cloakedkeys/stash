@@ -5,6 +5,7 @@ package database_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -1481,6 +1482,90 @@ func TestPerformerQueryCustomFields(t *testing.T) {
 			},
 			nil,
 			[]int{performerIdxWithGallery},
+			false,
+		},
+		{
+			// #2062: the UI sends a pattern that looks like a number as a number
+			"regex given a json.Number pattern",
+			&models.PerformerFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "int",
+						Modifier: models.CriterionModifierMatchesRegex,
+						Value:    []any{json.Number(strconv.Itoa(performerIdxWithGallery % 5))},
+					},
+				},
+			},
+			[]int{performerIdxWithGallery},
+			[]int{performerIdxWithGallery + 1},
+			false,
+		},
+		{
+			"regex given an int64 pattern",
+			&models.PerformerFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "int",
+						Modifier: models.CriterionModifierMatchesRegex,
+						Value:    []any{int64(performerIdxWithGallery % 5)},
+					},
+				},
+			},
+			[]int{performerIdxWithGallery},
+			[]int{performerIdxWithGallery + 1},
+			false,
+		},
+		{
+			"regex given a float64 pattern",
+			&models.PerformerFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "int",
+						Modifier: models.CriterionModifierMatchesRegex,
+						Value:    []any{float64(performerIdxWithGallery % 5)},
+					},
+				},
+			},
+			[]int{performerIdxWithGallery},
+			[]int{performerIdxWithGallery + 1},
+			false,
+		},
+		{
+			"not matches regex given a json.Number pattern",
+			&models.PerformerFilterType{
+				Name: &models.StringCriterionInput{
+					Value:    getPerformerStringValue(performerIdxWithGallery, "Name"),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "int",
+						Modifier: models.CriterionModifierNotMatchesRegex,
+						Value:    []any{json.Number(strconv.Itoa(performerIdxWithGallery % 5))},
+					},
+				},
+			},
+			nil,
+			[]int{performerIdxWithGallery},
+			false,
+		},
+		{
+			"not matches regex given a json.Number pattern keeps others",
+			&models.PerformerFilterType{
+				Name: &models.StringCriterionInput{
+					Value:    getPerformerStringValue(performerIdxWithGallery+1, "Name"),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "int",
+						Modifier: models.CriterionModifierNotMatchesRegex,
+						Value:    []any{json.Number(strconv.Itoa(performerIdxWithGallery % 5))},
+					},
+				},
+			},
+			[]int{performerIdxWithGallery + 1},
+			nil,
 			false,
 		},
 		{

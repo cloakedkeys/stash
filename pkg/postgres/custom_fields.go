@@ -340,9 +340,10 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierMatchesRegex:
 		for _, v := range cv {
-			vs, ok := v.(string)
-			if !ok {
-				f.setError(fmt.Errorf("unsupported custom field criterion value type: %T", v))
+			vs, err := models.CustomFieldRegexPattern(v)
+			if err != nil {
+				f.setError(err)
+				return
 			}
 			translated, err := translateRegex(vs)
 			if err != nil {
@@ -354,9 +355,10 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 		h.innerJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierNotMatchesRegex:
 		for _, v := range cv {
-			vs, ok := v.(string)
-			if !ok {
-				f.setError(fmt.Errorf("unsupported custom field criterion value type: %T", v))
+			vs, err := models.CustomFieldRegexPattern(v)
+			if err != nil {
+				f.setError(err)
+				return
 			}
 			translated, err := translateRegex(vs)
 			if err != nil {
