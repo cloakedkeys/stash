@@ -346,7 +346,7 @@ func (qb *UserStore) FindMany(ctx context.Context, ids []int) ([]*models.User, e
 
 	for i := range ret {
 		if ret[i] == nil {
-			return nil, fmt.Errorf("scene marker with id %d not found", ids[i])
+			return nil, fmt.Errorf("user with id %d not found", ids[i])
 		}
 	}
 
