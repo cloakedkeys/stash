@@ -38,7 +38,7 @@ const (
 	cacheSizeEnv = "STASH_SQLITE_CACHE_SIZE"
 )
 
-var appSchemaVersion uint = 106
+var appSchemaVersion uint = 107
 
 //go:embed migrations/*.sql
 var migrationsBox embed.FS
@@ -284,7 +284,21 @@ func (db *Database) initialise() error {
 		return fmt.Errorf("opening write database: %w", err)
 	}
 
+	if !db.needsMigration() {
+		db.stampAppVersion()
+	}
+
 	return nil
+}
+
+// stampAppVersion records this build as the one that last opened the database,
+// once it's at the current schema version, so that a later migration can read
+// it. Before then the stamp is the older build's, which the migration needs.
+// Failing to write it only loses the record, so it doesn't stop Stash.
+func (db *Database) stampAppVersion() {
+	if err := database.StampAppVersion(context.Background(), db.writeDB, database.CurrentAppVersion(), time.Now()); err != nil {
+		logger.Warnf("%v", err)
+	}
 }
 
 func (db *Database) openReadDB() error {
