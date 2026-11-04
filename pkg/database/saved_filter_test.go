@@ -163,3 +163,79 @@ func TestSavedFilterPerUser(t *testing.T) {
 		return nil
 	})
 }
+
+// All lists a user's saved filters by mode and then name, and FindByMode by
+// name, in the same order on both databases, whatever order they were created
+// or changed in. The order is SQLite's: by bytes, so capitals come before
+// lower case, _ after capitals, accented letters last, and SCENES before
+// SCENE_MARKERS.
+func TestSavedFilterAllOrder(t *testing.T) {
+	require.NoError(t, withRollbackTxn(func(ctx context.Context) error {
+		qb := db.SavedFilter()
+
+		owner := models.User{
+			Username: "filter order",
+			Roles:    models.Roles{models.RoleEnumModify},
+		}
+		require.NoError(t, db.User().Create(ctx, &owner, ""))
+		ctx = models.WithUserID(ctx, owner.ID)
+
+		var changed *models.SavedFilter
+		for _, f := range []struct {
+			mode models.FilterMode
+			name string
+		}{
+			{models.FilterModeScenes, "b"},
+			{models.FilterModeSceneMarkers, "m"},
+			{models.FilterModeImages, "z"},
+			{models.FilterModeScenes, "é"},
+			{models.FilterModeScenes, "a"},
+			{models.FilterModeScenes, "_x"},
+			{models.FilterModeGalleries, "m"},
+			{models.FilterModeScenes, "e"},
+			{models.FilterModeScenes, "B"},
+		} {
+			sf := &models.SavedFilter{Mode: f.mode, Name: f.name}
+			require.NoError(t, qb.Create(ctx, sf))
+			if f.mode == models.FilterModeScenes && f.name == "b" {
+				changed = sf
+			}
+		}
+
+		// changing a filter doesn't move it
+		changed.UIOptions = map[string]interface{}{"zoom_index": 2}
+		require.NoError(t, qb.Update(ctx, changed))
+
+		names := func(filters []*models.SavedFilter, withMode bool) []string {
+			var ret []string
+			for _, f := range filters {
+				if withMode {
+					ret = append(ret, string(f.Mode)+" "+f.Name)
+				} else {
+					ret = append(ret, f.Name)
+				}
+			}
+			return ret
+		}
+
+		all, err := qb.All(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []string{
+			"GALLERIES m",
+			"IMAGES z",
+			"SCENES B",
+			"SCENES _x",
+			"SCENES a",
+			"SCENES b",
+			"SCENES e",
+			"SCENES é",
+			"SCENE_MARKERS m",
+		}, names(all, true))
+
+		scenes, err := qb.FindByMode(ctx, models.FilterModeScenes)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"B", "_x", "a", "b", "e", "é"}, names(scenes, false))
+
+		return nil
+	}))
+}
