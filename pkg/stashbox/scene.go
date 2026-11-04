@@ -117,13 +117,19 @@ func (c Client) findScenesByFingerprints(ctx context.Context, scenes [][]*graphq
 		if end > len(validScenes) {
 			end = len(validScenes)
 		}
+		asked := end - i
 		scenes, err := c.client.FindScenesBySceneFingerprints(ctx, validScenes[i:end])
 
 		if err != nil {
 			return nil, err
 		}
 
-		for _, sceneFragments := range scenes.FindScenesBySceneFingerprints {
+		returned := scenes.FindScenesBySceneFingerprints
+		if len(returned) < asked {
+			logger.Warnf("stash-box returned results for %d of %d scenes; treating the rest as unmatched", len(returned), asked)
+		}
+
+		for _, sceneFragments := range returned {
 			var sceneResults []*models.ScrapedScene
 			for _, scene := range sceneFragments {
 				ss, err := c.sceneFragmentToScrapedScene(ctx, scene)
@@ -138,6 +144,14 @@ func (c Client) findScenesByFingerprints(ctx context.Context, scenes [][]*graphq
 				sceneResults = append(sceneResults, ss)
 			}
 			results = append(results, sceneResults)
+		}
+
+		// A stash-box that returns fewer lists than it was asked for leaves
+		// the remaining scenes of this request without a match. Pad them so
+		// the results stay in step with the input, and later requests' results
+		// still line up with their own scenes.
+		for j := len(returned); j < asked; j++ {
+			results = append(results, nil)
 		}
 	}
 
