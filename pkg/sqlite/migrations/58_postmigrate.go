@@ -3,8 +3,11 @@ package migrations
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
@@ -12,6 +15,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cast"
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/sqlite"
 	"github.com/stashapp/stash/pkg/utils"
@@ -160,6 +164,58 @@ func (m *schema58Migrator) renameFrontPageContentKeys(ui map[string]interface{})
 	}
 }
 
+// installedPluginIDs lists the IDs of the plugins in the plugin folder. As in
+// pkg/plugin, a plugin's ID is the name of its .yml file without the extension,
+// case-sensitive, and the folder is read with its subfolders. The files are not
+// parsed: a .yml file that is not a plugin only keeps a stored key with its own
+// name as it is, and only when no installed plugin has the camelCase form.
+func (m *schema58Migrator) installedPluginIDs(path string) (map[string]bool, error) {
+	if path == "" {
+		return nil, fmt.Errorf("no plugin folder set")
+	}
+
+	ids := make(map[string]bool)
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		// no plugins installed
+		return ids, nil
+	}
+
+	err := fsutil.SymWalk(path, func(fp string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && filepath.Ext(fp) == ".yml" {
+			name := filepath.Base(fp)
+			ids[name[:strings.LastIndex(name, ".")]] = true
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return ids, nil
+}
+
+// pluginKeys returns the IDs to store the settings saved under key at. Before
+// schema 58 a plugin ID was saved in snake_case, so myPlugin and my_plugin
+// were both saved as my_plugin, and both plugins read the same settings. Those
+// settings go to the camelCase ID, as before, unless key is the ID of an
+// installed plugin, which keeps them. When both plugins are installed, each
+// gets a copy, as each read them before. Without the installed IDs every key
+// is converted.
+func (m *schema58Migrator) pluginKeys(key string, installed map[string]bool) []string {
+	converted := m.fromSnakeCase(key)
+	switch {
+	case converted == key || !installed[key]:
+		return []string{converted}
+	case installed[converted]:
+		return []string{key, converted}
+	default:
+		return []string{key}
+	}
+}
+
 func (m *schema58Migrator) migrateConfig() error {
 	c := config.GetInstance()
 
@@ -208,11 +264,17 @@ func (m *schema58Migrator) migrateConfig() error {
 		c.SetUIConfiguration(ui)
 	}
 
+	installed, err := m.installedPluginIDs(c.GetPluginsPath())
+	if err != nil {
+		logger.Warnf("Could not list the installed plugins, converting every plugin ID to camelCase: %v", err)
+	}
+
 	plugins := c.GetAllPluginConfiguration()
 	newPlugins := make(map[string]interface{})
 	for key, value := range plugins {
-		key = m.fromSnakeCase(key)
-		newPlugins[key] = m.fromSnakeCaseMap(value)
+		for _, newKey := range m.pluginKeys(key, installed) {
+			newPlugins[newKey] = m.fromSnakeCaseMap(value)
+		}
 	}
 
 	c.SetInterface(config.PluginsSetting, newPlugins)
