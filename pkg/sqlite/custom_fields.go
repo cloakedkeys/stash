@@ -297,7 +297,9 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 				f.setError(err)
 				return
 			}
-			f.addWhere(fmt.Sprintf("(%s.value regexp ?)", joinAs), v)
+			// as text, as includes reads it: regexp only takes text, and a field
+			// can hold a number
+			f.addWhere(fmt.Sprintf("(CAST(%s.value AS TEXT) regexp ?)", joinAs), v)
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierNotMatchesRegex:
@@ -310,7 +312,7 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 				f.setError(err)
 				return
 			}
-			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR %[1]s.value NOT regexp ?)", joinAs), v)
+			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR CAST(%[1]s.value AS TEXT) NOT regexp ?)", joinAs), v)
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierIsNull:
