@@ -37,7 +37,8 @@ func TestCloseDoesNotWaitForWriter(t *testing.T) {
 	require.NoError(t, db.Close())
 	elapsed := time.Since(started)
 	t.Logf("closed in %v", elapsed)
-	assert.Less(t, elapsed, busyTimeout/2, "waited %v", elapsed)
+	// well under any real busy timeout, so even a short wait fails
+	assert.Less(t, elapsed, 500*time.Millisecond, "waited %v", elapsed)
 }
 
 // createUnanalysedDatabase makes a database whose tables have indexes but no
