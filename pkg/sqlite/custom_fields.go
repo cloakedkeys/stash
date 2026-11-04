@@ -289,9 +289,10 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierMatchesRegex:
 		for _, v := range cv {
-			vs, ok := v.(string)
-			if !ok {
-				f.setError(fmt.Errorf("unsupported custom field criterion value type: %T", v))
+			vs, err := models.CustomFieldRegexPattern(v)
+			if err != nil {
+				f.setError(err)
+				return
 			}
 			if _, err := regexp.Compile(vs); err != nil {
 				f.setError(err)
@@ -299,20 +300,21 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 			}
 			// as text, as includes reads it: regexp only takes text, and a field
 			// can hold a number
-			f.addWhere(fmt.Sprintf("(CAST(%s.value AS TEXT) regexp ?)", joinAs), v)
+			f.addWhere(fmt.Sprintf("(CAST(%s.value AS TEXT) regexp ?)", joinAs), vs)
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierNotMatchesRegex:
 		for _, v := range cv {
-			vs, ok := v.(string)
-			if !ok {
-				f.setError(fmt.Errorf("unsupported custom field criterion value type: %T", v))
+			vs, err := models.CustomFieldRegexPattern(v)
+			if err != nil {
+				f.setError(err)
+				return
 			}
 			if _, err := regexp.Compile(vs); err != nil {
 				f.setError(err)
 				return
 			}
-			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR CAST(%[1]s.value AS TEXT) NOT regexp ?)", joinAs), v)
+			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR CAST(%[1]s.value AS TEXT) NOT regexp ?)", joinAs), vs)
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierIsNull:
