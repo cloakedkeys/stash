@@ -10,6 +10,7 @@ import (
 	"github.com/stashapp/stash/pkg/group"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/plugin/hook"
+	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 	"github.com/stashapp/stash/pkg/utils"
 )
@@ -450,6 +451,13 @@ func (r *mutationResolver) AddGroupSubGroups(ctx context.Context, input GroupSub
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := userDataObjectExists(ctx, r.repository.Group.Find, "group", groupID); err != nil {
+			return err
+		}
+		subGroupIDs := sliceutil.Map(subGroups, func(sg models.GroupIDDescription) int { return sg.GroupID })
+		if err := objectsExist(ctx, r.repository.Group.FindMany, subGroupIDs); err != nil {
+			return err
+		}
 		return r.groupService.AddSubGroups(ctx, groupID, subGroups, input.InsertIndex)
 	}); err != nil {
 		return false, err
@@ -470,6 +478,9 @@ func (r *mutationResolver) RemoveGroupSubGroups(ctx context.Context, input Group
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := userDataObjectExists(ctx, r.repository.Group.Find, "group", groupID); err != nil {
+			return err
+		}
 		return r.groupService.RemoveSubGroups(ctx, groupID, subGroupIDs)
 	}); err != nil {
 		return false, err
@@ -497,6 +508,9 @@ func (r *mutationResolver) ReorderSubGroups(ctx context.Context, input ReorderSu
 	insertAfter := utils.IsTrue(input.InsertAfter)
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := userDataObjectExists(ctx, r.repository.Group.Find, "group", groupID); err != nil {
+			return err
+		}
 		return r.groupService.ReorderSubGroups(ctx, groupID, subGroupIDs, insertPointID, insertAfter)
 	}); err != nil {
 		return false, err

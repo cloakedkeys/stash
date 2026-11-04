@@ -19,12 +19,8 @@ func (r *mutationResolver) updatePerformerImages(ctx context.Context, id string,
 		return nil, fmt.Errorf("converting id: %w", err)
 	}
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
-		p, err := r.repository.Performer.Find(ctx, performerID)
-		if err != nil {
+		if err := userDataObjectExists(ctx, r.repository.Performer.Find, "performer", performerID); err != nil {
 			return err
-		}
-		if p == nil {
-			return fmt.Errorf("performer %s not found", id)
 		}
 		if err := apply(ctx, performerID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

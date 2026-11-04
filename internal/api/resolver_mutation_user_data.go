@@ -7,6 +7,7 @@ import (
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/plugin/hook"
+	"github.com/stashapp/stash/pkg/sliceutil"
 )
 
 // These mutations set only what belongs to the current user, so unlike the update
@@ -250,4 +251,16 @@ func userDataObjectExists[T any](ctx context.Context, find func(context.Context,
 		return fmt.Errorf("%s with id %d not found", kind, id)
 	}
 	return nil
+}
+
+// objectsExist returns a not-found error for the first id with no object, such as
+// "tag with id 999 not found", which is what the stores' FindMany say. Without this
+// a missing id was refused with the database's own foreign key error. The calls
+// accept an id more than once, so each id is looked up once: FindMany refuses repeats.
+func objectsExist[T any](ctx context.Context, findMany func(context.Context, []int) ([]*T, error), ids []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := findMany(ctx, sliceutil.AppendUniques(nil, ids))
+	return err
 }

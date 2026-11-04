@@ -391,6 +391,10 @@ func (r *mutationResolver) TagsMerge(ctx context.Context, input TagsMergeInput) 
 			return fmt.Errorf("tag with id %d not found", destination)
 		}
 
+		if err := objectsExist(ctx, qb.FindMany, source); err != nil {
+			return err
+		}
+
 		if err = qb.Merge(ctx, source, destination); err != nil {
 			return err
 		}

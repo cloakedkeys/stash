@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -121,6 +122,42 @@ var missingObjectUpdateMutations = map[string]string{
 	`voiceActorUpdate(input:{id:"999",favorite:true}) { id }`:    "voice actor with id 999 not found",
 }
 
+// missingParentIDs are objects that exist, for the calls that name a missing object
+// alongside one that exists.
+type missingParentIDs struct {
+	scene, tag, gallery, group, marker, chapter, videoFile, audioFile, performer int
+}
+
+// The calls that create, add or link something on an object, or name one to link to.
+// These used to give the database's own foreign key error, another error such as the
+// chapter's image number check, a bare "not found", or "performer 999 not found".
+func missingParentMutations(ids missingParentIDs) map[string]string {
+	return map[string]string{
+		`sceneMarkerCreate(input:{title:"m",seconds:1,scene_id:"999",primary_tag_id:"` + strconv.Itoa(ids.tag) + `"}) { id }`:                                             "scene with id 999 not found",
+		`sceneMarkerCreate(input:{title:"m",seconds:1,scene_id:"` + strconv.Itoa(ids.scene) + `",primary_tag_id:"999"}) { id }`:                                           "tag with id 999 not found",
+		`sceneMarkerCreate(input:{title:"m",seconds:1,scene_id:"` + strconv.Itoa(ids.scene) + `",primary_tag_id:"` + strconv.Itoa(ids.tag) + `",tag_ids:["999"]}) { id }`: "tag with id 999 not found",
+		`bulkSceneMarkerUpdate(input:{ids:["999"],title:"x"}) { id }`:                                                                                                     "scene marker with id 999 not found",
+		`bulkSceneMarkerUpdate(input:{ids:["` + strconv.Itoa(ids.marker) + `"],primary_tag_id:"999"}) { id }`:                                                             "tag with id 999 not found",
+		`galleryChapterCreate(input:{gallery_id:"999",title:"c",image_index:1}) { id }`:                                                                                   "gallery with id 999 not found",
+		`galleryChapterUpdate(input:{id:"` + strconv.Itoa(ids.chapter) + `",gallery_id:"999"}) { id }`:                                                                    "gallery with id 999 not found",
+		`addGalleryImages(input:{gallery_id:"` + strconv.Itoa(ids.gallery) + `",image_ids:["999"]})`:                                                                      "image with id 999 not found",
+		`addGroupSubGroups(input:{containing_group_id:"999",sub_groups:[{group_id:"` + strconv.Itoa(ids.group) + `"}]})`:                                                  "group with id 999 not found",
+		`addGroupSubGroups(input:{containing_group_id:"` + strconv.Itoa(ids.group) + `",sub_groups:[{group_id:"999"}]})`:                                                  "group with id 999 not found",
+		`removeGroupSubGroups(input:{containing_group_id:"999",sub_group_ids:["` + strconv.Itoa(ids.group) + `"]})`:                                                       "group with id 999 not found",
+		`reorderSubGroups(input:{group_id:"999",sub_group_ids:["` + strconv.Itoa(ids.group) + `"],insert_at_id:"` + strconv.Itoa(ids.group) + `"})`:                       "group with id 999 not found",
+		`performerImageAdd(id:"999",image:"` + onePixelPNG + `") { id }`:                                                                                                  "performer with id 999 not found",
+		`performerImageRemove(id:"999",checksum:"abc") { id }`:                                                                                                            "performer with id 999 not found",
+		`performerImageSetPrimary(id:"999",checksum:"abc") { id }`:                                                                                                        "performer with id 999 not found",
+		`performerImagesReorder(id:"999",checksums:["abc"]) { id }`:                                                                                                       "performer with id 999 not found",
+		`performerMerge(input:{source:["` + strconv.Itoa(ids.performer) + `"],destination:"999"}) { id }`:                                                                 "performer with id 999 not found",
+		`tagsMerge(input:{source:["999"],destination:"` + strconv.Itoa(ids.tag) + `"}) { id }`:                                                                            "tag with id 999 not found",
+		`sceneAssignFile(input:{scene_id:"999",file_id:"` + strconv.Itoa(ids.videoFile) + `"})`:                                                                           "assigning file to scene: scene with id 999 not found",
+		`audioAssignFile(input:{audio_id:"999",file_id:"` + strconv.Itoa(ids.audioFile) + `"})`:                                                                           "assigning file to audio: audio with id 999 not found",
+	}
+}
+
+const onePixelPNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
 func TestUserDataUpdateMissingObject(t *testing.T) {
 	db := mocks.NewDatabase()
 	r := newResolver(db)
@@ -203,5 +240,25 @@ func TestUserDataUpdateMissingObjectWithLibraryLimit(t *testing.T) {
 		require.Contains(t, body, `"message":"not found"`, mutation)
 		require.NotContains(t, body, "with id", mutation)
 		require.NotContains(t, body, "999 not found", mutation)
+	}
+}
+
+// A limited account can't create, add or link anything, so it is refused these calls
+// whether the object is hidden, missing or there, and never sees which.
+func TestMissingParentWithLibraryLimit(t *testing.T) {
+	db := mocks.NewDatabase()
+	r := newResolver(db)
+	gql := newTestGraphQLServer(r)
+	gql.AroundFields(r.LibraryLimitMiddleware)
+
+	limit := &models.LibraryLimit{TagIDs: []int{7}}
+	editor := models.User{ID: 3, Username: "editor", Roles: models.Roles{models.RoleEnumModify}, LibraryLimit: limit}
+	for mutation := range missingParentMutations(missingParentIDs{1, 1, 1, 1, 1, 1, 1, 1, 1}) {
+		t.Run(mutation, func(t *testing.T) {
+			body := storyRequest(t, gql, editor, "mutation { "+mutation+" }")
+			require.Contains(t, body, `"message":"unauthorized"`)
+			require.NotContains(t, body, "with id")
+			require.NotContains(t, body, "not found")
+		})
 	}
 }

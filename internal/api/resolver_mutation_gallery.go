@@ -491,6 +491,10 @@ func (r *mutationResolver) AddGalleryImages(ctx context.Context, input GalleryAd
 			return fmt.Errorf("gallery with id %d not found", galleryID)
 		}
 
+		if err := objectsExist(ctx, r.repository.Image.FindMany, imageIDs); err != nil {
+			return err
+		}
+
 		return r.galleryService.AddImages(ctx, gallery, imageIDs...)
 	}); err != nil {
 		return false, err
@@ -610,6 +614,11 @@ func (r *mutationResolver) GalleryChapterCreate(ctx context.Context, input Galle
 
 	// Start the transaction and save the gallery chapter
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		// a missing gallery has no images, so without this it was refused for the index
+		if err := userDataObjectExists(ctx, r.repository.Gallery.Find, "gallery", galleryID); err != nil {
+			return err
+		}
+
 		imageCount, err := r.repository.Image.CountByGalleryID(ctx, galleryID)
 		if err != nil {
 			return err
@@ -666,6 +675,11 @@ func (r *mutationResolver) GalleryChapterUpdate(ctx context.Context, input Galle
 
 		if updatedChapter.GalleryID.Set {
 			galleryID = updatedChapter.GalleryID.Value
+			if !updatedChapter.GalleryID.Null {
+				if err := userDataObjectExists(ctx, r.repository.Gallery.Find, "gallery", galleryID); err != nil {
+					return err
+				}
+			}
 		}
 		if updatedChapter.ImageIndex.Set {
 			imageIndex = updatedChapter.ImageIndex.Value

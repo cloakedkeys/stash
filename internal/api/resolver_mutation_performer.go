@@ -695,6 +695,9 @@ func (r *mutationResolver) PerformerMerge(ctx context.Context, input PerformerMe
 		if err != nil {
 			return fmt.Errorf("finding destination performer ID %d: %w", destID, err)
 		}
+		if dest == nil {
+			return fmt.Errorf("performer with id %d not found", destID)
+		}
 
 		// ensure source performers exist
 		if _, err := qb.FindMany(ctx, srcIDs); err != nil {
