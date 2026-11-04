@@ -78,9 +78,12 @@ type Database struct {
 
 	lockChan chan struct{}
 
-	// statisticsCurrent is true when a full ANALYZE has finished and nothing
-	// has been written since. It starts false, so the first refresh always runs.
-	statisticsCurrent atomic.Bool
+	// writes counts committed write transactions. fullAnalyzeWrites is what it
+	// was when the last successful full ANALYZE started, or -1 if there hasn't
+	// been one. While the two match, nothing has been written since, so the
+	// statistics are current.
+	writes            atomic.Int64
+	fullAnalyzeWrites atomic.Int64
 }
 
 func NewDatabase() *Database {
@@ -118,6 +121,8 @@ func NewDatabase() *Database {
 		storeRepository: r,
 		lockChan:        make(chan struct{}, 1),
 	}
+	// no full ANALYZE yet, so the first refresh always runs
+	ret.fullAnalyzeWrites.Store(-1)
 
 	return ret
 }
@@ -470,20 +475,27 @@ func (db *Database) Vacuum(ctx context.Context) error {
 
 // Analyze runs an ANALYZE on the database to improve query performance.
 func (db *Database) Analyze(ctx context.Context) error {
-	err := analyze(ctx, db.writeDB)
-	db.fullAnalyzeDone(err)
+	return db.fullAnalyze(ctx, db.writeDB)
+}
+
+// fullAnalyze runs a full ANALYZE on conn and records it.
+func (db *Database) fullAnalyze(ctx context.Context, conn *sqlx.DB) error {
+	// Counted before it starts: a write committed while it runs makes the
+	// count move, which only costs an extra refresh later.
+	writes := db.writes.Load()
+	err := analyze(ctx, conn)
+	if err == nil {
+		db.fullAnalyzeWrites.Store(writes)
+	}
+	// open connections would keep planning with the old statistics
+	retireConnections()
 	return err
 }
 
-// fullAnalyzeDone is called after a full ANALYZE. Open connections would keep
-// planning with the old statistics, so they're retired either way.
-func (db *Database) fullAnalyzeDone(err error) {
-	// Writes go through the single write connection, so any committed before
-	// the ANALYZE took it are counted, and any after it set this back to false.
-	if err == nil {
-		db.statisticsCurrent.Store(true)
-	}
-	retireConnections()
+// statisticsCurrent reports whether a full ANALYZE has run and nothing has
+// been written since.
+func (db *Database) statisticsCurrent() bool {
+	return db.fullAnalyzeWrites.Load() == db.writes.Load()
 }
 
 // analyze runs an ANALYZE on the database to improve query performance.
@@ -513,7 +525,7 @@ func (db *Database) RefreshStatistics(ctx context.Context) error {
 		return err
 	}
 
-	if db.statisticsCurrent.Load() {
+	if db.statisticsCurrent() {
 		return nil
 	}
 

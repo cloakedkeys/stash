@@ -96,7 +96,7 @@ func (db *Database) Commit(ctx context.Context) error {
 	}
 
 	if writable, _ := ctx.Value(writableKey).(bool); writable {
-		db.statisticsCurrent.Store(false)
+		db.writes.Add(1)
 	}
 
 	return nil
