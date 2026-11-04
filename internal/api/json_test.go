@@ -53,6 +53,27 @@ func TestConvertMapJSONNumbers(t *testing.T) {
 				"string": "foo",
 			},
 		},
+		{
+			name: "Convert JSON numbers to numbers in lists",
+			input: map[string]interface{}{
+				"list": []interface{}{json.Number("1"), json.Number("2.5"), "foo", nil},
+				"listOfMaps": []interface{}{
+					map[string]interface{}{"id": json.Number("3"), "list": []interface{}{json.Number("4")}},
+				},
+				"listOfLists": []interface{}{[]interface{}{json.Number("5")}},
+				"empty":       []interface{}{},
+				"null":        nil,
+			},
+			expected: map[string]interface{}{
+				"list": []interface{}{int64(1), 2.5, "foo", nil},
+				"listOfMaps": []interface{}{
+					map[string]interface{}{"id": int64(3), "list": []interface{}{int64(4)}},
+				},
+				"listOfLists": []interface{}{[]interface{}{int64(5)}},
+				"empty":       []interface{}{},
+				"null":        nil,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -92,6 +113,16 @@ func TestConvertMapJSONNumbersBigNumbers(t *testing.T) {
 
 	_, err = convertMapJSONNumbers(map[string]interface{}{"nested": map[string]interface{}{"huge": json.Number("1e400")}})
 	assert.ErrorContains(t, err, `"nested"."huge"`)
+
+	// #2079
+	_, err = convertMapJSONNumbers(map[string]interface{}{"list": []interface{}{json.Number("1"), json.Number("1e400")}})
+	assert.ErrorContains(t, err, `"list"[1]: invalid number "1e400"`)
+
+	_, err = convertMapJSONNumbers(map[string]interface{}{"list": []interface{}{[]interface{}{map[string]interface{}{"huge": json.Number("1e400")}}}})
+	assert.ErrorContains(t, err, `"list"[0][0]."huge": invalid number "1e400"`)
+
+	_, err = convertJSONNumbers(json.Number("1e400"), "")
+	assert.EqualError(t, err, `invalid number "1e400": strconv.ParseFloat: parsing "1e400": value out of range`)
 
 	_, err = handleUpdateCustomFields(models.CustomFieldsInput{Partial: map[string]interface{}{"huge": json.Number("1e400")}})
 	assert.ErrorContains(t, err, `custom field "huge"`)
