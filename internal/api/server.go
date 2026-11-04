@@ -229,7 +229,11 @@ func Initialize() (*Server, error) {
 	// register GQL handler with plugin cache
 	// chain the visited plugin handler
 	// also requires the dataloader middleware
-	gqlHandler := visitedPluginHandler(dataloaders.Middleware(http.HandlerFunc(gqlHandlerFunc)))
+	// the user is set first, as the dataloaders apply the user's library limit
+	pluginUser := pluginUserHandler(repo.TxnManager, func() UserAuthenticator {
+		return manager.GetInstance().UserService
+	})
+	gqlHandler := pluginUser(visitedPluginHandler(dataloaders.Middleware(http.HandlerFunc(gqlHandlerFunc))))
 	pluginCache.RegisterGQLHandler(gqlHandler)
 
 	r.With(originProtection.getAsUnsafe).HandleFunc(gqlEndpoint, gqlHandlerFunc)

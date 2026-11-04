@@ -11,6 +11,7 @@ import (
 	"github.com/stashapp/stash/pkg/javascript"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/plugin/common"
+	"github.com/stashapp/stash/pkg/session"
 )
 
 var errStop = errors.New("stop")
@@ -97,8 +98,17 @@ func (t *jsPluginTask) initVM() error {
 		return fmt.Errorf("error adding util API: %w", err)
 	}
 
+	// The plugin's GraphQL calls skip the login check, so they carry the user
+	// whose request started the plugin, as an external plugin's session cookie
+	// does. Only the user is taken: the request itself may be finished, or
+	// cancelled, or in a transaction by the time the plugin runs.
+	gqlCtx := context.Background()
+	if t.user != nil {
+		gqlCtx = session.SetCurrentUser(gqlCtx, *t.user)
+	}
+
 	gql := &javascript.GQL{
-		Context:    context.TODO(),
+		Context:    gqlCtx,
 		Cookie:     t.input.ServerConnection.SessionCookie,
 		GQLHandler: t.gqlHandler,
 	}

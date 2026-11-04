@@ -3,6 +3,7 @@ package plugin
 import (
 	"net/http"
 
+	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/plugin/common"
 )
 
@@ -41,6 +42,10 @@ type pluginTask struct {
 	input        common.PluginInput
 	gqlHandler   http.Handler
 	serverConfig ServerConfig
+
+	// user is the user whose request started the task, if any. JavaScript
+	// plugins act as this user when they call GraphQL in-process.
+	user *models.User
 
 	progress chan float64
 	result   *common.PluginOutput
