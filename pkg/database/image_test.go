@@ -1891,8 +1891,8 @@ func TestImageQueryPathOr(t *testing.T) {
 			return nil
 		}
 
-		assert.Equal(t, image1Path, images[0].Path)
-		assert.Equal(t, image2Path, images[1].Path)
+		// no sort, so the order is not set
+		assert.ElementsMatch(t, indexesToIDs(imageIDs, []int{image1Idx, image2Idx}), imagesToIDs(images))
 
 		return nil
 	})

@@ -1860,8 +1860,8 @@ func TestGalleryQueryPathOr(t *testing.T) {
 			return nil
 		}
 
-		assert.Equal(t, gallery1Path, galleries[0].Path)
-		assert.Equal(t, gallery2Path, galleries[1].Path)
+		// no sort, so the order is not set
+		assert.ElementsMatch(t, indexesToIDs(galleryIDs, []int{gallery1Idx, gallery2Idx}), galleriesToIDs(galleries))
 
 		return nil
 	})
