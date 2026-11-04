@@ -3,6 +3,7 @@
 package stoprequests
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"syscall"
@@ -24,4 +25,10 @@ func sendStopToSelf() error {
 	_, _, err := windows.NewLazySystemDLL("kernel32.dll").NewProc("AllocConsole").Call()
 	_ = err
 	return windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(os.Getpid()))
+}
+
+// sendSIGTERMToSelf can't be done on Windows, where SIGTERM comes from closing
+// the console or logging off.
+func sendSIGTERMToSelf() error {
+	return errors.New("not supported on Windows")
 }

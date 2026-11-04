@@ -10,6 +10,7 @@ import (
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/database"
+	"github.com/stashapp/stash/pkg/database/migrationguard"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/job"
 	"github.com/stashapp/stash/pkg/logger"
@@ -57,6 +58,14 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 		logger.Infof("database is already at the latest schema version")
 		return nil
 	}
+
+	// A stop waits until the upgrade has finished, or been rolled back, so that
+	// the database isn't left half upgraded (#2103).
+	end, err := migrationguard.Begin()
+	if err != nil {
+		return err
+	}
+	defer end()
 
 	logger.Infof("Migrating database from %d to %d", schemaInfo.CurrentSchemaVersion, schemaInfo.RequiredSchemaVersion)
 

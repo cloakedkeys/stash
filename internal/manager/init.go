@@ -35,8 +35,9 @@ import (
 	"github.com/stashapp/stash/ui"
 )
 
-// Called at startup
-func Initialize(cfg *config.Config, l *log.Logger) (*Manager, error) {
+// Called at startup. Cancelling openCtx stops opening the database, such as
+// while waiting for a PostgreSQL server; the rest of startup isn't cancelled.
+func Initialize(openCtx context.Context, cfg *config.Config, l *log.Logger) (*Manager, error) {
 	ctx := context.Background()
 
 	var db database.Database
@@ -150,7 +151,7 @@ func Initialize(cfg *config.Config, l *log.Logger) (*Manager, error) {
 			return nil, fmt.Errorf("invalid configuration: %w", err)
 		}
 
-		if err := mgr.postInit(ctx); err != nil {
+		if err := mgr.postInit(ctx, openCtx); err != nil {
 			return nil, err
 		}
 	} else {
@@ -260,8 +261,8 @@ func taskFinishedNotification(j job.Job) (title, text string) {
 
 // postInit initialises the paths, caches and database after the initial
 // configuration has been set. Should only be called if the configuration
-// is valid.
-func (s *Manager) postInit(ctx context.Context) error {
+// is valid. openCtx is used to open the database.
+func (s *Manager) postInit(ctx context.Context, openCtx context.Context) error {
 	s.RefreshConfig()
 
 	s.SessionStore = session.NewStore(s.Config, s.UserService, &s.Repository.TxnManager)
@@ -302,7 +303,7 @@ func (s *Manager) postInit(ctx context.Context) error {
 		})
 	}
 
-	if err := s.Database.Open(ctx, s.Config.GetDatabasePath()); err != nil {
+	if err := s.Database.Open(openCtx, s.Config.GetDatabasePath()); err != nil {
 		return err
 	}
 

@@ -17,6 +17,7 @@ import (
 	"github.com/stashapp/stash/internal/log"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/database"
+	"github.com/stashapp/stash/pkg/database/migrationguard"
 	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/job"
@@ -304,7 +305,7 @@ func (s *Manager) Setup(ctx context.Context, input SetupInput) error {
 	newCtx := models.WithSetupContext(ctx)
 
 	// finish initialization
-	if err := s.postInit(newCtx); err != nil {
+	if err := s.postInit(newCtx, newCtx); err != nil {
 		return fmt.Errorf("error completing initialization: %v", err)
 	}
 
@@ -446,6 +447,13 @@ func (s *Manager) GetSystemStatus() *SystemStatus {
 // Shutdown gracefully stops the manager
 func (s *Manager) Shutdown() {
 	// TODO: Each part of the manager needs to gracefully stop at some point
+
+	// Closing the database under a running migration would leave it half
+	// upgraded, so wait for the migration to finish. No new one starts after
+	// this (#2103).
+	migrationguard.Stop(func() {
+		logger.Info("Waiting for the database upgrade to finish before stopping")
+	})
 
 	if s.StreamManager != nil {
 		s.StreamManager.Shutdown()
