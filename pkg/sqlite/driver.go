@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"net/url"
+	"strings"
 	"sync/atomic"
 
 	"github.com/WithoutPants/sortorder/casefolded"
@@ -124,14 +126,47 @@ func (d *CustomSQLiteDriver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
-	return &CustomSQLiteConn{SQLiteConn: conn.(*sqlite3.SQLiteConn), generation: generation, noOptimize: d.noOptimize}, nil
+	return &CustomSQLiteConn{
+		SQLiteConn: conn.(*sqlite3.SQLiteConn),
+		generation: generation,
+		// PRAGMA optimize writes, so it always fails on a read-only connection
+		noOptimize: d.noOptimize || readOnlyDSN(dsn),
+	}, nil
+}
+
+// readOnlyDSN reports whether a connection opened from dsn can't write: the
+// read pool's mode=ro, or go-sqlite3's _query_only. It follows go-sqlite3,
+// which only passes the parameters after "?" on to SQLite, where mode is read,
+// when the DSN is a file: URI.
+func readOnlyDSN(dsn string) bool {
+	pos := strings.IndexRune(dsn, '?')
+	if pos < 1 {
+		return false
+	}
+	params, err := url.ParseQuery(dsn[pos+1:])
+	if err != nil {
+		return false
+	}
+
+	if strings.HasPrefix(dsn, "file:") && params.Get("mode") == "ro" {
+		return true
+	}
+	switch strings.ToLower(params.Get("_query_only")) {
+	case "1", "yes", "true", "on":
+		return true
+	}
+	return false
 }
 
 func (c *CustomSQLiteConn) Close() error {
 	conn := c.SQLiteConn
 
 	if !c.noOptimize {
-		_, _ = conn.Exec("PRAGMA analysis_limit=1000; PRAGMA optimize;", []driver.Value{})
+		// The connection is closing, so PRAGMA optimize doesn't wait for another
+		// connection's write lock: with no busy timeout it gives up straight
+		// away instead of after busyTimeout. Either way the tidy-up is skipped
+		// quietly while another connection is writing (#2082).
+		_, _ = conn.Exec("PRAGMA busy_timeout=0; PRAGMA analysis_limit=1000; PRAGMA optimize;", []driver.Value{})
 	}
 
 	return conn.Close()

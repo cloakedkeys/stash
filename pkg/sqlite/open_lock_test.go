@@ -4,7 +4,6 @@ package sqlite
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -59,39 +58,8 @@ func TestOpenDoesNotWaitForWriter(t *testing.T) {
 	assert.Equal(t, appSchemaVersion, db.schemaVersion)
 	assert.NoError(t, db.ready())
 
-	// closing still optimizes, which waits for the writer, so let it go first
 	release()
 	require.NoError(t, db.Close())
-}
-
-// Connections from the normal driver still run PRAGMA optimize when they
-// close, which waits for another writer. Only the version check's driver skips
-// it.
-func TestOptimizeOnClose(t *testing.T) {
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "stash-go.sqlite")
-	db := NewDatabase()
-	require.NoError(t, db.Open(ctx, path))
-	require.NoError(t, db.Close())
-
-	holdWriteLock(t, path)
-
-	// a short busy timeout, so waiting for the writer is quick but measurable
-	const wait = 500 * time.Millisecond
-	closeTime := func(driverName string) time.Duration {
-		conn, err := sqlx.Open(driverName, fmt.Sprintf("file:%s?_journal=WAL&_busy_timeout=%d", path, wait.Milliseconds()))
-		require.NoError(t, err)
-		var version int
-		require.NoError(t, conn.Get(&version, "SELECT version FROM schema_migrations LIMIT 1"))
-		started := time.Now()
-		require.NoError(t, conn.Close())
-		return time.Since(started)
-	}
-
-	optimized := closeTime(sqlite3Driver)
-	assert.GreaterOrEqual(t, optimized, wait*8/10, "normal driver closed in %v", optimized)
-	skipped := closeTime(sqlite3DriverNoOptimize)
-	assert.Less(t, skipped, wait/2, "version check driver closed in %v", skipped)
 }
 
 // A database that needs migrating still opens, without waiting, and still says
