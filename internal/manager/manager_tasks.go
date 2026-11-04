@@ -684,6 +684,10 @@ func (s *Manager) batchTagPerformersByIds(ctx context.Context, input StashBoxBat
 				if err != nil {
 					return err
 				}
+				if performer == nil {
+					logger.Errorf("performer with id %d not found", id)
+					continue
+				}
 
 				if err := performer.LoadStashIDs(ctx, performerQuery); err != nil {
 					return fmt.Errorf("loading performer stash ids: %w", err)
@@ -885,6 +889,10 @@ func (s *Manager) batchTagStudiosByIds(ctx context.Context, input StashBoxBatchT
 				if err != nil {
 					return err
 				}
+				if studio == nil {
+					logger.Errorf("studio with id %d not found", id)
+					continue
+				}
 
 				if err := studio.LoadStashIDs(ctx, studioQuery); err != nil {
 					return fmt.Errorf("loading studio stash ids: %w", err)
@@ -1018,6 +1026,10 @@ func (s *Manager) batchTagTagsByIds(ctx context.Context, input StashBoxBatchTagI
 				t, err := tagQuery.Find(ctx, id)
 				if err != nil {
 					return err
+				}
+				if t == nil {
+					logger.Errorf("tag with id %d not found", id)
+					continue
 				}
 
 				if err := t.LoadStashIDs(ctx, tagQuery); err != nil {
