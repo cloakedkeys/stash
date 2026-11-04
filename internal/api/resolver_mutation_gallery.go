@@ -93,7 +93,10 @@ func (r *mutationResolver) GalleryCreate(ctx context.Context, input GalleryCreat
 		newGallery.URLs = models.NewRelatedStrings([]string{strings.TrimSpace(*input.URL)})
 	}
 
-	newGallery.CustomFields = convertMapJSONNumbers(input.CustomFields)
+	newGallery.CustomFields, err = convertCustomFields(input.CustomFields)
+	if err != nil {
+		return nil, err
+	}
 
 	// Start the transaction and save the gallery
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
@@ -261,7 +264,10 @@ func (r *mutationResolver) galleryUpdate(ctx context.Context, input models.Galle
 	}
 
 	if input.CustomFields != nil {
-		updatedGallery.CustomFields = handleUpdateCustomFields(*input.CustomFields)
+		updatedGallery.CustomFields, err = handleUpdateCustomFields(*input.CustomFields)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// gallery scene is set from the scene only
@@ -322,7 +328,10 @@ func (r *mutationResolver) BulkGalleryUpdate(ctx context.Context, input BulkGall
 	}
 
 	if input.CustomFields != nil {
-		updatedGallery.CustomFields = handleUpdateCustomFields(*input.CustomFields)
+		updatedGallery.CustomFields, err = handleUpdateCustomFields(*input.CustomFields)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	ret := []*models.Gallery{}

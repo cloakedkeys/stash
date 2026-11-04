@@ -98,7 +98,10 @@ func (r *mutationResolver) AudioCreate(ctx context.Context, input models.AudioCr
 		}
 	}
 
-	customFields := convertMapJSONNumbers(input.CustomFields)
+	customFields, err := convertCustomFields(input.CustomFields)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		ret, err = r.Resolver.audioService.Create(ctx, models.CreateAudioInput{
@@ -304,11 +307,11 @@ func (r *mutationResolver) audioUpdate(ctx context.Context, input models.AudioUp
 
 	var customFields *models.CustomFieldsInput
 	if input.CustomFields != nil {
-		cfCopy := *input.CustomFields
-		customFields = &cfCopy
-		// convert json.Numbers to int/float
-		customFields.Full = convertMapJSONNumbers(customFields.Full)
-		customFields.Partial = convertMapJSONNumbers(customFields.Partial)
+		cf, err := handleUpdateCustomFields(*input.CustomFields)
+		if err != nil {
+			return nil, err
+		}
+		customFields = &cf
 	}
 
 	audio, err := qb.UpdatePartial(ctx, audioID, *updatedAudio)
@@ -395,7 +398,10 @@ func (r *mutationResolver) BulkAudioUpdate(ctx context.Context, input BulkAudioU
 
 	var customFields *models.CustomFieldsInput
 	if input.CustomFields != nil {
-		cf := handleUpdateCustomFields(*input.CustomFields)
+		cf, err := handleUpdateCustomFields(*input.CustomFields)
+		if err != nil {
+			return nil, err
+		}
 		customFields = &cf
 	}
 
@@ -552,7 +558,10 @@ func (r *mutationResolver) AudioMerge(ctx context.Context, input AudioMergeInput
 		}
 
 		if input.Values.CustomFields != nil {
-			cf := handleUpdateCustomFields(*input.Values.CustomFields)
+			cf, err := handleUpdateCustomFields(*input.Values.CustomFields)
+			if err != nil {
+				return nil, err
+			}
 			customFields = &cf
 		}
 	} else {

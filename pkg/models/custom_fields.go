@@ -9,6 +9,24 @@ import (
 
 type CustomFieldMap map[string]interface{}
 
+// JSONNumberValue converts a JSON number to an int64 when it is a whole number
+// that fits, and to a float64 otherwise: one with an exponent such as 1e20, a
+// decimal point, or digits beyond int64 such as 99999999999999999999. This is
+// how SQLite stores the same number. A number too large even for a float64,
+// such as 1e400, is an error rather than 0 or infinity.
+func JSONNumberValue(n json.Number) (interface{}, error) {
+	if i, err := n.Int64(); err == nil {
+		return i, nil
+	}
+
+	f, err := n.Float64()
+	if err != nil {
+		return nil, fmt.Errorf("invalid number %q: %w", n, err)
+	}
+
+	return f, nil
+}
+
 // CustomFieldRegexPattern returns the text of a custom field regex filter value.
 // The UI sends anything that looks like a number as a number, so a number is
 // used as the pattern written as text: 5 as "5", 1.5 as "1.5". Numbers arrive as
@@ -19,14 +37,11 @@ func CustomFieldRegexPattern(v interface{}) (string, error) {
 	case string:
 		return v, nil
 	case json.Number:
-		if i, err := v.Int64(); err == nil {
-			return strconv.FormatInt(i, 10), nil
-		}
-		f, err := v.Float64()
+		n, err := JSONNumberValue(v)
 		if err != nil {
-			return "", fmt.Errorf("invalid custom field regex number %q: %w", v, err)
+			return "", fmt.Errorf("invalid custom field regex number: %w", err)
 		}
-		return strconv.FormatFloat(f, 'f', -1, 64), nil
+		return CustomFieldRegexPattern(n)
 	case int:
 		return strconv.Itoa(v), nil
 	case int64:

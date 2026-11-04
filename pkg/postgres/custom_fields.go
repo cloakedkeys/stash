@@ -356,11 +356,8 @@ END)`, joinAs)
 // integer or a float first, so 1.0 searches for "1".
 func customFieldSearchText(v interface{}) string {
 	if n, ok := v.(json.Number); ok {
-		if i, err := n.Int64(); err == nil {
-			return fmt.Sprint(i)
-		}
-		if f, err := n.Float64(); err == nil {
-			return fmt.Sprint(f)
+		if num, err := models.JSONNumberValue(n); err == nil {
+			return fmt.Sprint(num)
 		}
 	}
 	return fmt.Sprint(v)

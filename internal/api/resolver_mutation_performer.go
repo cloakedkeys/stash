@@ -125,6 +125,11 @@ func (r *mutationResolver) PerformerCreate(ctx context.Context, input models.Per
 	// loaded before the transaction, since fetching them can take a while
 	addImages := performer.LoadImages(ctx, newPerformer.Name, input.AddImages)
 
+	customFields, err := convertCustomFields(input.CustomFields)
+	if err != nil {
+		return nil, err
+	}
+
 	// Start the transaction and save the performer
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Performer
@@ -134,9 +139,8 @@ func (r *mutationResolver) PerformerCreate(ctx context.Context, input models.Per
 		}
 
 		i := &models.CreatePerformerInput{
-			Performer: &newPerformer,
-			// convert json.Numbers to int/float
-			CustomFields: convertMapJSONNumbers(input.CustomFields),
+			Performer:    &newPerformer,
+			CustomFields: customFields,
 		}
 
 		err = qb.Create(ctx, i)
@@ -350,7 +354,10 @@ func performerPartialFromInput(input models.PerformerUpdateInput, translator cha
 		return nil, fmt.Errorf("converting tag ids: %w", err)
 	}
 
-	updatedPerformer.CustomFields = handleUpdateCustomFields(input.CustomFields)
+	updatedPerformer.CustomFields, err = handleUpdateCustomFields(input.CustomFields)
+	if err != nil {
+		return nil, err
+	}
 
 	return &updatedPerformer, nil
 }
@@ -537,7 +544,10 @@ func (r *mutationResolver) BulkPerformerUpdate(ctx context.Context, input BulkPe
 	}
 
 	if input.CustomFields != nil {
-		updatedPerformer.CustomFields = handleUpdateCustomFields(*input.CustomFields)
+		updatedPerformer.CustomFields, err = handleUpdateCustomFields(*input.CustomFields)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	ret := []*models.Performer{}

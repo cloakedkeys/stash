@@ -103,16 +103,12 @@ func (s *customFieldsStore) validateCustomFieldName(fieldName string) error {
 func getSQLValueFromCustomFieldInput(input interface{}) (interface{}, error) {
 	switch v := input.(type) {
 	case json.Number:
-		if i, err := v.Int64(); err == nil {
-			return i, nil
-		}
-
-		f, err := v.Float64()
+		n, err := models.JSONNumberValue(v)
 		if err != nil {
-			return nil, fmt.Errorf("invalid custom field number %q: %w", v, err)
+			return nil, fmt.Errorf("invalid custom field number: %w", err)
 		}
 
-		return f, nil
+		return n, nil
 	case []interface{}, map[string]interface{}:
 		// TODO - in future it would be nice to convert to a JSON string
 		// however, we would need some way to differentiate between a JSON string and a regular string

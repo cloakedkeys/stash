@@ -761,12 +761,18 @@ func (r *mutationResolver) ConfigureUI(ctx context.Context, input map[string]int
 
 	if input != nil {
 		// #5483 - convert JSON numbers to float64 or int64
-		uiConfig = convertMapJSONNumbers(input)
+		uiConfig, err = convertMapJSONNumbers(input)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if partial != nil {
 		// #5483 - convert JSON numbers to float64 or int64
-		partial = convertMapJSONNumbers(partial)
+		partial, err = convertMapJSONNumbers(partial)
+		if err != nil {
+			return nil, err
+		}
 		// merge partial into existing config
 		if uiConfig == nil {
 			uiConfig = make(map[string]interface{})
@@ -791,9 +797,12 @@ func (r *mutationResolver) ConfigureUISetting(ctx context.Context, key string, v
 
 	// #5483 - convert JSON numbers to float64 or int64
 	if m, ok := value.(map[string]interface{}); ok {
-		value = convertMapJSONNumbers(m)
+		value, err = convertMapJSONNumbers(m)
 	} else if n, ok := value.(json.Number); ok {
-		value = jsonNumberToNumber(n)
+		value, err = models.JSONNumberValue(n)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%q: %w", key, err)
 	}
 
 	cfg.Set(key, value)
@@ -805,7 +814,10 @@ func (r *mutationResolver) ConfigurePlugin(ctx context.Context, pluginID string,
 	c := config.GetInstance()
 
 	// #5483 - convert JSON numbers to float64 or int64
-	input = convertMapJSONNumbers(input)
+	input, err := convertMapJSONNumbers(input)
+	if err != nil {
+		return nil, err
+	}
 	c.SetPluginConfiguration(pluginID, input)
 
 	if err := c.Write(); err != nil {

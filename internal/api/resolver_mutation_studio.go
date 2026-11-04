@@ -124,7 +124,10 @@ func (r *mutationResolver) StudioCreate(ctx context.Context, input models.Studio
 	if err != nil {
 		return nil, fmt.Errorf("converting child ids: %w", err)
 	}
-	newStudio.CustomFields = convertMapJSONNumbers(input.CustomFields)
+	newStudio.CustomFields, err = convertCustomFields(input.CustomFields)
+	if err != nil {
+		return nil, err
+	}
 
 	// Process the base 64 encoded image string
 	var imageData []byte
@@ -228,10 +231,10 @@ func (r *mutationResolver) StudioUpdate(ctx context.Context, input models.Studio
 		}
 	}
 
-	updatedStudio.CustomFields = input.CustomFields
-	// convert json.Numbers to int/float
-	updatedStudio.CustomFields.Full = convertMapJSONNumbers(updatedStudio.CustomFields.Full)
-	updatedStudio.CustomFields.Partial = convertMapJSONNumbers(updatedStudio.CustomFields.Partial)
+	updatedStudio.CustomFields, err = handleUpdateCustomFields(input.CustomFields)
+	if err != nil {
+		return nil, err
+	}
 
 	// Process the base 64 encoded image string
 	var imageData []byte

@@ -63,7 +63,10 @@ func (r *mutationResolver) TagCreate(ctx context.Context, input TagCreateInput) 
 		return nil, fmt.Errorf("converting child tag ids: %w", err)
 	}
 
-	newTag.CustomFields = convertMapJSONNumbers(input.CustomFields)
+	newTag.CustomFields, err = convertCustomFields(input.CustomFields)
+	if err != nil {
+		return nil, err
+	}
 
 	// Process the base 64 encoded image string
 	var imageData []byte
@@ -135,10 +138,10 @@ func tagPartialFromInput(input TagUpdateInput, translator changesetTranslator) (
 	}
 
 	if input.CustomFields != nil {
-		updatedTag.CustomFields = *input.CustomFields
-		// convert json.Numbers to int/float
-		updatedTag.CustomFields.Full = convertMapJSONNumbers(updatedTag.CustomFields.Full)
-		updatedTag.CustomFields.Partial = convertMapJSONNumbers(updatedTag.CustomFields.Partial)
+		updatedTag.CustomFields, err = handleUpdateCustomFields(*input.CustomFields)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &updatedTag, nil

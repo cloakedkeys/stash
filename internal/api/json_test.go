@@ -1,9 +1,13 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
+	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -53,8 +57,55 @@ func TestConvertMapJSONNumbers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := convertMapJSONNumbers(tt.input)
+			result, err := convertMapJSONNumbers(tt.input)
+			assert.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// #2061: a number with an exponent or beyond int64 used to become 0.
+func TestConvertMapJSONNumbersBigNumbers(t *testing.T) {
+	got, err := convertMapJSONNumbers(map[string]interface{}{
+		"exp":      json.Number("1e20"),
+		"upperExp": json.Number("1E5"),
+		"negExp":   json.Number("-1e3"),
+		"decimal":  json.Number("1.5"),
+		"int":      json.Number("5"),
+		"beyond":   json.Number("99999999999999999999"),
+		"nested":   map[string]interface{}{"exp": json.Number("1e20")},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{
+		"exp":      1e20,
+		"upperExp": 1e5,
+		"negExp":   -1e3,
+		"decimal":  1.5,
+		"int":      int64(5),
+		"beyond":   1e20,
+		"nested":   map[string]interface{}{"exp": 1e20},
+	}, got)
+
+	_, err = convertMapJSONNumbers(map[string]interface{}{"huge": json.Number("1e400")})
+	assert.ErrorContains(t, err, `"huge"`)
+	assert.ErrorContains(t, err, "1e400")
+
+	_, err = convertMapJSONNumbers(map[string]interface{}{"nested": map[string]interface{}{"huge": json.Number("1e400")}})
+	assert.ErrorContains(t, err, `"nested"."huge"`)
+
+	_, err = handleUpdateCustomFields(models.CustomFieldsInput{Partial: map[string]interface{}{"huge": json.Number("1e400")}})
+	assert.ErrorContains(t, err, `custom field "huge"`)
+}
+
+// #2061: a plugin setting too large for a float is refused, and the plugin's
+// existing settings are kept rather than replaced.
+func TestConfigurePluginBigNumberError(t *testing.T) {
+	c := config.InitializeEmpty()
+	c.SetConfigFile(filepath.Join(t.TempDir(), "config.yml"))
+	c.SetPluginConfiguration("plugin", map[string]interface{}{"keep": int64(1)})
+
+	r := &mutationResolver{&Resolver{}}
+	_, err := r.ConfigurePlugin(context.Background(), "plugin", map[string]interface{}{"huge": json.Number("1e400")})
+	assert.ErrorContains(t, err, `"huge": invalid number "1e400"`)
+	assert.Equal(t, map[string]interface{}{"keep": int64(1)}, c.GetPluginConfiguration("plugin"))
 }

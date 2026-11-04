@@ -112,7 +112,10 @@ func (r *mutationResolver) SceneCreate(ctx context.Context, input models.SceneCr
 		}
 	}
 
-	customFields := convertMapJSONNumbers(input.CustomFields)
+	customFields, err := convertCustomFields(input.CustomFields)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		ret, err = r.Resolver.sceneService.Create(ctx, models.CreateSceneInput{
@@ -358,11 +361,11 @@ func (r *mutationResolver) sceneUpdate(ctx context.Context, input models.SceneUp
 
 	var customFields *models.CustomFieldsInput
 	if input.CustomFields != nil {
-		cfCopy := *input.CustomFields
-		customFields = &cfCopy
-		// convert json.Numbers to int/float
-		customFields.Full = convertMapJSONNumbers(customFields.Full)
-		customFields.Partial = convertMapJSONNumbers(customFields.Partial)
+		cf, err := handleUpdateCustomFields(*input.CustomFields)
+		if err != nil {
+			return nil, err
+		}
+		customFields = &cf
 	}
 
 	scene, err := qb.UpdatePartial(ctx, sceneID, *updatedScene)
@@ -469,7 +472,10 @@ func (r *mutationResolver) BulkSceneUpdate(ctx context.Context, input BulkSceneU
 
 	var customFields *models.CustomFieldsInput
 	if input.CustomFields != nil {
-		cf := handleUpdateCustomFields(*input.CustomFields)
+		cf, err := handleUpdateCustomFields(*input.CustomFields)
+		if err != nil {
+			return nil, err
+		}
 		customFields = &cf
 	}
 
@@ -700,7 +706,10 @@ func (r *mutationResolver) SceneMerge(ctx context.Context, input SceneMergeInput
 		}
 
 		if input.Values.CustomFields != nil {
-			cf := handleUpdateCustomFields(*input.Values.CustomFields)
+			cf, err := handleUpdateCustomFields(*input.Values.CustomFields)
+			if err != nil {
+				return nil, err
+			}
 			customFields = &cf
 		}
 	} else {
