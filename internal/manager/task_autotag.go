@@ -97,9 +97,10 @@ func (j *autoTagJob) autoTagFiles(ctx context.Context, progress *job.Progress, p
 
 func (j *autoTagJob) autoTagSpecific(ctx context.Context, progress *job.Progress) {
 	input := j.input
-	performerIds := input.Performers
-	studioIds := input.Studios
-	tagIds := input.Tags
+	// auto tag each item once, even if its id is listed more than once
+	performerIds := uniqueIDStrings(input.Performers)
+	studioIds := uniqueIDStrings(input.Studios)
+	tagIds := uniqueIDStrings(input.Tags)
 
 	performerCount := len(performerIds)
 	studioCount := len(studioIds)

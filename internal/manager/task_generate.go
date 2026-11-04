@@ -579,6 +579,30 @@ func generateIDs(ids []string) []int {
 	return sliceutil.Unique(ret)
 }
 
+// uniqueIDStrings keeps each id once, in the order given, for tasks that
+// take ids as text. Ids that are the same number written differently, such
+// as "1" and "01", count as the same, as in generateIDs. Anything else, such
+// as "*" or a value that isn't a number, is kept as written so the task
+// handles it as before.
+func uniqueIDStrings(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	ret := make([]string, 0, len(ids))
+	for _, id := range ids {
+		key := id
+		if n, err := strconv.Atoi(id); err == nil {
+			key = strconv.Itoa(n)
+		}
+
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		ret = append(ret, id)
+	}
+
+	return ret
+}
+
 // generateTargets are the items named by the id lists of a generate input.
 type generateTargets struct {
 	scenes  []*models.Scene
