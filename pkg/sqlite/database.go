@@ -339,29 +339,43 @@ func (db *Database) stampAppVersionOn(ctx context.Context) error {
 }
 
 func (db *Database) openReadDB() error {
+	return db.openReadDBWithDriver(sqlite3Driver)
+}
+
+func (db *Database) openReadDBWithDriver(driverName string) error {
 	const (
 		disableForeignKeys = false
 		writable           = false
 	)
 	var err error
-	db.readDB, err = db.open(disableForeignKeys, writable)
+	db.readDB, err = db.openWithDriver(driverName, disableForeignKeys, writable)
+	if err != nil {
+		return err
+	}
 	db.readDB.SetMaxOpenConns(maxReadConnections)
 	db.readDB.SetMaxIdleConns(maxReadConnections)
 	db.readDB.SetConnMaxIdleTime(dbConnTimeout)
-	return err
+	return nil
 }
 
 func (db *Database) openWriteDB() error {
+	return db.openWriteDBWithDriver(sqlite3Driver)
+}
+
+func (db *Database) openWriteDBWithDriver(driverName string) error {
 	const (
 		disableForeignKeys = false
 		writable           = true
 	)
 	var err error
-	db.writeDB, err = db.open(disableForeignKeys, writable)
+	db.writeDB, err = db.openWithDriver(driverName, disableForeignKeys, writable)
+	if err != nil {
+		return err
+	}
 	db.writeDB.SetMaxOpenConns(maxWriteConnections)
 	db.writeDB.SetMaxIdleConns(maxWriteConnections)
 	db.writeDB.SetConnMaxIdleTime(dbConnTimeout)
-	return err
+	return nil
 }
 
 func (db *Database) Remove() error {
