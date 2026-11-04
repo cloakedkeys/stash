@@ -1,9 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
+	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/assert"
 )
@@ -92,4 +95,17 @@ func TestConvertMapJSONNumbersBigNumbers(t *testing.T) {
 
 	_, err = handleUpdateCustomFields(models.CustomFieldsInput{Partial: map[string]interface{}{"huge": json.Number("1e400")}})
 	assert.ErrorContains(t, err, `custom field "huge"`)
+}
+
+// #2061: a plugin setting too large for a float is refused, and the plugin's
+// existing settings are kept rather than replaced.
+func TestConfigurePluginBigNumberError(t *testing.T) {
+	c := config.InitializeEmpty()
+	c.SetConfigFile(filepath.Join(t.TempDir(), "config.yml"))
+	c.SetPluginConfiguration("plugin", map[string]interface{}{"keep": int64(1)})
+
+	r := &mutationResolver{&Resolver{}}
+	_, err := r.ConfigurePlugin(context.Background(), "plugin", map[string]interface{}{"huge": json.Number("1e400")})
+	assert.ErrorContains(t, err, `"huge": invalid number "1e400"`)
+	assert.Equal(t, map[string]interface{}{"keep": int64(1)}, c.GetPluginConfiguration("plugin"))
 }

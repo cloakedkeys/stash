@@ -79,3 +79,50 @@ func TestPerformerUpdateCustomFieldBigNumbersOnDatabase(t *testing.T) {
 	require.Contains(t, body, `custom field \"big\": invalid number \"1e400\"`)
 	require.Equal(t, 1e20, stored()["big"])
 }
+
+// #2061: bulkPerformerUpdate refuses a custom field too large for a float and
+// leaves every performer's custom fields as they were. Runs on SQLite, or
+// PostgreSQL when PGSQL_TEST is set.
+func TestBulkPerformerUpdateCustomFieldBigNumberErrorOnDatabase(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	db := openUserDataTestDatabase(ctx, t)
+
+	user := models.User{Username: "editor", Roles: models.Roles{models.RoleEnumModify}}
+	first := models.NewPerformer()
+	first.Name = "First"
+	second := models.NewPerformer()
+	second.Name = "Second"
+	keep := map[string]interface{}{"keep": int64(5)}
+	require.NoError(t, txn.WithTxn(ctx, db, func(ctx context.Context) error {
+		if err := db.User().Create(ctx, &user, ""); err != nil {
+			return err
+		}
+		for _, p := range []*models.Performer{&first, &second} {
+			if err := db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: p, CustomFields: keep}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+
+	r := &Resolver{repository: db.Repository(), hookExecutor: &mockHookExecutor{}}
+	srv := newTestGraphQLServer(r)
+	srv.AroundFields(r.LibraryLimitMiddleware)
+	gql := loaders.Middleware{Repository: r.repository}.Middleware(srv)
+
+	query := fmt.Sprintf(`mutation($cf: Map) { bulkPerformerUpdate(input:{ids:["%d","%d"],custom_fields:{partial:$cf}}) { id } }`, first.ID, second.ID)
+	body := customFieldsRequest(t, gql, user, query, `{"cf":{"keep":1,"big":1e400}}`)
+	require.Contains(t, body, `custom field \"big\": invalid number \"1e400\"`)
+	require.Contains(t, body, `"data":{"bulkPerformerUpdate":null}`)
+
+	for _, p := range []models.Performer{first, second} {
+		var got map[string]interface{}
+		require.NoError(t, txn.WithReadTxn(ctx, db, func(ctx context.Context) error {
+			var err error
+			got, err = db.Performer().GetCustomFields(ctx, p.ID)
+			return err
+		}))
+		require.Equal(t, keep, got, p.Name)
+	}
+}
