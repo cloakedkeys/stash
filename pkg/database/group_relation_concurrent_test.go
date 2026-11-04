@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stashapp/stash/pkg/group"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -233,6 +234,90 @@ func TestGroupRelationConcurrentEdits(t *testing.T) {
 					assert.Equal(t, j+1, oi, "round %d containing %d position %d", round, i, j)
 				}
 			}
+		}
+	})
+
+	// two edits at once that would together put groups inside each other: one
+	// must be refused with the usual message, as one at a time (#2113)
+	t.Run("loops", func(t *testing.T) {
+		svc := &group.Service{Repository: db.Group()}
+		containedBy := func(id, containing int) func(ctx context.Context) error {
+			return func(ctx context.Context) error {
+				p := models.NewGroupPartial()
+				p.ContainingGroups = &models.UpdateGroupDescriptions{Groups: groupDescriptions(containing), Mode: models.RelationshipUpdateModeAdd}
+				_, err := svc.UpdatePartial(ctx, id, p, group.ImageInput{}, group.ImageInput{})
+				return err
+			}
+		}
+		contains := func(id, sub int) func(ctx context.Context) error {
+			return func(ctx context.Context) error {
+				p := models.NewGroupPartial()
+				p.SubGroups = &models.UpdateGroupDescriptions{Groups: groupDescriptions(sub), Mode: models.RelationshipUpdateModeAdd}
+				_, err := svc.UpdatePartial(ctx, id, p, group.ImageInput{}, group.ImageInput{})
+				return err
+			}
+		}
+		addSub := func(id, sub int) func(ctx context.Context) error {
+			return func(ctx context.Context) error {
+				return svc.AddSubGroups(ctx, id, groupDescriptions(sub), nil)
+			}
+		}
+		create := func(containing, sub int) func(ctx context.Context) error {
+			return func(ctx context.Context) error {
+				g := models.NewGroup()
+				g.Name = "concurrent loop new"
+				g.ContainingGroups = models.NewRelatedGroupDescriptions(groupDescriptions(containing))
+				g.SubGroups = models.NewRelatedGroupDescriptions(groupDescriptions(sub))
+				if err := svc.Create(ctx, &models.CreateGroupInput{Group: &g}); err != nil {
+					return err
+				}
+				track(g.ID)
+				return nil
+			}
+		}
+
+		tests := []struct {
+			name string
+			// edits for groups a, b and c; a already contains b
+			edits func(a, b, c int) []func(ctx context.Context) error
+		}{
+			{"containing groups", func(a, b, c int) []func(ctx context.Context) error {
+				return []func(ctx context.Context) error{containedBy(c, b), containedBy(a, c)}
+			}},
+			{"sub-groups", func(a, b, c int) []func(ctx context.Context) error {
+				return []func(ctx context.Context) error{contains(b, c), contains(c, a)}
+			}},
+			{"addGroupSubGroups", func(a, b, c int) []func(ctx context.Context) error {
+				return []func(ctx context.Context) error{addSub(b, c), addSub(c, a)}
+			}},
+			{"each way round", func(a, b, c int) []func(ctx context.Context) error {
+				return []func(ctx context.Context) error{containedBy(b, c), contains(b, c)}
+			}},
+			{"a new group", func(a, b, c int) []func(ctx context.Context) error {
+				// a new group inside b that contains c, while b is put inside c
+				return []func(ctx context.Context) error{create(b, c), containedBy(b, c)}
+			}},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				for round := 0; round < 5; round++ {
+					g := newGroups(3, fmt.Sprintf("concurrent loop %s %d", tt.name, round))
+					a, b, c := g[0], g[1], g[2]
+					require.NoError(t, withTxn(func(ctx context.Context) error {
+						return updateGroupLinks(ctx, a, false, models.RelationshipUpdateModeAdd, b)
+					}))
+
+					refused := 0
+					for i, err := range runAtOnce(tt.edits(a, b, c)) {
+						if err != nil {
+							refused++
+							assert.ErrorIs(t, err, group.ErrHierarchyLoop, "round %d edit %d", round, i)
+						}
+					}
+					assert.Equal(t, 1, refused, "round %d", round)
+				}
+			})
 		}
 	})
 

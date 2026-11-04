@@ -37,10 +37,38 @@ func (s *Service) validateCreate(ctx context.Context, group *models.Group) error
 		return err
 	}
 
+	// a new group can only end up in a loop if it has both
+	if len(containingIDs) > 0 && len(subIDs) > 0 {
+		if err := s.lockHierarchy(ctx); err != nil {
+			return err
+		}
+	}
+
 	if err := s.validateGroupHierarchy(ctx, containingIDs, subIDs); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+// HierarchyLocker is a group store whose write transactions can run at the
+// same time, as on PostgreSQL.
+type HierarchyLocker interface {
+	// LockGroupHierarchy makes the caller wait for any other transaction
+	// holding the lock to end, and holds it until the caller's transaction
+	// ends.
+	LockGroupHierarchy(ctx context.Context) error
+}
+
+// lockHierarchy makes edits that may add containing or sub-group links take
+// turns, from the loop check until they're saved. Otherwise two edits at once,
+// "A contains B" and "B contains A", could each pass the check before the other
+// is saved, and leave a loop (#2113). It is taken before the edit changes
+// anything. SQLite stores don't need it: they write one transaction at a time.
+func (s *Service) lockHierarchy(ctx context.Context) error {
+	if l, ok := s.Repository.(HierarchyLocker); ok {
+		return l.LockGroupHierarchy(ctx)
+	}
 	return nil
 }
 
@@ -162,6 +190,11 @@ func (s *Service) validateUpdateGroupHierarchy(ctx context.Context, existing *mo
 	// no need to validate if there are no changes
 	if containingGroups == nil && subGroups == nil {
 		return nil
+	}
+
+	// lock before reading the group's links, so they're the latest
+	if err := s.lockHierarchy(ctx); err != nil {
+		return err
 	}
 
 	if err := existing.LoadContainingGroupIDs(ctx, s.Repository); err != nil {

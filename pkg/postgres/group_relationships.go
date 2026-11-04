@@ -114,6 +114,26 @@ func lockSubGroupOrder(ctx context.Context, containingIDs []int) error {
 	return nil
 }
 
+// hierarchyLockID is the second key of the one lock LockGroupHierarchy takes.
+// No group has id 0, so it can't be one of lockSubGroupOrder's locks.
+const hierarchyLockID = 0
+
+// LockGroupHierarchy makes edits that may add containing or sub-group links
+// take turns, from the group service's loop check until their transactions
+// end, so each check sees the links the edit before it saved (#2113).
+//
+// The service takes it before the edit changes anything, so before any
+// lockSubGroupOrder lock or row lock: an edit waiting for it holds no lock yet
+// from that edit. A bulk edit gives every group the same links, so it takes
+// this lock on its first group, before anything else. Edits that don't take it,
+// such as an import, a reorder or a removal, never wait for it.
+func (qb *GroupStore) LockGroupHierarchy(ctx context.Context) error {
+	if _, err := dbWrapper.Exec(ctx, "SELECT pg_advisory_xact_lock(?, ?)", groupRelationsLockSpace, hierarchyLockID); err != nil {
+		return fmt.Errorf("locking group hierarchy: %w", err)
+	}
+	return nil
+}
+
 // groupIDs returns the group ids in groups.
 func groupIDs(groups []models.GroupIDDescription) []int {
 	ret := make([]int, len(groups))
