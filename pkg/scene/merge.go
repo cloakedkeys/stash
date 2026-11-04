@@ -190,7 +190,8 @@ func (s *Service) moveMarkerFiles(ctx context.Context, markers []movedMarker, de
 
 			if srcExists && !destExists {
 				destDir := filepath.Dir(e.dest)
-				if err := fsutil.EnsureDir(destDir); err != nil {
+				// in the hash layout, the folder's parent may not exist either
+				if err := fsutil.EnsureDirAll(destDir); err != nil {
 					logger.Errorf("Error creating generated marker folder %s: %v", destDir, err)
 					continue
 				}
