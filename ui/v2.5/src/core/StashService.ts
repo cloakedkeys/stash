@@ -3894,6 +3894,11 @@ export const mutateMigrateBlobs = (input: GQL.MigrateBlobsInput) =>
     variables: { input },
   });
 
+export const mutateMigrateGeneratedLayout = () =>
+  client.mutate<GQL.MigrateGeneratedLayoutMutation>({
+    mutation: GQL.MigrateGeneratedLayoutDocument,
+  });
+
 /// Misc
 
 export const useDirectory = (path?: string) =>
