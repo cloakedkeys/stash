@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil"
 )
 
 const (
@@ -361,16 +361,14 @@ func (qb *StoryStore) FindMany(ctx context.Context, ids []int) ([]*models.Story,
 	}
 
 	stories := make([]*models.Story, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	unsorted, err := qb.FindByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, s := range unsorted {
-		i := slices.Index(ids, s.ID)
-		stories[i] = s
-	}
+	sliceutil.PlaceByKey(stories, positions, unsorted, func(s *models.Story) int { return s.ID })
 
 	for i := range stories {
 		if stories[i] == nil {

@@ -10,6 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil"
 )
 
 const idColumn = "id"
@@ -460,10 +461,15 @@ type relatedFileRow struct {
 	Primary bool          `db:"primary"`
 }
 
+// idToIndexMap maps each id to its first position in ids. After filling
+// results by these positions, call sliceutil.FillRepeats so that a repeated id
+// gets the same result at each of its positions.
 func idToIndexMap(ids []int) map[int]int {
-	ret := make(map[int]int)
+	ret := make(map[int]int, len(ids))
 	for i, id := range ids {
-		ret[id] = i
+		if _, ok := ret[id]; !ok {
+			ret[id] = i
+		}
 	}
 	return ret
 }
@@ -510,6 +516,8 @@ func (r *filesRepository) getMany(ctx context.Context, ids []int, primaryOnly bo
 			ret[idToIndex[id]] = append(ret[idToIndex[id]], row.FileID)
 		}
 	}
+
+	sliceutil.FillRepeats(ret, ids)
 
 	return ret, nil
 }

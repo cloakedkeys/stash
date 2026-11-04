@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/doug-martin/goqu/v9/exp"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/stashapp/stash/pkg/librarylimit"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil"
 )
 
 const (
@@ -499,16 +499,14 @@ func (qb *AudioStore) FindMany(ctx context.Context, ids []int) ([]*models.Audio,
 	}
 
 	audios := make([]*models.Audio, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	unsorted, err := qb.FindByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, s := range unsorted {
-		i := slices.Index(ids, s.ID)
-		audios[i] = s
-	}
+	sliceutil.PlaceByKey(audios, positions, unsorted, func(s *models.Audio) int { return s.ID })
 
 	for i := range audios {
 		if audios[i] == nil {

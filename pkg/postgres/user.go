@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
@@ -337,22 +336,26 @@ func (qb *UserStore) FindAdminUsers(ctx context.Context) ([]*models.User, error)
 
 func (qb *UserStore) FindMany(ctx context.Context, ids []int) ([]*models.User, error) {
 	ret := make([]*models.User, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	table := qb.table()
-	q := qb.selectDataset().Prepared(true).Where(table.Col(idColumn).In(ids))
-	unsorted, err := qb.getMany(ctx, q)
-	if err != nil {
-		return nil, err
-	}
+	if err := batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := qb.selectDataset().Prepared(true).Where(table.Col(idColumn).In(batch))
+		unsorted, err := qb.getMany(ctx, q)
+		if err != nil {
+			return err
+		}
 
-	for _, s := range unsorted {
-		i := slices.Index(ids, s.ID)
-		ret[i] = s
+		sliceutil.PlaceByKey(ret, positions, unsorted, func(s *models.User) int { return s.ID })
+
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	for i := range ret {
 		if ret[i] == nil {
-			return nil, fmt.Errorf("scene marker with id %d not found", ids[i])
+			return nil, fmt.Errorf("user with id %d not found", ids[i])
 		}
 	}
 

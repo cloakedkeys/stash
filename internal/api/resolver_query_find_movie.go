@@ -24,7 +24,7 @@ func (r *queryResolver) FindMovie(ctx context.Context, id string) (ret *models.G
 }
 
 func (r *queryResolver) FindMovies(ctx context.Context, movieFilter *models.GroupFilterType, filter *models.FindFilterType, ids []string) (ret *FindMoviesResultType, err error) {
-	idInts, err := handleIDList(ids, "ids")
+	idInts, err := handleFindIDList(ids, "ids")
 	if err != nil {
 		return nil, err
 	}

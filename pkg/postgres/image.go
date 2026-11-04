@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strconv"
 
 	"github.com/jmoiron/sqlx"
@@ -460,6 +459,7 @@ func (qb *ImageStore) FindMany(ctx context.Context, ids []int) ([]*models.Image,
 	}
 
 	images := make([]*models.Image, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	if len(ids) == 0 {
 		return images, nil
@@ -472,10 +472,7 @@ func (qb *ImageStore) FindMany(ctx context.Context, ids []int) ([]*models.Image,
 			return err
 		}
 
-		for _, s := range unsorted {
-			i := slices.Index(ids, s.ID)
-			images[i] = s
-		}
+		sliceutil.PlaceByKey(images, positions, unsorted, func(s *models.Image) int { return s.ID })
 
 		return nil
 	}); err != nil {

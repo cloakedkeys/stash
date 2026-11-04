@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -574,16 +573,14 @@ func (qb *SceneStore) FindMany(ctx context.Context, ids []int) ([]*models.Scene,
 	}
 
 	scenes := make([]*models.Scene, len(ids))
+	positions := sliceutil.KeyPositions(ids)
 
 	unsorted, err := qb.FindByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, s := range unsorted {
-		i := slices.Index(ids, s.ID)
-		scenes[i] = s
-	}
+	sliceutil.PlaceByKey(scenes, positions, unsorted, func(s *models.Scene) int { return s.ID })
 
 	for i := range scenes {
 		if scenes[i] == nil {

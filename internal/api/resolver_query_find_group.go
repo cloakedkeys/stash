@@ -24,7 +24,7 @@ func (r *queryResolver) FindGroup(ctx context.Context, id string) (ret *models.G
 }
 
 func (r *queryResolver) FindGroups(ctx context.Context, groupFilter *models.GroupFilterType, filter *models.FindFilterType, ids []string) (ret *FindGroupsResultType, err error) {
-	idInts, err := handleIDList(ids, "ids")
+	idInts, err := handleFindIDList(ids, "ids")
 	if err != nil {
 		return nil, err
 	}

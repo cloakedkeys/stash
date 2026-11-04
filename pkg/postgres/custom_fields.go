@@ -12,6 +12,7 @@ import (
 	"github.com/doug-martin/goqu/v9/exp"
 	"github.com/jmoiron/sqlx"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil"
 )
 
 const maxCustomFieldNameLength = 64
@@ -253,10 +254,7 @@ func (s *customFieldsStore) GetCustomFieldsBulk(ctx context.Context, ids []int) 
 		ret[i] = make(map[string]interface{})
 	}
 
-	idi := make(map[int]int, len(ids))
-	for i, id := range ids {
-		idi[id] = i
-	}
+	idi := idToIndexMap(ids)
 
 	err := queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
 		var err error
@@ -281,6 +279,8 @@ func (s *customFieldsStore) GetCustomFieldsBulk(ctx context.Context, ids []int) 
 	if err != nil {
 		return nil, fmt.Errorf("getting custom fields: %w", err)
 	}
+
+	sliceutil.FillRepeats(ret, ids)
 
 	return ret, nil
 }

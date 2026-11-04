@@ -24,7 +24,7 @@ func (r *queryResolver) FindGallery(ctx context.Context, id string) (ret *models
 }
 
 func (r *queryResolver) FindGalleries(ctx context.Context, galleryFilter *models.GalleryFilterType, filter *models.FindFilterType, ids []string) (ret *FindGalleriesResultType, err error) {
-	idInts, err := handleIDList(ids, "ids")
+	idInts, err := handleFindIDList(ids, "ids")
 	if err != nil {
 		return nil, err
 	}

@@ -48,7 +48,7 @@ func (r *queryResolver) FindAudios(
 	filter *models.FindFilterType,
 ) (ret *FindAudiosResultType, err error) {
 	var audioIDs []int
-	audioIDs, err = handleIDList(ids, "ids")
+	audioIDs, err = handleFindIDList(ids, "ids")
 	if err != nil {
 		return nil, err
 	}

@@ -24,7 +24,7 @@ func (r *queryResolver) FindTag(ctx context.Context, id string) (ret *models.Tag
 }
 
 func (r *queryResolver) FindTags(ctx context.Context, tagFilter *models.TagFilterType, filter *models.FindFilterType, ids []string) (ret *FindTagsResultType, err error) {
-	idInts, err := handleIDList(ids, "ids")
+	idInts, err := handleFindIDList(ids, "ids")
 	if err != nil {
 		return nil, err
 	}
