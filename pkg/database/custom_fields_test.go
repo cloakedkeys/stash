@@ -5,10 +5,13 @@ package database_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type customFieldsReaderWriter interface {
@@ -251,6 +254,72 @@ func TestImageSetCustomFields(t *testing.T) {
 	imageIdx := imageIdx2WithGallery
 
 	testSetCustomFields(t, "Image", db.Image(), imageIDs[imageIdx], getImageCustomFields(imageIdx))
+}
+
+// A custom field value reads as the same text on both databases, so includes,
+// excludes and regex filters find the same items (#2056). Both read a value as
+// SQLite always has.
+func TestCustomFieldValueText(t *testing.T) {
+	performerIdx := performerIdx1WithScene
+	fields := map[string]interface{}{
+		"text_one":   float64(1.0),
+		"text_big":   float64(1e20),
+		"text_small": float64(0.00001),
+		"text_true":  true,
+		"text_false": false,
+		"text_neg":   float64(-2),
+		"text_int":   int64(5),
+	}
+
+	tests := []struct {
+		field    string
+		modifier models.CriterionModifier
+		value    interface{}
+		found    bool
+	}{
+		{"text_one", models.CriterionModifierMatchesRegex, `^1\.0$`, true},
+		{"text_one", models.CriterionModifierIncludes, "1.0", true},
+		{"text_one", models.CriterionModifierExcludes, "1.0", false},
+		{"text_one", models.CriterionModifierNotMatchesRegex, `^1\.0$`, false},
+		{"text_big", models.CriterionModifierMatchesRegex, `^1\.0e\+20$`, true},
+		{"text_big", models.CriterionModifierIncludes, "100000", false},
+		{"text_small", models.CriterionModifierMatchesRegex, `^1\.0e-05$`, true},
+		{"text_small", models.CriterionModifierIncludes, "0.00001", false},
+		{"text_true", models.CriterionModifierMatchesRegex, `^1$`, true},
+		{"text_true", models.CriterionModifierIncludes, "true", false},
+		{"text_true", models.CriterionModifierExcludes, "true", true},
+		{"text_false", models.CriterionModifierMatchesRegex, `^0$`, true},
+		{"text_neg", models.CriterionModifierMatchesRegex, `^-2\.0$`, true},
+		{"text_int", models.CriterionModifierMatchesRegex, `^5$`, true},
+		// a number searched for as SQLite's store writes it: 1.0 is 1
+		{"text_int", models.CriterionModifierIncludes, json.Number("5.0"), true},
+		{"text_one", models.CriterionModifierIncludes, json.Number("1.0"), true},
+	}
+
+	for _, tt := range tests {
+		name := fmt.Sprintf("%s %s %T %v", tt.field, tt.modifier, tt.value, tt.value)
+		runWithRollbackTxn(t, name, func(t *testing.T, ctx context.Context) {
+			id := performerIDs[performerIdx]
+			require.NoError(t, db.Performer().SetCustomFields(ctx, id, models.CustomFieldsInput{Partial: fields}))
+
+			performers, _, err := db.Performer().Query(ctx, &models.PerformerFilterType{
+				Name: &models.StringCriterionInput{
+					Value:    getPerformerStringValue(performerIdx, "Name"),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{Field: tt.field, Modifier: tt.modifier, Value: []any{tt.value}},
+				},
+			}, nil)
+			require.NoError(t, err)
+
+			if tt.found {
+				assert.Contains(t, performersToIDs(performers), id)
+			} else {
+				assert.NotContains(t, performersToIDs(performers), id)
+			}
+		})
+	}
 }
 
 func TestGroupSetCustomFields(t *testing.T) {

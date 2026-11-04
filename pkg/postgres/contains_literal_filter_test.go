@@ -50,12 +50,12 @@ func TestContainsLiteralText(t *testing.T) {
 	execSQL, selectIDs := containsLiteralDatabase(t)
 	execSQL("CREATE TEMP TABLE literal_items (id INTEGER PRIMARY KEY, value TEXT, path TEXT, basename TEXT)")
 	execSQL("CREATE TEMP TABLE literal_strings (item_id INTEGER, value TEXT)")
-	execSQL("CREATE TEMP TABLE literal_custom (item_id INTEGER, field TEXT, value JSONB)")
+	execSQL("CREATE TEMP TABLE literal_custom (item_id INTEGER, field TEXT, value JSONB, type TEXT)")
 	values := []string{"my part_one clip", "my part-one clip", "my partXone clip", "50% done", "500 things", `my part\one clip`, "my partone clip", "my PART_ONE clip", "part_one other clip"}
 	for i, value := range values {
 		execSQL("INSERT INTO literal_items VALUES (?, ?, ?, ?)", i+1, value, "library", value)
 		execSQL("INSERT INTO literal_strings VALUES (?, ?)", i+1, value)
-		execSQL("INSERT INTO literal_custom VALUES (?, ?, to_jsonb(?::text))", i+1, "text", value)
+		execSQL("INSERT INTO literal_custom VALUES (?, ?, to_jsonb(?::text), 'string')", i+1, "text", value)
 	}
 	execSQL("INSERT INTO literal_items VALUES (10, NULL, NULL, NULL)")
 

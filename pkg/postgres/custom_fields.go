@@ -311,11 +311,68 @@ func customFieldStrings(values []interface{}) []interface{} {
 	return ret
 }
 
+// sqliteFloatText is the SQL for a number as SQLite writes a REAL as text:
+// "1.0", "0.0001", "1.0e-05", "1.0e+20". SQLite uses at most 17 significant
+// digits, and the plain form unless the exponent is below -4 or above 16. A
+// float is stored here with the fewest digits that read back as the same
+// float, and this lays those digits out as SQLite does. For a float typed with
+// up to 13 significant digits SQLite almost always writes those same digits;
+// with more, or for a few starting with 9 (9.59e-10), it can write up to 17,
+// and the two can still differ.
+//
+// s is the sign, i and f the digits before and after the point, d the
+// significant digits and e the exponent.
+const sqliteFloatText = `(SELECT CASE
+	WHEN d = '' THEN '0.0'
+	WHEN e < -4 OR e > 16 THEN s || left(d, 1) || '.' || COALESCE(NULLIF(substr(d, 2), ''), '0') ||
+		'e' || CASE WHEN e < 0 THEN '-' ELSE '+' END || CASE WHEN abs(e) < 10 THEN '0' ELSE '' END || abs(e)
+	WHEN e < 0 THEN s || '0.' || repeat('0', -e - 1) || d
+	WHEN length(d) <= e + 1 THEN s || d || repeat('0', e + 1 - length(d)) || '.0'
+	ELSE s || left(d, e + 1) || '.' || substr(d, e + 2)
+END FROM (
+	SELECT s, rtrim(ltrim(i || f, '0'), '0') AS d,
+		CASE WHEN i <> '0' THEN length(i) - 1 ELSE length(ltrim(f, '0')) - length(f) - 1 END AS e
+	FROM (
+		SELECT CASE WHEN n < 0 THEN '-' ELSE '' END AS s,
+			split_part(abs(n)::text, '.', 1) AS i, split_part(abs(n)::text, '.', 2) AS f
+		FROM (SELECT %[1]s.value::numeric AS n) AS cf_number
+	) AS cf_parts
+) AS cf_digits)`
+
+// customFieldText is the SQL for the custom field value of joinAs as text, the
+// way SQLite reads it, so that includes, excludes and regex filters find the
+// same items on both databases. SQLite stores true and false as 1 and 0, and a
+// float as a REAL; other values read the same on both.
+func customFieldText(joinAs string) string {
+	return fmt.Sprintf(`(CASE
+	WHEN jsonb_typeof(%[1]s.value) = 'boolean' THEN CASE WHEN %[1]s.value = 'true'::jsonb THEN '1' ELSE '0' END
+	WHEN jsonb_typeof(%[1]s.value) = 'number' AND %[1]s.type = 'float64' THEN `+sqliteFloatText+`
+	ELSE %[1]s.value->>0
+END)`, joinAs)
+}
+
+// customFieldSearchText is a criterion value as text for includes and
+// excludes, written as SQLite's store writes it: a JSON number becomes an
+// integer or a float first, so 1.0 searches for "1".
+func customFieldSearchText(v interface{}) string {
+	if n, ok := v.(json.Number); ok {
+		if i, err := n.Int64(); err == nil {
+			return fmt.Sprint(i)
+		}
+		if f, err := n.Float64(); err == nil {
+			return fmt.Sprint(f)
+		}
+	}
+	return fmt.Sprint(v)
+}
+
 func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs string, cc models.CustomFieldCriterionInput) {
 	// convert values
 	cv := append([]interface{}{}, cc.Value...)
 
+	// equals and not equals compare this, as before
 	valueAsString := fmt.Sprintf("%s.value->>0", joinAs)
+	valueAsText := customFieldText(joinAs)
 	valueAsNumber := fmt.Sprintf("%s.value::numeric", joinAs)
 	valueIsNumber := fmt.Sprintf("jsonb_typeof(%s.value) = 'number'", joinAs)
 
@@ -329,13 +386,13 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 	case models.CriterionModifierIncludes:
 		clauses := make([]sqlClause, len(cv))
 		for i, v := range cv {
-			clauses[i] = makeClause(fmt.Sprintf("%s ILIKE ? ESCAPE '\\'", valueAsString), like(fmt.Sprint(v)))
+			clauses[i] = makeClause(fmt.Sprintf("%s ILIKE ? ESCAPE '\\'", valueAsText), like(customFieldSearchText(v)))
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 		f.whereClauses = append(f.whereClauses, clauses...)
 	case models.CriterionModifierExcludes:
 		for _, v := range cv {
-			f.addWhere(fmt.Sprintf("(%s NOT ILIKE ? ESCAPE '\\' OR %s.value IS NULL)", valueAsString, joinAs), like(fmt.Sprint(v)))
+			f.addWhere(fmt.Sprintf("(%s NOT ILIKE ? ESCAPE '\\' OR %s.value IS NULL)", valueAsText, joinAs), like(customFieldSearchText(v)))
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierMatchesRegex:
@@ -349,7 +406,7 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 				f.setError(err)
 				return
 			}
-			f.addWhere(fmt.Sprintf("(%s) ~ ?", valueAsString), translated)
+			f.addWhere(fmt.Sprintf("(%s) ~ ?", valueAsText), translated)
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierNotMatchesRegex:
@@ -363,7 +420,7 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 				f.setError(err)
 				return
 			}
-			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR (%s) !~ ?)", joinAs, valueAsString), translated)
+			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR (%s) !~ ?)", joinAs, valueAsText), translated)
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierIsNull:
