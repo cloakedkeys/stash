@@ -95,7 +95,8 @@ func newExportSpec(input *ExportObjectTypeInput) *exportSpec {
 	ids, _ := stringslice.StringSliceToIntSlice(input.Ids)
 
 	ret := &exportSpec{
-		IDs: ids,
+		// export each item once, even if its id is listed more than once
+		IDs: sliceutil.Unique(ids),
 	}
 
 	if input.All != nil {

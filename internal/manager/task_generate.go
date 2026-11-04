@@ -13,6 +13,7 @@ import (
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/scene/generate"
+	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 )
 
@@ -106,22 +107,10 @@ func (j *GenerateJob) Execute(ctx context.Context, progress *job.Progress) error
 	go func() {
 		defer close(queue)
 
-		sceneIDs, err := stringslice.StringSliceToIntSlice(j.input.SceneIDs)
-		if err != nil {
-			logger.Error(err.Error())
-		}
-		markerIDs, err := stringslice.StringSliceToIntSlice(j.input.MarkerIDs)
-		if err != nil {
-			logger.Error(err.Error())
-		}
-		imageIDs, err := stringslice.StringSliceToIntSlice(j.input.ImageIDs)
-		if err != nil {
-			logger.Error(err.Error())
-		}
-		galleryIDs, err := stringslice.StringSliceToIntSlice(j.input.GalleryIDs)
-		if err != nil {
-			logger.Error(err.Error())
-		}
+		sceneIDs := generateIDs(j.input.SceneIDs)
+		markerIDs := generateIDs(j.input.MarkerIDs)
+		imageIDs := generateIDs(j.input.ImageIDs)
+		galleryIDs := generateIDs(j.input.GalleryIDs)
 
 		g := &generate.Generator{
 			Encoder:      instance.FFMpeg,
@@ -605,4 +594,16 @@ func (j *GenerateJob) queueImageJob(g *generate.Generator, image *models.Image, 
 			}
 		}
 	}
+}
+
+// generateIDs converts the ids of items to generate for, logging any that
+// are not numbers. An id listed more than once is kept once, so each item is
+// generated for once.
+func generateIDs(ids []string) []int {
+	ret, err := stringslice.StringSliceToIntSlice(ids)
+	if err != nil {
+		logger.Error(err.Error())
+	}
+
+	return sliceutil.Unique(ret)
 }
