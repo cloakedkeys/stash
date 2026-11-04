@@ -3,6 +3,7 @@ package group
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -63,6 +64,19 @@ func (s *Service) validateUpdate(ctx context.Context, id int, partial models.Gro
 		return err
 	}
 
+	return nil
+}
+
+// validateNoRepeatedGroups refuses a group listed twice. Each group can be linked
+// once, so the database refused the second with its own UNIQUE error.
+func validateNoRepeatedGroups(ids []int) error {
+	seen := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			return fmt.Errorf("group with id %d is listed more than once", id)
+		}
+		seen[id] = struct{}{}
+	}
 	return nil
 }
 

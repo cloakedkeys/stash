@@ -167,7 +167,7 @@ func TestMissingRelationshipError(t *testing.T) {
 						require.NoError(t, update(&models.UpdateIDs{Mode: mode, IDs: []int{missing}}))
 					} else {
 						err := update(&models.UpdateIDs{Mode: mode, IDs: []int{valid, missing}})
-						require.EqualError(t, err, relationship+" not found")
+						require.EqualError(t, err, relationship+" with id -1 not found")
 					}
 				})
 			}

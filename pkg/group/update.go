@@ -66,6 +66,10 @@ func (s *Service) AddSubGroups(ctx context.Context, groupID int, subGroups []mod
 		return sg.GroupID
 	})
 
+	if err := validateNoRepeatedGroups(subGroupIDs); err != nil {
+		return err
+	}
+
 	existingSubGroupIDs, err := s.Repository.FindSubGroupIDs(ctx, groupID, subGroupIDs)
 	if err != nil {
 		return err

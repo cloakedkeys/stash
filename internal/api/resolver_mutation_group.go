@@ -126,6 +126,10 @@ func (r *mutationResolver) GroupCreate(ctx context.Context, input GroupCreateInp
 
 	// Start the transaction and save the group
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := r.linkedStudioExists(ctx, models.NewOptionalIntPtr(createGroupInput.Group.StudioID)); err != nil {
+			return err
+		}
+
 		if err = r.groupService.Create(ctx, createGroupInput); err != nil {
 			return err
 		}
@@ -236,6 +240,10 @@ func (r *mutationResolver) GroupUpdate(ctx context.Context, input GroupUpdateInp
 		qb := r.repository.Group
 
 		if err := userDataObjectExists(ctx, qb.Find, "group", groupID); err != nil {
+			return err
+		}
+
+		if err := r.linkedStudioExists(ctx, updatedGroup.StudioID); err != nil {
 			return err
 		}
 
@@ -357,6 +365,10 @@ func (r *mutationResolver) BulkGroupUpdate(ctx context.Context, input BulkGroupU
 	ret := []*models.Group{}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		if err := r.linkedStudioExists(ctx, updatedGroup.StudioID); err != nil {
+			return err
+		}
+
 		for _, groupID := range groupIDs {
 			if err := userDataObjectExists(ctx, r.repository.Group.Find, "group", groupID); err != nil {
 				return err

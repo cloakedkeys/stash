@@ -352,6 +352,12 @@ func (r *mutationResolver) TagsMerge(ctx context.Context, input TagsMergeInput) 
 		return nil, nil
 	}
 
+	// the merge deletes each source tag in turn, so a repeat was refused with
+	// "id 2 does not exist in tags" once the first was gone
+	if err := listedOnce("tag", source); err != nil {
+		return nil, err
+	}
+
 	var values *models.TagPartial
 	var imageData []byte
 

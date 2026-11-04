@@ -866,6 +866,10 @@ func (qb *FileStore) find(ctx context.Context, id models.FileID) (models.File, e
 	q := qb.selectDataset().Where(qb.tableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Find says which file isn't there
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("getting file by id %d: %w", id, err)
 	}

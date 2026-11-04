@@ -268,7 +268,7 @@ func (r *joinRepository) insert(ctx context.Context, id int, foreignIDs ...int) 
 
 	for _, fk := range foreignIDs {
 		if _, err := dbWrapper.ExecStmt(ctx, stmt, id, fk); err != nil {
-			return err
+			return joinInsertError(err, r.fkColumn, fk)
 		}
 	}
 	return nil
@@ -285,7 +285,7 @@ func (r *joinRepository) insertOrIgnore(ctx context.Context, id int, foreignIDs 
 
 	for _, fk := range foreignIDs {
 		if _, err := dbWrapper.ExecStmt(ctx, stmt, id, fk); err != nil {
-			return err
+			return joinInsertError(err, r.fkColumn, fk)
 		}
 	}
 	return nil
