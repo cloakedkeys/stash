@@ -130,6 +130,7 @@ declare namespace PluginApi {
     const MetadataImportDocument: { [key: string]: any };
     const MetadataScanDocument: { [key: string]: any };
     const MigrateBlobsDocument: { [key: string]: any };
+    const MigrateGeneratedLayoutDocument: { [key: string]: any };
     const MigrateDocument: { [key: string]: any };
     const MigrateHashNamingDocument: { [key: string]: any };
     const MigrateSceneScreenshotsDocument: { [key: string]: any };
@@ -500,6 +501,7 @@ declare namespace PluginApi {
     function useMetadataImportMutation(...args: any[]): any;
     function useMetadataScanMutation(...args: any[]): any;
     function useMigrateBlobsMutation(...args: any[]): any;
+    function useMigrateGeneratedLayoutMutation(...args: any[]): any;
     function useMigrateHashNamingMutation(...args: any[]): any;
     function useMigrateMutation(...args: any[]): any;
     function useMigrateSceneScreenshotsMutation(...args: any[]): any;
@@ -854,6 +856,7 @@ declare namespace PluginApi {
       function mutateMetadataScan(...args: any[]): any;
       function mutateMigrate(...args: any[]): any;
       function mutateMigrateBlobs(...args: any[]): any;
+      function mutateMigrateGeneratedLayout(...args: any[]): any;
       function mutateMigrateHashNaming(...args: any[]): any;
       function mutateMigrateSceneScreenshots(...args: any[]): any;
       function mutateOptimiseDatabase(...args: any[]): any;

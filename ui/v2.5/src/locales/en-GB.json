@@ -110,6 +110,7 @@
     "migrate_blobs": "Migrate blobs",
     "migrate_scene_screenshots": "Migrate scene screenshots",
     "migrate_screenshots": "Migrate Screenshots",
+    "move": "Move",
     "next_action": "Next",
     "not_running": "not running",
     "open_in_external_player": "Open in external player",
@@ -717,6 +718,10 @@
       "migrate_blobs": {
         "delete_old": "Delete old data",
         "description": "Move images and other stored data to the current blob storage. Run it after changing that setting. It can delete the old copies afterwards."
+      },
+      "migrate_generated_layout": {
+        "description": "Move previews, sprites, transcodes, heatmaps, marker files and image thumbnails made by older versions into the current folder layout, grouped by hash. Optional: older files are used where they are.",
+        "heading": "Move generated files to the current layout"
       },
       "migrate_hash_files": "Used after changing the Generated file naming hash to rename existing generated files to the new hash format.",
       "migrate_scene_screenshots": {

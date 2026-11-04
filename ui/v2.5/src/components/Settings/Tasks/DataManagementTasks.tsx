@@ -10,6 +10,7 @@ import {
   mutateAnonymiseDatabase,
   mutateMigrateSceneScreenshots,
   mutateMigrateBlobs,
+  mutateMigrateGeneratedLayout,
   mutateOptimiseDatabase,
   mutateCleanGenerated,
   mutatePurgeMissing,
@@ -663,6 +664,24 @@ export const DataManagementTasks: React.FC<IDataManagementTasks> = ({
     }
   }
 
+  async function onMigrateGeneratedLayout() {
+    try {
+      await mutateMigrateGeneratedLayout();
+      Toast.success(
+        intl.formatMessage(
+          { id: "config.tasks.added_job_to_queue" },
+          {
+            operation_name: intl.formatMessage({
+              id: "config.tasks.migrate_generated_layout.heading",
+            }),
+          }
+        )
+      );
+    } catch (err) {
+      Toast.error(err);
+    }
+  }
+
   async function onMigrateBlobs() {
     try {
       await mutateMigrateBlobs(migrateBlobsOptions);
@@ -1047,6 +1066,19 @@ export const DataManagementTasks: React.FC<IDataManagementTasks> = ({
             onClick={() => onMigrateHashNaming()}
           >
             <FormattedMessage id="actions.rename" />
+          </Button>
+        </Setting>
+
+        <Setting
+          headingID="config.tasks.migrate_generated_layout.heading"
+          subHeadingID="config.tasks.migrate_generated_layout.description"
+        >
+          <Button
+            id="migrateGeneratedLayout"
+            variant="secondary"
+            onClick={() => onMigrateGeneratedLayout()}
+          >
+            <FormattedMessage id="actions.move" />
           </Button>
         </Setting>
 
