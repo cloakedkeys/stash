@@ -4,8 +4,10 @@ package migrations
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
@@ -88,6 +90,8 @@ func schema58NewDatabase(ctx context.Context, t *testing.T, dir string) {
 // migrate task upgrades it.
 func schema58OldDatabase(ctx context.Context, t *testing.T, dir string) *sqlite.Migrator {
 	t.Helper()
+	// the earlier steps read the config, so a test can run on its own
+	config.InitializeEmpty()
 	dbPath := filepath.Join(dir, "stash.sqlite")
 	raw, err := sqlx.Open("sqlite3", dbPath)
 	require.NoError(t, err)
@@ -167,6 +171,119 @@ func TestMigration58OldDatabaseOldConfig(t *testing.T) {
 	dir := t.TempDir()
 	m := schema58OldDatabase(ctx, t, dir)
 	cfg, configFile := schema58Config(t, dir, schema58OldUI())
+	require.NoError(t, m.RunMigration(ctx, 58))
+	assertSchema58Converted(t, cfg, configFile)
+}
+
+// schema58InstallPlugins sets the plugin folder of cfg to dir/plugins and puts
+// a plugin file in it for each ID, in a subfolder as a plugin package installs it.
+func schema58InstallPlugins(t *testing.T, cfg *config.Config, dir string, ids ...string) {
+	t.Helper()
+	pluginsPath := filepath.Join(dir, "plugins")
+	for _, id := range ids {
+		pluginDir := filepath.Join(pluginsPath, id)
+		require.NoError(t, os.MkdirAll(pluginDir, 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(pluginDir, id+".yml"), []byte("name: "+id+"\n"), 0644))
+	}
+	cfg.SetInterface(config.PluginsPath, pluginsPath)
+	require.NoError(t, cfg.Write())
+}
+
+// An installed plugin whose ID has an _ keeps the settings saved under its ID.
+func TestMigration58OldConfigSnakeCasePluginKept(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	m := schema58OldDatabase(ctx, t, dir)
+	cfg, configFile := schema58Config(t, dir, schema58OldUI())
+	schema58InstallPlugins(t, cfg, dir, "my_plugin")
+	require.NoError(t, m.RunMigration(ctx, 58))
+
+	assert.Equal(t, schema58ConvertedUI(), cfg.GetUIConfiguration())
+	// the setting names are converted as before: the plugin read them in camelCase
+	assert.Equal(t, map[string]map[string]interface{}{"my_plugin": {"skipExisting": true}}, cfg.GetAllPluginConfiguration())
+	assert.Len(t, schema58Backups(t, configFile), 1)
+}
+
+// An installed plugin with a camelCase ID gets its settings back as before.
+func TestMigration58OldConfigCamelCasePluginConverted(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	m := schema58OldDatabase(ctx, t, dir)
+	cfg, configFile := schema58Config(t, dir, schema58OldUI())
+	schema58InstallPlugins(t, cfg, dir, "myPlugin", "other_plugin")
+	require.NoError(t, m.RunMigration(ctx, 58))
+	assertSchema58Converted(t, cfg, configFile)
+}
+
+// myPlugin and my_plugin both read the settings saved as my_plugin, so when
+// both are installed each gets a copy.
+func TestMigration58OldConfigBothPluginForms(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	m := schema58OldDatabase(ctx, t, dir)
+	cfg, _ := schema58Config(t, dir, schema58OldUI())
+	schema58InstallPlugins(t, cfg, dir, "myPlugin", "my_plugin")
+	require.NoError(t, m.RunMigration(ctx, 58))
+
+	assert.Equal(t, map[string]map[string]interface{}{
+		"my_plugin": {"skipExisting": true},
+		"myPlugin":  {"skipExisting": true},
+	}, cfg.GetAllPluginConfiguration())
+}
+
+// Plugins with uppercase letters and an _ in their ID get the settings saved
+// under their ID in snake_case, with the ID spelled as installed.
+func TestMigration58OldConfigMixedCasePlugins(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	m := schema58OldDatabase(ctx, t, dir)
+	cfg, _ := schema58Config(t, dir, schema58OldUI())
+	// as saved for My_plugin and My_Plugin before schema 58
+	cfg.SetInterface(config.PluginsSetting, map[string]interface{}{
+		"my_plugin":    map[string]interface{}{"skip_existing": true},
+		"other__thing": map[string]interface{}{"dry_run": true},
+	})
+	schema58InstallPlugins(t, cfg, dir, "My_plugin", "Other_Thing")
+	require.NoError(t, m.RunMigration(ctx, 58))
+
+	assert.Equal(t, map[string]map[string]interface{}{
+		"My_plugin":   {"skipExisting": true},
+		"Other_Thing": {"dryRun": true},
+	}, cfg.GetAllPluginConfiguration())
+}
+
+// my_plugin and my__plugin (My_Plugin) both convert to myPlugin, which gets
+// the settings it read before, saved as my_plugin, every time.
+func TestMigration58OldConfigConvertedKeysCollide(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	m := schema58OldDatabase(ctx, t, dir)
+	cfg, _ := schema58Config(t, dir, schema58OldUI())
+	// ten pairs, so that map order can't pass the test by chance
+	saved := make(map[string]interface{})
+	want := make(map[string]map[string]interface{})
+	for i := 0; i < 10; i++ {
+		name := fmt.Sprintf("plugin%d", i)
+		saved["my_"+name] = map[string]interface{}{"from": "my_" + name}
+		saved["my__"+name] = map[string]interface{}{"from": "my__" + name}
+		want["my"+strings.ToUpper(name[:1])+name[1:]] = map[string]interface{}{"from": "my_" + name}
+	}
+	cfg.SetInterface(config.PluginsSetting, saved)
+	require.NoError(t, cfg.Write())
+	require.NoError(t, m.RunMigration(ctx, 58))
+
+	assert.Equal(t, want, cfg.GetAllPluginConfiguration())
+}
+
+// When the plugin folder can't be read, every plugin ID is converted, as before.
+func TestMigration58OldConfigUnreadablePluginFolder(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	m := schema58OldDatabase(ctx, t, dir)
+	cfg, configFile := schema58Config(t, dir, schema58OldUI())
+	// a NUL in the path fails on every platform
+	cfg.SetInterface(config.PluginsPath, filepath.Join(dir, "plugins\x00"))
+	require.NoError(t, cfg.Write())
 	require.NoError(t, m.RunMigration(ctx, 58))
 	assertSchema58Converted(t, cfg, configFile)
 }
