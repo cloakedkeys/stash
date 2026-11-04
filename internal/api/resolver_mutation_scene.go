@@ -735,13 +735,7 @@ func (r *mutationResolver) SceneMerge(ctx context.Context, input SceneMergeInput
 		values = &v
 	}
 
-	mgr := manager.GetInstance()
-	trashPath := mgr.Config.GetDeleteTrashPath()
-	fileDeleter := &scene.FileDeleter{
-		Deleter:        file.NewDeleterWithTrash(trashPath),
-		FileNamingAlgo: mgr.Config.GetVideoFileNamingAlgorithm(),
-		Paths:          mgr.Paths,
-	}
+	fileDeleter := newSceneFileDeleter()
 
 	var ret *models.Scene
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
@@ -879,9 +873,9 @@ func float64OrZero(f *float64) float64 {
 	return *f
 }
 
-// newMarkerFileDeleter makes the deleter for a marker's generated files. It reads
-// the manager's settings, so the tests swap it to run without a manager.
-var newMarkerFileDeleter = func() *scene.FileDeleter {
+// newSceneFileDeleter makes the deleter for a scene's or marker's generated files.
+// It reads the manager's settings, so the tests swap it to run without a manager.
+var newSceneFileDeleter = func() *scene.FileDeleter {
 	mgr := manager.GetInstance()
 	return &scene.FileDeleter{
 		Deleter:        file.NewDeleterWithTrash(mgr.Config.GetDeleteTrashPath()),
@@ -924,7 +918,7 @@ func (r *mutationResolver) SceneMarkerUpdate(ctx context.Context, input SceneMar
 		}
 	}
 
-	fileDeleter := newMarkerFileDeleter()
+	fileDeleter := newSceneFileDeleter()
 
 	// Start the transaction and save the scene marker
 	if err := r.withTxn(ctx, func(ctx context.Context) error {

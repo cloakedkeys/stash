@@ -34,6 +34,10 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 
 	editor := models.User{Username: "editor", Roles: models.Roles{models.RoleEnumModify}}
 	sc := models.Scene{Title: "A scene"}
+	// for sceneMerge: one source is refused and kept, the other is merged
+	mergeDest := models.Scene{Title: "Merge destination"}
+	mergeSrc1 := models.Scene{Title: "Merge source 1"}
+	mergeSrc2 := models.Scene{Title: "Merge source 2"}
 	au := models.Audio{Title: "An audio track"}
 	img := models.Image{Title: "An image"}
 	gal := models.Gallery{Title: "A gallery"}
@@ -48,7 +52,9 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 	var marker models.SceneMarker
 	require.NoError(t, txn.WithTxn(ctx, db, func(ctx context.Context) error {
 		require.NoError(t, db.User().Create(ctx, &editor, ""))
-		require.NoError(t, db.Scene().Create(ctx, &sc, nil))
+		for _, s := range []*models.Scene{&sc, &mergeDest, &mergeSrc1, &mergeSrc2} {
+			require.NoError(t, db.Scene().Create(ctx, s, nil))
+		}
 		require.NoError(t, db.Audio().Create(ctx, &au, nil))
 		require.NoError(t, db.Image().Create(ctx, &models.CreateImageInput{Image: &img}))
 		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &gal}))
@@ -79,13 +85,13 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 	gql := newTestGraphQLServer(r)
 	gql.AroundFields(r.LibraryLimitMiddleware)
 
-	// sceneMarkerUpdate takes its deleter's settings from the manager, which the
+	// sceneMerge and sceneMarkerUpdate take their deleter's settings from the manager, which the
 	// tests don't start
-	previous := newMarkerFileDeleter
-	newMarkerFileDeleter = func() *scene.FileDeleter {
+	previous := newSceneFileDeleter
+	newSceneFileDeleter = func() *scene.FileDeleter {
 		return &scene.FileDeleter{Deleter: file.NewDeleter(), FileNamingAlgo: models.HashAlgorithmOshash, Paths: &p}
 	}
-	t.Cleanup(func() { newMarkerFileDeleter = previous })
+	t.Cleanup(func() { newSceneFileDeleter = previous })
 
 	f := fmt.Sprintf
 	refused := []struct{ mutation, want string }{
@@ -154,6 +160,9 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 		{f(`sceneMarkerUpdate(input:{id:"%d",tag_ids:["%d","%d"]}) { id }`, marker.ID, t2.ID, t2.ID), f("tag with id %d is listed more than once", t2.ID)},
 		{f(`sceneMarkerCreate(input:{title:"m",seconds:1,scene_id:"%d",primary_tag_id:"%d",tag_ids:["%d","%d","%d"]}) { id }`, sc.ID, t1.ID, t2.ID, t2.ID, t3.ID), f("tag with id %d is listed more than once", t2.ID)},
 
+		// merging a scene into one with a missing studio
+		{f(`sceneMerge(input:{source:["%d"],destination:"%d",values:{id:"%d",studio_id:"999"}}) { id }`, mergeSrc1.ID, mergeDest.ID, mergeDest.ID), "studio with id 999 not found"},
+
 		// merging a tag twice
 		{f(`tagsMerge(input:{source:["%d","%d"],destination:"%d"}) { id }`, t2.ID, t2.ID, t1.ID), f("tag with id %d is listed more than once", t2.ID)},
 	}
@@ -187,6 +196,7 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 		f(`sceneMarkerUpdate(input:{id:"%d",primary_tag_id:"%d",tag_ids:["%d"]}) { id }`, marker.ID, t2.ID, t3.ID),
 		f(`addGroupSubGroups(input:{containing_group_id:"%d",sub_groups:[{group_id:"%d"}]})`, g1.ID, g2.ID),
 		f(`tagsMerge(input:{source:["%d","%d"],destination:"%d"}) { id }`, t3.ID, t4.ID, t1.ID),
+		f(`sceneMerge(input:{source:["%d"],destination:"%d",values:{id:"%d",studio_id:"%d"}}) { id }`, mergeSrc2.ID, mergeDest.ID, mergeDest.ID, st.ID),
 	}
 	for _, mutation := range succeeded {
 		t.Run(mutation, func(t *testing.T) {
@@ -202,4 +212,13 @@ func TestEditLinkedObjectErrorsOnDatabase(t *testing.T) {
 			require.JSONEq(t, `{"data":{"`+call+`":null}}`, body)
 		})
 	}
+
+	// the merged scene has the studio
+	require.NoError(t, txn.WithReadTxn(ctx, db, func(ctx context.Context) error {
+		merged, err := db.Scene().Find(ctx, mergeDest.ID)
+		require.NoError(t, err)
+		require.NotNil(t, merged)
+		require.Equal(t, &st.ID, merged.StudioID)
+		return nil
+	}))
 }
