@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
 	"runtime/debug"
 	"runtime/pprof"
-	"syscall"
 
 	// fallback timezone database for systems without tzdata installed
 	_ "time/tzdata"
@@ -23,6 +21,7 @@ import (
 	"github.com/stashapp/stash/internal/log"
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/internal/stoprequests"
 	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/postgres"
@@ -35,6 +34,11 @@ import (
 var exitCode = 0
 
 func main() {
+	// Stop requests are caught from before main starts, so that one that
+	// comes during startup doesn't end Stash at once, perhaps in the middle of
+	// creating the database (#2103).
+	stop := stoprequests.Caught()
+
 	defer func() {
 		if exitCode != 0 {
 			os.Exit(exitCode)
@@ -94,6 +98,14 @@ func main() {
 	}
 
 	if migrateSQLiteFlag != "" {
+		if stop.Pending() {
+			logStopDuringStartup()
+			return
+		}
+		// The copy runs in a single transaction, so a stop can still end it
+		// at once, as before, without leaving half a copy behind.
+		stop.Release()
+
 		// before the manager, which would open the database
 		if err := migrateSQLiteToPostgres(cfg, migrateSQLiteFlag); err != nil {
 			exitError(fmt.Errorf("error migrating to PostgreSQL: %w", err))
@@ -111,6 +123,14 @@ func main() {
 		return
 	}
 	defer mgr.Shutdown()
+
+	// A stop that came while the manager was starting waited for it to finish,
+	// so that creating the database wasn't cut off part way. Stop now, before
+	// the server starts, with the same shutdown and exit code as a normal stop.
+	if stop.Pending() {
+		logStopDuringStartup()
+		return
+	}
 
 	if getUsersFlag {
 		if err := mgr.PrintUsers(context.Background()); err != nil {
@@ -143,7 +163,7 @@ func main() {
 		}
 	}()
 
-	go handleSignals(exit)
+	go stop.Forward(exit)
 	desktop.Start(exit, &ui.FaviconProvider)
 
 	exitCode = <-exit
@@ -212,11 +232,6 @@ func exitError(err error) {
 	}
 }
 
-func handleSignals(exit chan<- int) {
-	// handle signals
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-
-	<-signals
-	exit <- 0
+func logStopDuringStartup() {
+	logger.Info("Stopping, because a stop was requested while Stash was starting")
 }
