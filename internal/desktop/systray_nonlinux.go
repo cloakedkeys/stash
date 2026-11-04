@@ -45,15 +45,12 @@ func startSystray(exit chan int, faviconProvider FaviconProvider) {
 	// }()
 
 	// "intercept" an exit code to quit the systray, allowing the call to systray.Run() below to return.
-	go func() {
-		exitCode := <-exit
-		systray.Quit()
-		exit <- exitCode
-	}()
-
-	systray.Run(func() {
-		systrayInitialize(exit, faviconProvider)
-	}, nil)
+	// The tray is only quit once it is ready: a quit sent before then is lost, and Run never returns.
+	runTray(exit,
+		func(onReady func()) { systray.Run(onReady, nil) },
+		systray.Quit,
+		func() { systrayInitialize(exit, faviconProvider) },
+	)
 }
 
 func systrayInitialize(exit chan<- int, faviconProvider FaviconProvider) {
