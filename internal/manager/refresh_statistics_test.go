@@ -6,71 +6,75 @@ import (
 	"time"
 
 	"github.com/stashapp/stash/pkg/job"
-	"github.com/stretchr/testify/require"
 )
 
-// fakeRefresher records the changedSince of each refresh.
-type fakeRefresher chan time.Time
+// fakeRefresher counts refreshes. Each one waits for gate, if set.
+type fakeRefresher struct {
+	calls chan struct{}
+	gate  chan struct{}
+}
 
-func (f fakeRefresher) RefreshStatistics(ctx context.Context, changedSince time.Time) error {
-	f <- changedSince
+func (f *fakeRefresher) RefreshStatistics(ctx context.Context) error {
+	f.calls <- struct{}{}
+	if f.gate != nil {
+		<-f.gate
+	}
 	return nil
 }
 
-func (f fakeRefresher) next(t *testing.T) time.Time {
+func (f *fakeRefresher) next(t *testing.T) {
 	t.Helper()
 	select {
-	case since := <-f:
-		return since
+	case <-f.calls:
 	case <-time.After(5 * time.Second):
 		t.Fatal("statistics weren't refreshed after the task finished")
-		return time.Time{}
 	}
 }
 
-func (f fakeRefresher) none(t *testing.T) {
+func (f *fakeRefresher) none(t *testing.T) {
 	t.Helper()
 	select {
-	case since := <-f:
-		t.Fatalf("unexpected refresh, since %v", since)
+	case <-f.calls:
+		t.Fatal("unexpected refresh")
 	case <-time.After(300 * time.Millisecond):
 	}
 }
 
-func startRefreshing(t *testing.T) (context.Context, *job.Manager, fakeRefresher) {
+func startRefreshing(t *testing.T, f *fakeRefresher) (context.Context, *job.Manager) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	jobs := job.NewManager()
 	t.Cleanup(jobs.Stop)
-	refreshed := make(fakeRefresher, 10)
-	refreshStatisticsAfterJobs(ctx, jobs, refreshed)
-	return ctx, jobs, refreshed
+	f.calls = make(chan struct{}, 10)
+	refreshStatisticsAfterJobs(ctx, jobs, f)
+	return ctx, jobs
 }
 
-// #2030: the statistics are refreshed once after each task, which is when many
-// rows can have changed at once, covering everything since the task started.
-func TestRefreshStatisticsAfterJobs(t *testing.T) {
-	ctx, jobs, refreshed := startRefreshing(t)
+func noop(ctx context.Context, progress *job.Progress) error { return nil }
 
-	before := time.Now()
+// #2030: the statistics are refreshed once after each task, which is when many
+// rows can have changed at once.
+func TestRefreshStatisticsAfterJobs(t *testing.T) {
+	f := &fakeRefresher{}
+	ctx, jobs := startRefreshing(t, f)
+
 	release := make(chan struct{})
 	jobs.Add(ctx, "scan", job.MakeJobExec(func(ctx context.Context, progress *job.Progress) error {
 		<-release
 		return nil
 	}))
-	refreshed.none(t) // not while it runs
+	f.none(t) // not while it runs
 	close(release)
 
-	since := refreshed.next(t)
-	require.False(t, since.Before(before), "since the task started")
-	require.False(t, since.After(time.Now()))
-	refreshed.none(t) // once
+	f.next(t)
+	f.none(t) // once
 }
 
 // A task cancelled before it started changed nothing, so it's no reason to
 // refresh.
 func TestRefreshStatisticsSkipsUnstartedJobs(t *testing.T) {
-	ctx, jobs, refreshed := startRefreshing(t)
+	f := &fakeRefresher{}
+	ctx, jobs := startRefreshing(t, f)
 
 	release := make(chan struct{})
 	started := make(chan struct{})
@@ -85,9 +89,31 @@ func TestRefreshStatisticsSkipsUnstartedJobs(t *testing.T) {
 		return nil
 	}))
 	jobs.CancelJob(queued)
-	refreshed.none(t)
+	f.none(t)
 
 	close(release)
-	refreshed.next(t)
-	refreshed.none(t)
+	f.next(t)
+	f.none(t)
+}
+
+// Tasks that finish while a refresh is running share the next one.
+func TestRefreshStatisticsSharedByTasksFinishingTogether(t *testing.T) {
+	gate := make(chan struct{})
+	f := &fakeRefresher{gate: gate}
+	ctx, jobs := startRefreshing(t, f)
+
+	jobs.Add(ctx, "first", job.MakeJobExec(noop))
+	f.next(t) // and now held at the gate
+
+	for _, name := range []string{"second", "third", "fourth"} {
+		if err := jobs.AddAndWait(ctx, name, job.MakeJobExec(noop)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// AddAndWait can return just before the last removal is announced
+	time.Sleep(100 * time.Millisecond)
+	close(gate)
+
+	f.next(t)
+	f.none(t)
 }

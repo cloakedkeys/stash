@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/stashapp/stash/pkg/txn"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,6 +17,13 @@ func imageStudioIndexStat(t *testing.T, db *Database) string {
 	var stat string
 	require.NoError(t, db.readDB.Get(&stat, "SELECT stat FROM sqlite_stat1 WHERE idx = 'index_images_on_studio_id'"))
 	return stat
+}
+
+func imageStat4Rows(t *testing.T, db *Database) int {
+	t.Helper()
+	var n int
+	require.NoError(t, db.readDB.Get(&n, "SELECT COUNT(*) FROM sqlite_stat4 WHERE tbl = 'images'"))
+	return n
 }
 
 // imageStudioCountPlan plans a studio's image count on a read connection, as
@@ -39,38 +46,51 @@ func imageStudioCountPlan(t *testing.T, db *Database) string {
 
 const lookUpStudio = "SEARCH images USING COVERING INDEX index_images_on_studio_id (studio_id=?)"
 
+// write runs statements in a write transaction, as the app does.
+func write(t *testing.T, db *Database, sql string) {
+	t.Helper()
+	require.NoError(t, txn.WithTxn(context.Background(), db, func(ctx context.Context) error {
+		_, err := dbWrapper.Exec(ctx, sql)
+		return err
+	}))
+}
+
+const addStudiosAndImages = `WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<200)
+INSERT INTO studios (id, name, created_at, updated_at) SELECT x, 'studio ' || x, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM n;
+WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<20000)
+INSERT INTO images (id, studio_id, created_at, updated_at) SELECT x, CASE WHEN x<=2000 THEN 1 END, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM n;`
+
+func openTestDatabase(t *testing.T) *Database {
+	t.Helper()
+	db := NewDatabase()
+	require.NoError(t, db.Open(context.Background(), filepath.Join(t.TempDir(), "stash.sqlite")))
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	return db
+}
+
 // staleImageStatistics gathers statistics while 2,000 of 20,000 images all have
 // the same studio, has the read connections load them, then spreads those
 // images over 200 studios. The number of images doesn't change, so the
 // automatic optimize never notices.
-func staleImageStatistics(t *testing.T) (*Database, time.Time) {
+func staleImageStatistics(t *testing.T) *Database {
 	t.Helper()
-	ctx := context.Background()
-	db := NewDatabase()
-	require.NoError(t, db.Open(ctx, filepath.Join(t.TempDir(), "stash.sqlite")))
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
-
-	_, err := db.writeDB.Exec(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<200)
-INSERT INTO studios (id, name, created_at, updated_at) SELECT x, 'studio ' || x, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM n;
-WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<20000)
-INSERT INTO images (id, studio_id, created_at, updated_at) SELECT x, CASE WHEN x<=2000 THEN 1 END, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM n;
-ANALYZE;`)
+	db := openTestDatabase(t)
+	write(t, db, addStudiosAndImages)
+	_, err := db.writeDB.Exec("ANALYZE")
 	require.NoError(t, err)
 	require.Equal(t, "2000 2000", imageStudioIndexStat(t, db), "every image with a studio has the same one")
 
-	changed := time.Now()
-	_, err = db.writeDB.Exec("UPDATE images SET studio_id = 1 + id % 200 WHERE studio_id IS NOT NULL")
-	require.NoError(t, err)
+	write(t, db, "UPDATE images SET studio_id = 1 + id % 200 WHERE studio_id IS NOT NULL")
 	require.NotContains(t, imageStudioCountPlan(t, db), lookUpStudio, "stale statistics: the studio index isn't used for lookups")
-	return db, changed
+	return db
 }
 
 // #2030: after a refresh, the statistics are right and the connections that
 // were already open use them.
 func TestRefreshStatistics(t *testing.T) {
-	db, changed := staleImageStatistics(t)
+	db := staleImageStatistics(t)
 
-	require.NoError(t, db.RefreshStatistics(context.Background(), changed))
+	require.NoError(t, db.RefreshStatistics(context.Background()))
 
 	fields := strings.Fields(imageStudioIndexStat(t, db))
 	require.Len(t, fields, 2)
@@ -88,7 +108,7 @@ func TestRefreshStatistics(t *testing.T) {
 // The full ANALYZE of Tasks -> Optimise Database used to update the statistics
 // without the open connections using them.
 func TestAnalyzeReachesOpenConnections(t *testing.T) {
-	db, _ := staleImageStatistics(t)
+	db := staleImageStatistics(t)
 
 	require.NoError(t, db.Analyze(context.Background()))
 
@@ -97,28 +117,40 @@ func TestAnalyzeReachesOpenConnections(t *testing.T) {
 }
 
 // After Tasks -> Optimise Database, the refresh when that task ends must not
-// replace its full statistics with sampled ones.
+// replace its full statistics with sampled ones. Anything written afterwards
+// is still refreshed.
 func TestRefreshStatisticsKeepsFullAnalyze(t *testing.T) {
 	ctx := context.Background()
-	db, changed := staleImageStatistics(t)
+	db := staleImageStatistics(t)
 	require.NoError(t, db.Analyze(ctx))
-	var stat4 int
-	require.NoError(t, db.readDB.Get(&stat4, "SELECT COUNT(*) FROM sqlite_stat4 WHERE tbl = 'images'"))
-	require.NotZero(t, stat4, "a full ANALYZE keeps detailed samples")
+	full := imageStat4Rows(t, db)
+	require.NotZero(t, full, "a full ANALYZE keeps detailed samples")
 
-	require.NoError(t, db.RefreshStatistics(ctx, changed))
-
-	var after int
-	require.NoError(t, db.readDB.Get(&after, "SELECT COUNT(*) FROM sqlite_stat4 WHERE tbl = 'images'"))
-	require.Equal(t, stat4, after, "a sampled ANALYZE would have removed them")
+	require.NoError(t, db.RefreshStatistics(ctx))
+	require.Equal(t, full, imageStat4Rows(t, db), "a sampled ANALYZE would have removed them")
 	require.Equal(t, "2000 10", imageStudioIndexStat(t, db))
 
-	// changes after the full ANALYZE are still refreshed
-	require.NoError(t, db.RefreshStatistics(ctx, time.Now()))
-	require.NoError(t, db.readDB.Get(&after, "SELECT COUNT(*) FROM sqlite_stat4 WHERE tbl = 'images'"))
-	require.Zero(t, after)
+	write(t, db, "UPDATE images SET studio_id = 1 WHERE studio_id = 2")
+	require.NoError(t, db.RefreshStatistics(ctx))
+	require.Zero(t, imageStat4Rows(t, db), "refreshed after the write")
+}
+
+// Import with "Reset" starts a new database, which runs a full ANALYZE while
+// it's empty, then fills it. The refresh at the end must still run.
+func TestRefreshStatisticsAfterReset(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDatabase(t)
+	require.NoError(t, db.Reset())
+
+	write(t, db, addStudiosAndImages)
+	require.NoError(t, db.RefreshStatistics(ctx))
+
+	// skipped, there would be no statistics for the index at all
+	var n int
+	require.NoError(t, db.readDB.Get(&n, "SELECT COUNT(*) FROM sqlite_stat1 WHERE idx = 'index_images_on_studio_id'"))
+	require.Equal(t, 1, n)
 }
 
 func TestRefreshStatisticsNotOpen(t *testing.T) {
-	require.Error(t, NewDatabase().RefreshStatistics(context.Background(), time.Now()))
+	require.Error(t, NewDatabase().RefreshStatistics(context.Background()))
 }

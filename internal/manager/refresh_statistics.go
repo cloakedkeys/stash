@@ -3,7 +3,6 @@ package manager
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/job"
@@ -11,7 +10,7 @@ import (
 )
 
 type statisticsRefresher interface {
-	RefreshStatistics(ctx context.Context, changedSince time.Time) error
+	RefreshStatistics(ctx context.Context) error
 }
 
 // refreshStatisticsAfterJobs refreshes the database statistics each time a task
@@ -26,13 +25,13 @@ func refreshStatisticsAfterJobs(ctx context.Context, jobs *job.Manager, db stati
 	sub := jobs.Subscribe(ctx)
 	go func() {
 		for {
-			var since time.Time
+			ran := false
 			select {
 			case j, ok := <-sub.RemovedJob:
 				if !ok {
 					return
 				}
-				since = earliestStart(since, j)
+				ran = started(j)
 			case <-ctx.Done():
 				return
 			}
@@ -45,33 +44,27 @@ func refreshStatisticsAfterJobs(ctx context.Context, jobs *job.Manager, db stati
 					if !ok {
 						break drain
 					}
-					since = earliestStart(since, j)
+					ran = ran || started(j)
 				default:
 					break drain
 				}
 			}
 
-			if !since.IsZero() {
-				refreshStatistics(ctx, db, since)
+			if ran {
+				refreshStatistics(ctx, db)
 			}
 		}
 	}()
 }
 
-// earliestStart returns the earlier of since and when j started. A task that
-// was cancelled before it started changed nothing, so it's left out.
-func earliestStart(since time.Time, j job.Job) time.Time {
-	if j.StartTime == nil {
-		return since
-	}
-	if since.IsZero() || j.StartTime.Before(since) {
-		return *j.StartTime
-	}
-	return since
+// started reports whether j ran. A task cancelled before it started changed
+// nothing.
+func started(j job.Job) bool {
+	return j.StartTime != nil
 }
 
-func refreshStatistics(ctx context.Context, db statisticsRefresher, since time.Time) {
-	err := db.RefreshStatistics(ctx, since)
+func refreshStatistics(ctx context.Context, db statisticsRefresher) {
+	err := db.RefreshStatistics(ctx)
 	var migrationNeeded *database.MigrationNeededError
 	switch {
 	case err == nil:

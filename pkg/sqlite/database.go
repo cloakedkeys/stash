@@ -78,8 +78,9 @@ type Database struct {
 
 	lockChan chan struct{}
 
-	// lastFullAnalyze is when a full ANALYZE last finished, in Unix nanoseconds.
-	lastFullAnalyze atomic.Int64
+	// statisticsCurrent is true when a full ANALYZE has finished and nothing
+	// has been written since. It starts false, so the first refresh always runs.
+	statisticsCurrent atomic.Bool
 }
 
 func NewDatabase() *Database {
@@ -477,8 +478,10 @@ func (db *Database) Analyze(ctx context.Context) error {
 // fullAnalyzeDone is called after a full ANALYZE. Open connections would keep
 // planning with the old statistics, so they're retired either way.
 func (db *Database) fullAnalyzeDone(err error) {
+	// Writes go through the single write connection, so any committed before
+	// the ANALYZE took it are counted, and any after it set this back to false.
 	if err == nil {
-		db.lastFullAnalyze.Store(time.Now().UnixNano())
+		db.statisticsCurrent.Store(true)
 	}
 	retireConnections()
 }
@@ -498,11 +501,11 @@ const refreshStatisticsLimit = 1000
 // its row count changes a lot, so statistics go stale when existing rows change,
 // such as images being given studios. On millions of rows it takes milliseconds.
 //
-// changedSince is when the changes started. If a full ANALYZE has finished
-// since then, such as from Tasks -> Optimise Database or a migration, the
-// statistics are already up to date, and a sampled ANALYZE would only make
-// them less exact, so nothing is done.
-func (db *Database) RefreshStatistics(ctx context.Context, changedSince time.Time) error {
+// If a full ANALYZE, such as from Tasks -> Optimise Database or a migration,
+// has finished and nothing has been written since, the statistics are already
+// up to date, and a sampled ANALYZE would only make them less exact, so
+// nothing is done.
+func (db *Database) RefreshStatistics(ctx context.Context) error {
 	db.resetMu.RLock()
 	defer db.resetMu.RUnlock()
 
@@ -510,7 +513,7 @@ func (db *Database) RefreshStatistics(ctx context.Context, changedSince time.Tim
 		return err
 	}
 
-	if !changedSince.IsZero() && db.lastFullAnalyze.Load() >= changedSince.UnixNano() {
+	if db.statisticsCurrent.Load() {
 		return nil
 	}
 
