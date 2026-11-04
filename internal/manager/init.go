@@ -213,31 +213,36 @@ func initJobManager(cfg *config.Config) *job.Manager {
 	ret := job.NewManager()
 
 	// desktop notifications
-	ctx := context.Background()
-	c := ret.Subscribe(context.Background())
+	notifyTasksFinished(context.Background(), ret, cfg.GetNotificationsEnabled, desktop.SendNotification)
+
+	return ret
+}
+
+// notifyTasksFinished sends a desktop notification when each task finishes,
+// while enabled says so.
+func notifyTasksFinished(ctx context.Context, jobs *job.Manager, enabled func() bool, send func(title, text string)) {
+	c := jobs.Subscribe(ctx)
 	go func() {
 		for {
 			select {
-			case j := <-c.RemovedJob:
-				if cfg.GetNotificationsEnabled() {
-					cleanDesc := strings.TrimRight(j.Description, ".")
-
-					if j.StartTime == nil {
-						// Task was never started
-						return
-					}
-
-					timeElapsed := j.EndTime.Sub(*j.StartTime)
-					msg := fmt.Sprintf("Task \"%s\" finished in %s.", cleanDesc, formatDuration(timeElapsed))
-					desktop.SendNotification("Task Finished", msg)
+			case j, ok := <-c.RemovedJob:
+				if !ok {
+					return
 				}
+				if !enabled() || j.StartTime == nil || j.EndTime == nil {
+					// a task cancelled before it started has nothing to report
+					continue
+				}
+
+				cleanDesc := strings.TrimRight(j.Description, ".")
+				timeElapsed := j.EndTime.Sub(*j.StartTime)
+				msg := fmt.Sprintf("Task \"%s\" finished in %s.", cleanDesc, formatDuration(timeElapsed))
+				send("Task Finished", msg)
 			case <-ctx.Done():
 				return
 			}
 		}
 	}()
-
-	return ret
 }
 
 // postInit initialises the paths, caches and database after the initial
