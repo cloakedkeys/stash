@@ -793,15 +793,9 @@ func (r *mutationResolver) ConfigureUISetting(ctx context.Context, key string, v
 	}
 
 	cfg := utils.NestedMap(uiConfig)
-
-	// #5483, #2079 - convert JSON numbers, including those in lists, to float64 or int64
-	value, err = convertJSONNumbers(value, strconv.Quote(key))
-	if err != nil {
-		return nil, err
-	}
-
 	cfg.Set(key, value)
 
+	// ConfigureUI converts the JSON numbers in value, at any depth
 	return r.ConfigureUI(ctx, cfg, nil)
 }
 
