@@ -31,7 +31,10 @@ type queryBuilder struct {
 	whereArgs  []interface{}
 	havingArgs []interface{}
 
-	sort           string
+	sort string
+	// idColumn is the item id the query returns, set by distinctIDs. It is the
+	// last sort key, so the order is fixed between pages.
+	idColumn       string
 	pagination     *queryPagination
 	groupByClauses []string
 }
@@ -109,8 +112,43 @@ func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 // withSortOrder returns a copy of the query with a sort_order column, the
 // row's position in the query's sort.
 func (qb queryBuilder) withSortOrder() queryBuilder {
-	qb.columns = append(append([]string{}, qb.columns...), "row_number() OVER ("+qb.sort+") AS sort_order")
+	qb.columns = append(append([]string{}, qb.columns...), "row_number() OVER ("+qb.stableSort()+") AS sort_order")
 	return qb
+}
+
+// naturalCollation is the collation of name and title sorts.
+const naturalCollation = `COLLATE "natural_ci"`
+
+// stableSort returns the query's sort with the item id as the last key, so
+// that items the sort ranks equal, or all items when there is no sort, come
+// back in the same order on every page.
+//
+// The id runs the way SQLite gives such items. With no sort, that is id order.
+// SQLite's NATURAL_CI collation never finds two names equal, so once a sort
+// reaches a name, any later keys are never used, and SQLite gives same names
+// newest first when the name is ascending, and oldest first when it is
+// descending. A sort with no name gives them in id order.
+func (qb queryBuilder) stableSort() string {
+	if qb.idColumn == "" {
+		return qb.sort
+	}
+	if strings.TrimSpace(qb.sort) == "" {
+		return " ORDER BY " + qb.idColumn + " ASC"
+	}
+	return qb.sort + ", " + qb.idColumn + " " + tieDirection(qb.sort)
+}
+
+// tieDirection returns the direction of the id for items that sort ranks
+// equal: the opposite of its first name key, or ASC if it has none.
+func tieDirection(sort string) string {
+	_, after, found := strings.Cut(sort, naturalCollation)
+	if !found {
+		return "ASC"
+	}
+	if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(after)), "DESC") {
+		return "ASC"
+	}
+	return "DESC"
 }
 
 // findIDs returns the IDs the query finds, sorted and paged. A sort or filter on
