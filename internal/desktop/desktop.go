@@ -48,6 +48,20 @@ func Start(exit chan int, faviconProvider FaviconProvider) {
 	}
 }
 
+// runTray runs the tray with run, which blocks until quit is called. run
+// calls onReady once the tray exists; onReady then calls initialize. An exit
+// code sent on exit quits the tray, but only after initialize has finished,
+// and is then passed back on exit.
+func runTray(exit chan int, run func(onReady func()), quit func(), initialize func()) {
+	ready := make(chan struct{})
+	go forwardExit(exit, ready, quit)
+
+	run(func() {
+		initialize()
+		close(ready)
+	})
+}
+
 // forwardExit takes an exit code from exit, waits until the tray is ready,
 // quits the tray and then passes the exit code back on exit.
 // Quitting the tray before it is ready has no effect, which would leave the

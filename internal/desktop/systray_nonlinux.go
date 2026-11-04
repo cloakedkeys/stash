@@ -46,13 +46,11 @@ func startSystray(exit chan int, faviconProvider FaviconProvider) {
 
 	// "intercept" an exit code to quit the systray, allowing the call to systray.Run() below to return.
 	// The tray is only quit once it is ready: a quit sent before then is lost, and Run never returns.
-	ready := make(chan struct{})
-	go forwardExit(exit, ready, systray.Quit)
-
-	systray.Run(func() {
-		systrayInitialize(exit, faviconProvider)
-		close(ready)
-	}, nil)
+	runTray(exit,
+		func(onReady func()) { systray.Run(onReady, nil) },
+		systray.Quit,
+		func() { systrayInitialize(exit, faviconProvider) },
+	)
 }
 
 func systrayInitialize(exit chan<- int, faviconProvider FaviconProvider) {
