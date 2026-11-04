@@ -1,9 +1,11 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/WithoutPants/sortorder/casefolded"
 	sqlite3 "github.com/mattn/go-sqlite3"
@@ -18,8 +20,49 @@ func init() {
 
 type CustomSQLiteDriver struct{}
 
+// statisticsGeneration goes up each time ANALYZE refreshes the statistics.
+//
+// A connection reads the statistics when it opens. On every SQLite version,
+// other connections don't reload them after an ANALYZE, because ANALYZE
+// doesn't change the schema version. So connections opened before a refresh
+// are retired instead of reused, and busy pools that never sit idle long
+// enough to close still pick up the new statistics.
+//
+// SQLite 3.45.0 to 3.49.x, including the bundled 3.45.1, add a second reason
+// for the connection that runs the ANALYZE: when an index's statistics show a
+// single value, SQLite marks it "low quality" (bLowQual), stops using it for
+// lookups, and never clears the mark, even after reloading. 3.50.0 removed
+// that, but the first reason still applies.
+var statisticsGeneration atomic.Uint64
+
+// retireConnections makes every open connection be replaced by a new one
+// the next time it's returned to, or taken from, the pool.
+func retireConnections() {
+	statisticsGeneration.Add(1)
+}
+
 type CustomSQLiteConn struct {
 	*sqlite3.SQLiteConn
+	generation uint64
+}
+
+func (c *CustomSQLiteConn) current() bool {
+	return c.generation == statisticsGeneration.Load()
+}
+
+// IsValid implements driver.Validator, checked when the connection goes back
+// to the pool.
+func (c *CustomSQLiteConn) IsValid() bool {
+	return c.current()
+}
+
+// ResetSession implements driver.SessionResetter, called before an idle
+// connection is reused.
+func (c *CustomSQLiteConn) ResetSession(ctx context.Context) error {
+	if !c.current() {
+		return driver.ErrBadConn
+	}
+	return nil
 }
 
 func (d *CustomSQLiteDriver) Open(dsn string) (driver.Conn, error) {
@@ -57,12 +100,15 @@ func (d *CustomSQLiteDriver) Open(dsn string) (driver.Conn, error) {
 		},
 	}
 
+	// read before opening, so a refresh during the open retires this one too
+	generation := statisticsGeneration.Load()
+
 	conn, err := sqlite3Driver.Open(dsn)
 	if err != nil {
 		return nil, err
 	}
 
-	return &CustomSQLiteConn{conn.(*sqlite3.SQLiteConn)}, nil
+	return &CustomSQLiteConn{SQLiteConn: conn.(*sqlite3.SQLiteConn), generation: generation}, nil
 }
 
 func (c *CustomSQLiteConn) Close() error {

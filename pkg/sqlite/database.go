@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -76,6 +77,13 @@ type Database struct {
 	resetMu sync.RWMutex
 
 	lockChan chan struct{}
+
+	// writes counts committed write transactions. fullAnalyzeWrites is what it
+	// was when the last successful full ANALYZE started, or -1 if there hasn't
+	// been one. While the two match, nothing has been written since, so the
+	// statistics are current.
+	writes            atomic.Int64
+	fullAnalyzeWrites atomic.Int64
 }
 
 func NewDatabase() *Database {
@@ -113,6 +121,8 @@ func NewDatabase() *Database {
 		storeRepository: r,
 		lockChan:        make(chan struct{}, 1),
 	}
+	// no full ANALYZE yet, so the first refresh always runs
+	ret.fullAnalyzeWrites.Store(-1)
 
 	return ret
 }
@@ -465,12 +475,70 @@ func (db *Database) Vacuum(ctx context.Context) error {
 
 // Analyze runs an ANALYZE on the database to improve query performance.
 func (db *Database) Analyze(ctx context.Context) error {
-	return analyze(ctx, db.writeDB)
+	return db.fullAnalyze(ctx, db.writeDB)
+}
+
+// fullAnalyze runs a full ANALYZE on conn and records it.
+func (db *Database) fullAnalyze(ctx context.Context, conn *sqlx.DB) error {
+	// Counted before it starts: a write committed while it runs makes the
+	// count move, which only costs an extra refresh later.
+	writes := db.writes.Load()
+	err := analyze(ctx, conn)
+	if err == nil {
+		db.fullAnalyzeWrites.Store(writes)
+	}
+	// open connections would keep planning with the old statistics
+	retireConnections()
+	return err
+}
+
+// statisticsCurrent reports whether a full ANALYZE has run and nothing has
+// been written since.
+func (db *Database) statisticsCurrent() bool {
+	return db.fullAnalyzeWrites.Load() == db.writes.Load()
 }
 
 // analyze runs an ANALYZE on the database to improve query performance.
 func analyze(ctx context.Context, db *sqlx.DB) error {
 	_, err := db.ExecContext(ctx, "ANALYZE")
+	return err
+}
+
+// refreshStatisticsLimit is how many rows of each index a statistics refresh
+// samples. It's the same limit the automatic optimize uses on close.
+const refreshStatisticsLimit = 1000
+
+// RefreshStatistics brings the query planner's statistics up to date with a
+// quick, sampled ANALYZE. The automatic optimize only re-analyses a table when
+// its row count changes a lot, so statistics go stale when existing rows change,
+// such as images being given studios. On millions of rows it takes milliseconds.
+//
+// If a full ANALYZE, such as from Tasks -> Optimise Database or a migration,
+// has finished and nothing has been written since, the statistics are already
+// up to date, and a sampled ANALYZE would only make them less exact, so
+// nothing is done.
+func (db *Database) RefreshStatistics(ctx context.Context) error {
+	db.resetMu.RLock()
+	defer db.resetMu.RUnlock()
+
+	if err := db.ready(); err != nil {
+		return err
+	}
+
+	if db.statisticsCurrent() {
+		return nil
+	}
+
+	// analysis_limit belongs to the connection, so hold one. It's retired
+	// before going back to the pool, so a later full ANALYZE isn't sampled.
+	conn, err := db.writeDB.Connx(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	defer retireConnections()
+
+	_, err = conn.ExecContext(ctx, fmt.Sprintf("PRAGMA analysis_limit=%d; ANALYZE;", refreshStatisticsLimit))
 	return err
 }
 

@@ -95,6 +95,10 @@ func (db *Database) Commit(ctx context.Context) error {
 		return err
 	}
 
+	if writable, _ := ctx.Value(writableKey).(bool); writable {
+		db.writes.Add(1)
+	}
+
 	return nil
 }
 
