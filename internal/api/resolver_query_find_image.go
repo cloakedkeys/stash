@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strconv"
 
@@ -54,10 +55,12 @@ func (r *queryResolver) FindImages(
 	filter *models.FindFilterType,
 ) (ret *FindImagesResultType, err error) {
 	if len(ids) > 0 {
-		imageIds, err = handleIDList(ids, "ids")
+		imageIds, err = handleFindIDList(ids, "ids")
 		if err != nil {
 			return nil, err
 		}
+	} else if err := validateIntIDList(imageIds); err != nil {
+		return nil, fmt.Errorf("validating image_ids: %w", err)
 	}
 
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {

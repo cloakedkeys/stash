@@ -48,7 +48,7 @@ func (r *queryResolver) FindFolders(
 ) (ret *FindFoldersResultType, err error) {
 	var folderIDs []models.FolderID
 	if len(ids) > 0 {
-		folderIDsInt, err := handleIDList(ids, "ids")
+		folderIDsInt, err := handleFindIDList(ids, "ids")
 		if err != nil {
 			return nil, err
 		}

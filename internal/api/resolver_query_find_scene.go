@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strconv"
 
@@ -82,10 +83,12 @@ func (r *queryResolver) FindScenes(
 	filter *models.FindFilterType,
 ) (ret *FindScenesResultType, err error) {
 	if len(ids) > 0 {
-		sceneIDs, err = handleIDList(ids, "ids")
+		sceneIDs, err = handleFindIDList(ids, "ids")
 		if err != nil {
 			return nil, err
 		}
+	} else if err := validateIntIDList(sceneIDs); err != nil {
+		return nil, fmt.Errorf("validating scene_ids: %w", err)
 	}
 
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {

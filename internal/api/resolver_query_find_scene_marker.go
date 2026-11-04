@@ -7,7 +7,7 @@ import (
 )
 
 func (r *queryResolver) FindSceneMarkers(ctx context.Context, sceneMarkerFilter *models.SceneMarkerFilterType, filter *models.FindFilterType, ids []string) (ret *FindSceneMarkersResultType, err error) {
-	idInts, err := handleIDList(ids, "ids")
+	idInts, err := handleFindIDList(ids, "ids")
 	if err != nil {
 		return nil, err
 	}

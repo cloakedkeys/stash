@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/stashapp/stash/pkg/models"
@@ -25,10 +26,12 @@ func (r *queryResolver) FindPerformer(ctx context.Context, id string) (ret *mode
 
 func (r *queryResolver) FindPerformers(ctx context.Context, performerFilter *models.PerformerFilterType, filter *models.FindFilterType, performerIDs []int, ids []string) (ret *FindPerformersResultType, err error) {
 	if len(ids) > 0 {
-		performerIDs, err = handleIDList(ids, "ids")
+		performerIDs, err = handleFindIDList(ids, "ids")
 		if err != nil {
 			return nil, err
 		}
+	} else if err := validateIntIDList(performerIDs); err != nil {
+		return nil, fmt.Errorf("validating performer_ids: %w", err)
 	}
 
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
