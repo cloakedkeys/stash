@@ -26,6 +26,15 @@ func (r *mutationResolver) SaveFilter(ctx context.Context, input SaveFilterInput
 		id = &idv
 	}
 
+	// A number too large to read back, such as 1e400, is refused here rather
+	// than saved and then loaded as null. Other numbers are saved as written.
+	if err := validateMapJSONNumbers(input.ObjectFilter); err != nil {
+		return nil, fmt.Errorf("object_filter %w", err)
+	}
+	if err := validateMapJSONNumbers(input.UIOptions); err != nil {
+		return nil, fmt.Errorf("ui_options %w", err)
+	}
+
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.SavedFilter
 
