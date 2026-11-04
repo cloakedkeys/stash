@@ -668,7 +668,9 @@ func findExisting[T any](ctx context.Context, kind string, ids []int,
 	for _, id := range ids {
 		v, err := find(ctx, id)
 		if err != nil {
-			return nil, err
+			// FindMany's error comes first: on PostgreSQL a failed query
+			// aborts the transaction, so this error only says that
+			return nil, fmt.Errorf("%w (looking up %s %d after that: %w)", findManyErr, kind, id, err)
 		}
 
 		if v == nil {

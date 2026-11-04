@@ -155,15 +155,70 @@ func TestGenerateFindsAllExistingIDs(t *testing.T) {
 func TestGenerateFailsOnOtherErrors(t *testing.T) {
 	dbErr := errors.New("database is locked")
 
+	// on PostgreSQL the failed query aborts the transaction, so the lookup
+	// after it fails with a message that hides the cause
+	abortedErr := errors.New("current transaction is aborted, commands ignored until end of transaction block")
+
 	t.Run("lookup of one item fails", func(t *testing.T) {
 		recordWarnings(t)
 		db := mocks.NewDatabase()
 		db.Image.On("FindMany", mock.Anything, []int{1, 2}).Return(nil, dbErr)
-		db.Image.On("Find", mock.Anything, 1).Return(nil, dbErr)
+		db.Image.On("Find", mock.Anything, 1).Return(nil, abortedErr)
 
 		j := &GenerateJob{repository: db.Repository(), input: GenerateMetadataInput{ImageIDs: []string{"1", "2"}}}
 		_, err := j.findTargets(context.Background())
+		require.ErrorIs(t, err, dbErr)
+		assert.ErrorIs(t, err, abortedErr)
+		assert.Regexp(t, "^database is locked", err.Error(), "the cause comes first")
+	})
+
+	t.Run("scenes", func(t *testing.T) {
+		warns := recordWarnings(t)
+		db := mocks.NewDatabase()
+		db.Scene.On("FindMany", mock.Anything, []int{1}).Return(nil, dbErr)
+		db.Scene.On("Find", mock.Anything, 1).Return(&models.Scene{ID: 1}, nil)
+
+		j := &GenerateJob{repository: db.Repository(), input: GenerateMetadataInput{SceneIDs: []string{"1"}}}
+		_, err := j.findTargets(context.Background())
 		assert.ErrorIs(t, err, dbErr)
+		assert.Empty(t, warns.warns)
+	})
+
+	t.Run("scene lookup after the failure", func(t *testing.T) {
+		recordWarnings(t)
+		db := mocks.NewDatabase()
+		db.Scene.On("FindMany", mock.Anything, []int{1}).Return(nil, dbErr)
+		db.Scene.On("Find", mock.Anything, 1).Return(nil, abortedErr)
+
+		j := &GenerateJob{repository: db.Repository(), input: GenerateMetadataInput{SceneIDs: []string{"1"}}}
+		_, err := j.findTargets(context.Background())
+		require.ErrorIs(t, err, dbErr)
+		assert.Regexp(t, "^database is locked", err.Error())
+	})
+
+	t.Run("galleries", func(t *testing.T) {
+		warns := recordWarnings(t)
+		db := mocks.NewDatabase()
+		db.Gallery.On("FindMany", mock.Anything, []int{1}).Return(nil, dbErr)
+		db.Gallery.On("Find", mock.Anything, 1).Return(&models.Gallery{ID: 1}, nil)
+
+		j := &GenerateJob{repository: db.Repository(), input: GenerateMetadataInput{GalleryIDs: []string{"1"}}}
+		_, err := j.findTargets(context.Background())
+		assert.ErrorIs(t, err, dbErr)
+		assert.Empty(t, warns.warns)
+		db.Image.AssertNotCalled(t, "FindByGalleryID", mock.Anything, mock.Anything)
+	})
+
+	t.Run("gallery lookup after the failure", func(t *testing.T) {
+		recordWarnings(t)
+		db := mocks.NewDatabase()
+		db.Gallery.On("FindMany", mock.Anything, []int{1}).Return(nil, dbErr)
+		db.Gallery.On("Find", mock.Anything, 1).Return(nil, abortedErr)
+
+		j := &GenerateJob{repository: db.Repository(), input: GenerateMetadataInput{GalleryIDs: []string{"1"}}}
+		_, err := j.findTargets(context.Background())
+		require.ErrorIs(t, err, dbErr)
+		assert.Regexp(t, "^database is locked", err.Error())
 	})
 
 	t.Run("every item exists", func(t *testing.T) {
