@@ -13,7 +13,7 @@ import (
 // mutations they don't need permission to edit the library, and they don't change
 // when the object itself was last updated.
 
-func (r *mutationResolver) SceneUserDataUpdate(ctx context.Context, input UserRatingFavoriteInput) (*models.Scene, error) {
+func (r *mutationResolver) SceneUserDataUpdate(ctx context.Context, input UserRatingInput) (*models.Scene, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("converting id: %w", err)
@@ -33,7 +33,7 @@ func (r *mutationResolver) SceneUserDataUpdate(ctx context.Context, input UserRa
 	return r.getScene(ctx, id)
 }
 
-func (r *mutationResolver) AudioUserDataUpdate(ctx context.Context, input UserRatingFavoriteInput) (*models.Audio, error) {
+func (r *mutationResolver) AudioUserDataUpdate(ctx context.Context, input UserRatingInput) (*models.Audio, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("converting id: %w", err)
@@ -53,7 +53,7 @@ func (r *mutationResolver) AudioUserDataUpdate(ctx context.Context, input UserRa
 	return r.getAudio(ctx, id)
 }
 
-func (r *mutationResolver) ImageUserDataUpdate(ctx context.Context, input UserRatingFavoriteInput) (*models.Image, error) {
+func (r *mutationResolver) ImageUserDataUpdate(ctx context.Context, input UserRatingInput) (*models.Image, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("converting id: %w", err)
@@ -73,7 +73,7 @@ func (r *mutationResolver) ImageUserDataUpdate(ctx context.Context, input UserRa
 	return r.getImage(ctx, id)
 }
 
-func (r *mutationResolver) GalleryUserDataUpdate(ctx context.Context, input UserRatingFavoriteInput) (*models.Gallery, error) {
+func (r *mutationResolver) GalleryUserDataUpdate(ctx context.Context, input UserRatingInput) (*models.Gallery, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("converting id: %w", err)
@@ -93,7 +93,7 @@ func (r *mutationResolver) GalleryUserDataUpdate(ctx context.Context, input User
 	return r.getGallery(ctx, id)
 }
 
-func (r *mutationResolver) GroupUserDataUpdate(ctx context.Context, input UserRatingFavoriteInput) (*models.Group, error) {
+func (r *mutationResolver) GroupUserDataUpdate(ctx context.Context, input UserRatingInput) (*models.Group, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("converting id: %w", err)

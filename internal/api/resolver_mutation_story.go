@@ -466,7 +466,7 @@ func (r *mutationResolver) StoryAssignFile(ctx context.Context, input AssignStor
 	return true, nil
 }
 
-func (r *mutationResolver) StoryUserDataUpdate(ctx context.Context, input UserRatingInput) (*models.Story, error) {
+func (r *mutationResolver) StoryUserDataUpdate(ctx context.Context, input StoryUserRatingInput) (*models.Story, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("converting id: %w", err)

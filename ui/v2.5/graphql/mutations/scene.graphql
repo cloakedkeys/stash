@@ -124,7 +124,7 @@ mutation SceneMerge($input: SceneMergeInput!) {
   }
 }
 
-mutation SceneUserDataUpdate($input: UserRatingFavoriteInput!) {
+mutation SceneUserDataUpdate($input: UserRatingInput!) {
   sceneUserDataUpdate(input: $input) {
     ...SceneData
   }

@@ -32,7 +32,7 @@ func TestLibraryLimitListsMatchSchema(t *testing.T) {
 	}
 
 	// a mutation without an object to check would always be refused
-	inputs := map[string]bool{"UserRatingInput": true, "UserRatingFavoriteInput": true, "UserFavoriteInput": true}
+	inputs := map[string]bool{"UserRatingInput": true, "UserRatingFavoriteInput": true, "UserFavoriteInput": true, "StoryUserRatingInput": true}
 	for name := range limitedObjectMutations {
 		field := schema.Mutation.Fields.ForName(name)
 		require.NotNil(t, field, name)

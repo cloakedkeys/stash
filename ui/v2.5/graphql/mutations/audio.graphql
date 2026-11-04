@@ -96,7 +96,7 @@ mutation AudioMerge($input: AudioMergeInput!) {
   }
 }
 
-mutation AudioUserDataUpdate($input: UserRatingFavoriteInput!) {
+mutation AudioUserDataUpdate($input: UserRatingInput!) {
   audioUserDataUpdate(input: $input) {
     ...AudioData
   }
