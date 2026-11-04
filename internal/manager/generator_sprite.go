@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"path/filepath"
 
 	"github.com/disintegration/imaging"
 
@@ -240,6 +241,11 @@ func (g *SpriteGenerator) generateSpriteImage() error {
 
 	if len(images) == 0 {
 		return fmt.Errorf("images slice is empty, failed to generate sprite images for %s", g.Info.VideoFile.Path)
+	}
+
+	// in the hash layout, the folder may not exist yet
+	if err := fsutil.EnsureDirAll(filepath.Dir(g.ImageOutputPath)); err != nil {
+		return err
 	}
 
 	return imaging.Save(g.g.CombineSpriteImages(images), g.ImageOutputPath)

@@ -13,6 +13,13 @@ const thumbDirDepth int = 2
 const thumbDirLength int = 2 // thumbDirDepth * thumbDirLength must be smaller than the length of checksum
 
 type generatedPaths struct {
+	// Video holds videos' generated files, grouped by hash. See videoFile.
+	Video string
+
+	// Screenshots, Vtt, Markers, Transcodes and InteractiveHeatmap are the
+	// legacy folders of videos' generated files. Files made before the hash
+	// layout may still be there.
+
 	EmbeddedSubtitles  string
 	Screenshots        string
 	Thumbnails         string
@@ -26,6 +33,7 @@ type generatedPaths struct {
 
 func newGeneratedPaths(path string) *generatedPaths {
 	gp := generatedPaths{}
+	gp.Video = filepath.Join(path, "video")
 	gp.EmbeddedSubtitles = filepath.Join(path, "embedded_subtitles")
 	gp.Screenshots = filepath.Join(path, "screenshots")
 	gp.Thumbnails = filepath.Join(path, "thumbnails")

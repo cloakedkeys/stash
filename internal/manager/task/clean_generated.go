@@ -94,6 +94,9 @@ func (j *CleanGeneratedJob) countTasks() int {
 	if j.Options.ImageThumbnails {
 		tasks++
 	}
+	if j.cleansVideoFiles() {
+		tasks++
+	}
 	return tasks
 }
 
@@ -167,6 +170,15 @@ func (j *CleanGeneratedJob) Execute(ctx context.Context, progress *job.Progress)
 		progress.ExecuteTask("Cleaning marker files", func() {
 			if err := j.cleanMarkerFiles(ctx, progress); err != nil {
 				j.logError(fmt.Errorf("error cleaning marker files: %w", err))
+			}
+		})
+		j.taskComplete(progress)
+	}
+
+	if j.cleansVideoFiles() {
+		progress.ExecuteTask("Cleaning video files", func() {
+			if err := j.cleanVideoFiles(ctx, progress); err != nil {
+				j.logError(fmt.Errorf("error cleaning video files: %w", err))
 			}
 		})
 		j.taskComplete(progress)
@@ -328,6 +340,15 @@ func (j *CleanGeneratedJob) cleanBlobFiles(ctx context.Context, progress *job.Pr
 	return nil
 }
 
+// walkExisting walks root if it exists. A library started after the hash
+// layout has no legacy folders.
+func walkExisting(root string, fn filepath.WalkFunc) error {
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		return nil
+	}
+	return filepath.Walk(root, fn)
+}
+
 func (j *CleanGeneratedJob) removeEmptyDirs(root string) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -407,7 +428,7 @@ func (j *CleanGeneratedJob) cleanSpriteFiles(ctx context.Context, progress *job.
 	logger.Infof("Cleaning sprite files")
 
 	// walk through the sprite directory
-	if err := filepath.Walk(j.Paths.Generated.Vtt, func(path string, info fs.FileInfo, err error) error {
+	if err := walkExisting(j.Paths.Generated.Vtt, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -461,7 +482,7 @@ func (j *CleanGeneratedJob) cleanSceneFiles(ctx context.Context, path string, ty
 	logger.Infof("Cleaning %s files", typ)
 
 	// walk through the sprite directory
-	if err := filepath.Walk(path, func(path string, info fs.FileInfo, err error) error {
+	if err := walkExisting(path, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -570,7 +591,7 @@ func (j *CleanGeneratedJob) cleanMarkerFiles(ctx context.Context, progress *job.
 	var markers []*models.SceneMarker
 
 	// walk through the markers directory
-	if err := filepath.Walk(j.Paths.Generated.Markers, func(path string, info fs.FileInfo, err error) error {
+	if err := walkExisting(j.Paths.Generated.Markers, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -715,7 +736,7 @@ func (j *CleanGeneratedJob) cleanThumbnailFiles(ctx context.Context, progress *j
 	logger.Infof("Cleaning image thumbnail files")
 
 	// walk through the sprite directory
-	if err := filepath.Walk(j.Paths.Generated.Thumbnails, func(path string, info fs.FileInfo, err error) error {
+	if err := walkExisting(j.Paths.Generated.Thumbnails, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}

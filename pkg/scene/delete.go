@@ -2,7 +2,6 @@ package scene
 
 import (
 	"context"
-	"path/filepath"
 
 	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/file/video"
@@ -33,7 +32,8 @@ func (d *FileDeleter) MarkGeneratedFiles(scene *models.Scene) error {
 		return nil
 	}
 
-	markersFolder := filepath.Join(d.Paths.Generated.Markers, sceneHash)
+	// the markers' legacy folder
+	markersFolder := d.Paths.SceneMarkers.GetFolderPath(sceneHash)
 
 	exists, _ := fsutil.DirExists(markersFolder)
 	if exists {
@@ -42,44 +42,12 @@ func (d *FileDeleter) MarkGeneratedFiles(scene *models.Scene) error {
 		}
 	}
 
-	var files []string
+	// the markers' files in the hash layout
+	files := d.Paths.SceneMarkers.ListMarkerFiles(sceneHash)
 
-	streamPreviewPath := d.Paths.Scene.GetVideoPreviewPath(sceneHash)
-	exists, _ = fsutil.FileExists(streamPreviewPath)
-	if exists {
-		files = append(files, streamPreviewPath)
+	for _, f := range d.Paths.Scene.GeneratedFiles(sceneHash) {
+		files = append(files, existingFiles(f)...)
 	}
-
-	streamPreviewImagePath := d.Paths.Scene.GetWebpPreviewPath(sceneHash)
-	exists, _ = fsutil.FileExists(streamPreviewImagePath)
-	if exists {
-		files = append(files, streamPreviewImagePath)
-	}
-
-	transcodePath := d.Paths.Scene.GetTranscodePath(sceneHash)
-	exists, _ = fsutil.FileExists(transcodePath)
-	if exists {
-		files = append(files, transcodePath)
-	}
-
-	spritePath := d.Paths.Scene.GetSpriteImageFilePath(sceneHash)
-	exists, _ = fsutil.FileExists(spritePath)
-	if exists {
-		files = append(files, spritePath)
-	}
-
-	vttPath := d.Paths.Scene.GetSpriteVttFilePath(sceneHash)
-	exists, _ = fsutil.FileExists(vttPath)
-	if exists {
-		files = append(files, vttPath)
-	}
-
-	heatmapPath := d.Paths.Scene.GetInteractiveHeatmapPath(sceneHash)
-	exists, _ = fsutil.FileExists(heatmapPath)
-	if exists {
-		files = append(files, heatmapPath)
-	}
-
 	return d.FilesWithoutTrash(files)
 }
 
@@ -98,27 +66,10 @@ func (d *FileDeleter) markSceneGeneratedFiles(scene *models.Scene) error {
 // provided scene and timestamp.
 // Generated files bypass trash and are permanently deleted since they can be regenerated.
 func (d *FileDeleter) MarkMarkerFiles(scene *models.Scene, seconds int) error {
-	videoPath := d.Paths.SceneMarkers.GetVideoPreviewPath(scene.GetHash(d.FileNamingAlgo), seconds)
-	imagePath := d.Paths.SceneMarkers.GetWebpPreviewPath(scene.GetHash(d.FileNamingAlgo), seconds)
-	screenshotPath := d.Paths.SceneMarkers.GetScreenshotPath(scene.GetHash(d.FileNamingAlgo), seconds)
-
 	var files []string
-
-	exists, _ := fsutil.FileExists(videoPath)
-	if exists {
-		files = append(files, videoPath)
+	for _, f := range d.Paths.SceneMarkers.MarkerFiles(scene.GetHash(d.FileNamingAlgo), seconds) {
+		files = append(files, existingFiles(f)...)
 	}
-
-	exists, _ = fsutil.FileExists(imagePath)
-	if exists {
-		files = append(files, imagePath)
-	}
-
-	exists, _ = fsutil.FileExists(screenshotPath)
-	if exists {
-		files = append(files, screenshotPath)
-	}
-
 	return d.FilesWithoutTrash(files)
 }
 
@@ -261,4 +212,15 @@ func (s *Service) MarkMarkerFiles(ctx context.Context, scene *models.Scene, scen
 	}
 
 	return fileDeleter.MarkMarkerFiles(scene, seconds)
+}
+
+// existingFiles returns the paths of f that exist, in either layout.
+func existingFiles(f paths.GeneratedFile) []string {
+	var ret []string
+	for _, p := range f.Both() {
+		if exists, _ := fsutil.FileExists(p); exists {
+			ret = append(ret, p)
+		}
+	}
+	return ret
 }

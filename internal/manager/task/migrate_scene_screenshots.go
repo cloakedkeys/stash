@@ -23,6 +23,12 @@ type MigrateSceneScreenshotsJob struct {
 }
 
 func (j *MigrateSceneScreenshotsJob) Execute(ctx context.Context, progress *job.Progress) error {
+	// a library started after the hash layout has no legacy screenshots folder
+	if _, err := os.Stat(j.ScreenshotsPath); os.IsNotExist(err) {
+		logger.Infof("No legacy screenshots folder, so no scene screenshots to migrate")
+		return nil
+	}
+
 	var err error
 	progress.ExecuteTask("Counting files", func() {
 		var count int
