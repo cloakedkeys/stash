@@ -24,8 +24,9 @@ func isUniqueError(err error) bool {
 
 // isPrimaryKeyError reports whether err is the database refusing a row of table
 // whose primary key, the columns cols, is already there. A UNIQUE rule on other
-// columns doesn't match. SQLite enforces a primary key of several columns as a
-// UNIQUE index, so the message, which names the columns, tells which rule it was.
+// columns doesn't match. SQLite reports these link tables' primary keys with
+// ErrConstraintPrimaryKey. The UNIQUE case is only a fallback, in case a build
+// reports the key as a plain UNIQUE error: its message names the columns.
 func isPrimaryKeyError(err error, table string, cols ...string) bool {
 	var se sqlite3.Error
 	if !errors.As(err, &se) {
