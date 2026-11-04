@@ -53,6 +53,10 @@ func (m *Migrator) Close() {
 		m.m.Close()
 		m.m = nil
 	}
+	// closing m.m closes the connection too, but not if it failed to start
+	if m.conn != nil {
+		_ = m.conn.Close()
+	}
 }
 
 func (m *Migrator) CurrentSchemaVersion() uint {
