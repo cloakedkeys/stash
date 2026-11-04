@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stashapp/stash/pkg/models"
@@ -42,6 +43,21 @@ func TestCustomFieldCriterionValueCount(t *testing.T) {
 		}
 		if assert.Error(t, err, "%s with %d values", tt.modifier, len(tt.values)) {
 			assert.Equal(t, tt.wantErr, err.Error())
+		}
+	}
+}
+
+// Equals and not equals with no values build no empty IN list, which
+// PostgreSQL rejects; SQLite reads IN () as false (#2067).
+func TestCustomFieldCriterionNoValuesHasNoEmptyIn(t *testing.T) {
+	for _, modifier := range []models.CriterionModifier{models.CriterionModifierEquals, models.CriterionModifierNotEquals} {
+		for _, values := range [][]interface{}{nil, {}} {
+			h := &customFieldsFilterHandler{table: "performer_custom_fields", fkCol: "performer_id", idCol: "performers.id"}
+			f := &filterBuilder{}
+			h.handleCriterion(f, "cf", models.CustomFieldCriterionInput{Field: "n", Modifier: modifier, Value: values})
+			assert.NoError(t, f.getError())
+			where, _ := f.generateWhereClauses()
+			assert.False(t, strings.Contains(strings.ReplaceAll(where, " ", ""), "IN()"), "%s with values %#v: %s", modifier, values, where)
 		}
 	}
 }

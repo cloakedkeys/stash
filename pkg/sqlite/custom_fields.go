@@ -284,6 +284,8 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 	}
 
 	switch cc.Modifier {
+	// With no values, which the UI sends for a field confirmed without one,
+	// IN () finds nothing and NOT IN () everything; PostgreSQL does the same.
 	case models.CriterionModifierEquals:
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("%[1]s.value IN %s", joinAs, getInBinding(len(cv))), cv...)

@@ -394,9 +394,20 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 	switch cc.Modifier {
 	case models.CriterionModifierEquals:
 		h.innerJoin(f, joinAs, cc.Field)
+		if len(cv) == 0 {
+			// PostgreSQL has no empty IN list; SQLite reads IN () as false, so
+			// equals with no values finds nothing there (#2067)
+			f.addWhere("FALSE")
+			break
+		}
 		f.addWhere(fmt.Sprintf("%s IN %s", valueAsString, getInBinding(len(cv))), customFieldStrings(cv)...)
 	case models.CriterionModifierNotEquals:
 		h.leftJoin(f, joinAs, cc.Field)
+		if len(cv) == 0 {
+			// and NOT IN () as true, so not equals with no values finds
+			// everything
+			break
+		}
 		f.addWhere(fmt.Sprintf("(%s NOT IN %s OR %s.value IS NULL)", valueAsString, getInBinding(len(cv)), joinAs), customFieldStrings(cv)...)
 	case models.CriterionModifierIncludes:
 		clauses := make([]sqlClause, len(cv))
