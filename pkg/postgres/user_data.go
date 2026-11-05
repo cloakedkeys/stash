@@ -113,7 +113,7 @@ func (t userDataTable) selectForUser(ctx context.Context, ids []int) *goqu.Selec
 	}
 
 	table := t.goquTable()
-	return dialect.From(table).Select(table.All()).Where(
+	return dialect.From(table).Prepared(true).Select(table.All()).Where(
 		table.Col(userIDColumn).Eq(userID),
 		table.Col(t.idColumn).In(ids),
 	)

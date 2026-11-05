@@ -179,7 +179,7 @@ func (qb *GalleryChapterStore) FindMany(ctx context.Context, ids []int) ([]*mode
 
 // returns nil, sql.ErrNoRows if not found
 func (qb *GalleryChapterStore) find(ctx context.Context, id int) (*models.GalleryChapter, error) {
-	q := qb.selectDataset().Where(qb.tableMgr.byID(id))
+	q := qb.selectDataset().Prepared(true).Where(qb.tableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)
 	if err != nil {

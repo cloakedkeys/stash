@@ -74,7 +74,7 @@ func (t *table) byIDInts(ids ...int) exp.Expression {
 }
 
 func (t *table) idExists(ctx context.Context, id interface{}) (bool, error) {
-	q := dialect.Select(goqu.COUNT("*")).From(t.table).Where(t.byID(id))
+	q := dialect.Select(goqu.COUNT("*")).From(t.table).Prepared(true).Where(t.byID(id))
 
 	var count int
 	if err := querySimple(ctx, q, &count); err != nil {
@@ -116,7 +116,7 @@ func (t *table) destroyExisting(ctx context.Context, ids []int) error {
 }
 
 func (t *table) destroy(ctx context.Context, ids []int) error {
-	q := dialect.Delete(t.table).Where(t.idColumn.In(ids))
+	q := dialect.Delete(t.table).Prepared(true).Where(t.idColumn.In(ids))
 
 	if _, err := exec(ctx, q); err != nil {
 		return fmt.Errorf("destroying %s: %w", t.table.GetTable(), err)
@@ -185,7 +185,7 @@ func (t *joinTable) invert() *joinTable {
 }
 
 func (t *joinTable) get(ctx context.Context, id int) ([]int, error) {
-	q := dialect.Select(t.fkColumn).From(t.table.table).Where(t.idColumn.Eq(id))
+	q := dialect.Select(t.fkColumn).From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id))
 
 	if t.orderBy != nil {
 		if t.foreignTable != nil {
@@ -213,21 +213,15 @@ func (t *joinTable) get(ctx context.Context, id int) ([]int, error) {
 }
 
 func (t *joinTable) insertJoins(ctx context.Context, id int, foreignIDs []int) error {
-	// manually create SQL so that we can prepare once
-	// ignore duplicates
+	// ignore duplicates. The driver keeps this statement prepared on the connection, so
+	// preparing it here would cost two more round trips on every call.
 	q := fmt.Sprintf("INSERT INTO %s (%s, %s) VALUES (?, ?) ON CONFLICT (%[2]s, %s) DO NOTHING", t.table.table.GetTable(), t.idColumn.GetCol(), t.fkColumn.GetCol())
-
-	stmt, err := dbWrapper.Prepare(ctx, q)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
 
 	// eliminate duplicates
 	foreignIDs = sliceutil.AppendUniques(nil, foreignIDs)
 
 	for _, fk := range foreignIDs {
-		if _, err := dbWrapper.ExecStmt(ctx, stmt, id, fk); err != nil {
+		if _, err := dbWrapper.Exec(ctx, q, id, fk); err != nil {
 			// the database's own error names its command; say what wasn't found
 			if isForeignKeyError(err) {
 				return foreignKeyNotFoundError(t.fkColumn.GetCol(), fk)
@@ -260,7 +254,7 @@ func (t *joinTable) addJoins(ctx context.Context, id int, foreignIDs []int) erro
 }
 
 func (t *joinTable) destroyJoins(ctx context.Context, id int, foreignIDs []int) error {
-	q := dialect.Delete(t.table.table).Where(
+	q := dialect.Delete(t.table.table).Prepared(true).Where(
 		t.idColumn.Eq(id),
 		t.fkColumn.In(foreignIDs),
 	)
@@ -304,7 +298,7 @@ func (r *stashIDRow) resolve() models.StashID {
 }
 
 func (t *stashIDTable) get(ctx context.Context, id int) ([]models.StashID, error) {
-	q := dialect.Select("endpoint", "stash_id", "updated_at").From(t.table.table).Where(t.idColumn.Eq(id))
+	q := dialect.Select("endpoint", "stash_id", "updated_at").From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id))
 
 	const single = false
 	var ret []models.StashID
@@ -418,7 +412,7 @@ type stringTable struct {
 }
 
 func (t *stringTable) get(ctx context.Context, id int) ([]string, error) {
-	q := dialect.Select(t.stringColumn).From(t.table.table).Where(t.idColumn.Eq(id))
+	q := dialect.Select(t.stringColumn).From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id))
 
 	const single = false
 	var ret []string
@@ -541,7 +535,7 @@ func (t *orderedValueTable[T]) positionColumn() exp.IdentifierExpression {
 }
 
 func (t *orderedValueTable[T]) get(ctx context.Context, id int) ([]T, error) {
-	q := dialect.Select(t.valueColumn).From(t.table.table).Where(t.idColumn.Eq(id)).Order(t.positionColumn().Asc())
+	q := dialect.Select(t.valueColumn).From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id)).Order(t.positionColumn().Asc())
 
 	const single = false
 	var ret []T
@@ -655,7 +649,7 @@ func (r groupsScenesRow) resolve(sceneID int) models.GroupsScenes {
 }
 
 func (t *scenesGroupsTable) get(ctx context.Context, id int) ([]models.GroupsScenes, error) {
-	q := dialect.Select("group_id", "scene_index").From(t.table.table).Where(t.idColumn.Eq(id))
+	q := dialect.Select("group_id", "scene_index").From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id))
 
 	const single = false
 	var ret []models.GroupsScenes
@@ -784,7 +778,7 @@ func (r groupsAudiosRow) resolve(audioID int) models.GroupsAudios {
 }
 
 func (t *audiosGroupsTable) get(ctx context.Context, id int) ([]models.GroupsAudios, error) {
-	q := dialect.Select("group_id", "audio_index").From(t.table.table).Where(t.idColumn.Eq(id))
+	q := dialect.Select("group_id", "audio_index").From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id))
 
 	const single = false
 	var ret []models.GroupsAudios
@@ -947,7 +941,7 @@ type relatedFilesTable struct {
 // get returns the file IDs related to the provided scene ID
 // the primary file is returned first
 func (t *relatedFilesTable) get(ctx context.Context, id int) ([]models.FileID, error) {
-	q := dialect.Select("file_id").From(t.table.table).Where(t.idColumn.Eq(id)).Order(t.table.table.Col("primary").Desc())
+	q := dialect.Select("file_id").From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id)).Order(t.table.table.Col("primary").Desc())
 
 	const single = false
 	var ret []models.FileID
