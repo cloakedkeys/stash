@@ -10,6 +10,11 @@ type OperatorFilter[T any] struct {
 	And *T `json:"AND"`
 	Or  *T `json:"OR"`
 	Not *T `json:"NOT"`
+	// AllOf lists more filters that must all match as well, so one level can
+	// hold several groups, such as (a OR b) AND (c OR d). They count as
+	// conditions of this level: they are ANDed with its other conditions before
+	// And, Or or Not is applied. It can be set together with And, Or or Not.
+	AllOf []*T `json:"ALL_OF,omitempty" gqlgen:"ALL_OF"`
 }
 
 // SubFilter returns the subfilter of the operator filter.

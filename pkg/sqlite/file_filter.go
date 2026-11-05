@@ -56,6 +56,10 @@ func (qb *fileFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		sub := &fileFilterHandler{sf, qb.isRelated}
 		handleSubFilter(ctx, sub, f, fileFilter.OperatorFilter)
 	}
+
+	handleAllOf(ctx, f, fileFilter.AllOf, func(sf *models.FileFilterType) criterionHandler {
+		return &fileFilterHandler{sf, qb.isRelated}
+	})
 }
 
 func (qb *fileFilterHandler) criterionHandler() criterionHandler {
@@ -71,9 +75,9 @@ func (qb *fileFilterHandler) criterionHandler() criterionHandler {
 			filter: fileFilter.ImageFileFilter,
 		},
 
-		pathCriterionHandler(fileFilter.Path, "folders.path", "files.basename", nil),
+		pathCriterionHandler(fileFilter.Path, "folders.path", "files.basename", qb.addFoldersTable),
 		stringCriterionHandler(fileFilter.Basename, "files.basename"),
-		stringCriterionHandler(fileFilter.Dir, "folders.path"),
+		qb.dirCriterionHandler(fileFilter.Dir),
 		&timestampCriterionHandler{fileFilter.ModTime, "files.mod_time", nil},
 
 		qb.parentFolderCriterionHandler(fileFilter.ParentFolder),
@@ -425,4 +429,21 @@ func (qb *imageFileFilterHandler) criterionHandler() criterionHandler {
 
 func (qb *imageFileFilterHandler) addImageFilesTable(f *filterBuilder, joinType joinType) {
 	f.addJoin(joinType, imageFileTable, "", "image_files.file_id = files.id")
+}
+
+// addFoldersTable joins the folder of the file. The query for files joins
+// it too, under the same name, so the two are merged. A filter level that
+// has its own subquery (ALL_OF, OR, NOT) needs its own join, or the
+// condition would refer to the outer query's row (#2169).
+func (qb *fileFilterHandler) addFoldersTable(f *filterBuilder, _ joinType) {
+	f.addLeftJoin(folderTable, "", "files.parent_folder_id = folders.id")
+}
+
+func (qb *fileFilterHandler) dirCriterionHandler(c *models.StringCriterionInput) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		if c != nil {
+			qb.addFoldersTable(f, joinTypeLeft)
+			stringCriterionHandler(c, "folders.path")(ctx, f)
+		}
+	}
 }

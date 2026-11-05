@@ -51,6 +51,26 @@ func handleSubFilter[T any](ctx context.Context, handler criterionHandler, f *fi
 	}
 }
 
+// hasAllOf reports whether the filter or one of its sub-filters has ALL_OF
+// filters.
+func (f *filterBuilder) hasAllOf() bool {
+	for ff := f; ff != nil; ff = ff.subFilter {
+		if len(ff.allOf) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// handleAllOf builds each of the ALL_OF filters of a level on its own.
+func handleAllOf[T any](ctx context.Context, f *filterBuilder, filters []*T, newHandler func(*T) criterionHandler) {
+	for _, sub := range filters {
+		if sub != nil {
+			f.allOf = append(f.allOf, filterBuilderFromHandler(ctx, newHandler(sub)))
+		}
+	}
+}
+
 type sqlClause struct {
 	sql  string
 	args []interface{}
@@ -200,6 +220,10 @@ type filterBuilder struct {
 	subFilter   *filterBuilder
 	subFilterOp string
 
+	// filters that must all match as well (ALL_OF). They are made into
+	// WHERE clauses of this level when the query is built.
+	allOf []*filterBuilder
+
 	joins         joins
 	whereClauses  []sqlClause
 	havingClauses []sqlClause
@@ -210,7 +234,7 @@ type filterBuilder struct {
 }
 
 func (f *filterBuilder) empty() bool {
-	return f == nil || (len(f.whereClauses) == 0 && len(f.joins) == 0 && len(f.havingClauses) == 0 && f.subFilter == nil)
+	return f == nil || (len(f.whereClauses) == 0 && len(f.joins) == 0 && len(f.havingClauses) == 0 && f.subFilter == nil && len(f.allOf) == 0)
 }
 
 func filterBuilderFromHandler(ctx context.Context, handler criterionHandler) *filterBuilder {

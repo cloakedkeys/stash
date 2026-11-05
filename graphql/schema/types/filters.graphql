@@ -134,6 +134,12 @@ input PerformerFilterType {
   AND: PerformerFilterType
   OR: PerformerFilterType
   NOT: PerformerFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [PerformerFilterType!]
 
   name: StringCriterionInput
   disambiguation: StringCriterionInput
@@ -273,6 +279,12 @@ input SceneFilterType {
   AND: SceneFilterType
   OR: SceneFilterType
   NOT: SceneFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [SceneFilterType!]
 
   id: IntCriterionInput
   title: StringCriterionInput
@@ -397,6 +409,12 @@ input MovieFilterType {
   AND: MovieFilterType
   OR: MovieFilterType
   NOT: MovieFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [MovieFilterType!]
 
   name: StringCriterionInput
   director: StringCriterionInput
@@ -438,6 +456,12 @@ input GroupFilterType {
   AND: GroupFilterType
   OR: GroupFilterType
   NOT: GroupFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [GroupFilterType!]
 
   name: StringCriterionInput
   "Filter by aliases"
@@ -496,6 +520,12 @@ input StudioFilterType {
   AND: StudioFilterType
   OR: StudioFilterType
   NOT: StudioFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [StudioFilterType!]
 
   name: StringCriterionInput
   details: StringCriterionInput
@@ -561,6 +591,12 @@ input GalleryFilterType {
   AND: GalleryFilterType
   OR: GalleryFilterType
   NOT: GalleryFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [GalleryFilterType!]
 
   id: IntCriterionInput
   title: StringCriterionInput
@@ -647,6 +683,12 @@ input TagFilterType {
   AND: TagFilterType
   OR: TagFilterType
   NOT: TagFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [TagFilterType!]
 
   "Filter by tag name"
   name: StringCriterionInput
@@ -749,6 +791,12 @@ input ImageFilterType {
   AND: ImageFilterType
   OR: ImageFilterType
   NOT: ImageFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [ImageFilterType!]
 
   title: StringCriterionInput
   details: StringCriterionInput
@@ -824,6 +872,12 @@ input StoryFilterType {
   AND: StoryFilterType
   OR: StoryFilterType
   NOT: StoryFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [StoryFilterType!]
 
   title: StringCriterionInput
   "Filter to only include stories with these tags"
@@ -839,6 +893,12 @@ input AudioFilterType {
   AND: AudioFilterType
   OR: AudioFilterType
   NOT: AudioFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [AudioFilterType!]
 
   id: IntCriterionInput
   title: StringCriterionInput
@@ -924,6 +984,12 @@ input FileFilterType {
   AND: FileFilterType
   OR: FileFilterType
   NOT: FileFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [FileFilterType!]
 
   path: StringCriterionInput
   basename: StringCriterionInput
@@ -972,6 +1038,12 @@ input FolderFilterType {
   AND: FolderFilterType
   OR: FolderFilterType
   NOT: FolderFilterType
+  """
+  Filters that must all match as well, so one filter can hold several groups,
+  such as (a OR b) AND (c OR d). They count as conditions of this filter:
+  they are ANDed with its other conditions before AND, OR or NOT is applied.
+  """
+  ALL_OF: [FolderFilterType!]
 
   path: StringCriterionInput
   basename: StringCriterionInput
