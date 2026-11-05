@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -561,8 +562,32 @@ func (db *Database) RestoreFromBackup(backupPath string) error {
 }
 
 // renameFile is os.Rename. Tests replace it to stand in for a move between
-// drives.
-var renameFile = os.Rename
+// drives, and syncFile and syncDir to stand in for a failing disk.
+var (
+	renameFile = os.Rename
+	// Windows only syncs a file opened for writing
+	syncFile = func(path string) error { return syncPath(path, os.O_RDWR) }
+	syncDir  = func(dir string) error {
+		// Windows can't sync a directory, and doesn't need to
+		if runtime.GOOS == "windows" {
+			return nil
+		}
+		return syncPath(dir, os.O_RDONLY)
+	}
+)
+
+// syncPath writes the file or directory at path to disk.
+func syncPath(path string, flag int) error {
+	f, err := os.OpenFile(path, flag, 0)
+	if err != nil {
+		return err
+	}
+	err = f.Sync()
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	return err
+}
 
 // moveIntoPlace moves the backup over the database file. A rename can't move
 // a file to another drive or volume (#2123), so when it fails, the backup is
@@ -583,9 +608,21 @@ func moveIntoPlace(backupPath, dbPath string) error {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("copying it failed: %w; moving it failed first: %v", err, renameErr)
 	}
+	// on disk before it replaces the database, so a power cut can't leave a
+	// half-written database
+	if err := syncFile(tmp); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("saving a copy of it to disk failed: %w; moving it failed first: %v", err, renameErr)
+	}
 	if err := renameFile(tmp, dbPath); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("replacing the database with a copy of it failed: %w; moving it failed first: %v", err, renameErr)
+	}
+	// and the rename too. The database is already restored, so if this fails,
+	// keep the backup in case the rename is lost.
+	if err := syncDir(filepath.Dir(dbPath)); err != nil {
+		logger.Warnf("The backup %s was restored, but saving the change to disk failed, so the backup is kept: %v", backupPath, err)
+		return nil
 	}
 	if err := os.Remove(backupPath); err != nil {
 		logger.Warnf("The backup %s was restored, but couldn't be removed: %v", backupPath, err)
