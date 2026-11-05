@@ -14,14 +14,14 @@ func TestTryStopWithoutMigration(t *testing.T) {
 	if !g.TryStop() {
 		t.Fatal("TryStop should succeed when no migration is running")
 	}
-	if _, err := g.Begin(); !errors.Is(err, ErrStopping) {
+	if _, err := g.Begin(Update); !errors.Is(err, ErrStopping) {
 		t.Errorf("Begin after a stop should return ErrStopping, got %v", err)
 	}
 }
 
 func TestTryStopDuringMigration(t *testing.T) {
 	var g Guard
-	end, err := g.Begin()
+	end, err := g.Begin(Update)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestTryStopDuringMigration(t *testing.T) {
 	}
 
 	// a failed TryStop changes nothing: another migration can still start
-	end2, err := g.Begin()
+	end2, err := g.Begin(Update)
 	if err != nil {
 		t.Fatalf("Begin after a failed TryStop: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestTryStopDuringMigration(t *testing.T) {
 
 func TestStopWaitsForMigration(t *testing.T) {
 	var g Guard
-	end, err := g.Begin()
+	end, err := g.Begin(Update)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestStopWaitsForMigration(t *testing.T) {
 	}
 
 	// no new migration starts once Stop has been called
-	if _, err := g.Begin(); !errors.Is(err, ErrStopping) {
+	if _, err := g.Begin(Update); !errors.Is(err, ErrStopping) {
 		t.Errorf("Begin during Stop should return ErrStopping, got %v", err)
 	}
 
@@ -91,4 +91,27 @@ func TestStopWithoutMigration(t *testing.T) {
 	var g Guard
 	g.Stop(func() { t.Error("Stop should not say it is waiting when no migration is running") })
 	g.Stop(nil) // a second Stop returns at once too
+}
+
+func TestDoing(t *testing.T) {
+	var g Guard
+	if k := g.Doing(); k != "" {
+		t.Errorf("Doing with no migration = %q, want empty", k)
+	}
+	endUpdate, _ := g.Begin(Update)
+	if k := g.Doing(); k != Update {
+		t.Errorf("Doing during an update = %q, want %q", k, Update)
+	}
+	endBuild, _ := g.Begin(Build)
+	if k := g.Doing(); k != Build {
+		t.Errorf("Doing during a build and an update = %q, want %q", k, Build)
+	}
+	endBuild()
+	if k := g.Doing(); k != Update {
+		t.Errorf("Doing once the build ended = %q, want %q", k, Update)
+	}
+	endUpdate()
+	if k := g.Doing(); k != "" {
+		t.Errorf("Doing once all ended = %q, want empty", k)
+	}
 }

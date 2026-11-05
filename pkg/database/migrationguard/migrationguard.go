@@ -13,6 +13,16 @@ import (
 	"sync"
 )
 
+// Kind says what a migration does to the database, for messages.
+type Kind string
+
+const (
+	// Build creates the schema of a new database.
+	Build Kind = "build"
+	// Update brings an existing database up to the current schema.
+	Update Kind = "update"
+)
+
 // ErrStopping is returned by Begin once Stash has started to stop.
 var ErrStopping = errors.New("stash is stopping, so the database migration was not started")
 
@@ -21,6 +31,7 @@ type Guard struct {
 	mu       sync.Mutex
 	idle     *sync.Cond
 	running  int
+	kinds    map[Kind]int
 	stopping bool
 }
 
@@ -31,10 +42,10 @@ func (g *Guard) cond() *sync.Cond {
 	return g.idle
 }
 
-// Begin marks the start of a migration. It returns the function to call when
-// the migration has finished, or ErrStopping, in which case the migration
-// must not start.
-func (g *Guard) Begin() (end func(), err error) {
+// Begin marks the start of a migration of the given kind. It returns the
+// function to call when the migration has finished, or ErrStopping, in which
+// case the migration must not start.
+func (g *Guard) Begin(kind Kind) (end func(), err error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -42,6 +53,10 @@ func (g *Guard) Begin() (end func(), err error) {
 		return nil, ErrStopping
 	}
 	g.running++
+	if g.kinds == nil {
+		g.kinds = make(map[Kind]int)
+	}
+	g.kinds[kind]++
 
 	var once sync.Once
 	return func() {
@@ -49,6 +64,7 @@ func (g *Guard) Begin() (end func(), err error) {
 			g.mu.Lock()
 			defer g.mu.Unlock()
 			g.running--
+			g.kinds[kind]--
 			if g.running == 0 {
 				g.cond().Broadcast()
 			}
@@ -61,6 +77,20 @@ func (g *Guard) Running() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.running > 0
+}
+
+// Doing returns the kind of migration running: Build if a database is being
+// built, otherwise Update if one is being updated, otherwise "".
+func (g *Guard) Doing() Kind {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	switch {
+	case g.kinds[Build] > 0:
+		return Build
+	case g.kinds[Update] > 0:
+		return Update
+	}
+	return ""
 }
 
 // TryStop stops new migrations from starting and returns true, if none is
@@ -102,10 +132,13 @@ func Default() *Guard { return &std }
 
 // Begin marks the start of a migration on the guard for this process. See
 // Guard.Begin.
-func Begin() (end func(), err error) { return std.Begin() }
+func Begin(kind Kind) (end func(), err error) { return std.Begin(kind) }
 
 // Running reports whether a migration is running in this process.
 func Running() bool { return std.Running() }
+
+// Doing calls Guard.Doing on the guard for this process.
+func Doing() Kind { return std.Doing() }
 
 // TryStop calls Guard.TryStop on the guard for this process.
 func TryStop() bool { return std.TryStop() }

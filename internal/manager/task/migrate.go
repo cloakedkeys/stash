@@ -61,7 +61,7 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 
 	// A stop waits until the upgrade has finished, or been rolled back, so that
 	// the database isn't left half upgraded (#2103).
-	end, err := migrationguard.Begin()
+	end, err := migrationguard.Begin(migrationguard.Update)
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/internal/stoprequests"
 	"github.com/stashapp/stash/pkg/database"
+	"github.com/stashapp/stash/pkg/database/migrationguard"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/postgres"
 	"github.com/stashapp/stash/ui"
@@ -90,7 +92,7 @@ func main() {
 	l := initLog(cfg)
 
 	stoprequests.OnWaiting(func() {
-		logger.Info("Stash will stop once the database upgrade has finished")
+		logger.Info(waitingMessage(migrationguard.Doing(), runtime.GOOS))
 	})
 
 	if cpuProfilePath != "" {
@@ -225,10 +227,30 @@ func stoppedDuringStartup(stopRequested bool, err error) bool {
 		return false
 	}
 	logStopDuringStartup()
-	if err != nil {
+	switch {
+	case err == nil:
+	case errors.Is(err, context.Canceled), errors.Is(err, migrationguard.ErrStopping):
+		// the stop request ended the step
 		logger.Debugf("Startup ended by the stop request: %v", err)
+	default:
+		// the step failed for another reason, which mustn't be hidden
+		logger.Errorf("Startup failed: %v", err)
 	}
 	return true
+}
+
+// waitingMessage is logged for a stop request that waits for a database
+// migration of the given kind to finish. It says how to stop Stash at once.
+func waitingMessage(kind migrationguard.Kind, goos string) string {
+	what := "update"
+	if kind == migrationguard.Build {
+		what = "build"
+	}
+	force := "use kill -9"
+	if goos == "windows" {
+		force = "end the Stash process"
+	}
+	return fmt.Sprintf("Stash will stop once the database %s has finished. To stop it now anyway, %s", what, force)
 }
 
 // initLogTemp initializes a temporary logger for use before the config is loaded.

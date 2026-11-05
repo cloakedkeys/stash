@@ -72,14 +72,14 @@ func TestDispatchStopsAtOnceWithoutMigration(t *testing.T) {
 
 	// later requests are ignored, as before #2103; a second stop must not panic
 	sigs <- os.Interrupt
-	if _, err := g.Begin(); !errors.Is(err, migrationguard.ErrStopping) {
+	if _, err := g.Begin(migrationguard.Update); !errors.Is(err, migrationguard.ErrStopping) {
 		t.Errorf("a migration could start after the stop took effect: %v", err)
 	}
 }
 
 func TestDispatchWaitsForMigration(t *testing.T) {
 	var g migrationguard.Guard
-	end, err := g.Begin()
+	end, err := g.Begin(migrationguard.Update)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestHelperProcess(t *testing.T) {
 	case "sigterm":
 		send = sendSIGTERMToSelf
 	case "migration":
-		end, err := migrationguard.Begin()
+		end, err := migrationguard.Begin(migrationguard.Build)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(2)

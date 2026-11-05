@@ -192,7 +192,11 @@ func (db *Database) RunAllMigrations(ctx context.Context) error {
 	stepNumber := appSchemaVersion - databaseSchemaVersion
 	if stepNumber != 0 {
 		// a stop waits for this to finish, so the database isn't left half built
-		end, err := migrationguard.Begin()
+		kind := migrationguard.Update
+		if databaseSchemaVersion == 0 {
+			kind = migrationguard.Build
+		}
+		end, err := migrationguard.Begin(kind)
 		if err != nil {
 			return err
 		}

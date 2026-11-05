@@ -39,6 +39,10 @@ type Manager struct {
 	Config *config.Config
 	Logger *log.Logger
 
+	// migrations is what Shutdown waits for; nil means the guard for this
+	// process. Tests set a guard of their own.
+	migrations *migrationguard.Guard
+
 	// ImageThumbnailGenerateWaitGroup is the global wait group image thumbnail generation
 	// It uses the parallel tasks setting from the configuration.
 	ImageThumbnailGenerateWaitGroup sizedwaitgroup.SizedWaitGroup
@@ -451,8 +455,16 @@ func (s *Manager) Shutdown() {
 	// Closing the database under a running migration would leave it half
 	// upgraded, so wait for the migration to finish. No new one starts after
 	// this (#2103).
-	migrationguard.Stop(func() {
-		logger.Info("Waiting for the database upgrade to finish before stopping")
+	guard := s.migrations
+	if guard == nil {
+		guard = migrationguard.Default()
+	}
+	guard.Stop(func() {
+		what := "update"
+		if guard.Doing() == migrationguard.Build {
+			what = "build"
+		}
+		logger.Infof("Waiting for the database %s to finish before stopping", what)
 	})
 
 	if s.StreamManager != nil {
