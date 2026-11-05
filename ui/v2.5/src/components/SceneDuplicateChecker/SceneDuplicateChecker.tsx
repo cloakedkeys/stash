@@ -791,6 +791,12 @@ export const SceneDuplicateChecker: React.FC = () => {
                   <option value={10}>
                     10 {intl.formatMessage({ id: "seconds" })}
                   </option>
+                  <option value={30}>
+                    30 {intl.formatMessage({ id: "seconds" })}
+                  </option>
+                  <option value={60}>
+                    60 {intl.formatMessage({ id: "seconds" })}
+                  </option>
                 </Form.Control>
               </Col>
             </Row>
