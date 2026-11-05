@@ -521,25 +521,31 @@ export const HierarchicalObjectsFilter = <
     setCriterion(newCriterion);
   }
 
+  // a related object's criterion (such as a marker's scene studios) is
+  // labelled as on that object's own list
+  const optionType =
+    criterion.criterionOption.subFilter?.field ??
+    criterion.criterionOption.type;
+
   function criterionOptionTypeToIncludeID(): string {
-    if (criterion.criterionOption.type === "studios") {
+    if (optionType === "studios") {
       return "include-sub-studios";
     }
-    if (criterion.criterionOption.type === "children") {
+    if (optionType === "children") {
       return "include-parent-tags";
     }
     return "include-sub-tags";
   }
 
   function criterionOptionTypeToIncludeUIString(): MessageDescriptor {
-    const optionType =
-      criterion.criterionOption.type === "studios"
+    const messageID =
+      optionType === "studios"
         ? "include_sub_studios"
-        : criterion.criterionOption.type === "children"
+        : optionType === "children"
           ? "include_parent_tags"
           : "include_sub_tags";
     return {
-      id: optionType,
+      id: messageID,
     };
   }
 
