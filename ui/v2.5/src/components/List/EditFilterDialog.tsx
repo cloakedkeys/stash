@@ -233,6 +233,8 @@ function filterModeToConfigKey(filterMode: FilterMode) {
 interface IEditFilterProps {
   filter: ListFilterModel;
   editingCriterion?: string;
+  // for searches that take only criteria, such as the duplicate checker
+  hideSearchTerm?: boolean;
   onApply: (filter: ListFilterModel) => void;
   onCancel: () => void;
 }
@@ -240,6 +242,7 @@ interface IEditFilterProps {
 export const EditFilterDialog: React.FC<IEditFilterProps> = ({
   filter,
   editingCriterion,
+  hideSearchTerm = false,
   onApply,
   onCancel,
 }) => {
@@ -569,15 +572,17 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
               "criterion-selected": !!criterion,
             })}
           >
-            <div className="search-term-row">
-              <span>
-                <FormattedMessage id="search_filter.search_term" />
-              </span>
-              <SearchTermInput
-                filter={currentFilter}
-                onFilterUpdate={setCurrentFilter}
-              />
-            </div>
+            {!hideSearchTerm && (
+              <div className="search-term-row">
+                <span>
+                  <FormattedMessage id="search_filter.search_term" />
+                </span>
+                <SearchTermInput
+                  filter={currentFilter}
+                  onFilterUpdate={setCurrentFilter}
+                />
+              </div>
+            )}
             <CriterionOptionList
               criteria={criteriaList}
               currentCriterion={criterion}

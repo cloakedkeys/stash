@@ -16,4 +16,10 @@
   .form-group .row {
     align-items: center;
   }
+
+  // keep the scene filter tags next to the Edit Filter button
+  .form-group .filter-tags {
+    justify-content: flex-start;
+    margin: 0 0 0 1rem;
+  }
 }
