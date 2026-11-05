@@ -305,9 +305,14 @@ export function useFilterOperations(props: {
   );
 
   const removeCriterion = useCallback(
-    (removedCriterion: Criterion) => {
+    // valueIndex is set by the x on one value of a custom fields condition,
+    // which removes just that value (#2173)
+    (removedCriterion: Criterion, valueIndex?: number) => {
+      const { type } = removedCriterion.criterionOption;
       setFilter((cv) =>
-        cv.removeCriterion(removedCriterion.criterionOption.type)
+        valueIndex !== undefined
+          ? cv.removeCustomFieldCriterion(type, valueIndex)
+          : cv.removeCriterion(type)
       );
     },
     [setFilter]
