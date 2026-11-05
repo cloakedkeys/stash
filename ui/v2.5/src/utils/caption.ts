@@ -38,7 +38,8 @@ export const canonicalLanguageCode = (code: string) => {
   }
 };
 
-const capitalise = (s: string) => s.charAt(0).toLocaleUpperCase() + s.slice(1);
+const capitalise = (s: string, locale: string) =>
+  s.charAt(0).toLocaleUpperCase(locale) + s.slice(1);
 
 // The name to show for a caption's language code, in that language.
 // Falls back to the code itself when the language isn't known.
@@ -48,7 +49,7 @@ export const languageName = (code: string) => {
     return known;
   }
 
-  if (code === "und") {
+  if (code.toLowerCase() === "und") {
     return languageMap.get("00")!;
   }
 
@@ -64,7 +65,7 @@ export const languageName = (code: string) => {
       fallback: "none",
     }).of(canonical);
     if (name) {
-      return capitalise(name);
+      return capitalise(name, canonical);
     }
   } catch {
     // not a language code the browser knows

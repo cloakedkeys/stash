@@ -307,7 +307,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       if (embeddedCaptionsError) {
         console.error(
           "Failed to load embedded captions",
-          embeddedCaptionsError,
+          embeddedCaptionsError
         );
       }
     }, [embeddedCaptionsError]);
@@ -357,7 +357,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
     const file = useMemo(
       () => (scene.files.length > 0 ? scene.files[0] : undefined),
-      [scene],
+      [scene]
     );
 
     // Read by the Chromecast tech when it loads media, long after the player was created.
@@ -372,7 +372,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           permitLoop &&
           maxLoopDuration !== 0 &&
           file.duration < maxLoopDuration),
-      [file, permitLoop, maxLoopDuration, forceLoop],
+      [file, permitLoop, maxLoopDuration, forceLoop]
     );
 
     const getPlayer = useCallback(() => {
@@ -581,7 +581,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         // before it reaches anything else) and fire exactly one clean click.
         const vendorAbLoopButtonEls =
           controlBarEl.querySelectorAll<HTMLElement>(
-            ".abLoopButton.enabled, .abLoopButton.start, .abLoopButton.end",
+            ".abLoopButton.enabled, .abLoopButton.start, .abLoopButton.end"
           );
         vendorAbLoopButtonEls.forEach((btnEl) => {
           btnEl.addEventListener("click", (e) => e.stopPropagation());
@@ -592,7 +592,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
               e.stopPropagation();
               btnEl.click();
             },
-            { passive: false },
+            { passive: false }
           );
         });
       });
@@ -641,7 +641,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         interactiveReady.current = false;
         uploadScript(
           scene.paths.funscript || "",
-          scene.paths.interactive_csv || undefined,
+          scene.paths.interactive_csv || undefined
         ).then(() => {
           interactiveReady.current = true;
         });
@@ -856,7 +856,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           }),
         uiConfig?.defaultStreamType,
         uiConfig?.defaultStreamingResolution,
-        scene.paths.stream,
+        scene.paths.stream
       );
 
       const alwaysStartFromBeginning =
@@ -892,7 +892,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       // uses autostartIntent (not auto) because auto is cleared by the one-shot play
       // effect before failover occurs; started covers mid-playback source swaps.
       sourceSelector.setShouldAutoplay(
-        () => autostartIntent.current || started.current,
+        () => autostartIntent.current || started.current
       );
 
       player.ready(() => {
@@ -956,7 +956,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           const lang = caption.language_code;
           const label = languageName(lang) + " (" + caption.caption_type + ")";
           const setAsDefault =
-            !hasDefault && languageCode === canonicalLanguageCode(lang);
+            !hasDefault &&
+            canonicalLanguageCode(languageCode) === canonicalLanguageCode(lang);
           if (setAsDefault) {
             hasDefault = true;
           }
@@ -965,7 +966,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           captionURL.searchParams.set("type", caption.caption_type);
           if (
             sourceSelector.textTracks.some(
-              (existing) => existing.src === captionURL.toString(),
+              (existing) => existing.src === captionURL.toString()
             )
           )
             continue;
@@ -978,7 +979,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
               label: label,
               default: setAsDefault,
             },
-            false,
+            false
           );
         }
       }
@@ -991,7 +992,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         captionURL.searchParams.set("stream", String(track.stream_index));
         if (
           sourceSelector.textTracks.some(
-            (existing) => existing.src === captionURL.toString(),
+            (existing) => existing.src === captionURL.toString()
           )
         )
           continue;
@@ -1014,7 +1015,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
               ")",
             default: false,
           },
-          false,
+          false
         );
       }
       sourceSelector.selectTextTrack();
@@ -1159,7 +1160,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       const autostartButton = player.autostartButton();
       if (autostartButton) {
         autostartButton.syncWithConfig(
-          interfaceConfig?.autostartVideo ?? false,
+          interfaceConfig?.autostartVideo ?? false
         );
         autostartButton.updateAutoStart = updateAutoStart;
       }
@@ -1260,7 +1261,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         .setMetadata(
           scene?.title ?? "Stash",
           scene?.studio?.name ?? performers ?? "Stash",
-          scene.paths.screenshot || "",
+          scene.paths.screenshot || ""
         );
     }, [getPlayer, scene]);
 
@@ -1330,7 +1331,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         )}
       </div>
     );
-  },
+  }
 );
 
 export default ScenePlayer;
