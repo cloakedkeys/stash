@@ -501,6 +501,84 @@ func TestMarkerQueryDuration(t *testing.T) {
 
 }
 
+// The marker list's "Scene ..." criteria send the scene's fields inside
+// scene_filter (#1548). Only markers whose scene matches are returned.
+func TestMarkerQuerySceneFilter(t *testing.T) {
+	markersOfScenes := func(match func(sceneIdx int) bool) []int {
+		var ret []int
+		for i, s := range markerSpecs {
+			if match(s.sceneIdx) {
+				ret = append(ret, markerIDs[i])
+			}
+		}
+		return ret
+	}
+
+	sceneTitle := getSceneTitle(sceneIdxWithMarkers)
+	sceneID := strconv.Itoa(sceneIDs[sceneIdxWithMarkers])
+
+	cases := []struct {
+		name         string
+		markerFilter *models.SceneMarkerFilterType
+		want         []int
+	}{
+		{
+			"scene title equals",
+			&models.SceneMarkerFilterType{
+				SceneFilter: &models.SceneFilterType{
+					Title: &models.StringCriterionInput{
+						Value:    sceneTitle,
+						Modifier: models.CriterionModifierEquals,
+					},
+				},
+			},
+			markersOfScenes(func(i int) bool { return i == sceneIdxWithMarkers }),
+		},
+		{
+			"scene title not equals",
+			&models.SceneMarkerFilterType{
+				SceneFilter: &models.SceneFilterType{
+					Title: &models.StringCriterionInput{
+						Value:    sceneTitle,
+						Modifier: models.CriterionModifierNotEquals,
+					},
+				},
+			},
+			markersOfScenes(func(i int) bool { return i != sceneIdxWithMarkers }),
+		},
+		{
+			"scene filter with a marker criterion",
+			&models.SceneMarkerFilterType{
+				Scenes: &models.MultiCriterionInput{
+					Value:    []string{sceneID},
+					Modifier: models.CriterionModifierExcludes,
+				},
+				SceneFilter: &models.SceneFilterType{
+					Title: &models.StringCriterionInput{
+						Value:    sceneTitle,
+						Modifier: models.CriterionModifierEquals,
+					},
+				},
+			},
+			nil,
+		},
+	}
+
+	qb := db.SceneMarker()
+
+	for _, tt := range cases {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			got, _, err := qb.Query(ctx, tt.markerFilter, nil)
+			if err != nil {
+				t.Errorf("SceneMarkerStore.Query() error = %v", err)
+				return
+			}
+
+			assert.ElementsMatch(t, tt.want, markersToIDs(got))
+		})
+	}
+}
+
 func queryMarkers(ctx context.Context, t *testing.T, sqb models.SceneMarkerReader, markerFilter *models.SceneMarkerFilterType, findFilter *models.FindFilterType) []*models.SceneMarker {
 	t.Helper()
 	result, _, err := sqb.Query(ctx, markerFilter, findFilter)
