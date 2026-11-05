@@ -60,10 +60,12 @@ func (c Client) queryPerformer(ctx context.Context, queryStr string) ([]*models.
 }
 
 // QueryPerformers queries stash-box for performers using a list of names.
+// The results are in the same order as names. Blank names are not searched
+// for and get no results.
 func (c Client) QueryPerformers(ctx context.Context, names []string) ([][]*models.ScrapedPerformer, error) {
 	ret := make([][]*models.ScrapedPerformer, len(names))
 	for i, name := range names {
-		if name != "" {
+		if name == "" {
 			continue
 		}
 
