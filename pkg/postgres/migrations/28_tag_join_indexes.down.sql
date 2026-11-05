@@ -1,0 +1,18 @@
+DROP INDEX index_scenes_tags_on_tag_id;
+CREATE INDEX index_scenes_tags_on_tag_id ON scenes_tags (tag_id);
+DROP INDEX index_images_tags_on_tag_id;
+CREATE INDEX index_images_tags_on_tag_id ON images_tags (tag_id);
+DROP INDEX index_galleries_tags_on_tag_id;
+CREATE INDEX index_galleries_tags_on_tag_id ON galleries_tags (tag_id);
+DROP INDEX index_performers_tags_on_tag_id;
+CREATE INDEX index_performers_tags_on_tag_id ON performers_tags (tag_id);
+DROP INDEX index_studios_tags_on_tag_id;
+CREATE INDEX index_studios_tags_on_tag_id ON studios_tags (tag_id);
+DROP INDEX index_groups_tags_on_tag_id;
+CREATE INDEX index_groups_tags_on_tag_id ON groups_tags (tag_id);
+DROP INDEX index_audios_tags_on_tag_id;
+CREATE INDEX index_audios_tags_on_tag_id ON audios_tags (tag_id);
+DROP INDEX index_stories_tags_on_tag_id;
+CREATE INDEX index_stories_tags_on_tag_id ON stories_tags (tag_id);
+DROP INDEX index_scene_markers_tags_on_tag_id;
+CREATE INDEX index_scene_markers_tags_on_tag_id ON scene_markers_tags (tag_id);
