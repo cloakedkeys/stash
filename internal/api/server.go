@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	gqlHandler "github.com/99designs/gqlgen/graphql/handler"
@@ -56,6 +58,12 @@ type Server struct {
 	displayAddress string
 
 	manager *manager.Manager
+
+	// used by Shutdown, set by prepareShutdown
+	shutdownTimeout time.Duration
+	stopMigrations  func()
+	cancelRequests  context.CancelFunc
+	openConns       atomic.Int64
 }
 
 // TODO - os.DirFS doesn't implement ReadDir, so re-implement it here
@@ -127,6 +135,7 @@ func Initialize() (*Server, error) {
 		displayAddress: displayAddress,
 		manager:        mgr,
 	}
+	server.prepareShutdown(shutdownTimeout, mgr.StopMigrations)
 
 	r.Use(middleware.Heartbeat("/healthz"))
 	// Preflights carry no credentials; actual responses need the checked key.
@@ -372,9 +381,53 @@ func (s *Server) Start() error {
 	}
 }
 
-// Shutdown gracefully shuts down the server without interrupting any active connections.
+// shutdownTimeout is how long stopping Stash waits for running requests, such
+// as a stream being watched or a plugin operation, before ending them (#2138).
+// docker stop ends the process 10 seconds after asking it to stop, so this
+// leaves time for the rest of the shutdown, such as closing the database.
+const shutdownTimeout = 5 * time.Second
+
+// prepareShutdown sets up what Shutdown needs: how long it waits, the
+// function that waits for a running database migration, a count of the open
+// connections, and a base context for requests that Shutdown cancels.
+func (s *Server) prepareShutdown(timeout time.Duration, stopMigrations func()) {
+	base, cancel := context.WithCancel(context.Background())
+	s.BaseContext = func(net.Listener) context.Context { return base }
+	s.cancelRequests = cancel
+	s.ConnState = func(_ net.Conn, state http.ConnState) {
+		switch state {
+		case http.StateNew:
+			s.openConns.Add(1)
+		case http.StateHijacked, http.StateClosed:
+			s.openConns.Add(-1)
+		}
+	}
+	s.shutdownTimeout = timeout
+	s.stopMigrations = stopMigrations
+}
+
+// Shutdown stops the server. It waits up to shutdownTimeout for running
+// requests to finish, then ends the rest.
 func (s *Server) Shutdown() {
-	err := s.Server.Shutdown(context.TODO())
+	ctx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
+	defer cancel()
+
+	err := s.Server.Shutdown(ctx)
+	if errors.Is(err, context.DeadlineExceeded) {
+		// The database build started from the setup page runs inside its
+		// request. Let it finish, so the database isn't left half built
+		// (#2103). A stop request has already waited for it.
+		s.stopMigrations()
+		logger.Infof("Ending %d request(s) still running %s after stopping began", s.openConns.Load(), s.shutdownTimeout)
+		s.cancelRequests()
+		err = s.Server.Close()
+	}
+
+	// Shutdown doesn't wait for, or close, connections taken over from the
+	// server, such as GraphQL subscriptions over a websocket. Cancelling
+	// their context ends them.
+	s.cancelRequests()
+
 	if err != nil {
 		logger.Errorf("Error shutting down http server: %v", err)
 	}

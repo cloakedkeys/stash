@@ -455,6 +455,22 @@ func (s *Manager) Shutdown() {
 	// Closing the database under a running migration would leave it half
 	// upgraded, so wait for the migration to finish. No new one starts after
 	// this (#2103).
+	s.StopMigrations()
+
+	if s.StreamManager != nil {
+		s.StreamManager.Shutdown()
+		s.StreamManager = nil
+	}
+
+	err := s.Database.Close()
+	if err != nil {
+		logger.Errorf("Error closing database: %s", err)
+	}
+}
+
+// StopMigrations stops new database migrations from starting, then waits
+// for a running one to finish, saying so in the log.
+func (s *Manager) StopMigrations() {
 	guard := s.migrations
 	if guard == nil {
 		guard = migrationguard.Default()
@@ -466,14 +482,4 @@ func (s *Manager) Shutdown() {
 		}
 		logger.Infof("Waiting for the database %s to finish before stopping", what)
 	})
-
-	if s.StreamManager != nil {
-		s.StreamManager.Shutdown()
-		s.StreamManager = nil
-	}
-
-	err := s.Database.Close()
-	if err != nil {
-		logger.Errorf("Error closing database: %s", err)
-	}
 }
