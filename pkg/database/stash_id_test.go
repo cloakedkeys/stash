@@ -47,6 +47,20 @@ func testStashIDReaderWriter(ctx context.Context, t *testing.T, r stashIDReaderW
 	testNoStashIDs(ctx, t, r, id)
 }
 
+// testStashIDsMissingItem checks that saving stash IDs for an item that
+// doesn't exist fails. On PostgreSQL the failure ends the transaction, so run
+// it in a transaction of its own.
+func testStashIDsMissingItem(ctx context.Context, t *testing.T, r stashIDReaderWriter, missingID int) {
+	t.Helper()
+	stashID := models.StashID{
+		StashID:   getUUID("stashID"),
+		Endpoint:  "endpoint",
+		UpdatedAt: epochTime,
+	}
+
+	assert.Error(t, r.UpdateStashIDs(ctx, missingID, []models.StashID{stashID}), "saving stash IDs for missing item %d", missingID)
+}
+
 func testNoStashIDs(ctx context.Context, t *testing.T, r stashIDReaderWriter, id int) {
 	t.Helper()
 	stashIDs, err := r.GetStashIDs(ctx, id)

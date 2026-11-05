@@ -754,13 +754,19 @@ func createTestUser(ctx context.Context) error {
 	return nil
 }
 
+// errRollback is returned by withRollbackTxn's transaction so that it rolls back.
+var errRollback = errors.New("fake error for rollback")
+
 func withRollbackTxn(f func(ctx context.Context) error) error {
 	var ret error
-	// always fails, with the fake error, so that it rolls back
-	_ = withTxn(func(ctx context.Context) error {
+	err := withTxn(func(ctx context.Context) error {
 		ret = f(ctx)
-		return errors.New("fake error for rollback")
+		return errRollback
 	})
+	// any other error means f never ran, such as when the transaction can't start
+	if !errors.Is(err, errRollback) {
+		return err
+	}
 
 	return ret
 }

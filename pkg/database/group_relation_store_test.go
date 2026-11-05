@@ -67,7 +67,7 @@ func createGroupWithLinks(ctx context.Context, containing bool, ids ...int) erro
 func runGroupRelationCase(t *testing.T, f func(ctx context.Context, g threeGroups) error) error {
 	t.Helper()
 	var err error
-	_ = withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		err = f(ctx, newThreeGroups(ctx, t))
 		return nil
 	})

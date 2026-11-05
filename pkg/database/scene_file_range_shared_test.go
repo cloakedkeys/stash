@@ -583,7 +583,7 @@ func TestSceneWholeFileAtOnce(t *testing.T) {
 		return nil
 	}))
 	t.Cleanup(func() {
-		_ = withTxn(func(ctx context.Context) error {
+		runTxn(t, func(ctx context.Context) error {
 			for _, s := range []*models.Scene{a, b} {
 				if err := db.Scene().Destroy(ctx, s.ID); err != nil {
 					return err
