@@ -32,7 +32,7 @@ const (
 	loginTimeKey          = "loginTime"
 	loginTimeNanosKey     = "loginTimeNanos"
 	visitedPluginHooksKey = "visitedPluginsHooks"
-	apiKeyFingerprintKey  = "apiKey"
+	apiKeyFingerprintKey  = "apiKeyFingerprint"
 )
 
 const (

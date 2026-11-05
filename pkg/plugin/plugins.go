@@ -310,7 +310,7 @@ func (c Cache) CreateTask(ctx context.Context, pluginID string, operationName *s
 		progress:     progress,
 		gqlHandler:   c.gqlHandler,
 		serverConfig: c.config,
-		user:         session.GetCurrentUser(ctx),
+		starter:      session.GetPluginStarter(ctx),
 	}
 	return task.createTask(), nil
 }
@@ -332,7 +332,7 @@ func (c Cache) RunPlugin(ctx context.Context, pluginID string, args OperationInp
 		input:        pluginInput,
 		gqlHandler:   c.gqlHandler,
 		serverConfig: c.config,
-		user:         session.GetCurrentUser(ctx),
+		starter:      session.GetPluginStarter(ctx),
 	}
 
 	task := pt.createTask()
@@ -443,7 +443,7 @@ func (c Cache) executePostHooks(ctx context.Context, hookType hook.TriggerEnum, 
 				input:        pluginInput,
 				gqlHandler:   c.gqlHandler,
 				serverConfig: c.config,
-				user:         session.GetCurrentUser(ctx),
+				starter:      session.GetPluginStarter(ctx),
 			}
 
 			task := pt.createTask()
