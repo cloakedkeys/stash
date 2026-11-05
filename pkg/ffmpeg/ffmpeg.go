@@ -19,7 +19,7 @@ import (
 
 func ffmpegHelp(ffmpegPath string) (string, error) {
 	cmd := stashExec.Command(ffmpegPath, "-h")
-	bytes, err := cmd.CombinedOutput()
+	bytes, err := stashExec.CombinedOutput(cmd)
 	output := string(bytes)
 	if err != nil {
 		var exitErr *exec.ExitError
@@ -157,7 +157,7 @@ func (f *FFMpeg) getVersion() error {
 	cmd.Stdout = &stdout
 
 	var err error
-	if err = cmd.Run(); err != nil {
+	if err = stashExec.Run(cmd); err != nil {
 		return err
 	}
 

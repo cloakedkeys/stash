@@ -48,7 +48,7 @@ func (e *vipsEncoder) imageThumbnailPath(path, output string, maxSize int) ([]by
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Start(); err != nil {
+	if err := exec.Start(cmd); err != nil {
 		return nil, err
 	}
 
@@ -68,7 +68,7 @@ func (e *vipsEncoder) run(args []string, stdin *bytes.Buffer) (string, error) {
 	cmd.Stderr = &stderr
 	cmd.Stdin = stdin
 
-	if err := cmd.Start(); err != nil {
+	if err := exec.Start(cmd); err != nil {
 		return "", err
 	}
 

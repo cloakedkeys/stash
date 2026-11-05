@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	stashExec "github.com/stashapp/stash/pkg/exec"
 	"github.com/stashapp/stash/pkg/logger"
 )
 
@@ -116,7 +117,7 @@ func (f *FFMpeg) initHWSupport(ctx context.Context) {
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 
-		if err := cmd.Run(); err != nil {
+		if err := stashExec.Run(cmd); err != nil {
 			if testCtx.Err() != nil {
 				message := fmt.Sprintf("[InitHWSupport] Codec %s test timed out after %s", codec, hwTestTimeout)
 				logger.Debug(message)
@@ -181,7 +182,7 @@ func (f *FFMpeg) HWCanFullHWTranscode(ctx context.Context, codec VideoCodec, pat
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
+	if err := stashExec.Run(cmd); err != nil {
 		errOutput := stderr.String()
 
 		if len(errOutput) == 0 {

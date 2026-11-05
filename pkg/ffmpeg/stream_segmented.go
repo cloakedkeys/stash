@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	stashExec "github.com/stashapp/stash/pkg/exec"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
@@ -723,7 +724,7 @@ func (sm *StreamManager) startTranscode(stream *runningStream, segment int, done
 	}
 
 	logger.Tracef("[transcode] running %s", cmd)
-	if err := cmd.Start(); err != nil {
+	if err := stashExec.Start(cmd); err != nil {
 		lockCtx.Cancel()
 		err = fmt.Errorf("error starting transcode process: %w", err)
 		logger.Errorf("[transcode] %v", err)
