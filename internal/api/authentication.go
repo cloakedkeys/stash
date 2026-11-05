@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stashapp/stash/internal/api/loaders"
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/logger"
@@ -344,6 +345,13 @@ func singleUser(ctx context.Context, txnMgr models.TxnManager, g UserAuthenticat
 	}
 
 	return u, nil
+}
+
+// pluginGQLHandler is the GraphQL handler that JavaScript plugins call
+// in-process. It sets the user first, as the dataloaders apply the user's
+// library limit, then reads the visited plugin hooks from the plugin's cookie.
+func pluginGQLHandler(gql http.Handler, txnMgr models.TxnManager, getUsers func() UserAuthenticator, visitedPlugins func(http.Handler) http.Handler, dataloaders loaders.Middleware) http.Handler {
+	return pluginUserHandler(txnMgr, getUsers)(visitedPlugins(dataloaders.Middleware(gql)))
 }
 
 // pluginUserHandler sets the current user for the GraphQL requests that

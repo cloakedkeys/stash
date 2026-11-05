@@ -65,8 +65,10 @@ func newJSPluginUserHarness(ctx context.Context, t *testing.T, db database.Datab
 	r := &Resolver{repository: db.Repository(), hookExecutor: &mockHookExecutor{}, userService: users}
 	gql := newTestGraphQLServer(r)
 	gql.AroundFields(r.LibraryLimitMiddleware)
-	dataloaders := loaders.Middleware{Repository: db.Repository()}
-	handler := pluginUserHandler(db.Repository().TxnManager, func() UserAuthenticator { return users })(dataloaders.Middleware(gql))
+	// the server's own handler chain, as Initialize registers it
+	sessions := session.NewStore(cfg, nil, nil)
+	handler := pluginGQLHandler(gql, db.Repository().TxnManager, func() UserAuthenticator { return users },
+		sessions.VisitedPluginHandler(), loaders.Middleware{Repository: db.Repository()})
 
 	pluginDir := filepath.Join(dir, "whoami")
 	require.NoError(t, os.MkdirAll(pluginDir, 0755))
@@ -84,7 +86,7 @@ for (var i = 0; i < input.Args.queries.length; i++) {
 `), 0644))
 
 	cache := plugin.NewCache(cfg)
-	cache.RegisterSessionStore(session.NewStore(cfg, nil, nil))
+	cache.RegisterSessionStore(sessions)
 	cache.RegisterGQLHandler(handler)
 	cache.ReloadPlugins()
 
@@ -218,7 +220,8 @@ func TestJSPluginActsAsStartingUserOnDatabase(t *testing.T) {
 	addO := func(sc models.Scene) string { return fmt.Sprintf(`mutation { sceneAddO(id: "%d") { count } }`, sc.ID) }
 
 	t.Run("limited account", func(t *testing.T) {
-		got := h.run(&viewer, jsMeQuery, jsUISettingQuery, jsSceneCount, addO(seen), addO(hidden), `mutation { reloadPlugins }`)
+		got := h.run(&viewer, jsMeQuery, jsUISettingQuery, jsSceneCount, addO(seen), addO(hidden), `mutation { reloadPlugins }`,
+			fmt.Sprintf(`query { findScene(id: "%d") { o_counter } }`, seen.ID))
 		assert.Empty(t, got[0].Error)
 		assert.JSONEq(t, `{"me":{"name":"viewer","roles":["READ"]}}`, string(got[0].Data))
 		assert.Empty(t, got[1].Error)
@@ -229,6 +232,9 @@ func TestJSPluginActsAsStartingUserOnDatabase(t *testing.T) {
 		assert.Contains(t, got[4].Error, `"message":"not found"`)
 		// an administrator's mutation, refused to a read-only account
 		assert.Contains(t, got[5].Error, `"message":"unauthorized"`)
+		// the O count is read through the dataloaders, as the viewer's own
+		assert.Empty(t, got[6].Error)
+		assert.JSONEq(t, `{"findScene":{"o_counter":1}}`, string(got[6].Data))
 
 		assert.Equal(t, 3.0, h.uiConfig(viewer)["fromPlugin"])
 		assert.Nil(t, h.uiConfig(admin)["fromPlugin"])
