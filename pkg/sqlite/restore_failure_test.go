@@ -36,7 +36,9 @@ func TestRestoreWaitsForRequest(t *testing.T) {
 	require.NoError(t, err)
 	rows, err := db.readDB.QueryContext(ctx, "SELECT name FROM tags")
 	require.NoError(t, err)
+	require.True(t, rows.Next())
 	endRequest := func() {
+		assert.NoError(t, rows.Err())
 		_ = rows.Close()
 		release()
 	}
