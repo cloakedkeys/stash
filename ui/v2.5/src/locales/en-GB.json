@@ -1691,7 +1691,7 @@
     "add_another_condition": "+ Add another condition of this kind",
     "all_of_conditions": "All of (must match)",
     "any_of_group": "Any of {number}",
-    "condition_group": "Group",
+    "condition_match": "Match",
     "edit_filter": "Edit Filter",
     "new_any_of_group": "New Any of group (at least one must match)",
     "new_none_of_group": "New None of group (none may match)",

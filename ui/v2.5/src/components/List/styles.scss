@@ -475,6 +475,15 @@ input[type="range"].zoom-slider {
   .tag-item.unsupported {
     background-color: $warning;
   }
+
+  // tags lay out their parts as flex items, which drops spaces at the edges
+  .filter-group-prefix {
+    margin-right: 0.25em;
+  }
+
+  .or-empty-suffix {
+    margin-left: 0.25em;
+  }
 }
 
 .filter-button {

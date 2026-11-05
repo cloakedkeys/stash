@@ -6,6 +6,7 @@ import {
   canMatchEmpty,
   inGroup,
   ListFilterModel,
+  supportsSubFilters,
 } from "src/models/list-filter/filter";
 
 const NEW_ANY = "new-any";
@@ -26,6 +27,11 @@ export const CriterionGroupControls: React.FC<ICriterionGroupControls> = ({
   onChange,
 }) => {
   const intl = useIntl();
+
+  // groups and "or empty" are sent with AND/OR/NOT/ALL_OF, which some lists
+  // (Markers) don't have
+  if (!supportsSubFilters(filter.mode)) return null;
+
   const groups = filter.groups();
   const current = inGroup(criterion) ? criterion.filterGroup! : "";
 
@@ -42,7 +48,7 @@ export const CriterionGroupControls: React.FC<ICriterionGroupControls> = ({
     <div className="criterion-group-controls">
       <Form.Group controlId="criterion-group" className="mb-1">
         <Form.Label className="mr-2">
-          <FormattedMessage id="search_filter.condition_group" />
+          <FormattedMessage id="search_filter.condition_match" />
         </Form.Label>
         <Form.Control
           as="select"

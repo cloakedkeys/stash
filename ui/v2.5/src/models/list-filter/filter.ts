@@ -791,15 +791,23 @@ export class ListFilterModel {
   //   None of [a, b]: {NOT: {a, OR: {b}}}
   // Without groups the result is exactly what it was before.
   // Without useAnd (the filter type has no AND, OR, NOT or ALL_OF) groups
-  // and "or empty" can't be sent: every condition is sent as a plain
-  // condition, and a repeat replaces the earlier one, as before.
+  // and "or empty" can't be sent. The dialog doesn't offer them then; if they
+  // come from an edited web address, conditions in groups are left out (a
+  // None of group sent as a plain condition would mean the opposite), the
+  // others are sent without "or empty", and a repeat replaces the earlier
+  // one, as before.
   private makeObjectFilter(
     apply: ApplyCriterion,
     mergeKeys?: Set<string>,
     useAnd = true
   ) {
     if (!useAnd) {
-      return combineCriteria(this.criteria, apply, mergeKeys, false);
+      return combineCriteria(
+        this.criteria.filter((c) => !inGroup(c)),
+        apply,
+        mergeKeys,
+        false
+      );
     }
 
     const output = combineCriteria(
@@ -984,6 +992,23 @@ export class ListFilterModel {
       c.value = newCriteria;
     }
 
+    return ret;
+  }
+
+  // Removes one value of the given custom fields criterion, which is one of
+  // this filter's criteria; it can be in a group. A criterion that isn't one
+  // of them uses the first ungrouped one, as removeCustomFieldCriterion does.
+  public removeCustomFieldValue(c: Criterion, index: number) {
+    const at = this.criteria.indexOf(c);
+    if (at === -1) {
+      return this.removeCustomFieldCriterion(c.criterionOption.type, index);
+    }
+
+    const ret = this.clone();
+    const target = ret.criteria[at];
+    if (target instanceof CustomFieldsCriterion) {
+      target.value = target.value.filter((_, i) => i !== index);
+    }
     return ret;
   }
 

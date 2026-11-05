@@ -274,3 +274,73 @@ describe("sidebar edits leave groups alone", () => {
     expect(filter.removeCriterion("tags").criteria).toHaveLength(1);
   });
 });
+
+describe("removing one value of a custom fields condition", () => {
+  const source = { field: "source", value: ["dvd"], modifier: "EQUALS" };
+  const region = { field: "region", value: ["2"], modifier: "NOT_EQUALS" };
+  const studio = { field: "studio", value: ["x"], modifier: "EQUALS" };
+
+  it("changes the condition it belongs to, even in a group", () => {
+    const filter = sceneFilter([
+      ["custom_fields", [source]],
+      ["custom_fields", [region, studio], "any:1"],
+      ["tags", tags("1"), "any:1"],
+    ]);
+
+    const removed = filter.removeCustomFieldValue(filter.criteria[1], 0);
+    expect(removed.makeFilter()).toEqual({
+      custom_fields: [source],
+      ALL_OF: [{ custom_fields: [studio], OR: { tags: tagsInput("1") } }],
+    });
+    // the filter it came from is unchanged
+    expect(filter.makeFilter()).toHaveProperty("custom_fields", [source]);
+  });
+});
+
+// SceneMarkerFilterType has no AND, OR, NOT or ALL_OF
+describe("groups on a list that can't send them", () => {
+  function markerFilter(criteria: TestCriterion[]) {
+    const filter = new ListFilterModel(FilterMode.SceneMarkers);
+    filter.criteria = criteria.map(([type, saved, group, orEmpty]) => {
+      const c = filter.makeCriterion(type);
+      c.setFromSavedCriterion(saved);
+      c.filterGroup = group;
+      c.orEmpty = orEmpty;
+      return c;
+    });
+    return filter;
+  }
+
+  it("leave grouped conditions out and send the rest plainly", () => {
+    const filter = markerFilter([
+      ["tags", tags("1"), undefined, true],
+      ["tags", tags("2"), "any:1"],
+      ["tags", tags("3"), "none:2"],
+    ]);
+    expect(filter.makeFilter()).toEqual({ tags: tagsInput("1") });
+  });
+
+  it("are still saved, as on other lists", () => {
+    const filter = markerFilter([
+      ["tags", tags("1")],
+      ["tags", tags("3"), "none:1"],
+    ]);
+    expect(filter.makeSavedFilter()).toEqual({
+      tags: tags("1"),
+      ALL_OF: [{ NOT: { tags: tags("3") } }],
+    });
+  });
+});
+
+// the server returns saved filter keys in its own order
+it("loads a saved group whose OR comes before its condition", () => {
+  const loaded = new ListFilterModel(FilterMode.Scenes);
+  loaded.configureFromSavedFilter(
+    savedFilter({
+      ALL_OF: [{ OR: { tags: tags("2") }, tags: tags("1") }],
+    })
+  );
+  expect(loaded.makeFilter()).toEqual({
+    ALL_OF: [{ tags: tagsInput("1"), OR: { tags: tagsInput("2") } }],
+  });
+});

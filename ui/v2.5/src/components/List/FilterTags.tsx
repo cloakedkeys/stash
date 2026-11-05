@@ -139,7 +139,7 @@ const FilterGroupPrefix: React.FC<{ group: IFilterGroup }> = ({ group }) => (
       }
       values={{ number: group.number }}
     />
-    {": "}
+    :
   </span>
 );
 
@@ -308,6 +308,8 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
 
   // i is the criterion's place in the list: there can be several of a kind
   function getFilterTags(criterion: Criterion, i: number) {
+    const group = groups.find((g) => g.name === criterion.filterGroup);
+
     if (
       criterion instanceof CustomFieldsCriterion &&
       criterion.value.length > 1
@@ -316,7 +318,13 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
         return (
           <FilterTag
             key={`${i}-${index}`}
-            label={criterion.getValueLabel(intl, value)}
+            className={group ? `filter-group-${group.kind}` : undefined}
+            label={
+              <>
+                {group && <FilterGroupPrefix group={group} />}
+                {criterion.getValueLabel(intl, value)}
+              </>
+            }
             onClick={() => onClickCriterionTag(criterion)}
             onRemove={($event) =>
               onRemoveCriterionTag(criterion, $event, index)
@@ -327,7 +335,6 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
     }
 
     const unsupported = criterion instanceof UnsupportedCriterion;
-    const group = groups.find((g) => g.name === criterion.filterGroup);
 
     return (
       <FilterTag
@@ -342,7 +349,6 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
             />
             {criterion.orEmpty && canMatchEmpty(criterion) && (
               <span className="or-empty-suffix">
-                {" "}
                 <FormattedMessage id="search_filter.or_empty_suffix" />
               </span>
             )}

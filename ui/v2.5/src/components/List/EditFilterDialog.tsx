@@ -354,7 +354,10 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
 
   function addAnother() {
     if (!criterion) return;
-    setCriterion(filter.makeCriterion(criterion.criterionOption.type));
+    const c = filter.makeCriterion(criterion.criterionOption.type);
+    // another condition of a grouped one goes into the same group
+    c.filterGroup = criterion.filterGroup;
+    setCriterion(c);
     setEditingIndex(undefined);
   }
 
@@ -521,12 +524,7 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
 
   function removeCriterion(c: Criterion, valueIndex?: number) {
     if (valueIndex !== undefined) {
-      setCurrentFilter(
-        currentFilter.removeCustomFieldCriterion(
-          c.criterionOption.type,
-          valueIndex
-        )
-      );
+      setCurrentFilter(currentFilter.removeCustomFieldValue(c, valueIndex));
     } else {
       removeCriteria([c]);
     }
