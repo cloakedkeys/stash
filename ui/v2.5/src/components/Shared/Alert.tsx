@@ -22,7 +22,7 @@ export const AlertModal: React.FC<IAlertModalProps> = PatchComponent(
     onConfirm,
     onCancel,
   }) => {
-    const escapeProps = useEscapeToCancel(onCancel);
+    const escapeProps = useEscapeToCancel({ onCancel });
 
     return (
       <Modal show={show} {...escapeProps}>

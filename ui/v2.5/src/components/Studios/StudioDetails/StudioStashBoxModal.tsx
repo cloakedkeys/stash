@@ -143,6 +143,8 @@ const StudioStashBoxModal: React.FC<IProps> = ({
   return (
     <ModalComponent
       show
+      // a search or picker: a typed query is nothing to lose
+      escapeAfterChanges
       onHide={onHide}
       header={`Scrape studio from ${stashboxDisplayName(
         instance.name,

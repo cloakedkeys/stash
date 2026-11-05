@@ -24,6 +24,9 @@ interface IModal {
   dialogClassName?: string;
   footerButtons?: React.ReactNode;
   leftFooterButtons?: React.ReactNode;
+  // Esc keeps cancelling after the user typed or changed something; for
+  // search and picker dialogs. By default Esc stops once anything changed.
+  escapeAfterChanges?: boolean;
 }
 
 const defaultOnHide = () => {};
@@ -57,22 +60,97 @@ function readEscapeKeyDown(e: React.KeyboardEvent): IEscapeKeyDown {
   };
 }
 
+// Controls that change a value when clicked: buttons (rating stars, add /
+// remove / set toggles, scrape result choices), select and date picker
+// options, and react-select's clear and remove crosses (aria-hidden or
+// role="button").
+const valueControls = [
+  "button",
+  "[role='button']",
+  "[role='option']",
+  "[role='checkbox']",
+  "[role='radio']",
+  "[role='switch']",
+  "[aria-hidden='true']",
+  ".dropdown-item",
+].join(",");
+
+function isPopupTrigger(target: Partial<Element>) {
+  return target.getAttribute?.("aria-haspopup") === "true";
+}
+
+/**
+ * Whether a click or key press in the dialog may have changed one of its
+ * values. It errs towards yes: a click on a button that only opens a menu
+ * counts too. The dialog's own header and footer buttons never count.
+ */
+function mayChangeValue(e: React.SyntheticEvent): boolean {
+  const target = e.target as Partial<Element>;
+  if (target.closest?.(".modal-header, .modal-footer")) {
+    return false;
+  }
+
+  if (e.type === "keydown") {
+    const { key } = e as React.KeyboardEvent;
+    // picking an option in an open select by keyboard, or removing a value
+    return (
+      isPopupTrigger(target) &&
+      (((key === "Enter" || key === "Tab") &&
+        target.getAttribute?.("aria-expanded") === "true") ||
+        key === "Backspace" ||
+        key === "Delete")
+    );
+  }
+
+  return !!target.closest?.(valueControls);
+}
+
+interface IEscapeToCancel {
+  // what Esc runs: the dialog's Cancel action
+  onCancel?: () => void;
+  // Esc does nothing while true, e.g. while saving
+  busy?: boolean;
+  // Esc keeps cancelling after the user changed something. For search and
+  // picker dialogs, where a typed query is nothing to lose.
+  afterChanges?: boolean;
+}
+
 /**
  * Props for a react-bootstrap Modal that make Esc run the dialog's cancel
- * action - the same thing its Cancel button does. Esc does nothing while the
- * dialog is busy, when it has no cancel action, or when it closes an open menu
- * or date picker inside the dialog instead. Only the top dialog sees Esc.
- *
- * Esc never calls the Modal's onHide by itself.
+ * action - the same thing its Cancel button does. Esc does nothing:
+ * - while the dialog is busy, or when it has no cancel action
+ * - once the user has typed or changed anything in the dialog (unless
+ *   `afterChanges`), so Esc never throws away their input; Cancel still does
+ * - when it closes an open menu or date picker inside the dialog instead
+ * - during IME composition.
+ * Only the top dialog sees Esc. Esc never calls the Modal's onHide by itself.
  */
-export function useEscapeToCancel(onCancel?: () => void, busy?: boolean) {
+export function useEscapeToCancel({
+  onCancel,
+  busy,
+  afterChanges,
+}: IEscapeToCancel) {
   // Menus close themselves on Esc before the dialog sees it, so whether a
   // menu was open is read on the way down, before they handle the key.
   const keyDown = useRef<IEscapeKeyDown>();
+  // set by the first input or change in the dialog, cleared when it reopens
+  const changed = useRef(false);
+
+  function markChanged() {
+    changed.current = true;
+  }
 
   function onKeyDownCapture(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
       keyDown.current = readEscapeKeyDown(e);
+    } else if (mayChangeValue(e)) {
+      markChanged();
+    }
+  }
+
+  function onPointerCapture(e: React.SyntheticEvent) {
+    if (mayChangeValue(e)) {
+      markChanged();
     }
   }
 
@@ -94,14 +172,33 @@ export function useEscapeToCancel(onCancel?: () => void, busy?: boolean) {
     // stops the Modal calling onHide
     e.preventDefault();
 
-    if (handledInside || busy || !onCancel) {
+    if (
+      handledInside ||
+      busy ||
+      !onCancel ||
+      (changed.current && !afterChanges)
+    ) {
       return;
     }
 
     onCancel();
   }
 
-  return { keyboard: true, onKeyDownCapture, onEscapeKeyDown };
+  return {
+    keyboard: true,
+    onShow: () => {
+      changed.current = false;
+    },
+    onKeyDownCapture,
+    // typing, pasting, checkboxes, native selects
+    onInputCapture: markChanged,
+    onChangeCapture: markChanged,
+    // mousedown as well as click: react-select's crosses act on mousedown
+    // and are gone by the click
+    onMouseDownCapture: onPointerCapture,
+    onClickCapture: onPointerCapture,
+    onEscapeKeyDown,
+  };
 }
 
 export const ModalComponent: React.FC<React.PropsWithChildren<IModal>> = ({
@@ -118,14 +215,16 @@ export const ModalComponent: React.FC<React.PropsWithChildren<IModal>> = ({
   dialogClassName,
   footerButtons,
   leftFooterButtons,
+  escapeAfterChanges,
 }) => {
   // Some dialogs have no Cancel button and close with the accept button
   // instead; that button is also disabled by `disabled`.
   const escapeAction = cancel ? cancel.onClick : onHide;
-  const escapeProps = useEscapeToCancel(
-    escapeAction,
-    isRunning || (disabled && escapeAction === accept?.onClick)
-  );
+  const escapeProps = useEscapeToCancel({
+    onCancel: escapeAction,
+    busy: isRunning || (disabled && escapeAction === accept?.onClick),
+    afterChanges: escapeAfterChanges,
+  });
 
   return (
     <Modal

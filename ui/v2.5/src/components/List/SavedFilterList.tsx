@@ -91,7 +91,10 @@ export const SaveFilterDialog: React.FC<{
 }> = ({ mode, onClose, isSaving = false }) => {
   const intl = useIntl();
   const [filterName, setFilterName] = useState("");
-  const escapeProps = useEscapeToCancel(() => onClose(), isSaving);
+  const escapeProps = useEscapeToCancel({
+    onCancel: () => onClose(),
+    busy: isSaving,
+  });
 
   const { data } = useFindSavedFilters(mode);
 
@@ -164,7 +167,10 @@ export const LoadFilterDialog: React.FC<{
 }> = ({ mode, onClose }) => {
   const intl = useIntl();
   const [filterName, setFilterName] = useState("");
-  const escapeProps = useEscapeToCancel(() => onClose());
+  const escapeProps = useEscapeToCancel({
+    onCancel: () => onClose(),
+    afterChanges: true,
+  });
 
   const { data } = useFindSavedFilters(mode);
 
@@ -258,7 +264,7 @@ const DeleteAlert: React.FC<{
   deletingFilter: SavedFilterDataFragment | undefined;
   onClose: (confirm?: boolean) => void;
 }> = ({ deletingFilter, onClose }) => {
-  const escapeProps = useEscapeToCancel(() => onClose());
+  const escapeProps = useEscapeToCancel({ onCancel: () => onClose() });
 
   if (!deletingFilter) {
     return null;
@@ -290,7 +296,7 @@ const OverwriteAlert: React.FC<{
   overwritingFilter: SavedFilterDataFragment | undefined;
   onClose: (confirm?: boolean) => void;
 }> = ({ overwritingFilter, onClose }) => {
-  const escapeProps = useEscapeToCancel(() => onClose());
+  const escapeProps = useEscapeToCancel({ onCancel: () => onClose() });
 
   if (!overwritingFilter) {
     return null;

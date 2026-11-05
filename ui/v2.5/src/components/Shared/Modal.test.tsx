@@ -53,12 +53,15 @@ function render(node: React.ReactNode): ModalProps {
   return modals.props[0] as ModalProps;
 }
 
-// An element the key is pressed on: a react-select input or dropdown toggle
-// (a popup trigger, open or not), something inside an open dropdown menu, or
-// a plain button.
+// An element a key is pressed on or clicked: a react-select input or dropdown
+// toggle (a popup trigger, open or not), something inside an open dropdown
+// menu, a control that changes a value (a button, a select option), something
+// in the dialog's header or footer, or a plain element such as a text box.
 type Target =
   | { popup: "open" | "closed" }
   | { inOpenDropdownMenu: true }
+  | { valueControl: true }
+  | { inFooter: true }
   | undefined;
 
 function element(target: Target): Partial<Element> {
@@ -67,17 +70,45 @@ function element(target: Target): Partial<Element> {
     attributes["aria-haspopup"] = "true";
     attributes["aria-expanded"] = target.popup === "open" ? "true" : "false";
   }
+  const matches = (selector: string) =>
+    (!!target &&
+      "inOpenDropdownMenu" in target &&
+      selector.includes(".dropdown-menu.show")) ||
+    (!!target && "valueControl" in target && selector.includes("button")) ||
+    (!!target && "inFooter" in target && selector.includes(".modal-footer"));
   return {
     getAttribute: (name: string) => attributes[name] ?? null,
     closest: ((selector: string) =>
-      target &&
-      "inOpenDropdownMenu" in target &&
-      selector.includes(".dropdown-menu.show")
-        ? ({} as Element)
-        : null) as Element["closest"],
+      matches(selector) ? ({} as Element) : null) as Element["closest"],
   };
 }
 
+type Handler = ((e: Partial<React.SyntheticEvent>) => void) | undefined;
+const handler = (props: ModalProps, name: string) =>
+  (props as Record<string, Handler>)[name];
+
+// Types into a text box in the dialog.
+function type(props: ModalProps) {
+  const e = { type: "input", target: element(undefined) as EventTarget };
+  handler(props, "onInputCapture")?.(e);
+  handler(props, "onChangeCapture")?.({ ...e, type: "change" });
+}
+
+// Presses the mouse on, and clicks, an element in the dialog.
+function click(props: ModalProps, target: Target) {
+  const el = element(target) as EventTarget;
+  handler(props, "onMouseDownCapture")?.({ type: "mousedown", target: el });
+  handler(props, "onClickCapture")?.({ type: "click", target: el });
+}
+
+// Presses a key other than Esc in the dialog.
+function press(props: ModalProps, key: string, target: Target) {
+  props.onKeyDownCapture?.({
+    type: "keydown",
+    key,
+    target: element(target) as EventTarget,
+  } as Partial<React.KeyboardEvent>);
+}
 /**
  * Presses Esc in a dialog the way the browser and react-bootstrap 1.6 deliver
  * it: React's capture handlers on the dialog, then the handlers of whatever has
@@ -372,5 +403,104 @@ describe("Esc with the filter sidebar open (#1113)", () => {
     hideSidebarOnEscape(e, true, setShowSidebar, true);
     expect(setShowSidebar).not.toHaveBeenCalled();
     expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe("Esc once something in the dialog has changed (#1113)", () => {
+  const cancel = vi.fn();
+  const hide = vi.fn();
+  const dialog = () =>
+    render(<ModalComponent show cancel={{ onClick: cancel }} />);
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it("does nothing after typing; Cancel is still there", () => {
+    const props = dialog();
+    type(props);
+    pressEscape(props);
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("does nothing after a click that may change a value", () => {
+    // a rating star, add/remove/set toggle, select option, scrape choice...
+    const props = dialog();
+    click(props, { valueControl: true });
+    pressEscape(props);
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("does nothing after picking or removing a select value by keyboard", () => {
+    for (const [key, popup] of [
+      ["Enter", "open"],
+      ["Tab", "open"],
+      ["Backspace", "closed"],
+      ["Delete", "closed"],
+    ] as const) {
+      const props = dialog();
+      press(props, key, { popup });
+      pressEscape(props);
+    }
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("still cancels after clicks and keys that change nothing", () => {
+    const props = dialog();
+    click(props, undefined); // e.g. into a text box, or on a label
+    click(props, { inFooter: true });
+    press(props, "Tab", { popup: "closed" });
+    press(props, "Enter", undefined);
+    pressEscape(props);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels again once the dialog is shown afresh", () => {
+    const props = dialog();
+    type(props);
+    handler(props, "onShow")?.({});
+    pressEscape(props);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps cancelling in search and picker dialogs", () => {
+    const props = render(
+      <ModalComponent show escapeAfterChanges onHide={hide} />
+    );
+    type(props);
+    click(props, { valueControl: true });
+    pressEscape(props);
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies to the save filter dialog, not the load filter search", () => {
+    const onClose = vi.fn();
+    const save = render(
+      <SaveFilterDialog mode={FilterMode.Scenes} onClose={onClose} />
+    );
+    type(save);
+    pressEscape(save);
+    expect(onClose).not.toHaveBeenCalled();
+
+    const load = render(
+      <LoadFilterDialog mode={FilterMode.Scenes} onClose={onClose} />
+    );
+    type(load);
+    pressEscape(load);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("protects a field selector with toggled fields", () => {
+    const onCancel = vi.fn();
+    const props = render(
+      <FieldSelector
+        show
+        fields={["title"]}
+        excludedFields={[]}
+        onSelect={() => {}}
+        onCancel={onCancel}
+      />
+    );
+    click(props, { valueControl: true });
+    pressEscape(props);
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });

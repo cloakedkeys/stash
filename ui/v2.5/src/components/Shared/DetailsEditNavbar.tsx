@@ -42,9 +42,9 @@ export const DetailsEditNavbar: React.FC<IProps> = (props: IProps) => {
     () => props.onAutoTag?.(),
     () => setIsAutoTagAlertOpen(true)
   );
-  const deleteAlertEscapeProps = useEscapeToCancel(() =>
-    setIsDeleteAlertOpen(false)
-  );
+  const deleteAlertEscapeProps = useEscapeToCancel({
+    onCancel: () => setIsDeleteAlertOpen(false),
+  });
 
   // everything here changes the object
   if (!canModify) return null;

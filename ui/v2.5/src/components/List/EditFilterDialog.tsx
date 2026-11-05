@@ -19,6 +19,7 @@ import { getFilterOptions } from "src/models/list-filter/factory";
 import { FilterTags } from "./FilterTags";
 import { CriterionEditor } from "./CriterionEditor";
 import { Icon } from "../Shared/Icon";
+import { useEscapeToCancel } from "../Shared/Modal";
 import {
   faChevronDown,
   faChevronRight,
@@ -261,6 +262,7 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
   const [savingFilter, setSavingFilter] = useState(false);
 
   const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const escapeProps = useEscapeToCancel({ onCancel: () => onCancel() });
 
   const saveFilter = useSaveFilter();
 
@@ -546,6 +548,7 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
       <Modal
         show={!showSaveDialog && !showLoadDialog}
         onHide={() => onCancel()}
+        {...escapeProps}
         // need sfw mode class because dialog is outside body
         className={cx("edit-filter-dialog", {
           "sfw-content-mode": sfwContentMode,
