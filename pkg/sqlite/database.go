@@ -251,7 +251,45 @@ func (db *Database) Close() error {
 		db.writeDB = nil
 	}
 
+	db.removeWAL()
+
 	return nil
+}
+
+// removeWAL has SQLite delete the -wal and -shm files that closing the pools
+// left behind. SQLite deletes them when the last connection to the database
+// closes, but only if that connection can write. Until the database is
+// upgraded nothing uses the write pool, so the last connection is a read-only
+// one and the files stay (#2111). Closing a writable connection, which doesn't
+// run PRAGMA optimize, removes them. If another connection still has the
+// database open, SQLite leaves them alone.
+func (db *Database) removeWAL() {
+	if db.dbPath == "" {
+		return
+	}
+	if exists, _ := fsutil.FileExists(db.dbPath + "-wal"); !exists {
+		return
+	}
+	// never create a database: the file may have been deleted while Stash ran
+	if exists, _ := fsutil.FileExists(db.dbPath); !exists {
+		return
+	}
+
+	// mode=rw can't create the file either. Don't wait for another program's
+	// lock: if it has the database, the files are its to keep, so give up at
+	// once, as PRAGMA optimize on close does (#2082).
+	conn, err := sqlx.Open(sqlite3DriverNoOptimize, "file:"+db.dbPath+"?mode=rw&_journal=WAL&_busy_timeout=0")
+	if err != nil {
+		logger.Warnf("removing the database's temporary files: %v", err)
+		return
+	}
+	// opening the connection sets WAL mode, which opens the -wal file
+	if err := conn.Ping(); err != nil {
+		logger.Warnf("removing the database's temporary files: %v", err)
+	}
+	if err := conn.Close(); err != nil {
+		logger.Warnf("removing the database's temporary files: %v", err)
+	}
 }
 
 func (db *Database) open(disableForeignKeys bool, writable bool) (*sqlx.DB, error) {
