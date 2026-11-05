@@ -50,8 +50,20 @@ export function limitPageSize(pageSize: number) {
   return pageSize > MAX_PAGE_SIZE ? MAX_PAGE_SIZE : pageSize;
 }
 
-// Every object filter type has an AND sub-filter of its own type.
+// Most object filter types have an AND sub-filter of their own type.
 const AND_KEY = "AND";
+
+// The list modes whose server filter type has no AND, OR or NOT
+// (SceneMarkerFilterType). A test checks this against the GraphQL schema.
+const MODES_WITHOUT_SUB_FILTERS = new Set<FilterMode>([
+  FilterMode.SceneMarkers,
+]);
+
+// Whether the server filter type of the mode has AND, OR and NOT
+// sub-filters, which repeated conditions need.
+export function supportsSubFilters(mode: FilterMode) {
+  return !MODES_WITHOUT_SUB_FILTERS.has(mode);
+}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -63,9 +75,12 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 // repeat: {is_missing: A, AND: {is_missing: B, AND: {is_missing: C}}}. The
 // conditions are all ANDed, as they are at the top level. Without repeats the
 // result is exactly what writing every criterion into one object gives.
+// Without useAnd (the filter type has no AND), a repeat replaces the earlier
+// condition, as all repeats did before they were allowed.
 function combineCriteria(
   criteria: Criterion[],
-  apply: (c: Criterion, output: Record<string, unknown>) => void
+  apply: (c: Criterion, output: Record<string, unknown>) => void,
+  useAnd = true
 ) {
   const output: Record<string, unknown> = {};
   for (const c of criteria) {
@@ -73,7 +88,7 @@ function combineCriteria(
     apply(c, own);
 
     let target = output;
-    while (Object.keys(own).some((k) => k in target)) {
+    while (useAnd && Object.keys(own).some((k) => k in target)) {
       if (!isPlainObject(target[AND_KEY])) {
         target[AND_KEY] = {};
       }
@@ -507,12 +522,20 @@ export class ListFilterModel {
     };
   }
 
+  // A list whose server filter type has no AND (markers) can't send repeated
+  // conditions. Such a list doesn't offer repeats, but one can still come
+  // from an edited web address or a saved filter; then the last condition of
+  // the kind is sent, as before repeats were allowed.
   public makeFilter() {
-    return combineCriteria(this.criteria, (c, output) =>
-      c.applyToCriterionInput(output)
+    return combineCriteria(
+      this.criteria,
+      (c, output) => c.applyToCriterionInput(output),
+      supportsSubFilters(this.mode)
     );
   }
 
+  // Saved filters are read only by the UI, so they keep every condition,
+  // in the AND form, even for lists that can't send it.
   // TODO - this needs to just use makeFilter, but it needs a migration
   public makeSavedFilter() {
     return combineCriteria(this.criteria, (c, output) =>
