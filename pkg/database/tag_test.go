@@ -1107,6 +1107,16 @@ func TestTagStashIDs(t *testing.T) {
 	}
 }
 
+func TestTagStashIDsMissingTag(t *testing.T) {
+	// -1 is never an ID; the other is an ID no tag has
+	for _, id := range []int{-1, math.MaxInt32} {
+		runRollbackTxn(t, func(ctx context.Context) error {
+			testStashIDsMissingItem(ctx, t, db.Tag(), id)
+			return nil
+		})
+	}
+}
+
 func TestTagFindByStashID(t *testing.T) {
 	runTxn(t, func(ctx context.Context) error {
 		qb := db.Tag()
