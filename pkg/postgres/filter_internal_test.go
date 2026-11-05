@@ -1,6 +1,3 @@
-//go:build pg_integration
-// +build pg_integration
-
 package postgres
 
 import (
