@@ -24,7 +24,7 @@ func TestPreviewVideoFilterSquarePixels(t *testing.T) {
 		{"hardware upload follows normalization", 1080, 1080, 16.0 / 9, ffmpeg.VideoCodecV264, true,
 			"scale=trunc(iw*sar/2)*2:ih,setsar=1,format=nv12,hwupload,scale_vaapi=-2:360"},
 		{"fixed hardware sizes use display ratio", 1080, 1080, 16.0 / 9, ffmpeg.VideoCodecI264, true,
-			"scale=trunc(iw*sar/2)*2:ih,setsar=1,hwupload=extra_hw_frames=64,format=qsv,scale_qsv=640:360"},
+			"scale=trunc(iw*sar/2)*2:ih,setsar=1,format=nv12,hwupload=extra_hw_frames=64,format=qsv,scale_qsv=640:360"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			g := Generator{Encoder: &ffmpeg.FFMpeg{}, SampleAspectRatio: tt.ratio}

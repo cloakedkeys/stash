@@ -291,6 +291,9 @@ func (f *FFMpeg) HWFilterInit(toCodec VideoCodec, fullhw bool) VideoFilter {
 		VideoCodecI264C,
 		VideoCodecIVP9:
 		if !fullhw {
+			// Convert first: hwupload keeps 10-bit frames as 10-bit (p010),
+			// which h264_qsv can't encode (#2165).
+			videoFilter = videoFilter.Append("format=nv12")
 			videoFilter = videoFilter.Append("hwupload=extra_hw_frames=64")
 			videoFilter = videoFilter.Append("format=qsv")
 		}

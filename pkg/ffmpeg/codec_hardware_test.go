@@ -209,3 +209,29 @@ func TestAMFSkipsFullHWTest(t *testing.T) {
 		t.Error("HWCanFullHWTranscode(VAAPI) = false, want true")
 	}
 }
+
+// Quick Sync's software-decode chain converts to 8-bit before uploading,
+// since hwupload keeps 10-bit frames as 10-bit and h264_qsv can't encode
+// them (#2165). The full hardware chain is unchanged.
+func TestQSVFilterConvertsBeforeUpload(t *testing.T) {
+	f := &FFMpeg{version: Version{major: 7}}
+	for _, tc := range []struct {
+		name      string
+		codec     VideoCodec
+		reqHeight int
+		fullhw    bool
+		want      VideoFilter
+	}{
+		{"scaled", VideoCodecI264, 720, false, "format=nv12,hwupload=extra_hw_frames=64,format=qsv,scale_qsv=1280:720"},
+		{"original size", VideoCodecI264, 1080, false, "format=nv12,hwupload=extra_hw_frames=64,format=qsv"},
+		{"compatibility profile", VideoCodecI264C, 720, false, "format=nv12,hwupload=extra_hw_frames=64,format=qsv,scale_qsv=1280:720"},
+		{"vp9", VideoCodecIVP9, 720, false, "format=nv12,hwupload=extra_hw_frames=64,format=qsv,scale_qsv=1280:720"},
+		{"full hardware", VideoCodecI264, 720, true, "scale_qsv=1280:720:format=nv12"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := f.HWMaxResFilter(tc.codec, 1920, 1080, tc.reqHeight, tc.fullhw); got != tc.want {
+				t.Errorf("HWMaxResFilter = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

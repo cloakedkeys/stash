@@ -23,6 +23,8 @@
     "hair_color": "Hair Color",
     "organized": "Organized",
     "performer_favorite": "Performer Favorited",
+    "scene_organized": "Scene Organized",
+    "scene_performer_favorite": "Scene Performer Favorited",
     "component_tagger": {
         "config": {
             "mark_organized_label": "Mark as Organized on save"

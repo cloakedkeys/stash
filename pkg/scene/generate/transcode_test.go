@@ -50,7 +50,7 @@ func TestTranscodeVideoArgs(t *testing.T) {
 		// Quick Sync keeps no filter at original size until #2165 is fixed
 		{"qsv original size", ffmpeg.VideoCodecI264, 0, "",
 			ffmpeg.Args{"-init_hw_device", "qsv=hw", "-filter_hw_device", "hw"}},
-		{"qsv scaled", ffmpeg.VideoCodecI264, 720, "hwupload=extra_hw_frames=64,format=qsv,scale_qsv=1280:720",
+		{"qsv scaled", ffmpeg.VideoCodecI264, 720, "format=nv12,hwupload=extra_hw_frames=64,format=qsv,scale_qsv=1280:720",
 			ffmpeg.Args{"-init_hw_device", "qsv=hw", "-filter_hw_device", "hw"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

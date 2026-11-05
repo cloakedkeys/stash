@@ -465,7 +465,24 @@ export class ListFilterModel {
   public makeFilter() {
     const output: Record<string, unknown> = {};
     for (const c of this.criteria) {
-      c.applyToCriterionInput(output);
+      const { type, subFilter } = c.criterionOption;
+      if (!subFilter) {
+        c.applyToCriterionInput(output);
+        continue;
+      }
+
+      // criteria on a related object go inside its filter, under the related
+      // object's own name for the criterion
+      const subOutput: Record<string, unknown> = {};
+      c.applyToCriterionInput(subOutput);
+      if (type in subOutput) {
+        subOutput[subFilter.field] = subOutput[type];
+        delete subOutput[type];
+      }
+      output[subFilter.key] = {
+        ...(output[subFilter.key] as Record<string, unknown> | undefined),
+        ...subOutput,
+      };
     }
     return output;
   }
