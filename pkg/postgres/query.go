@@ -326,7 +326,8 @@ func (qb *queryBuilder) addFilter(f *filterBuilder) error {
 	}
 
 	// #2167 - HAVING clauses under OR or NOT
-	f.isolateHavingClauses(qb.repository.tableName)
+	// #2170 - WITH clauses in sub-filters
+	f.isolateLevels(qb.repository.tableName)
 
 	clause, args := f.generateWithClauses()
 	if len(clause) > 0 {

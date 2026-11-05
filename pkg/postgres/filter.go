@@ -391,27 +391,43 @@ func (f *filterBuilder) hasOrNot() bool {
 	return false
 }
 
-// isolateHavingClauses makes the conditions of each level that has HAVING
-// clauses into one WHERE clause that selects the matching ids by itself:
+// isolateLevels makes the conditions of some levels of the filter into one
+// WHERE clause that selects the matching ids by itself:
 //
-//	<table>.id IN (SELECT <table>.id FROM <table> <joins> WHERE <where>
-//	  GROUP BY <table>.id HAVING <having>)
+//	<table>.id IN ([WITH <with>] SELECT <table>.id FROM <table> <joins>
+//	  [WHERE <where>] [GROUP BY <table>.id HAVING <having>])
 //
-// The WHERE and HAVING clauses of the levels are otherwise combined
-// separately, so a HAVING clause under OR or NOT was always ANDed (#2167).
-// Filters without OR or NOT are left as they are.
-func (f *filterBuilder) isolateHavingClauses(table string) {
-	if !f.hasOrNot() {
-		return
-	}
+// A level is isolated when:
+//   - it has HAVING clauses and the filter uses OR or NOT. The WHERE and
+//     HAVING clauses of the levels are otherwise combined separately, so a
+//     HAVING clause under OR or NOT was always ANDed (#2167).
+//   - it is a sub-filter with WITH clauses. Only the top level's WITH clauses
+//     go into the query, so these were dropped (#2170). In its own subquery,
+//     a level can also use the same WITH name as another level.
+//
+// Filters without sub-filters are left as they are.
+func (f *filterBuilder) isolateLevels(table string) {
+	orNot := f.hasOrNot()
 
 	for ff := f; ff != nil; ff = ff.subFilter {
-		if len(ff.havingClauses) == 0 {
+		hasWith := ff != f && len(ff.withClauses) > 0
+		hasHaving := orNot && len(ff.havingClauses) > 0
+		if !hasWith && !hasHaving {
 			continue
 		}
 
 		var args []interface{}
-		sql := fmt.Sprintf("%[1]s.id IN (SELECT %[1]s.id FROM %[1]s%[2]s", table, ff.joins.toSQL(false))
+		sql := table + ".id IN ("
+		if hasWith {
+			with, a := ff.generateWithClauses()
+			sql += "WITH "
+			if ff.recursiveWith {
+				sql += "RECURSIVE "
+			}
+			sql += with + " "
+			args = append(args, a...)
+		}
+		sql += fmt.Sprintf("SELECT %[1]s.id FROM %[1]s%[2]s", table, ff.joins.toSQL(false))
 		for _, j := range ff.joins {
 			if !j.sort {
 				args = append(args, j.args...)
@@ -421,13 +437,19 @@ func (f *filterBuilder) isolateHavingClauses(table string) {
 			sql += " WHERE " + where
 			args = append(args, a...)
 		}
-		having, a := ff.andClauses(ff.havingClauses)
-		sql += fmt.Sprintf(" GROUP BY %s.id HAVING %s)", table, having)
-		args = append(args, a...)
+		if having, a := ff.andClauses(ff.havingClauses); having != "" {
+			sql += fmt.Sprintf(" GROUP BY %s.id HAVING %s", table, having)
+			args = append(args, a...)
+		}
+		sql += ")"
 
 		ff.whereClauses = []sqlClause{makeClause(sql, args...)}
 		ff.havingClauses = nil
 		ff.joins = nil
+		if hasWith {
+			ff.withClauses = nil
+			ff.recursiveWith = false
+		}
 	}
 }
 
