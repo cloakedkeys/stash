@@ -284,7 +284,8 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
     onEditCriterion(criterion);
   }
 
-  function getFilterTags(criterion: Criterion) {
+  // i is the criterion's place in the list: there can be several of a kind
+  function getFilterTags(criterion: Criterion, i: number) {
     if (
       criterion instanceof CustomFieldsCriterion &&
       criterion.value.length > 1
@@ -292,7 +293,7 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
       return criterion.value.map((value, index) => {
         return (
           <FilterTag
-            key={index}
+            key={`${i}-${index}`}
             label={criterion.getValueLabel(intl, value)}
             onClick={() => onClickCriterionTag(criterion)}
             onRemove={($event) =>
@@ -307,7 +308,7 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
 
     return (
       <FilterTag
-        key={criterion.getId()}
+        key={`${i}-${criterion.getId()}`}
         label={
           <CriterionLabel
             criterion={criterion}
@@ -323,7 +324,7 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
 
   const className = "wrap-tags filter-tags";
 
-  const filterTags = criteria.flatMap((c) => getFilterTags(c));
+  const filterTags = criteria.flatMap((c, i) => getFilterTags(c, i));
 
   if (searchTerm && searchTerm.length > 0) {
     filterTags.unshift(
