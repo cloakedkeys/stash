@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -17,10 +18,12 @@ import (
 // fakeFingerprintStashBox answers FindScenesBySceneFingerprints. For every
 // scene it is asked about, it returns one match whose id is that scene's first
 // fingerprint hash, so a test can tell which scene each result belongs to.
-// shortBy drops that many lists from the end of the first response; extra
-// appends that many unasked-for lists to it.
+// The first response can be made wrong: shortBy drops that many lists from
+// its end, dropAt drops the lists at those positions, and extra appends that
+// many unasked-for lists.
 type fakeFingerprintStashBox struct {
 	shortBy int
+	dropAt  []int
 	extra   int
 
 	mu       sync.Mutex
@@ -51,7 +54,10 @@ func (s *fakeFingerprintStashBox) handler(w http.ResponseWriter, r *http.Request
 	s.mu.Unlock()
 
 	var lists []string
-	for _, fps := range req.Variables.Fingerprints {
+	for i, fps := range req.Variables.Fingerprints {
+		if first && slices.Contains(s.dropAt, i) {
+			continue
+		}
 		lists = append(lists, "["+fakeSceneJSON(fps[0].Hash)+"]")
 	}
 
@@ -138,7 +144,7 @@ func numberedFingerprints(n int) ([]models.Fingerprints, []string) {
 }
 
 // A stash-box that returns fewer result lists than it was asked for must not
-// crash; the scenes it left out are treated as having no match.
+// crash; every scene in that request is treated as having no match.
 func TestFindScenesByFingerprints_ShortResults(t *testing.T) {
 	t.Run("single scene, empty response", func(t *testing.T) {
 		fake := &fakeFingerprintStashBox{shortBy: 1}
@@ -171,30 +177,49 @@ func TestFindScenesByFingerprints_ShortResults(t *testing.T) {
 		}
 	})
 
-	t.Run("three scenes, two left out", func(t *testing.T) {
+	// Stash can't tell which scenes a short reply left out, so no scene in
+	// that request gets a match.
+	t.Run("three scenes, last two left out", func(t *testing.T) {
 		fake := &fakeFingerprintStashBox{shortBy: 2}
 		fps, _ := numberedFingerprints(3)
 		ret := findAll(t, fake, fps)
-		assertIDs(t, resultIDs(t, ret), []string{"h0", "", ""})
+		assertIDs(t, resultIDs(t, ret), []string{"", "", ""})
+	})
+
+	t.Run("three scenes, first left out", func(t *testing.T) {
+		fake := &fakeFingerprintStashBox{dropAt: []int{0}}
+		fps, _ := numberedFingerprints(3)
+		ret := findAll(t, fake, fps)
+		assertIDs(t, resultIDs(t, ret), []string{"", "", ""})
+	})
+
+	t.Run("three scenes, middle left out", func(t *testing.T) {
+		// Padding the end would give h0 its match, h1 h2's match and h2
+		// nothing.
+		fake := &fakeFingerprintStashBox{dropAt: []int{1}}
+		fps, _ := numberedFingerprints(3)
+		ret := findAll(t, fake, fps)
+		assertIDs(t, resultIDs(t, ret), []string{"", "", ""})
 	})
 
 	t.Run("scene without fingerprints keeps its place", func(t *testing.T) {
 		fake := &fakeFingerprintStashBox{shortBy: 1}
 		fps := []models.Fingerprints{md5Fingerprints("h0"), nil, md5Fingerprints("h2")}
 		ret := findAll(t, fake, fps)
-		assertIDs(t, resultIDs(t, ret), []string{"h0", "", ""})
+		assertIDs(t, resultIDs(t, ret), []string{"", "", ""})
 	})
 
 	t.Run("short first request, second request still lines up", func(t *testing.T) {
 		// 45 scenes go out as a request of 40 and a request of 5. The first
-		// comes back one short; the second request's results must still land
-		// on their own scenes.
-		fake := &fakeFingerprintStashBox{shortBy: 1}
+		// comes back one short, in the middle; none of its scenes get a
+		// match, and the second request's results must still land on their
+		// own scenes.
+		fake := &fakeFingerprintStashBox{dropAt: []int{20}}
 		fps, ids := numberedFingerprints(45)
 		ret := findAll(t, fake, fps)
 
-		want := append([]string{}, ids...)
-		want[39] = ""
+		want := make([]string, 45)
+		copy(want[40:], ids[40:])
 		assertIDs(t, resultIDs(t, ret), want)
 
 		if got := fake.requests; len(got) != 2 || got[0] != 40 || got[1] != 5 {
@@ -245,11 +270,29 @@ func TestFindScenesByFingerprints_FullResults(t *testing.T) {
 	})
 }
 
-// A stash-box that returns more lists than asked for keeps the behaviour it
-// had before: each scene takes the list at its own position and the extra
-// lists are ignored.
+// A stash-box that returns more lists than asked for can't be trusted to
+// have them in order either, so no scene in that request gets a match.
 func TestFindScenesByFingerprints_LongResults(t *testing.T) {
-	fps, ids := numberedFingerprints(3)
-	ret := findAll(t, &fakeFingerprintStashBox{extra: 2}, fps)
-	assertIDs(t, resultIDs(t, ret), ids)
+	t.Run("single request", func(t *testing.T) {
+		fps, _ := numberedFingerprints(3)
+		ret := findAll(t, &fakeFingerprintStashBox{extra: 2}, fps)
+		assertIDs(t, resultIDs(t, ret), []string{"", "", ""})
+	})
+
+	t.Run("long first request, second request still lines up", func(t *testing.T) {
+		// The first request of 40 comes back with 41 lists. Using it by
+		// position used to push every scene of the second request onto the
+		// previous list: h40 got "extra-0", h41 got h40's match, and so on.
+		fake := &fakeFingerprintStashBox{extra: 1}
+		fps, ids := numberedFingerprints(45)
+		ret := findAll(t, fake, fps)
+
+		want := make([]string, 45)
+		copy(want[40:], ids[40:])
+		assertIDs(t, resultIDs(t, ret), want)
+
+		if got := fake.requests; len(got) != 2 || got[0] != 40 || got[1] != 5 {
+			t.Errorf("expected requests of 40 and 5 scenes, got %v", got)
+		}
+	})
 }
