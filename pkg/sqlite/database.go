@@ -539,7 +539,7 @@ func (db *Database) RestoreFromBackup(backupPath string) error {
 		err = db.checkClosed()
 	}
 	if err == nil {
-		err = os.Rename(backupPath, db.dbPath)
+		err = moveIntoPlace(backupPath, db.dbPath)
 		if err == nil {
 			if wasOpen {
 				if err := db.Open(context.Background(), db.dbPath); err != nil {
@@ -558,6 +558,39 @@ func (db *Database) RestoreFromBackup(backupPath string) error {
 		}
 	}
 	return err
+}
+
+// renameFile is os.Rename. Tests replace it to stand in for a move between
+// drives.
+var renameFile = os.Rename
+
+// moveIntoPlace moves the backup over the database file. A rename can't move
+// a file to another drive or volume (#2123), so when it fails, the backup is
+// copied beside the database, and the copy renamed over it. That way the
+// database is still replaced in one step, and a failed copy leaves it alone.
+// fsutil.SafeMove can't be used, because its copy won't replace a file. The
+// backup is removed once it's in place, as a move would.
+func moveIntoPlace(backupPath, dbPath string) error {
+	renameErr := renameFile(backupPath, dbPath)
+	if renameErr == nil {
+		return nil
+	}
+
+	tmp := dbPath + ".restoring"
+	// left by an earlier restore that stopped part way
+	_ = os.Remove(tmp)
+	if err := fsutil.CopyFile(backupPath, tmp); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("copying it failed: %w; moving it failed first: %v", err, renameErr)
+	}
+	if err := renameFile(tmp, dbPath); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("replacing the database with a copy of it failed: %w; moving it failed first: %v", err, renameErr)
+	}
+	if err := os.Remove(backupPath); err != nil {
+		logger.Warnf("The backup %s was restored, but couldn't be removed: %v", backupPath, err)
+	}
+	return nil
 }
 
 // dropPools closes whatever Close left open after an error, ignoring further
