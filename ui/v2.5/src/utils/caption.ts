@@ -21,6 +21,12 @@ const oldLanguageNames = new Map<string, string>([
   ["Holandés", "nl"],
 ]);
 
+// Swaps an old name for the current one; anything else is returned unchanged.
+export const currentLanguageName = (value: string) => {
+  const code = oldLanguageNames.get(value);
+  return code ? (languageMap.get(code) ?? value) : value;
+};
+
 export const valueToCode = (value?: string | null) => {
   if (!value) {
     return undefined;
