@@ -227,10 +227,9 @@ func Initialize() (*Server, error) {
 	}
 
 	// register GQL handler with plugin cache
-	// chain the visited plugin handler
-	// also requires the dataloader middleware
-	gqlHandler := visitedPluginHandler(dataloaders.Middleware(http.HandlerFunc(gqlHandlerFunc)))
-	pluginCache.RegisterGQLHandler(gqlHandler)
+	pluginCache.RegisterGQLHandler(pluginGQLHandler(http.HandlerFunc(gqlHandlerFunc), repo.TxnManager, func() UserAuthenticator {
+		return manager.GetInstance().UserService
+	}, visitedPluginHandler, dataloaders))
 
 	r.With(originProtection.getAsUnsafe).HandleFunc(gqlEndpoint, gqlHandlerFunc)
 	r.HandleFunc(playgroundEndpoint, func(w http.ResponseWriter, r *http.Request) {

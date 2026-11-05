@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stashapp/stash/internal/api/loaders"
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/logger"
@@ -190,17 +191,14 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 				return
 			}
 
-			var defaultUser *models.User
-			if singleUserMode {
-				if err := txn.WithReadTxn(ctx, txnMgr, func(ctx context.Context) error {
-					var err error
-					defaultUser, err = g.GetSingleUser(ctx)
-					if err != nil {
-						return fmt.Errorf("error retrieving default user: %w", err)
-					}
+			var u *models.User
+			var err error
+			// login time of the session cookie that authenticated u, if any
+			var sessionLoginTime time.Time
 
-					return nil
-				}); err != nil {
+			if singleUserMode {
+				u, err = singleUser(ctx, txnMgr, g)
+				if err != nil {
 					logger.Error(err)
 					w.WriteHeader(http.StatusInternalServerError)
 					return
@@ -208,16 +206,6 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 			}
 
 			r = session.SetLocalRequest(r)
-
-			var u *models.User
-			var err error
-			// login time of the session cookie that authenticated u, if any
-			var sessionLoginTime time.Time
-
-			if defaultUser != nil {
-				u = defaultUser
-				u.Roles = models.Roles{models.RoleEnumAdmin}
-			}
 
 			if singleUserMode {
 				if apiKey := session.GetRequestApiKey(r); apiKey != "" {
@@ -330,6 +318,64 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 			}
 
 			r = r.WithContext(ctx)
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// singleUser returns the single user, with the admin role, that every request
+// acts as in single-user mode. It returns nil if there is no such user.
+func singleUser(ctx context.Context, txnMgr models.TxnManager, g UserAuthenticator) (*models.User, error) {
+	var u *models.User
+	if err := txn.WithReadTxn(ctx, txnMgr, func(ctx context.Context) error {
+		var err error
+		u, err = g.GetSingleUser(ctx)
+		if err != nil {
+			return fmt.Errorf("error retrieving default user: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	if u != nil {
+		u.Roles = models.Roles{models.RoleEnumAdmin}
+	}
+
+	return u, nil
+}
+
+// pluginGQLHandler is the GraphQL handler that JavaScript plugins call
+// in-process. It sets the user first, as the dataloaders apply the user's
+// library limit, then reads the visited plugin hooks from the plugin's cookie.
+func pluginGQLHandler(gql http.Handler, txnMgr models.TxnManager, getUsers func() UserAuthenticator, visitedPlugins func(http.Handler) http.Handler, dataloaders loaders.Middleware) http.Handler {
+	return pluginUserHandler(txnMgr, getUsers)(visitedPlugins(dataloaders.Middleware(gql)))
+}
+
+// pluginUserHandler sets the current user for the GraphQL requests that
+// JavaScript plugins make in-process. Those requests don't pass through
+// authenticateHandler, so the plugin brings the user whose request started it
+// in the request context. In single-user mode every request acts as the single
+// user, as authenticateHandler does. In multi-user mode a plugin that nobody
+// started keeps running without a user.
+func pluginUserHandler(txnMgr models.TxnManager, getUsers func() UserAuthenticator) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			g := getUsers()
+			if g.IsSingleUserMode() {
+				u, err := singleUser(r.Context(), txnMgr, g)
+				if err != nil {
+					logger.Error(err)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+
+				if u != nil {
+					r = r.WithContext(session.SetCurrentUser(r.Context(), *u))
+				}
+			}
 
 			next.ServeHTTP(w, r)
 		})
