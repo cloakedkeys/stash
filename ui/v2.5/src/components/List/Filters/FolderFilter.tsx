@@ -637,9 +637,8 @@ const LibrarySidebarFolderFilter: React.FC<SidebarFolderFilterProps> = (
   const { filter, setFilter } = props;
 
   const criterion = useMemo(() => {
-    const ret = filter.criteria.find(
-      (c) => c.criterionOption.type === option.type
-    );
+    // conditions in Any of / None of groups aren't shown here
+    const [ret] = filter.criteriaFor(option.type);
     if (ret) return ret as FolderCriterion;
 
     const newCriterion = filter.makeCriterion(option.type) as FolderCriterion;

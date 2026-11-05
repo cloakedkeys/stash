@@ -1,11 +1,16 @@
 import {
   ConfigDataFragment,
+  CriterionModifier,
   FilterMode,
   FindFilterType,
   SavedFilterDataFragment,
   SortDirectionEnum,
 } from "src/core/generated-graphql";
-import { Criterion, UnsupportedCriterionOption } from "./criteria/criterion";
+import {
+  Criterion,
+  ModifierCriterion,
+  UnsupportedCriterionOption,
+} from "./criteria/criterion";
 import { getFilterOptions } from "./factory";
 import { CriterionType, DisplayMode, SavedUIOptions } from "./types";
 import { ListFilterOptions } from "./filter-options";
@@ -50,12 +55,98 @@ export function limitPageSize(pageSize: number) {
   return pageSize > MAX_PAGE_SIZE ? MAX_PAGE_SIZE : pageSize;
 }
 
-// Every object filter type has an AND sub-filter of its own type.
+// Every object filter type has AND, OR and NOT sub-filters of its own type,
+// and an ALL_OF list of them.
 const AND_KEY = "AND";
+const OR_KEY = "OR";
+const NOT_KEY = "NOT";
+const ALL_OF_KEY = "ALL_OF";
+
+// In the web address a group is one c= value: {"type":"_any","c":[...]}, with
+// a criterion in the usual form for each of its conditions.
+const URL_GROUP_TYPES: Record<string, GroupKind> = {
+  _any: "any",
+  _none: "none",
+};
+// in the web address, set on a condition that also matches empty values
+const URL_OR_EMPTY_KEY = "or_empty";
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
+
+// Any of: at least one condition must match. None of: no condition may match.
+export type GroupKind = "any" | "none";
+
+export interface IFilterGroup {
+  // the name its criteria have in filterGroup
+  name: string;
+  kind: GroupKind;
+  // 1 for the first group of its kind, and so on
+  number: number;
+  criteria: Criterion[];
+}
+
+export function groupName(kind: GroupKind, id: number) {
+  return `${kind}:${id}`;
+}
+
+export function parseGroupName(
+  name?: string
+): { kind: GroupKind; id: number } | undefined {
+  const match = name?.match(/^(any|none):(\d+)$/);
+  if (!match) return undefined;
+  return { kind: match[1] as GroupKind, id: Number.parseInt(match[2], 10) };
+}
+
+// the Any of / None of groups of criteria, in the order they first appear
+export function filterGroups(criteria: Criterion[]): IFilterGroup[] {
+  const ret: IFilterGroup[] = [];
+  for (const c of criteria) {
+    const parsed = parseGroupName(c.filterGroup);
+    if (!parsed || ret.some((g) => g.name === c.filterGroup)) continue;
+    ret.push({
+      name: c.filterGroup!,
+      kind: parsed.kind,
+      number: ret.filter((g) => g.kind === parsed.kind).length + 1,
+      criteria: criteria.filter((cc) => cc.filterGroup === c.filterGroup),
+    });
+  }
+  return ret;
+}
+
+// Whether the condition can be set to also match items where the value is
+// empty (#1170): it has an "is empty" form and doesn't use it already.
+export function canMatchEmpty(c: Criterion) {
+  return (
+    c instanceof ModifierCriterion &&
+    (c.modifierCriterionOption().modifierOptions ?? []).includes(
+      CriterionModifier.IsNull
+    ) &&
+    c.modifier !== CriterionModifier.IsNull &&
+    c.modifier !== CriterionModifier.NotNull
+  );
+}
+
+// whether the condition is in an Any of / None of group
+export function inGroup(c: Criterion) {
+  return parseGroupName(c.filterGroup) !== undefined;
+}
+
+function matchesEmptyToo(c: Criterion) {
+  return !!c.orEmpty && canMatchEmpty(c);
+}
+
+function isEmptyCriterionOf(empty: Criterion, c: Criterion) {
+  return (
+    empty instanceof ModifierCriterion &&
+    empty.modifier === CriterionModifier.IsNull &&
+    empty.criterionOption.type === c.criterionOption.type &&
+    canMatchEmpty(c)
+  );
+}
+
+type ApplyCriterion = (c: Criterion, output: Record<string, unknown>) => void;
 
 // Builds a filter object from criteria, each writing its own keys with apply.
 // A criterion whose keys are already used, such as a second condition of the
@@ -67,7 +158,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 // the keys inside them differ.
 function combineCriteria(
   criteria: Criterion[],
-  apply: (c: Criterion, output: Record<string, unknown>) => void,
+  apply: ApplyCriterion,
   mergeKeys?: Set<string>
 ) {
   const canMerge = (k: string, a: unknown, b: unknown) =>
@@ -225,18 +316,47 @@ export class ListFilterModel {
     if (params.c !== undefined) {
       for (const jsonString of params.c) {
         try {
-          const { type: criterionType, ...savedCriterion } =
-            JSON.parse(jsonString);
+          const decoded = JSON.parse(jsonString);
+          const groupKind = URL_GROUP_TYPES[decoded?.type];
+          if (groupKind && Array.isArray(decoded.c)) {
+            const name = this.newGroupName(groupKind);
+            for (const item of decoded.c) {
+              const criterion = this.criterionFromDecodedParams(item);
+              criterion.filterGroup = name;
+              this.criteria.push(criterion);
+            }
+            continue;
+          }
 
-          const criterion = this.makeCriterion(criterionType);
-          criterion.fromDecodedParams(savedCriterion);
-
-          this.criteria.push(criterion);
+          this.criteria.push(this.criterionFromDecodedParams(decoded));
         } catch (err) {
           console.error("Failed to parse encoded criterion:", err);
         }
       }
     }
+  }
+
+  private criterionFromDecodedParams(decoded: Record<string, unknown>) {
+    const {
+      type: criterionType,
+      [URL_OR_EMPTY_KEY]: orEmpty,
+      ...savedCriterion
+    } = decoded;
+
+    const criterion = this.makeCriterion(criterionType as CriterionType);
+    criterion.fromDecodedParams(savedCriterion);
+    if (orEmpty === true) {
+      criterion.orEmpty = true;
+    }
+    return criterion;
+  }
+
+  private static criterionQueryParams(c: Criterion) {
+    const ret = c.toQueryParams();
+    if (matchesEmptyToo(c)) {
+      ret[URL_OR_EMPTY_KEY] = true;
+    }
+    return ret;
   }
 
   // Does not decode any URL-encoding, only type conversions
@@ -386,9 +506,70 @@ export class ListFilterModel {
         this.addSavedCriteria(v);
         continue;
       }
+      if (k === ALL_OF_KEY && Array.isArray(v)) {
+        for (const item of v) {
+          this.addSavedGroup(item);
+        }
+        continue;
+      }
       const criterion = this.makeCriterion(k as CriterionType);
       criterion.setFromSavedCriterion(v);
       this.criteria.push(criterion);
+    }
+  }
+
+  // Adds an ALL_OF item of a saved filter, in the form makeObjectFilter
+  // writes: {a, OR: {b}} is an Any of group, {NOT: {a, OR: {b}}} a None of
+  // group.
+  private addSavedGroup(item: unknown) {
+    if (!isPlainObject(item)) return;
+
+    let kind: GroupKind = "any";
+    let node: unknown = item;
+    const keys = Object.keys(item);
+    if (keys.length === 1 && keys[0] === NOT_KEY) {
+      kind = "none";
+      node = item[NOT_KEY];
+    }
+
+    const criteria: Criterion[] = [];
+    for (; isPlainObject(node); node = node[OR_KEY]) {
+      for (const [k, v] of Object.entries(node)) {
+        if (k === OR_KEY) continue;
+        const criterion = this.makeCriterion(k as CriterionType);
+        criterion.setFromSavedCriterion(v);
+        criteria.push(criterion);
+      }
+    }
+
+    this.addGroup(kind, criteria);
+  }
+
+  // Adds criteria as a new group. A condition followed by its "is empty"
+  // form becomes one condition that also matches empty values. An Any of
+  // group left with just that one condition is not needed as a group.
+  private addGroup(kind: GroupKind, criteria: Criterion[]) {
+    const merged: Criterion[] = [];
+    for (const c of criteria) {
+      const prev = merged[merged.length - 1];
+      if (prev && !prev.orEmpty && isEmptyCriterionOf(c, prev)) {
+        prev.orEmpty = true;
+        continue;
+      }
+      merged.push(c);
+    }
+
+    if (merged.length === 0) return;
+
+    if (kind === "any" && merged.length === 1 && merged[0].orEmpty) {
+      this.criteria.push(merged[0]);
+      return;
+    }
+
+    const name = this.newGroupName(kind);
+    for (const c of merged) {
+      c.filterGroup = name;
+      this.criteria.push(c);
     }
   }
 
@@ -416,8 +597,26 @@ export class ListFilterModel {
 
   // Returns query parameters with necessary parts URL-encoded
   public getEncodedParams(): IEncodedParams {
-    const encodedCriteria: string[] = this.criteria.map((criterion) => {
-      const queryParams = criterion.toQueryParams();
+    // a group is one value, where its first condition is
+    const values: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    for (const c of this.criteria) {
+      const group = parseGroupName(c.filterGroup);
+      if (!group) {
+        values.push(ListFilterModel.criterionQueryParams(c));
+        continue;
+      }
+      if (seen.has(c.filterGroup!)) continue;
+      seen.add(c.filterGroup!);
+      values.push({
+        type: group.kind === "none" ? "_none" : "_any",
+        c: this.criteria
+          .filter((cc) => cc.filterGroup === c.filterGroup)
+          .map((cc) => ListFilterModel.criterionQueryParams(cc)),
+      });
+    }
+
+    const encodedCriteria: string[] = values.map((queryParams) => {
       let str = ListFilterModel.translateJSON(
         JSON.stringify(queryParams),
         false
@@ -534,32 +733,116 @@ export class ListFilterModel {
       if (subFilter) subFilterKeys.add(subFilter.key);
     }
 
-    return combineCriteria(
-      this.criteria,
-      (c, output) => {
-        const { type, subFilter } = c.criterionOption;
-        if (!subFilter) {
-          c.applyToCriterionInput(output);
-          return;
-        }
+    return this.makeObjectFilter((c, output) => {
+      const { type, subFilter } = c.criterionOption;
+      if (!subFilter) {
+        c.applyToCriterionInput(output);
+        return;
+      }
 
-        const subOutput: Record<string, unknown> = {};
-        c.applyToCriterionInput(subOutput);
-        if (type in subOutput) {
-          subOutput[subFilter.field] = subOutput[type];
-          delete subOutput[type];
-        }
-        output[subFilter.key] = subOutput;
-      },
-      subFilterKeys
-    );
+      const subOutput: Record<string, unknown> = {};
+      c.applyToCriterionInput(subOutput);
+      if (type in subOutput) {
+        subOutput[subFilter.field] = subOutput[type];
+        delete subOutput[type];
+      }
+      output[subFilter.key] = subOutput;
+    }, subFilterKeys);
   }
 
   // TODO - this needs to just use makeFilter, but it needs a migration
   public makeSavedFilter() {
-    return combineCriteria(this.criteria, (c, output) =>
+    return this.makeObjectFilter((c, output) =>
       c.applyToSavedCriterion(output)
     );
+  }
+
+  // Builds the filter object. Conditions outside groups are written as
+  // before (see combineCriteria). Each Any of / None of group, and each
+  // condition outside groups that also matches empty values, is one item of
+  // ALL_OF, so that several groups can be used together (#1206):
+  //   Any of [a, b]:  {a, OR: {b}}
+  //   None of [a, b]: {NOT: {a, OR: {b}}}
+  // Without groups the result is exactly what it was before.
+  private makeObjectFilter(apply: ApplyCriterion, mergeKeys?: Set<string>) {
+    const output = combineCriteria(
+      this.criteria.filter((c) => !inGroup(c) && !matchesEmptyToo(c)),
+      apply,
+      mergeKeys
+    );
+
+    const items: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    for (const c of this.criteria) {
+      if (!inGroup(c)) {
+        if (matchesEmptyToo(c)) {
+          items.push(this.anyOf([c], apply, mergeKeys));
+        }
+        continue;
+      }
+
+      if (seen.has(c.filterGroup!)) continue;
+      seen.add(c.filterGroup!);
+
+      const group = this.criteria.filter(
+        (cc) => cc.filterGroup === c.filterGroup
+      );
+      const anyOf = this.anyOf(group, apply, mergeKeys);
+      items.push(
+        parseGroupName(c.filterGroup)?.kind === "none"
+          ? { [NOT_KEY]: anyOf }
+          : anyOf
+      );
+    }
+
+    if (items.length > 0) {
+      output[ALL_OF_KEY] = items;
+    }
+    return output;
+  }
+
+  // {a, OR: {b, OR: {c}}}; a condition that also matches empty values is
+  // followed by the same condition with "is empty"
+  private anyOf(
+    criteria: Criterion[],
+    apply: ApplyCriterion,
+    mergeKeys?: Set<string>
+  ) {
+    const all = criteria.flatMap((c) =>
+      matchesEmptyToo(c) ? [c, this.makeEmptyCriterion(c)] : [c]
+    );
+
+    let ret: Record<string, unknown> | undefined;
+    for (const c of all.reverse()) {
+      const item = combineCriteria([c], apply, mergeKeys);
+      if (ret) item[OR_KEY] = ret;
+      ret = item;
+    }
+    return ret ?? {};
+  }
+
+  // the "is empty" condition of the same kind as c
+  private makeEmptyCriterion(c: Criterion) {
+    const ret = this.makeCriterion(c.criterionOption.type);
+    if (ret instanceof ModifierCriterion) {
+      ret.modifier = CriterionModifier.IsNull;
+    }
+    return ret;
+  }
+
+  // Any of / None of groups, in the order they first appear in criteria
+  public groups(): IFilterGroup[] {
+    return filterGroups(this.criteria);
+  }
+
+  // a name for a new group of the given kind
+  public newGroupName(kind: GroupKind) {
+    let id = 1;
+    for (const c of this.criteria) {
+      const parsed = parseGroupName(c.filterGroup);
+      if (parsed && parsed.id >= id) id = parsed.id + 1;
+    }
+    return groupName(kind, id);
   }
 
   public makeSavedUIOptions(): SavedUIOptions {
@@ -569,8 +852,12 @@ export class ListFilterModel {
     };
   }
 
+  // The conditions of the given kind outside Any of / None of groups. These
+  // are what the sidebar filters show and edit.
   public criteriaFor(type: CriterionType) {
-    return this.criteria.filter((c) => c.criterionOption.type === type);
+    return this.criteria.filter(
+      (c) => c.criterionOption.type === type && !inGroup(c)
+    );
   }
 
   // Replaces the first criterion of the given kind, the one the sidebar
@@ -578,10 +865,10 @@ export class ListFilterModel {
   // of that kind are kept. With no others, newCriteria go at the end, as they
   // always have.
   public replaceCriteria(type: CriterionType, newCriteria: Criterion[]) {
-    const ofType = this.criteria.filter((c) => c.criterionOption.type === type);
+    const ofType = this.criteriaFor(type);
     if (ofType.length <= 1) {
       return this.setCriteria([
-        ...this.criteria.filter((c) => c.criterionOption.type !== type),
+        ...this.criteria.filter((c) => !ofType.includes(c)),
         ...newCriteria,
       ]);
     }
@@ -621,7 +908,7 @@ export class ListFilterModel {
   public removeCriterion(type: CriterionType) {
     const ret = this.clone();
     const index = ret.criteria.findIndex(
-      (cc) => cc.criterionOption.type === type
+      (cc) => cc.criterionOption.type === type && !inGroup(cc)
     );
 
     if (index === -1) return ret;
@@ -649,7 +936,9 @@ export class ListFilterModel {
 
   public removeCustomFieldCriterion(type: CriterionType, index: number) {
     const ret = this.clone();
-    const c = ret.criteria.find((cc) => cc.criterionOption.type === type);
+    const c = ret.criteria.find(
+      (cc) => cc.criterionOption.type === type && !inGroup(cc)
+    );
 
     if (!c) return ret;
 

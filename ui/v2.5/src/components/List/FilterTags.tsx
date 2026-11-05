@@ -25,6 +25,11 @@ import { useConfigurationContext } from "src/hooks/Config";
 import { PatchContainerComponent } from "src/patch";
 import { View } from "./views";
 import { CriterionLabel } from "./CriterionLabel";
+import {
+  canMatchEmpty,
+  filterGroups,
+  IFilterGroup,
+} from "src/models/list-filter/filter";
 
 type TagItemProps = PropsWithChildren<
   ReplaceProps<"span", BsPrefixProps<"span"> & BadgeProps>
@@ -122,6 +127,21 @@ const MoreFilterTags: React.FC<{
     </>
   );
 };
+
+// "Any of 1:" before a condition in a group
+const FilterGroupPrefix: React.FC<{ group: IFilterGroup }> = ({ group }) => (
+  <span className="filter-group-prefix">
+    <FormattedMessage
+      id={
+        group.kind === "none"
+          ? "search_filter.none_of_group"
+          : "search_filter.any_of_group"
+      }
+      values={{ number: group.number }}
+    />
+    {": "}
+  </span>
+);
 
 interface IFilterTagsProps {
   searchTerm?: string;
@@ -268,6 +288,8 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
     }
   });
 
+  const groups = filterGroups(criteria);
+
   function onRemoveCriterionTag(
     criterion: Criterion,
     $event: React.MouseEvent<HTMLElement, MouseEvent>,
@@ -305,15 +327,26 @@ export const FilterTags: React.FC<IFilterTagsProps> = ({
     }
 
     const unsupported = criterion instanceof UnsupportedCriterion;
+    const group = groups.find((g) => g.name === criterion.filterGroup);
 
     return (
       <FilterTag
         key={`${i}-${criterion.getId()}`}
+        className={group ? `filter-group-${group.kind}` : undefined}
         label={
-          <CriterionLabel
-            criterion={criterion}
-            sfwContentMode={sfwContentMode}
-          />
+          <>
+            {group && <FilterGroupPrefix group={group} />}
+            <CriterionLabel
+              criterion={criterion}
+              sfwContentMode={sfwContentMode}
+            />
+            {criterion.orEmpty && canMatchEmpty(criterion) && (
+              <span className="or-empty-suffix">
+                {" "}
+                <FormattedMessage id="search_filter.or_empty_suffix" />
+              </span>
+            )}
+          </>
         }
         unsupported={unsupported}
         onClick={() => onClickCriterionTag(criterion)}

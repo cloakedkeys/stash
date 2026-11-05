@@ -302,9 +302,8 @@ export function useCriterion(
   setFilter: (f: ListFilterModel) => void
 ) {
   const criterion = useMemo(() => {
-    const ret = filter.criteria.find(
-      (c) => c.criterionOption.type === option.type
-    );
+    // conditions in Any of / None of groups aren't shown here
+    const [ret] = filter.criteriaFor(option.type);
     if (ret) return ret as ModifierCriterion<ILabeledValueListValue>;
 
     const newCriterion = filter.makeCriterion(

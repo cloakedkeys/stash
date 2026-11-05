@@ -43,6 +43,7 @@ import {
 } from "./SavedFilterList";
 import { SearchTermInput } from "./ListFilter";
 import { CustomFieldsCriterion } from "src/models/list-filter/criteria/custom-fields";
+import { CriterionGroupControls } from "./CriterionGroupControls";
 
 interface ICriterionList {
   criteria: string[];
@@ -57,6 +58,8 @@ interface ICriterionList {
   // set when the current criterion is in the filter: starts another
   // condition of the same kind
   onAddAnother?: () => void;
+  // shown under the editor of the current criterion
+  currentControls?: React.ReactNode;
   externallySelected?: boolean;
 }
 
@@ -71,6 +74,7 @@ const CriterionOptionList: React.FC<ICriterionList> = ({
   onRemoveCriterion,
   onTogglePin,
   onAddAnother,
+  currentControls,
   externallySelected = false,
 }) => {
   const { configuration } = useConfigurationContext();
@@ -191,6 +195,7 @@ const CriterionOptionList: React.FC<ICriterionList> = ({
                 criterion={getReleventCriterion(c.type)!}
                 setCriterion={setCriterion}
               />
+              {type === c.type && currentControls}
               {type === c.type && onAddAnother && (
                 <Button
                   className="add-another-criterion-button"
@@ -482,6 +487,17 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
     setEditingIndex(newIndex);
   }
 
+  // changes the criterion being edited, once it is in the filter
+  function updateEditing(change: (c: Criterion) => void) {
+    if (editingIndex === undefined || !criterion) return;
+    const c = criterion.clone();
+    change(c);
+    const newFilter = cloneDeep(currentFilter);
+    newFilter.criteria = criteria.map((cc, i) => (i === editingIndex ? c : cc));
+    setCurrentFilter(newFilter);
+    setCriterion(c);
+  }
+
   // removes the given criteria, which are in currentFilter.criteria
   function removeCriteria(removed: Criterion[]) {
     const newFilter = cloneDeep(currentFilter);
@@ -645,6 +661,15 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
                 !(criterion instanceof CustomFieldsCriterion)
                   ? addAnother
                   : undefined
+              }
+              currentControls={
+                editingIndex !== undefined && criterion ? (
+                  <CriterionGroupControls
+                    filter={currentFilter}
+                    criterion={criterion}
+                    onChange={updateEditing}
+                  />
+                ) : undefined
               }
               externallySelected={!!editingCriterion}
             />
