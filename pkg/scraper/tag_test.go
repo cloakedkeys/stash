@@ -25,6 +25,12 @@ func TestFilterTagsExclusionPatterns(t *testing.T) {
 		{`^\W`, "plain", false},
 		{`\Bcam\B`, "webcams", true},
 		{`\Bcam\B`, "cam", false},
+		{`\PL`, "3d", true},
+		{`\PL`, "plain", false},
+		// every branch of an alternation ignores case
+		{"^FOO$|^Bar$", "foo", true},
+		{"^FOO$|^Bar$", "BAR", true},
+		{"^FOO$|^Bar$", "baz", false},
 	}
 
 	for _, tt := range tests {
