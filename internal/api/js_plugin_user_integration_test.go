@@ -288,13 +288,31 @@ func TestJSPluginActsAsStartingUserOnDatabase(t *testing.T) {
 		assert.JSONEq(t, `{"sceneAddO":{"count":1}}`, string(got[2].Data))
 	})
 
-	// nobody started it: as before, there is no user, so per-user calls fail
-	// and the role checks and library limits have no one to apply to
+	// #2121: nobody started it. With no user the role checks would let
+	// everything through, so it is refused, as an unauthenticated request is.
 	t.Run("no request", func(t *testing.T) {
-		got := h.run(nil, jsMeQuery, jsUISettingQuery, jsSceneCount)
+		got := h.run(nil, jsMeQuery, jsUISettingQuery, jsSceneCount, `mutation { reloadPlugins }`,
+			fmt.Sprintf(`mutation { sceneAddO(id: "%d") { count } }`, hidden.ID))
+		for i, r := range got {
+			assert.Contains(t, r.Error, "401", "call %d must be refused", i)
+			assert.Empty(t, string(r.Data), "call %d", i)
+		}
+		// the refused O count was not saved: the admin added one above
+		got = h.run(&admin, fmt.Sprintf(`query { findScene(id: "%d") { o_counter } }`, hidden.ID))
+		assert.JSONEq(t, `{"findScene":{"o_counter":1}}`, string(got[0].Data))
+	})
+
+	// #2121: with the guest account turned on, a plugin nobody started acts as
+	// the guest, as an unauthenticated request does
+	t.Run("no request with guest account", func(t *testing.T) {
+		require.NoError(t, h.users.SetGuestUserEnabled(true))
+		defer func() { require.NoError(t, h.users.SetGuestUserEnabled(false)) }()
+
+		got := h.run(nil, jsMeQuery, jsSceneCount, `mutation { reloadPlugins }`)
 		assert.Empty(t, got[0].Error)
-		assert.JSONEq(t, `{"me":null}`, string(got[0].Data))
-		assert.Contains(t, got[1].Error, "no current user")
-		assert.JSONEq(t, `{"findScenes":{"count":2}}`, string(got[2].Data))
+		assert.JSONEq(t, `{"me":{"name":"guest","roles":["READ"]}}`, string(got[0].Data))
+		assert.Empty(t, got[1].Error)
+		// a read-only account is refused an administrator's mutation
+		assert.Contains(t, got[2].Error, `"message":"unauthorized"`)
 	})
 }
