@@ -90,6 +90,9 @@ export const IdentifyDialog: React.FC<IIdentifyDialogProps> = ({
   const [animation, setAnimation] = useState(true);
   const [editingField, setEditingField] = useState(false);
   const [savingDefaults, setSavingDefaults] = useState(false);
+  // The source editor, folder picker and Help replace this dialog, which loses
+  // track of what was changed in it; once one has been open, Esc stays off.
+  const [leftDialog, setLeftDialog] = useState(false);
 
   const intl = useIntl();
   const Toast = useToast();
@@ -213,6 +216,7 @@ export const IdentifyDialog: React.FC<IIdentifyDialogProps> = ({
 
     function onClick() {
       setAnimation(false);
+      setLeftDialog(true);
       setSettingPaths(true);
     }
 
@@ -361,6 +365,7 @@ export const IdentifyDialog: React.FC<IIdentifyDialogProps> = ({
 
   function onEditSource(s?: IScraperSource) {
     setAnimation(false);
+    setLeftDialog(true);
 
     // if undefined, then set a dummy source to create a new one
     if (!s) {
@@ -372,6 +377,7 @@ export const IdentifyDialog: React.FC<IIdentifyDialogProps> = ({
 
   function onShowManual() {
     setAnimation(false);
+    setLeftDialog(true);
     setShowManual(true);
   }
 
@@ -469,6 +475,7 @@ export const IdentifyDialog: React.FC<IIdentifyDialogProps> = ({
       show
       icon={faCogs}
       header={intl.formatMessage({ id: "actions.identify" })}
+      changed={leftDialog}
       accept={{
         onClick: onIdentify,
         text: intl.formatMessage({ id: "actions.identify" }),

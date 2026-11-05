@@ -74,6 +74,20 @@ export const FilteredSidebarHeader: React.FC<{
   );
 };
 
+// Hides the sidebar on Esc, unless a dialog is open: Esc belongs to the
+// dialog then. Bootstrap marks the body "modal-open" while any dialog shows.
+export function hideSidebarOnEscape(
+  e: Pick<KeyboardEvent, "preventDefault">,
+  showSidebar: boolean,
+  setShowSidebar: (show: boolean) => void,
+  dialogOpen = document.body.classList.contains("modal-open")
+) {
+  if (showSidebar && !dialogOpen) {
+    setShowSidebar(false);
+    e.preventDefault();
+  }
+}
+
 export function useFilteredSidebarKeybinds(props: {
   showSidebar: boolean;
   setShowSidebar: (show: boolean) => void;
@@ -83,10 +97,7 @@ export function useFilteredSidebarKeybinds(props: {
   // Hide the sidebar when the user presses the "Esc" key
   useEffect(() => {
     Mousetrap.bind("esc", (e) => {
-      if (showSidebar) {
-        setShowSidebar(false);
-        e.preventDefault();
-      }
+      hideSidebarOnEscape(e, showSidebar, setShowSidebar);
     });
 
     return () => {
