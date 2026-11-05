@@ -1170,7 +1170,7 @@ func (qb *GalleryStore) setGallerySort(ctx context.Context, query *queryBuilder,
 	}
 
 	// Whatever the sorting, always use title/id as a final sort
-	query.sort += ", COALESCE(galleries.title, CAST(galleries.id as text)) COLLATE \"natural_ci\" ASC"
+	query.sort += ", galleries.title COLLATE \"natural_ci\" ASC"
 	query.addGroupBy("galleries.title", "galleries.id")
 
 	return nil

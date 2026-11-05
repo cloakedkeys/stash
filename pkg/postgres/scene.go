@@ -1520,7 +1520,7 @@ func (qb *SceneStore) setSceneSort(ctx context.Context, query *queryBuilder, fin
 	}
 
 	// Whatever the sorting, always use title/id as a final sort
-	query.sort += ", COALESCE(scenes.title, CAST(scenes.id as text)) COLLATE \"natural_ci\" ASC"
+	query.sort += ", scenes.title COLLATE \"natural_ci\" ASC"
 	query.addGroupBy("scenes.title", "scenes.id")
 
 	return nil

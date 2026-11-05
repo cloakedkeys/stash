@@ -1025,7 +1025,7 @@ func (qb *TagStore) getTagSort(ctx context.Context, query *queryBuilder, findFil
 	}
 
 	// Whatever the sorting, always use sort_name/name/id as a final sort
-	sortQuery += ", COALESCE(tags.sort_name, tags.name, CAST(tags.id as text)) COLLATE \"natural_ci\" ASC"
+	sortQuery += ", COALESCE(tags.sort_name, tags.name) COLLATE \"natural_ci\" ASC"
 	group = append(group, "tags.sort_name", "tags.name", "tags.id")
 	return sortQuery, group, nil
 }

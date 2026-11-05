@@ -716,7 +716,7 @@ func (qb *GroupStore) setGroupSort(ctx context.Context, query *queryBuilder, fin
 	}
 
 	// Whatever the sorting, always use name/id as a final sort
-	query.sort += ", COALESCE(groups.name, CAST(groups.id as text)) COLLATE \"natural_ci\" ASC"
+	query.sort += ", groups.name COLLATE \"natural_ci\" ASC"
 	query.addGroupBy("groups.name", "groups.id")
 	return nil
 }

@@ -110,28 +110,45 @@ func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 }
 
 // withSortOrder returns a copy of the query with a sort_order column, the
-// row's position in the query's sort.
+// row's position in the query's sort, and the case-folding tables if the sort
+// needs them.
 func (qb queryBuilder) withSortOrder() queryBuilder {
-	qb.columns = append(append([]string{}, qb.columns...), "row_number() OVER ("+qb.stableSort()+") AS sort_order")
+	sort := qb.stableSort()
+	if strings.Contains(sort, naturalFoldCTE) {
+		with, args := naturalFoldWith()
+		qb.withClauses = append([]string{with}, qb.withClauses...)
+		qb.withArgs = append(args, qb.withArgs...)
+	}
+	qb.columns = append(append([]string{}, qb.columns...), "row_number() OVER ("+sort+") AS sort_order")
 	return qb
 }
 
 // naturalCollation is the collation of name and title sorts.
 const naturalCollation = `COLLATE "natural_ci"`
 
-// stableSort returns the query's sort with the item id as the last key, so
-// that items the sort ranks equal, or all items when there is no sort, come
-// back in the same order on every page.
+// stableSort returns the query's sort, in SQLite's order, with the item id as
+// the last key, so that items the sort ranks equal, or all items when there is
+// no sort, come back in the same order on every page.
 //
 // With no sort, PostgreSQL uses id order, for a stable result. (SQLite's order
 // there depends on which index it reads, so it isn't matched.)
 //
-// With a sort, the id runs the way SQLite gives tied items. SQLite's
-// NATURAL_CI collation never finds two names equal, so the first name key
-// that has a value decides: same names come back newest first when that key
-// is ascending, and oldest first when it is descending. Empty names (NULL)
-// don't reach the collation, so SQLite moves on to the next name key. Items
-// with no name key that has a value come back in id order.
+// With a sort, each key sorts as on SQLite:
+//   - Empty values (NULL) come first in ascending order and last in
+//     descending order.
+//   - Names and titles sort by naturalSortKey, which sorts as SQLite's
+//     NATURAL_CI collation does: names that differ only in case are equal,
+//     and characters sort by their code.
+//   - SQLite's NATURAL_CI collation never finds two names equal, so once a
+//     sort reaches a name key that has a value, that key decides, and the keys
+//     after it are never used. Those keys are only used here when every name
+//     key before them is empty (NULL), since SQLite doesn't pass empty values
+//     to the collation and moves on to the next key.
+//
+// Then the id runs the way SQLite gives tied items. The first name key that
+// has a value decides: same names come back newest first when that key is
+// ascending, and oldest first when it is descending. Items with no name key
+// that has a value come back in id order.
 func (qb queryBuilder) stableSort() string {
 	if qb.idColumn == "" {
 		return qb.sort
@@ -139,24 +156,105 @@ func (qb queryBuilder) stableSort() string {
 	if strings.TrimSpace(qb.sort) == "" {
 		return " ORDER BY " + qb.idColumn + " ASC"
 	}
-	return qb.sort + ", " + tieKey(qb.sort, qb.idColumn)
+
+	keys := parseSortKeys(qb.sort)
+	var parts []string
+	var names []string
+	for _, k := range keys {
+		parts = append(parts, k.sql(names))
+		if k.natural {
+			names = append(names, k.expr)
+		}
+	}
+	return " ORDER BY " + strings.Join(parts, ", ") + ", " + tieKey(keys, qb.idColumn)
+}
+
+// sortKey is one key of an ORDER BY clause.
+type sortKey struct {
+	expr string
+	// natural is whether the key sorts with the natural_ci collation.
+	natural bool
+	desc    bool
+}
+
+// parseSortKeys splits an ORDER BY clause into its keys. Any NULLS FIRST or
+// NULLS LAST is dropped, since sortKey.sql puts empty values where SQLite
+// does.
+func parseSortKeys(sort string) []sortKey {
+	var ret []sortKey
+	for _, key := range sortKeys(sort) {
+		k := sortKey{expr: strings.TrimSpace(key)}
+		for _, nulls := range []string{"NULLS FIRST", "NULLS LAST"} {
+			if s, ok := cutSuffixFold(k.expr, nulls); ok {
+				k.expr = s
+				break
+			}
+		}
+		if s, ok := cutSuffixFold(k.expr, "DESC"); ok {
+			k.expr, k.desc = s, true
+		} else if s, ok := cutSuffixFold(k.expr, "ASC"); ok {
+			k.expr = s
+		}
+		if s, ok := cutSuffixFold(k.expr, naturalCollation); ok {
+			k.expr, k.natural = s, true
+		}
+		ret = append(ret, k)
+	}
+	return ret
+}
+
+// cutSuffixFold returns s without the word or words suffix at its end, ignoring
+// case, and whether it was there.
+func cutSuffixFold(s, suffix string) (string, bool) {
+	if len(s) <= len(suffix) || !strings.EqualFold(s[len(s)-len(suffix):], suffix) {
+		return s, false
+	}
+	before := s[:len(s)-len(suffix)]
+	trimmed := strings.TrimRight(before, " \t\n")
+	if len(trimmed) == len(before) {
+		// part of a longer word, such as a column ending in "asc"
+		return s, false
+	}
+	return trimmed, true
+}
+
+// sql returns the key as SQLite sorts it, where names are the name keys
+// before it.
+func (k sortKey) sql(names []string) string {
+	expr := k.expr
+	if k.natural {
+		expr = naturalSortKey(expr)
+	}
+	if len(names) > 0 {
+		var empty []string
+		for _, n := range names {
+			empty = append(empty, "("+n+") IS NULL")
+		}
+		expr = "CASE WHEN " + strings.Join(empty, " AND ") + " THEN " + expr + " END"
+		if k.natural {
+			expr += ` COLLATE "C"`
+		}
+	}
+	if k.desc {
+		return expr + " DESC NULLS LAST"
+	}
+	return expr + " ASC NULLS FIRST"
 }
 
 // tieKey returns the last sort key, the id, for items that sort ranks equal.
 // The id runs opposite to the first name key that isn't NULL, or ascending if
 // there is none.
-func tieKey(sort, idColumn string) string {
+func tieKey(keys []sortKey, idColumn string) string {
 	var whens []string
-	for _, key := range sortKeys(sort) {
-		expr, after, found := strings.Cut(key, naturalCollation)
-		if !found {
+	for _, k := range keys {
+		if !k.natural {
 			continue
 		}
 		id := "-" + idColumn
-		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(after)), "DESC") {
+		if k.desc {
 			id = idColumn
 		}
-		whens = append(whens, " WHEN "+strings.TrimSpace(expr)+" IS NOT NULL THEN "+id)
+		whens = append(whens, " WHEN ("+k.expr+") IS NOT NULL THEN "+id)
 	}
 	if len(whens) == 0 {
 		return idColumn + " ASC"
@@ -209,12 +307,11 @@ func (qb queryBuilder) findIDs(ctx context.Context) ([]int, error) {
 	if qb.pagination != nil {
 		sql += getPaginationSQL(qb.pagination)
 	}
-	return qb.repository.runIdsQuery(ctx, sql, qb.allArgs())
+	return qb.repository.runIdsQuery(ctx, sql, sorted.allArgs())
 }
 
 func (qb queryBuilder) executeFind(ctx context.Context) ([]int, int, error) {
 	const includeSortPagination = true
-	body := qb.withSortOrder().body(includeSortPagination)
 
 	// Redirect
 	if qb.pagination != nil && qb.pagination.perPage == 0 {
@@ -222,8 +319,10 @@ func (qb queryBuilder) executeFind(ctx context.Context) ([]int, int, error) {
 		return []int{}, res, err
 	}
 
+	sorted := qb.withSortOrder()
+	body := sorted.body(includeSortPagination)
 	pagination := getPaginationSQL(qb.pagination)
-	return qb.repository.executeFindQuery(ctx, body, qb.allArgs(), pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
+	return qb.repository.executeFindQuery(ctx, body, sorted.allArgs(), pagination, sorted.whereClauses, sorted.havingClauses, sorted.withClauses, sorted.groupByClauses, sorted.recursiveWith)
 }
 
 func (qb queryBuilder) executeCount(ctx context.Context) (int, error) {

@@ -1084,7 +1084,7 @@ func (qb *PerformerStore) getPerformerSort(ctx context.Context, findFilter *mode
 	}
 
 	// Whatever the sorting, always use name/id as a final sort
-	sortQuery += ", COALESCE(performers.name, CAST(performers.id as text)) COLLATE \"natural_ci\" ASC"
+	sortQuery += ", performers.name COLLATE \"natural_ci\" ASC"
 	agg = append(agg, "performers.name", "performers.id")
 	return sortQuery, agg, nil
 }

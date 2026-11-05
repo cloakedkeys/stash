@@ -1247,7 +1247,7 @@ func (qb *ImageStore) setImageSortAndPagination(ctx context.Context, q *queryBui
 		}
 
 		// Whatever the sorting, always use title/id as a final sort
-		sortClause += ", COALESCE(images.title, CAST(images.id as text)) COLLATE \"natural_ci\" ASC"
+		sortClause += ", images.title COLLATE \"natural_ci\" ASC"
 		q.addGroupBy("images.title", "images.id")
 	}
 

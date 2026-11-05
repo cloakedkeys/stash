@@ -981,7 +981,7 @@ func (qb *StudioStore) getStudioSort(ctx context.Context, findFilter *models.Fin
 	}
 
 	// Whatever the sorting, always use name/id as a final sort
-	sortQuery += ", COALESCE(studios.name, CAST(studios.id as text)) COLLATE \"natural_ci\" ASC"
+	sortQuery += ", studios.name COLLATE \"natural_ci\" ASC"
 	group = append(group, "studios.name", "studios.id")
 	return sortQuery, group, nil
 }

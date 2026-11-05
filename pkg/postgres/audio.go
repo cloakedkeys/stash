@@ -1347,7 +1347,7 @@ func (qb *AudioStore) setAudioSort(ctx context.Context, query *queryBuilder, fin
 	}
 
 	// Whatever the sorting, always use title/id as a final sort
-	query.sort += ", COALESCE(audios.title, CAST(audios.id AS text)) COLLATE \"natural_ci\" ASC"
+	query.sort += ", audios.title COLLATE \"natural_ci\" ASC"
 	query.addGroupBy("audios.title", "audios.id")
 
 	return nil
