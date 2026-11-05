@@ -1,4 +1,5 @@
 import cloneDeep from "lodash-es/cloneDeep";
+import isEqual from "lodash-es/isEqual";
 import React, {
   useCallback,
   useEffect,
@@ -238,6 +239,25 @@ interface IEditFilterProps {
   hideSearchTerm?: boolean;
   onApply: (filter: ListFilterModel) => void;
   onCancel: () => void;
+}
+
+// The filter that Apply gives back: when the conditions or search term
+// changed, the results change, so it shows the first page, as the filter bar
+// does (#2175). Otherwise it stays on the same page.
+export function filterToApply(
+  original: ListFilterModel,
+  edited: ListFilterModel
+) {
+  if (
+    edited.searchTerm === original.searchTerm &&
+    isEqual(edited.makeSavedFilter(), original.makeSavedFilter())
+  ) {
+    return edited;
+  }
+
+  const ret = edited.clone();
+  ret.currentPage = 1;
+  return ret;
 }
 
 export const EditFilterDialog: React.FC<IEditFilterProps> = ({
@@ -520,7 +540,7 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
         )
       );
       setShowSaveDialog(false);
-      onApply(currentFilter);
+      onApply(filterToApply(filter, currentFilter));
     } catch (err) {
       Toast.error(err);
     } finally {
@@ -643,7 +663,9 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
             <Button variant="secondary" onClick={() => onCancel()}>
               <FormattedMessage id="actions.cancel" />
             </Button>
-            <Button onClick={() => onApply(currentFilter)}>
+            <Button
+              onClick={() => onApply(filterToApply(filter, currentFilter))}
+            >
               <FormattedMessage id="actions.apply" />
             </Button>
           </div>
