@@ -200,3 +200,43 @@ func TestHeadTailBuffer(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// StopAll ends running helpers and their own children, and helpers can still
+// be started afterwards.
+func TestStopAll(t *testing.T) {
+	cmd := helperCommand(context.Background(), "spawn")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Start(cmd); err != nil {
+		t.Fatal(err)
+	}
+	var grandchild int
+	if _, err := fmt.Fscan(bufio.NewReader(stdout), &grandchild); err != nil {
+		t.Fatal(err)
+	}
+	child := cmd.Process.Pid
+	t.Cleanup(func() { killPid(child); killPid(grandchild) })
+
+	StopAll()
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+			t.Errorf("helper ended with %v, want exit status 1", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("StopAll did not stop the helper")
+	}
+	if !waitGone(grandchild, 5*time.Second) {
+		t.Error("StopAll did not stop the helper's own child")
+	}
+
+	if err := Run(helperCommand(context.Background(), "grandchild")); err != nil {
+		t.Errorf("helper started after StopAll failed: %v", err)
+	}
+}

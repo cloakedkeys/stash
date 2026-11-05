@@ -25,6 +25,7 @@ import (
 	"github.com/stashapp/stash/internal/stoprequests"
 	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/database/migrationguard"
+	stashExec "github.com/stashapp/stash/pkg/exec"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/postgres"
 	"github.com/stashapp/stash/ui"
@@ -181,6 +182,23 @@ func main() {
 	desktop.Start(exit, &ui.FaviconProvider)
 
 	exitCode = <-exit
+
+	go endHelpers(migrationguard.Default(), stashExec.StopAll)
+}
+
+// endHelpers ends the helpers, such as ffmpeg and plugins, once Stash has
+// started to exit. On Windows they don't get Stash's Ctrl-C, and the server's
+// shutdown waits for requests that wait on them.
+//
+// They are ended only once no database migration is running. A stop request
+// was already held until then, so for one they end at once. Quit in the tray
+// menu isn't held, so the helpers end once the migration has finished, when
+// the manager's shutdown would let Stash exit. Migrations and database
+// backups don't run anything through pkg/exec, so this can't cut them off.
+// No new migration starts after this, as when the manager shuts down.
+func endHelpers(migrations *migrationguard.Guard, stopAll func()) {
+	migrations.Stop(nil)
+	stopAll()
 }
 
 func migrateSQLiteToPostgres(ctx context.Context, cfg *config.Config, sqlitePath string) error {

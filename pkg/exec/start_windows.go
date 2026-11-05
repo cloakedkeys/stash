@@ -51,6 +51,17 @@ func killOnExitJob() (windows.Handle, error) {
 	return jobHandle, jobErr
 }
 
+func stopAll() {
+	job, err := killOnExitJob()
+	if err != nil {
+		return // no job, so nothing was put in one
+	}
+	// The job stays usable: processes started later are added to it as before.
+	if err := windows.TerminateJobObject(job, 1); err != nil {
+		logger.Warnf("could not stop helper processes: %v", err)
+	}
+}
+
 func assignToJob(p windows.Handle) error {
 	job, err := killOnExitJob()
 	if err != nil {

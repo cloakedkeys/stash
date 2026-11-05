@@ -22,3 +22,5 @@ func output(cmd *exec.Cmd) ([]byte, error) {
 func combinedOutput(cmd *exec.Cmd) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
+
+func stopAll() {}

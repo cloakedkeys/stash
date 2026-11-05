@@ -48,3 +48,11 @@ func Output(cmd *exec.Cmd) ([]byte, error) {
 func CombinedOutput(cmd *exec.Cmd) ([]byte, error) {
 	return combinedOutput(cmd)
 }
+
+// StopAll ends every process started through this package that is still
+// running, and everything those processes started. Stash calls it when it
+// begins to exit, so that requests and jobs waiting on a helper finish
+// instead of holding up the exit. It does nothing outside Windows.
+func StopAll() {
+	stopAll()
+}
