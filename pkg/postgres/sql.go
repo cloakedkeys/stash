@@ -20,6 +20,7 @@ func distinctIDs(qb *queryBuilder, tableName string) {
 	columnId := getColumn(tableName, "id")
 	qb.addColumn(columnId)
 	qb.addGroupBy(columnId)
+	qb.idColumn = columnId
 	qb.from = tableName
 }
 

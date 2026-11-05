@@ -31,7 +31,10 @@ type queryBuilder struct {
 	whereArgs  []interface{}
 	havingArgs []interface{}
 
-	sort           string
+	sort string
+	// idColumn is the item id the query returns, set by distinctIDs. It is the
+	// last sort key, so the order is fixed between pages.
+	idColumn       string
 	pagination     *queryPagination
 	groupByClauses []string
 }
@@ -109,8 +112,89 @@ func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 // withSortOrder returns a copy of the query with a sort_order column, the
 // row's position in the query's sort.
 func (qb queryBuilder) withSortOrder() queryBuilder {
-	qb.columns = append(append([]string{}, qb.columns...), "row_number() OVER ("+qb.sort+") AS sort_order")
+	qb.columns = append(append([]string{}, qb.columns...), "row_number() OVER ("+qb.stableSort()+") AS sort_order")
 	return qb
+}
+
+// naturalCollation is the collation of name and title sorts.
+const naturalCollation = `COLLATE "natural_ci"`
+
+// stableSort returns the query's sort with the item id as the last key, so
+// that items the sort ranks equal, or all items when there is no sort, come
+// back in the same order on every page.
+//
+// With no sort, PostgreSQL uses id order, for a stable result. (SQLite's order
+// there depends on which index it reads, so it isn't matched.)
+//
+// With a sort, the id runs the way SQLite gives tied items. SQLite's
+// NATURAL_CI collation never finds two names equal, so the first name key
+// that has a value decides: same names come back newest first when that key
+// is ascending, and oldest first when it is descending. Empty names (NULL)
+// don't reach the collation, so SQLite moves on to the next name key. Items
+// with no name key that has a value come back in id order.
+func (qb queryBuilder) stableSort() string {
+	if qb.idColumn == "" {
+		return qb.sort
+	}
+	if strings.TrimSpace(qb.sort) == "" {
+		return " ORDER BY " + qb.idColumn + " ASC"
+	}
+	return qb.sort + ", " + tieKey(qb.sort, qb.idColumn)
+}
+
+// tieKey returns the last sort key, the id, for items that sort ranks equal.
+// The id runs opposite to the first name key that isn't NULL, or ascending if
+// there is none.
+func tieKey(sort, idColumn string) string {
+	var whens []string
+	for _, key := range sortKeys(sort) {
+		expr, after, found := strings.Cut(key, naturalCollation)
+		if !found {
+			continue
+		}
+		id := "-" + idColumn
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(after)), "DESC") {
+			id = idColumn
+		}
+		whens = append(whens, " WHEN "+strings.TrimSpace(expr)+" IS NOT NULL THEN "+id)
+	}
+	if len(whens) == 0 {
+		return idColumn + " ASC"
+	}
+	return "CASE" + strings.Join(whens, "") + " ELSE " + idColumn + " END ASC"
+}
+
+// sortKeys splits an ORDER BY clause into its keys, at the commas that aren't
+// inside brackets or quotes.
+func sortKeys(sort string) []string {
+	sort = strings.TrimSpace(sort)
+	if len(sort) >= len("ORDER BY") && strings.EqualFold(sort[:len("ORDER BY")], "ORDER BY") {
+		sort = sort[len("ORDER BY"):]
+	}
+
+	var keys []string
+	depth := 0
+	var quote byte
+	start := 0
+	for i := 0; i < len(sort); i++ {
+		c := sort[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case c == ',' && depth == 0:
+			keys = append(keys, sort[start:i])
+			start = i + 1
+		}
+	}
+	return append(keys, sort[start:])
 }
 
 // findIDs returns the IDs the query finds, sorted and paged. A sort or filter on

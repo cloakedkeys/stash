@@ -640,7 +640,7 @@ func (qb *StoryStore) makeQuery(ctx context.Context, filter *models.StoryFilterT
 	add, group := getSort(sort, find.GetDirection(), sortTable)
 	q.sort = add
 	q.addGroupBy(group...)
-	q.sort += ", stories.id ASC"
+	// the query adds the id as the last key, the way SQLite orders same titles
 	q.addGroupBy("stories.id")
 	q.pagination = getPagination(find)
 	return &q, nil
