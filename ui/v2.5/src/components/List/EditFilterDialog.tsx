@@ -42,6 +42,7 @@ import {
   SaveFilterDialog,
 } from "./SavedFilterList";
 import { SearchTermInput } from "./ListFilter";
+import { CustomFieldsCriterion } from "src/models/list-filter/criteria/custom-fields";
 
 interface ICriterionList {
   criteria: string[];
@@ -53,6 +54,9 @@ interface ICriterionList {
   optionSelected: (o?: CriterionOption) => void;
   onRemoveCriterion: (c: string) => void;
   onTogglePin: (c: CriterionOption) => void;
+  // set when the current criterion is in the filter: starts another
+  // condition of the same kind
+  onAddAnother?: () => void;
   externallySelected?: boolean;
 }
 
@@ -66,6 +70,7 @@ const CriterionOptionList: React.FC<ICriterionList> = ({
   optionSelected,
   onRemoveCriterion,
   onTogglePin,
+  onAddAnother,
   externallySelected = false,
 }) => {
   const { configuration } = useConfigurationContext();
@@ -186,6 +191,16 @@ const CriterionOptionList: React.FC<ICriterionList> = ({
                 criterion={getReleventCriterion(c.type)!}
                 setCriterion={setCriterion}
               />
+              {type === c.type && onAddAnother && (
+                <Button
+                  className="add-another-criterion-button"
+                  variant="link"
+                  size="sm"
+                  onClick={() => onAddAnother()}
+                >
+                  <FormattedMessage id="search_filter.add_another_condition" />
+                </Button>
+              )}
             </Card.Body>
           ) : (
             <Card.Body></Card.Body>
@@ -232,7 +247,8 @@ function filterModeToConfigKey(filterMode: FilterMode) {
 
 interface IEditFilterProps {
   filter: ListFilterModel;
-  editingCriterion?: string;
+  // the kind of criterion to open, or one of filter's criteria
+  editingCriterion?: string | Criterion;
   onApply: (filter: ListFilterModel) => void;
   onCancel: () => void;
 }
@@ -254,6 +270,9 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
     cloneDeep(filter)
   );
   const [criterion, setCriterion] = useState<Criterion>();
+  // where criterion is in currentFilter.criteria; undefined while it is a new
+  // condition not added yet. There can be several conditions of one kind.
+  const [editingIndex, setEditingIndex] = useState<number>();
 
   const [searchRef, setSearchFocus] = useFocusOnce(!ScreenUtils.isTouch());
 
@@ -296,22 +315,40 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
     (option?: CriterionOption) => {
       if (!option) {
         setCriterion(undefined);
+        setEditingIndex(undefined);
         return;
       }
 
       // find the existing criterion if present
-      const existing = criteria.find(
+      const existing = criteria.findIndex(
         (c) => c.criterionOption.type === option.type
       );
-      if (existing) {
-        setCriterion(existing);
+      if (existing !== -1) {
+        setCriterion(criteria[existing]);
+        setEditingIndex(existing);
       } else {
         const newCriterion = filter.makeCriterion(option.type);
         setCriterion(newCriterion);
+        setEditingIndex(undefined);
       }
     },
     [filter, criteria]
   );
+
+  // edits the criterion at index in currentFilter.criteria
+  const editCriterionAt = useCallback(
+    (index: number) => {
+      setCriterion(criteria[index]);
+      setEditingIndex(index);
+    },
+    [criteria]
+  );
+
+  function addAnother() {
+    if (!criterion) return;
+    setCriterion(filter.makeCriterion(criterion.criterionOption.type));
+    setEditingIndex(undefined);
+  }
 
   const ui = configuration?.ui ?? {};
   const [saveUI] = useConfigureUI();
@@ -349,15 +386,30 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
 
   useEffect(() => {
     if (editingCriterionChanged && editingCriterion) {
-      const option = criterionOptions.find((c) => c.type === editingCriterion);
+      if (typeof editingCriterion !== "string") {
+        // currentFilter's criteria are copies of filter's, in the same order
+        const index = filter.criteria.indexOf(editingCriterion);
+        if (index !== -1) {
+          editCriterionAt(index);
+          return;
+        }
+      }
+
+      const type =
+        typeof editingCriterion === "string"
+          ? editingCriterion
+          : editingCriterion.criterionOption.type;
+      const option = criterionOptions.find((c) => c.type === type);
       if (option) {
         optionSelected(option);
       }
     }
   }, [
+    filter,
     editingCriterion,
     criterionOptions,
     optionSelected,
+    editCriterionAt,
     editingCriterionChanged,
   ]);
 
@@ -408,35 +460,44 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
 
   function replaceCriterion(c: Criterion) {
     const newFilter = cloneDeep(currentFilter);
+    let newIndex = editingIndex;
 
     if (!c.isValid()) {
       // remove from the filter if present
-      const newCriteria = criteria.filter((cc) => {
-        return cc.criterionOption.type !== c.criterionOption.type;
-      });
-
-      newFilter.criteria = newCriteria;
-    } else {
-      let found = false;
-
-      const newCriteria = criteria.map((cc) => {
-        if (cc.criterionOption.type === c.criterionOption.type) {
-          found = true;
-          return c;
-        }
-
-        return cc;
-      });
-
-      if (!found) {
-        newCriteria.push(c);
+      if (editingIndex !== undefined) {
+        newFilter.criteria = criteria.filter((_, i) => i !== editingIndex);
       }
-
-      newFilter.criteria = newCriteria;
+      newIndex = undefined;
+    } else if (editingIndex !== undefined) {
+      newFilter.criteria = criteria.map((cc, i) =>
+        i === editingIndex ? c : cc
+      );
+    } else {
+      newFilter.criteria = [...criteria, c];
+      newIndex = newFilter.criteria.length - 1;
     }
 
     setCurrentFilter(newFilter);
     setCriterion(c);
+    setEditingIndex(newIndex);
+  }
+
+  // removes the given criteria, which are in currentFilter.criteria
+  function removeCriteria(removed: Criterion[]) {
+    const newFilter = cloneDeep(currentFilter);
+    newFilter.criteria = criteria.filter((cc) => !removed.includes(cc));
+    setCurrentFilter(newFilter);
+
+    if (editingIndex === undefined) return;
+    if (removed.includes(criteria[editingIndex])) {
+      optionSelected(undefined);
+    } else {
+      // the edited criterion moves up past those removed before it
+      const before = criteria
+        .slice(0, editingIndex)
+        .filter((cc) => removed.includes(cc)).length;
+      setEditingIndex(editingIndex - before);
+    }
   }
 
   function removeCriterion(c: Criterion, valueIndex?: number) {
@@ -448,31 +509,21 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
         )
       );
     } else {
-      const newFilter = cloneDeep(currentFilter);
-      const newCriteria = criteria.filter((cc) => {
-        return cc.getId() !== c.getId();
-      });
-
-      newFilter.criteria = newCriteria;
-
-      setCurrentFilter(newFilter);
-      if (criterion?.getId() === c.getId()) {
-        optionSelected(undefined);
-      }
+      removeCriteria([c]);
     }
   }
 
+  // the remove button of a kind of criterion removes all of that kind
   function removeCriterionString(c: string) {
-    const cc = criteria.find((ccc) => ccc.criterionOption.type === c);
-    if (cc) {
-      removeCriterion(cc);
-    }
+    removeCriteria(criteria.filter((cc) => cc.criterionOption.type === c));
   }
 
   function onClearAll() {
     const newFilter = cloneDeep(currentFilter);
     newFilter.criteria = [];
     setCurrentFilter(newFilter);
+    // an open condition is now a new one
+    setEditingIndex(undefined);
   }
 
   function onLoadFilter(f: SavedFilterDataFragment) {
@@ -588,13 +639,27 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
               selected={criterion?.criterionOption}
               onRemoveCriterion={(c) => removeCriterionString(c)}
               onTogglePin={(c) => onTogglePinFilter(c)}
+              onAddAnother={
+                // custom fields already hold several conditions
+                editingIndex !== undefined &&
+                !(criterion instanceof CustomFieldsCriterion)
+                  ? addAnother
+                  : undefined
+              }
               externallySelected={!!editingCriterion}
             />
             {criteria.length > 0 && (
               <div>
                 <FilterTags
                   criteria={criteria}
-                  onEditCriterion={(c) => optionSelected(c.criterionOption)}
+                  onEditCriterion={(c) => {
+                    const index = criteria.indexOf(c);
+                    if (index !== -1) {
+                      editCriterionAt(index);
+                    } else {
+                      optionSelected(c.criterionOption);
+                    }
+                  }}
                   onRemoveCriterion={removeCriterion}
                   onRemoveAll={() => onClearAll()}
                 />
@@ -642,7 +707,7 @@ export function useShowEditFilter(props: {
   const { filter, setFilter, showModal, closeModal } = props;
 
   const showEditFilter = useCallback(
-    (editingCriterion?: string) => {
+    (editingCriterion?: string | Criterion) => {
       function onApplyEditFilter(f: ListFilterModel) {
         closeModal();
         setFilter(f);

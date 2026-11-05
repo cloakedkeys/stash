@@ -1,3 +1,4 @@
+import { Criterion } from "src/models/list-filter/criteria/criterion";
 import { useListOperationShortcuts } from "../List/keyboardShortcuts";
 import React, { useCallback, useEffect } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -154,7 +155,7 @@ const SidebarContent: React.FC<{
   view?: View;
   sidebarOpen: boolean;
   onClose?: () => void;
-  showEditFilter: (editingCriterion?: string) => void;
+  showEditFilter: (editingCriterion?: string | Criterion) => void;
   count?: number;
   focus?: ReturnType<typeof useFocus>;
 }> = ({
@@ -528,7 +529,7 @@ export const FilteredGalleryList = PatchComponent(
               <FilterTags
                 view={view}
                 criteria={filter.criteria}
-                onEditCriterion={(c) => showEditFilter(c.criterionOption.type)}
+                onEditCriterion={(c) => showEditFilter(c)}
                 onRemoveCriterion={removeCriterion}
                 onRemoveAll={clearAllCriteria}
               />

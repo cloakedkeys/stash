@@ -49,6 +49,40 @@ export const MAX_PAGE_SIZE = 255;
 export function limitPageSize(pageSize: number) {
   return pageSize > MAX_PAGE_SIZE ? MAX_PAGE_SIZE : pageSize;
 }
+
+// Every object filter type has an AND sub-filter of its own type.
+const AND_KEY = "AND";
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+// Builds a filter object from criteria, each writing its own keys with apply.
+// A criterion whose keys are already used, such as a second condition of the
+// same kind, goes into the AND sub-filter instead, one level deeper for each
+// repeat: {is_missing: A, AND: {is_missing: B, AND: {is_missing: C}}}. The
+// conditions are all ANDed, as they are at the top level. Without repeats the
+// result is exactly what writing every criterion into one object gives.
+function combineCriteria(
+  criteria: Criterion[],
+  apply: (c: Criterion, output: Record<string, unknown>) => void
+) {
+  const output: Record<string, unknown> = {};
+  for (const c of criteria) {
+    const own: Record<string, unknown> = {};
+    apply(c, own);
+
+    let target = output;
+    while (Object.keys(own).some((k) => k in target)) {
+      if (!isPlainObject(target[AND_KEY])) {
+        target[AND_KEY] = {};
+      }
+      target = target[AND_KEY] as Record<string, unknown>;
+    }
+    Object.assign(target, own);
+  }
+  return output;
+}
 export class ListFilterModel {
   public readonly mode: FilterMode;
   public readonly options: ListFilterOptions;
@@ -321,11 +355,22 @@ export class ListFilterModel {
 
     this.criteria = [];
     if (objectFilter) {
-      for (const [k, v] of Object.entries(objectFilter)) {
-        const criterion = this.makeCriterion(k as CriterionType);
-        criterion.setFromSavedCriterion(v);
-        this.criteria.push(criterion);
+      this.addSavedCriteria(objectFilter);
+    }
+  }
+
+  // Adds the criteria of a saved object filter. A repeated condition is saved
+  // in an AND sub-filter of the same form (see combineCriteria); its criteria
+  // are added where the sub-filter is, so they keep their order.
+  private addSavedCriteria(objectFilter: Record<string, unknown>) {
+    for (const [k, v] of Object.entries(objectFilter)) {
+      if (k === AND_KEY && isPlainObject(v)) {
+        this.addSavedCriteria(v);
+        continue;
       }
+      const criterion = this.makeCriterion(k as CriterionType);
+      criterion.setFromSavedCriterion(v);
+      this.criteria.push(criterion);
     }
   }
 
@@ -463,20 +508,16 @@ export class ListFilterModel {
   }
 
   public makeFilter() {
-    const output: Record<string, unknown> = {};
-    for (const c of this.criteria) {
-      c.applyToCriterionInput(output);
-    }
-    return output;
+    return combineCriteria(this.criteria, (c, output) =>
+      c.applyToCriterionInput(output)
+    );
   }
 
   // TODO - this needs to just use makeFilter, but it needs a migration
   public makeSavedFilter() {
-    const output: Record<string, unknown> = {};
-    for (const c of this.criteria) {
-      c.applyToSavedCriterion(output);
-    }
-    return output;
+    return combineCriteria(this.criteria, (c, output) =>
+      c.applyToSavedCriterion(output)
+    );
   }
 
   public makeSavedUIOptions(): SavedUIOptions {
@@ -534,6 +575,21 @@ export class ListFilterModel {
     });
 
     ret.criteria = newCriteria;
+    ret.currentPage = 1;
+    return ret;
+  }
+
+  // Removes the given criterion, which is one of this filter's criteria, and
+  // leaves any others of the same kind. A criterion that isn't one of them
+  // removes the first of its kind, as removeCriterion does.
+  public removeCriterionInstance(c: Criterion) {
+    const index = this.criteria.indexOf(c);
+    if (index === -1) {
+      return this.removeCriterion(c.criterionOption.type);
+    }
+
+    const ret = this.clone();
+    ret.criteria = ret.criteria.filter((_, i) => i !== index);
     ret.currentPage = 1;
     return ret;
   }

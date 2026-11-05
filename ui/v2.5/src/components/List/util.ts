@@ -306,9 +306,7 @@ export function useFilterOperations(props: {
 
   const removeCriterion = useCallback(
     (removedCriterion: Criterion) => {
-      setFilter((cv) =>
-        cv.removeCriterion(removedCriterion.criterionOption.type)
-      );
+      setFilter((cv) => cv.removeCriterionInstance(removedCriterion));
     },
     [setFilter]
   );
