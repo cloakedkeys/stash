@@ -75,6 +75,45 @@ func (s *groupRelationshipStore) getGroupRelationships(ctx context.Context, id i
 	return ret, nil
 }
 
+// groupLinksLockSpace and groupLinksLockID are the keys of the one advisory
+// lock lockGroupLinks takes, in PostgreSQL's two-number form.
+const (
+	groupLinksLockSpace = 0x67727270 // "grrp"
+	groupLinksLockID    = 0
+)
+
+// lockGroupLinks makes every edit that changes containing or sub-group links
+// take turns with the others: it waits for any other transaction holding the
+// lock to end, and holds it until its own transaction ends. On PostgreSQL
+// edits otherwise run at the same time, and:
+//   - each works out the next order_index from the rows it can see, so two
+//     could pick the same one and break index_groups_relations_order_index_unique
+//     (#2100);
+//   - the group service's loop check could pass for two edits that together
+//     put groups inside each other (#2113). The service takes the lock before
+//     it reads the links.
+//
+// It is the only lock of its kind, and every edit takes it before it changes a
+// group's row or links. So an edit waiting for it holds no other lock from
+// that edit, and it can't be part of a wait in a circle. A bulk edit gives
+// every group the same links, so it takes the lock for its first group, before
+// changing anything, and holds it for the rest. Links deleted when a group is
+// destroyed don't take it: a delete adds no order_index and no loop.
+//
+// SQLite needs none of this: it writes one transaction at a time.
+func lockGroupLinks(ctx context.Context) error {
+	if _, err := dbWrapper.Exec(ctx, "SELECT pg_advisory_xact_lock(?, ?)", groupLinksLockSpace, groupLinksLockID); err != nil {
+		return fmt.Errorf("locking group links: %w", err)
+	}
+	return nil
+}
+
+// LockGroupHierarchy takes lockGroupLinks' lock for the group service, before
+// its loop check reads the links.
+func (qb *GroupStore) LockGroupHierarchy(ctx context.Context) error {
+	return lockGroupLinks(ctx)
+}
+
 // getMaxOrderIndex gets the maximum order index for the containing group with the given id
 func (s *groupRelationshipStore) getMaxOrderIndex(ctx context.Context, containingID int) (int, error) {
 	idColumn := s.table.table.Col("containing_id")
@@ -430,6 +469,10 @@ func (s *groupRelationshipStore) reorderSubGroup(ctx context.Context, groupID in
 func (s *groupRelationshipStore) AddSubGroups(ctx context.Context, groupID int, subGroups []models.GroupIDDescription, insertIndex *int) error {
 	const idIsContaining = true
 
+	if err := lockGroupLinks(ctx); err != nil {
+		return err
+	}
+
 	if err := s.addJoins(ctx, groupID, subGroups, idIsContaining); err != nil {
 		return err
 	}
@@ -463,10 +506,17 @@ func (s *groupRelationshipStore) AddSubGroups(ctx context.Context, groupID int, 
 
 func (s *groupRelationshipStore) RemoveSubGroups(ctx context.Context, groupID int, subGroupIDs []int) error {
 	const idIsContaining = true
+	if err := lockGroupLinks(ctx); err != nil {
+		return err
+	}
 	return s.destroyJoins(ctx, groupID, subGroupIDs, idIsContaining)
 }
 
 func (s *groupRelationshipStore) ReorderSubGroups(ctx context.Context, groupID int, subGroupIDs []int, insertPointID int, insertAfter bool) error {
+	if err := lockGroupLinks(ctx); err != nil {
+		return err
+	}
+
 	for _, id := range subGroupIDs {
 		if err := s.reorderSubGroup(ctx, groupID, id, insertPointID, insertAfter); err != nil {
 			return err

@@ -214,6 +214,14 @@ func (qb *GroupStore) Create(ctx context.Context, newObject *models.Group) error
 	var r groupRow
 	r.fromGroup(*newObject)
 
+	// lock before changing anything, so the lock comes first
+	hasLinks := func(d models.RelatedGroupDescriptions) bool { return d.Loaded() && len(d.List()) > 0 }
+	if hasLinks(newObject.ContainingGroups) || hasLinks(newObject.SubGroups) {
+		if err := lockGroupLinks(ctx); err != nil {
+			return err
+		}
+	}
+
 	id, err := qb.tableMgr.insertID(ctx, r)
 	if err != nil {
 		return err
@@ -267,6 +275,13 @@ func (qb *GroupStore) UpdatePartial(ctx context.Context, id int, partial models.
 
 	r.fromPartial(partial)
 
+	// lock before changing the group's row, so the lock comes first
+	if partial.ContainingGroups != nil || partial.SubGroups != nil {
+		if err := lockGroupLinks(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	if len(r.Record) > 0 {
 		if err := qb.tableMgr.updateByID(ctx, id, r.Record); err != nil {
 			return nil, err
@@ -311,6 +326,12 @@ func (qb *GroupStore) UpdatePartial(ctx context.Context, id int, partial models.
 func (qb *GroupStore) Update(ctx context.Context, updatedObject *models.Group) error {
 	var r groupRow
 	r.fromGroup(*updatedObject)
+
+	// the group's links are always replaced, so the lock is always taken.
+	// Lock before changing the group's row, so the lock comes first.
+	if err := lockGroupLinks(ctx); err != nil {
+		return err
+	}
 
 	if err := qb.tableMgr.updateByID(ctx, updatedObject.ID, r); err != nil {
 		return err
