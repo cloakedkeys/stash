@@ -13,6 +13,7 @@ import { SceneDuplicateChecker } from "./SceneDuplicateChecker";
 
 const page = vi.hoisted(() => ({
   search: "",
+  loaded: false,
   push: vi.fn(),
   duplicates: vi.fn(),
 }));
@@ -26,12 +27,19 @@ vi.mock("react-router-dom", () => ({
   Link: () => null,
 }));
 vi.mock("src/hooks/Config", () => ({
-  useConfigurationContext: () => ({ configuration: {} }),
+  useConfigurationContext: () => ({ configuration: { interface: {} } }),
 }));
 vi.mock("src/core/generated-graphql", async (importOriginal) => ({
   ...(await importOriginal<typeof import("src/core/generated-graphql")>()),
   useFindDuplicateScenesQuery: (options: unknown) => {
     page.duplicates(options);
+    if (page.loaded) {
+      return {
+        data: { findDuplicateScenes: [] },
+        loading: false,
+        refetch: vi.fn(),
+      };
+    }
     // still loading: the page stops at the spinner, after the query is made
     return { data: undefined, loading: true, refetch: vi.fn() };
   },
@@ -73,6 +81,7 @@ function sceneListQuery(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  page.loaded = false;
 });
 
 describe("duplicate checker scene filter", () => {
@@ -138,5 +147,19 @@ describe("duplicate checker scene filter", () => {
         value2: undefined,
       },
     });
+  });
+
+  it("shows the filter row with the criteria from the address", () => {
+    page.loaded = true;
+    page.search = sceneListQuery([
+      "path",
+      CriterionModifier.Excludes,
+      "deepfakes",
+    ]);
+    const html = render();
+    expect(html).toContain("dupe_check.scene_filter");
+    expect(html).toContain("search_filter.edit_filter");
+    // one tag for the one criterion (its text needs the real messages)
+    expect(html.match(/class="[^"]*\btag-item\b/g)).toHaveLength(1);
   });
 });

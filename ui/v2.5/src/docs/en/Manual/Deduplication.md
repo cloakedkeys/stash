@@ -14,12 +14,12 @@ The dupe checker can be run with four different levels of accuracy. `Exact` look
 
 The `Scene Filter` limits the check to scenes that match a filter, using the same filter options as the scenes list. Only matching scenes are compared with each other, so a scene left out by the filter never appears in a group. For example:
 
-- **Organized** set to false leaves out scenes you have already organized.
+- **Organized** set to false leaves out scenes you have already organized. Note that an organized scene is also left out as a match, so a new copy of a scene you have already organized will not be found.
 - **Path** with `excludes` leaves out a folder.
 - **Tags** with `includes` checks only scenes with a tag; with `excludes` it leaves out scenes with a tag. To hide a scene you know is not a duplicate, give it a tag such as `Not a duplicate` and exclude that tag. Note that this hides the scene from every group, not just from one pair.
 - **Duration** greater than a few seconds leaves out short clips.
 
-Saved scene filters can be loaded from the filter dialog. The filter is kept in the page address, so it survives a reload. The search text of a saved filter is not used here.
+Saved scene filters can be loaded from the filter dialog. The filter is kept in the page address, so it survives a reload. The search text of a saved filter is not used here. `Save…` in the dialog saves a scenes filter with only the criteria, so saving over an existing filter drops its search text and sort.
 
 ## Selecting duplicates
 
