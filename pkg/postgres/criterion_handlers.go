@@ -1178,7 +1178,9 @@ func (h *relatedFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		h.joinFn(f)
 	}
 
-	if h.directJoin {
+	// ALL_OF filters are resolved against the main table, so a related filter
+	// that has them always uses a subquery.
+	if h.directJoin && !ff.hasAllOf() {
 		// rerun handler using existing filter builder
 		h.relatedHandler.handle(ctx, f)
 		return

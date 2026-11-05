@@ -49,6 +49,10 @@ func (qb *studioFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		sub := &studioFilterHandler{sf}
 		handleSubFilter(ctx, sub, f, studioFilter.OperatorFilter)
 	}
+
+	handleAllOf(ctx, f, studioFilter.AllOf, func(sf *models.StudioFilterType) criterionHandler {
+		return &studioFilterHandler{sf}
+	})
 }
 
 func (qb *studioFilterHandler) criterionHandler() criterionHandler {

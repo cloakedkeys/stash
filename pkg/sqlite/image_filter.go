@@ -49,6 +49,10 @@ func (qb *imageFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		sub := &imageFilterHandler{sf}
 		handleSubFilter(ctx, sub, f, imageFilter.OperatorFilter)
 	}
+
+	handleAllOf(ctx, f, imageFilter.AllOf, func(sf *models.ImageFilterType) criterionHandler {
+		return &imageFilterHandler{sf}
+	})
 }
 
 func (qb *imageFilterHandler) criterionHandler() criterionHandler {

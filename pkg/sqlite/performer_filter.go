@@ -117,6 +117,14 @@ func (qb *performerFilterHandler) handle(ctx context.Context, f *filterBuilder) 
 		sub := &performerFilterHandler{&sfCopy}
 		handleSubFilter(ctx, sub, f, filter.OperatorFilter)
 	}
+
+	handleAllOf(ctx, f, filter.AllOf, func(sf *models.PerformerFilterType) criterionHandler {
+		sfCopy := *sf
+		if filter.StudioScope != nil {
+			sfCopy.StudioScope = filter.StudioScope
+		}
+		return &performerFilterHandler{&sfCopy}
+	})
 }
 
 func (qb *performerFilterHandler) criterionHandler() criterionHandler {

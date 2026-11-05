@@ -49,6 +49,10 @@ func (qb *tagFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		sub := &tagFilterHandler{sf}
 		handleSubFilter(ctx, sub, f, tagFilter.OperatorFilter)
 	}
+
+	handleAllOf(ctx, f, tagFilter.AllOf, func(sf *models.TagFilterType) criterionHandler {
+		return &tagFilterHandler{sf}
+	})
 }
 
 var tagHierarchyHandler = hierarchicalRelationshipHandler{

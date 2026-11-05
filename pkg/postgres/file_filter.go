@@ -56,6 +56,10 @@ func (qb *fileFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		sub := &fileFilterHandler{sf, qb.isRelated}
 		handleSubFilter(ctx, sub, f, fileFilter.OperatorFilter)
 	}
+
+	handleAllOf(ctx, f, fileFilter.AllOf, func(sf *models.FileFilterType) criterionHandler {
+		return &fileFilterHandler{sf, qb.isRelated}
+	})
 }
 
 func (qb *fileFilterHandler) criterionHandler() criterionHandler {

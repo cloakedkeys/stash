@@ -47,6 +47,10 @@ func (qb *storyFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		sub := &storyFilterHandler{sf}
 		handleSubFilter(ctx, sub, f, storyFilter.OperatorFilter)
 	}
+
+	handleAllOf(ctx, f, storyFilter.AllOf, func(sf *models.StoryFilterType) criterionHandler {
+		return &storyFilterHandler{sf}
+	})
 }
 
 func (qb *storyFilterHandler) criterionHandler() criterionHandler {
