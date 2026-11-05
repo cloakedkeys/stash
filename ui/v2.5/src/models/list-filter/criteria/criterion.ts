@@ -63,6 +63,13 @@ const modifierMessageIDs = {
 export abstract class Criterion {
   public criterionOption: CriterionOption;
 
+  // The Any of / None of group the condition is in, such as "any:1" (see
+  // ListFilterModel.groups). Not set for conditions that must all match.
+  public filterGroup?: string;
+  // Also match items where the value is empty (#1170). Only used when
+  // canMatchEmpty is true for the condition.
+  public orEmpty?: boolean;
+
   constructor(type: CriterionOption) {
     this.criterionOption = type;
   }
