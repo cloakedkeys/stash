@@ -321,6 +321,11 @@ func (s *groupRelationshipStore) replaceJoins(ctx context.Context, id int, v mod
 }
 
 func (s *groupRelationshipStore) destroyJoins(ctx context.Context, id int, toRemove []int, idIsContaining bool) error {
+	// removing nothing does nothing; IN () isn't valid SQL
+	if len(toRemove) == 0 {
+		return nil
+	}
+
 	table := s.table.table
 	idColumn := table.Col("containing_id")
 	fkColumn := table.Col("sub_id")
