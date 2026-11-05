@@ -132,6 +132,10 @@ DeviceAllow=char-drm rw
 
 A single `/dev/dri` path grant may not cover all the DRM nodes needed by the driver, particularly with SR-IOV virtual functions exposing both `card*` and `renderD*` nodes. Check the service's device rules if the startup log reports `No VA display found`.
 
+## Hardware accelerated generation
+
+The `FFmpeg generation hardware acceleration` setting uses the hardware encoders found at startup for previews, marker previews and transcodes. It can use NVIDIA (NVENC), Intel (Quick Sync), VAAPI, AMD (AMF), Apple (VideoToolbox) and Rockchip encoders. If none of them work, generation uses the CPU.
+
 ## HLS/DASH streaming
 
 To stream using HLS (such as on Apple devices) or DASH, the Cache path must be set. This directory is used to store temporary files during the live-transcoding process. The Cache path can be set in the System settings page. 

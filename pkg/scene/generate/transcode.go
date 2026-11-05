@@ -67,26 +67,37 @@ func (g Generator) makeTranscode(lockCtx *fsutil.LockContext, hash string, gener
 	return nil
 }
 
+// transcodeTargetHeight returns the size of the shorter side to transcode to.
+// MaxSize applies to the shorter side, which is what HWMaxResFilter expects.
+func transcodeTargetHeight(width, height int, options TranscodeOptions) int {
+	if options.MaxSize != 0 && options.MaxSize < min(width, height) {
+		return options.MaxSize
+	}
+	return height
+}
+
+// transcodeVideoArgs returns the video arguments and the extra input
+// arguments for a transcode with the given codec.
+func (g Generator) transcodeVideoArgs(codec ffmpeg.VideoCodec, fullhw bool, width, height, targetHeight int) (videoArgs ffmpeg.Args, extraInputArgs ffmpeg.Args) {
+	// Hardware encoders get their filter chain even when nothing is scaled:
+	// VAAPI only encodes frames uploaded to the GPU (format=nv12,hwupload),
+	// and AMF can't take 10-bit frames. For libx264 the filter is empty
+	// unless the video is scaled.
+	videoFilter := g.Encoder.HWMaxResFilter(codec, width, height, targetHeight, fullhw)
+
+	videoArgs = codec.ExtraArgsHQ("superfast", transcodeCRF)
+	videoArgs = videoArgs.VideoFilter(videoFilter)
+	videoArgs = videoArgs.MovieTimescale(g.Encoder.Version())
+
+	extraInputArgs = g.Encoder.HWDeviceInit(g.FFMpegConfig.GetTranscodeInputArgs(), codec, fullhw)
+	return videoArgs, extraInputArgs
+}
+
 func (g Generator) transcode(path string, width, height int, options TranscodeOptions) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
-		targetHeight := height
-		var videoFilter ffmpeg.VideoFilter
-		// MaxSize applies to the shorter side, which is what HWMaxResFilter expects
-		if options.MaxSize != 0 && options.MaxSize < min(width, height) {
-			targetHeight = options.MaxSize
-		}
-
+		targetHeight := transcodeTargetHeight(width, height, options)
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
-
-		if options.MaxSize != 0 {
-			videoFilter = g.Encoder.HWMaxResFilter(codec, width, height, targetHeight, fullhw)
-		}
-
-		videoArgs := codec.ExtraArgsHQ("superfast", transcodeCRF)
-		videoArgs = videoArgs.VideoFilter(videoFilter)
-		videoArgs = videoArgs.MovieTimescale(g.Encoder.Version())
-
-		extraInputArgs := g.Encoder.HWDeviceInit(g.FFMpegConfig.GetTranscodeInputArgs(), codec, fullhw)
+		videoArgs, extraInputArgs := g.transcodeVideoArgs(codec, fullhw, width, height, targetHeight)
 
 		args := transcoder.Transcode(path, transcoder.TranscodeOptions{
 			OutputPath: tmpFn,
@@ -104,27 +115,12 @@ func (g Generator) transcode(path string, width, height int, options TranscodeOp
 
 func (g Generator) transcodeVideo(path string, width, height int, options TranscodeOptions) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
-		targetHeight := height
-		var videoFilter ffmpeg.VideoFilter
-		// MaxSize applies to the shorter side, which is what HWMaxResFilter expects
-		if options.MaxSize != 0 && options.MaxSize < min(width, height) {
-			targetHeight = options.MaxSize
-		}
-
+		targetHeight := transcodeTargetHeight(width, height, options)
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
-
-		if options.MaxSize != 0 {
-			videoFilter = g.Encoder.HWMaxResFilter(codec, width, height, targetHeight, fullhw)
-		}
-
-		videoArgs := codec.ExtraArgsHQ("superfast", transcodeCRF)
-		videoArgs = videoArgs.VideoFilter(videoFilter)
-		videoArgs = videoArgs.MovieTimescale(g.Encoder.Version())
+		videoArgs, extraInputArgs := g.transcodeVideoArgs(codec, fullhw, width, height, targetHeight)
 
 		var audioArgs ffmpeg.Args
 		audioArgs = audioArgs.SkipAudio()
-
-		extraInputArgs := g.Encoder.HWDeviceInit(g.FFMpegConfig.GetTranscodeInputArgs(), codec, fullhw)
 
 		args := transcoder.Transcode(path, transcoder.TranscodeOptions{
 			OutputPath: tmpFn,
