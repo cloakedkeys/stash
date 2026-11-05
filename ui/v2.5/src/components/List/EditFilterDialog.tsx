@@ -260,6 +260,20 @@ export function filterToApply(
   return ret;
 }
 
+// Save… saves the filter as edited in the dialog, not the one it opened
+// with (#2178), and returns it to be applied.
+export async function saveEditedFilter(
+  save: (f: ListFilterModel, name: string, id?: string) => Promise<unknown>,
+  original: ListFilterModel,
+  edited: ListFilterModel,
+  name: string,
+  id?: string
+) {
+  const toSave = filterToApply(original, edited);
+  await save(toSave, name, id);
+  return toSave;
+}
+
 export const EditFilterDialog: React.FC<IEditFilterProps> = ({
   filter,
   editingCriterion,
@@ -527,7 +541,13 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
   async function onSaveFilter(name: string, id?: string) {
     try {
       setSavingFilter(true);
-      await saveFilter(filter, name, id);
+      const saved = await saveEditedFilter(
+        saveFilter,
+        filter,
+        currentFilter,
+        name,
+        id
+      );
 
       Toast.success(
         intl.formatMessage(
@@ -540,7 +560,7 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
         )
       );
       setShowSaveDialog(false);
-      onApply(filterToApply(filter, currentFilter));
+      onApply(saved);
     } catch (err) {
       Toast.error(err);
     } finally {
