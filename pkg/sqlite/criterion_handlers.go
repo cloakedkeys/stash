@@ -575,7 +575,9 @@ func (m *multiCriterionHandlerBuilder) handler(criterion *models.MultiCriterionI
 				args = append(args, tagID)
 			}
 
-			if m.addJoinsFunc != nil {
+			// Excludes is a self-contained NOT IN / NOT EXISTS check. An inner
+			// join here would drop rows with no related object at all.
+			if m.addJoinsFunc != nil && criterion.Modifier != models.CriterionModifierExcludes {
 				m.addJoinsFunc(f, joinTypeInner)
 			}
 
