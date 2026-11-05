@@ -171,11 +171,11 @@ func TestAMFFilter(t *testing.T) {
 		fullhw                   bool
 		want                     VideoFilter
 	}{
-		{"scaled", 1920, 1080, 360, false, "format=nv12,scale=-2:360"},
-		{"portrait", 1080, 1920, 360, false, "format=nv12,scale=360:-2"},
+		{"scaled", 1920, 1080, 360, false, "scale=-2:360,format=nv12"},
+		{"portrait", 1080, 1920, 360, false, "scale=360:-2,format=nv12"},
 		{"not scaled", 1920, 1080, 1080, false, "format=nv12"},
 		// AMF has no hardware decode path, so fullhw changes nothing
-		{"fullhw", 1920, 1080, 360, true, "format=nv12,scale=-2:360"},
+		{"fullhw", 1920, 1080, 360, true, "scale=-2:360,format=nv12"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := f.HWMaxResFilter(VideoCodecA264, tc.width, tc.height, tc.reqHeight, tc.fullhw); got != tc.want {

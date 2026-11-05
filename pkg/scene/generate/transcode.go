@@ -78,12 +78,15 @@ func transcodeTargetHeight(width, height int, options TranscodeOptions) int {
 
 // transcodeVideoArgs returns the video arguments and the extra input
 // arguments for a transcode with the given codec.
-func (g Generator) transcodeVideoArgs(codec ffmpeg.VideoCodec, fullhw bool, width, height, targetHeight int) (videoArgs ffmpeg.Args, extraInputArgs ffmpeg.Args) {
+func (g Generator) transcodeVideoArgs(codec ffmpeg.VideoCodec, fullhw bool, width, height int, options TranscodeOptions) (videoArgs ffmpeg.Args, extraInputArgs ffmpeg.Args) {
 	// Hardware encoders get their filter chain even when nothing is scaled:
 	// VAAPI only encodes frames uploaded to the GPU (format=nv12,hwupload),
 	// and AMF can't take 10-bit frames. For libx264 the filter is empty
 	// unless the video is scaled.
-	videoFilter := g.Encoder.HWMaxResFilter(codec, width, height, targetHeight, fullhw)
+	var videoFilter ffmpeg.VideoFilter
+	if options.MaxSize != 0 || !isQSV(codec) {
+		videoFilter = g.Encoder.HWMaxResFilter(codec, width, height, transcodeTargetHeight(width, height, options), fullhw)
+	}
 
 	videoArgs = codec.ExtraArgsHQ("superfast", transcodeCRF)
 	videoArgs = videoArgs.VideoFilter(videoFilter)
@@ -93,11 +96,19 @@ func (g Generator) transcodeVideoArgs(codec ffmpeg.VideoCodec, fullhw bool, widt
 	return videoArgs, extraInputArgs
 }
 
+// isQSV reports whether codec is an Intel Quick Sync encoder. Its software
+// decode chain uploads 10-bit frames as 10-bit (#2165), which h264_qsv
+// can't encode, so Quick Sync transcodes at original size keep running
+// without the chain and let ffmpeg convert the frames.
+func isQSV(codec ffmpeg.VideoCodec) bool {
+	return codec == ffmpeg.VideoCodecI264 || codec == ffmpeg.VideoCodecI264C || codec == ffmpeg.VideoCodecIVP9
+}
+
 func (g Generator) transcode(path string, width, height int, options TranscodeOptions) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
 		targetHeight := transcodeTargetHeight(width, height, options)
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
-		videoArgs, extraInputArgs := g.transcodeVideoArgs(codec, fullhw, width, height, targetHeight)
+		videoArgs, extraInputArgs := g.transcodeVideoArgs(codec, fullhw, width, height, options)
 
 		args := transcoder.Transcode(path, transcoder.TranscodeOptions{
 			OutputPath: tmpFn,
@@ -117,7 +128,7 @@ func (g Generator) transcodeVideo(path string, width, height int, options Transc
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
 		targetHeight := transcodeTargetHeight(width, height, options)
 		codec, fullhw := g.DetermineCodecAndHW(lockCtx, path, width, height, targetHeight)
-		videoArgs, extraInputArgs := g.transcodeVideoArgs(codec, fullhw, width, height, targetHeight)
+		videoArgs, extraInputArgs := g.transcodeVideoArgs(codec, fullhw, width, height, options)
 
 		var audioArgs ffmpeg.Args
 		audioArgs = audioArgs.SkipAudio()

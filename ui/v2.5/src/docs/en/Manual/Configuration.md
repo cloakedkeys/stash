@@ -134,7 +134,7 @@ A single `/dev/dri` path grant may not cover all the DRM nodes needed by the dri
 
 ## Hardware accelerated generation
 
-The `FFmpeg generation hardware acceleration` setting uses the hardware encoders found at startup for previews, marker previews and transcodes. It can use NVIDIA (NVENC), Intel (Quick Sync), VAAPI, AMD (AMF), Apple (VideoToolbox) and Rockchip encoders. If none of them work, generation uses the CPU.
+The `FFmpeg generation hardware acceleration` setting uses the hardware encoders found at startup for previews, marker previews and transcodes. It can use NVIDIA (NVENC), Intel (Quick Sync), VAAPI, AMD (AMF), Apple (VideoToolbox) and Rockchip encoders. If none of them work, generation uses the CPU. Integrated GPUs can be slower than the CPU; turning the setting off goes back to CPU encoding.
 
 ## HLS/DASH streaming
 

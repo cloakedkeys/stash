@@ -299,10 +299,6 @@ func (f *FFMpeg) HWFilterInit(toCodec VideoCodec, fullhw bool) VideoFilter {
 			videoFilter = videoFilter.Append("format=nv12")
 			videoFilter = videoFilter.Append("hwupload")
 		}
-	case VideoCodecA264:
-		// AMF takes frames from system memory, but not 10-bit ones
-		// ("10-bit input video is not supported by AMF H264 encoder").
-		videoFilter = videoFilter.Append("format=nv12")
 	case VideoCodecRK264:
 		// For Rockchip full-hw, do NOT pre-map to rkrga here. scale_rkrga can
 		// consume DRM_PRIME frames directly when filter_hw_device is set.
@@ -363,6 +359,13 @@ func templateReplaceScale(input string, template string, match []int, width, hei
 
 // Replace video filter scaling with hardware scaling for full hardware transcoding (also fixes the format)
 func (f *FFMpeg) HWCodecFilter(args VideoFilter, codec VideoCodec, width, height int, fullhw bool) VideoFilter {
+	if codec == VideoCodecA264 {
+		// AMF takes frames from system memory, but not 10-bit ones
+		// ("10-bit input video is not supported by AMF H264 encoder").
+		// Convert after scaling, so scaling works on the source format.
+		return args.Append("format=nv12")
+	}
+
 	sargs := string(args)
 
 	match := scaler_re.FindStringSubmatchIndex(sargs)
