@@ -564,6 +564,8 @@ export class ListFilterModel {
     if (c instanceof CustomFieldsCriterion) {
       const newCriteria = c.value.filter((_, i) => i !== index);
       c.value = newCriteria;
+      // the results change, as when a condition is removed
+      ret.currentPage = 1;
     }
 
     return ret;
