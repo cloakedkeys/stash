@@ -325,6 +325,10 @@ func (qb *queryBuilder) addFilter(f *filterBuilder) error {
 		return err
 	}
 
+	// #2167, #2172 - levels that can't share one joined query select their
+	// own ids
+	f.isolateSubFilterLevels(qb.repository.tableName)
+
 	clause, args := f.generateWithClauses()
 	if len(clause) > 0 {
 		qb.addWith(f.recursiveWith, clause)
