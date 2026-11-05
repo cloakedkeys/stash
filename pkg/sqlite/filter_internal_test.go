@@ -640,3 +640,56 @@ func TestStringCriterionHandlerNotNull(t *testing.T) {
 	assert.Equal(fmt.Sprintf("(%[1]s IS NOT NULL AND TRIM(%[1]s) != '')", column), f.whereClauses[0].sql)
 	assert.Len(f.whereClauses[0].args, 0)
 }
+
+func TestIsolateSubFilterLevelsWithClauses(t *testing.T) {
+	assert := assert.New(t)
+
+	newLevel := func(cte string) *filterBuilder {
+		f := &filterBuilder{}
+		f.addWith(cte+" AS (SELECT ?)", "withArg")
+		f.addLeftJoin(cte, "", cte+".id = t.id", "joinArg")
+		f.addWhere(cte+".id IS NOT NULL", "whereArg")
+		f.addHaving("COUNT(*) > ?", "havingArg")
+		return f
+	}
+
+	// a filter without sub-filters is left as it is
+	f := newLevel("cte")
+	before := *f
+	f.isolateSubFilterLevels("t")
+	assert.Equal(before, *f)
+
+	// so is an AND sub-filter without WITH clauses
+	f = newLevel("cte")
+	sf := &filterBuilder{}
+	sf.addLeftJoin("other", "", "other.id = t.id")
+	sf.addWhere("other.id IS NOT NULL", "subArg")
+	sf.addHaving("COUNT(other.id) > 1")
+	f.and(sf)
+	before = *f
+	beforeSub := *sf
+	f.isolateSubFilterLevels("t")
+	assert.Equal(before, *f)
+	assert.Equal(beforeSub, *sf)
+
+	// a sub-filter with WITH clauses gets them in its own subquery; the top
+	// level keeps its WITH clauses for the outer query
+	f = newLevel("cte")
+	sf = newLevel("cte")
+	sf.recursiveWith = true
+	f.and(sf)
+	f.isolateSubFilterLevels("t")
+
+	assert.Len(f.withClauses, 1)
+	assert.Len(f.joins, 1)
+	assert.Len(f.havingClauses, 1)
+
+	assert.Empty(sf.withClauses)
+	assert.False(sf.recursiveWith)
+	assert.Empty(sf.joins)
+	assert.Empty(sf.havingClauses)
+	assert.Equal([]sqlClause{makeClause(
+		"t.id IN (WITH RECURSIVE cte AS (SELECT ?) SELECT t.id FROM t LEFT JOIN cte ON cte.id = t.id WHERE (cte.id IS NOT NULL) GROUP BY t.id HAVING (COUNT(*) > ?))",
+		"withArg", "joinArg", "whereArg", "havingArg",
+	)}, sf.whereClauses)
+}

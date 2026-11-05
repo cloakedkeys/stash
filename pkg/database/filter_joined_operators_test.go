@@ -27,8 +27,8 @@ import (
 type sceneCondition struct {
 	name string
 	set  func(f *models.SceneFilterType)
-	// the condition uses a WITH clause, which is only read from the top
-	// level of a filter (#2170), so it is only checked at the top level
+	// if set, the condition is only checked at the top level of a filter.
+	// No condition needs this since sub-filter WITH clauses work (#2170).
 	with bool
 }
 
@@ -129,7 +129,7 @@ func TestJoinedConditionsUnderOperators(t *testing.T) {
 				Value:    idStrings(tagIDs[tagIdxWithPerformer]),
 				Modifier: models.CriterionModifierIncludes,
 			}
-		}, true},
+		}, false},
 		{"performer_favorite", func(f *models.SceneFilterType) { f.PerformerFavorite = &yes }, false},
 		{"performer_age", func(f *models.SceneFilterType) { f.PerformerAge = intCrit(0) }, false},
 		{"duplicated phash", func(f *models.SceneFilterType) {

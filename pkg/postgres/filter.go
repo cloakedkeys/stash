@@ -412,8 +412,8 @@ func (j joins) sharesJoinName(other joins) bool {
 // isolateSubFilterLevels makes the conditions of some levels of the filter
 // into one WHERE clause that selects the matching ids by itself:
 //
-//	<table>.id IN (SELECT <table>.id FROM <table> <joins> WHERE <where>
-//	  [GROUP BY <table>.id HAVING <having>])
+//	<table>.id IN ([WITH <with>] SELECT <table>.id FROM <table> <joins>
+//	  WHERE <where> [GROUP BY <table>.id HAVING <having>])
 //
 // Otherwise every level is checked row by row in one joined query:
 //   - the HAVING clauses of the levels are always ANDed (#2167);
@@ -424,7 +424,13 @@ func (j joins) sharesJoinName(other joins) bool {
 //     joins;
 //   - two levels that join a table under the same name share one join, so
 //     only one level's join is used, or both conditions must hold for the
-//     same joined row (#2172).
+//     same joined row (#2172);
+//   - only the top level's WITH clauses go into the query, so a sub-filter
+//     condition that needs one failed (#2170).
+//
+// A sub-filter level with WITH clauses is always isolated, with its WITH
+// clauses inside its own subquery. There a level can also use the same WITH
+// name as another level.
 //
 // When some level is combined with OR or NOT, every level that has joins or
 // HAVING clauses, or that is under a NOT, is isolated. Each level then
@@ -443,9 +449,12 @@ func (f *filterBuilder) isolateSubFilterLevels(table string) {
 	var outerJoins joins
 	for ff := f; ff != nil; ff = ff.subFilter {
 		var isolate bool
-		if orNot {
+		switch {
+		case ff != f && len(ff.withClauses) > 0:
+			isolate = true
+		case orNot:
 			isolate = len(ff.joins) > 0 || len(ff.havingClauses) > 0 || (underNot && len(ff.whereClauses) > 0)
-		} else {
+		default:
 			isolate = ff.joins.sharesJoinName(outerJoins)
 		}
 		underNot = underNot || ff.subFilterOp == notOp
@@ -454,14 +463,28 @@ func (f *filterBuilder) isolateSubFilterLevels(table string) {
 			continue
 		}
 
-		ff.isolate(table)
+		ff.isolate(table, ff != f)
 	}
 }
 
 // isolate makes the conditions of this level, without its sub-filter, into
-// one WHERE clause that selects the matching ids by itself.
-func (f *filterBuilder) isolate(table string) {
+// one WHERE clause that selects the matching ids by itself. With withInside,
+// the level's WITH clauses go into its subquery.
+func (f *filterBuilder) isolate(table string, withInside bool) {
 	var args []interface{}
+	sql := table + ".id IN ("
+	if withInside && len(f.withClauses) > 0 {
+		with, a := f.generateWithClauses()
+		sql += "WITH "
+		if f.recursiveWith {
+			sql += "RECURSIVE "
+		}
+		sql += with + " "
+		args = append(args, a...)
+		f.withClauses = nil
+		f.recursiveWith = false
+	}
+
 	levelJoins := make(joins, len(f.joins))
 	for i, j := range f.joins {
 		if j.leftForOr {
@@ -473,7 +496,7 @@ func (f *filterBuilder) isolate(table string) {
 		}
 	}
 
-	sql := fmt.Sprintf("%[1]s.id IN (SELECT %[1]s.id FROM %[1]s%[2]s", table, levelJoins.toSQL(false))
+	sql += fmt.Sprintf("SELECT %[1]s.id FROM %[1]s%[2]s", table, levelJoins.toSQL(false))
 	if where, a := f.andClauses(f.whereClauses); where != "" {
 		sql += " WHERE " + where
 		args = append(args, a...)
