@@ -37,7 +37,7 @@ func (pathCaseFingerprints) CalculateFingerprints(f *models.BaseFile, opener fil
 }
 
 // Use the real scanner and filesystem, with no media tools required for text files.
-func scanPathCaseLibrary(t *testing.T, ctx context.Context, root string) {
+func scanPathCaseLibrary(ctx context.Context, t *testing.T, root string) {
 	t.Helper()
 	filesystem := &file.OsFS{}
 	scanner := &file.Scanner{
@@ -76,7 +76,7 @@ func scanPathCaseLibrary(t *testing.T, ctx context.Context, root string) {
 
 // The scanner opens its own transactions, so these scans commit. Everything they
 // create is removed again at the end.
-func cleanUpPathCaseLibrary(t *testing.T, ctx context.Context, root string, galleryID int) {
+func cleanUpPathCaseLibrary(ctx context.Context, t *testing.T, root string, galleryID int) {
 	t.Helper()
 	require.NoError(t, withTxn(func(ctx context.Context) error {
 		if galleryID != 0 {
@@ -167,7 +167,7 @@ func TestScannerUnicodeCaseRename(t *testing.T) {
 			if kind == "library path" {
 				scanRoot = oldFolder
 			}
-			scanPathCaseLibrary(t, ctx, scanRoot)
+			scanPathCaseLibrary(ctx, t, scanRoot)
 			before := readPathCase(t, oldFolder, oldPath)
 			require.NotNil(t, before.folder)
 			require.NotNil(t, before.file)
@@ -183,7 +183,7 @@ func TestScannerUnicodeCaseRename(t *testing.T) {
 				_, err := db.Story().UpdatePartial(ctx, originalStory, models.StoryPartial{Title: models.NewOptionalString("Keep this title")})
 				return err
 			}))
-			t.Cleanup(func() { cleanUpPathCaseLibrary(t, ctx, root, gallery.ID) })
+			t.Cleanup(func() { cleanUpPathCaseLibrary(ctx, t, root, gallery.ID) })
 
 			newRoot, newFolder, newPath := root, oldFolder, oldPath
 			switch kind {
@@ -204,7 +204,7 @@ func TestScannerUnicodeCaseRename(t *testing.T) {
 				newFolder = newRoot
 				newPath = filepath.Join(newFolder, filepath.Base(oldPath))
 			}
-			scanPathCaseLibrary(t, ctx, newRoot)
+			scanPathCaseLibrary(ctx, t, newRoot)
 			after := readPathCase(t, newFolder, newPath)
 			require.NotNil(t, after.folder)
 			assert.Equal(t, before.folder.ID, after.folder.ID, "the gallery must keep the scanned folder")
@@ -333,13 +333,13 @@ func testScannerDistinctLetters(t *testing.T, firstName, secondName string) {
 	first := filepath.Join(root, firstName)
 	second := filepath.Join(root, secondName)
 	require.NoError(t, os.WriteFile(first, []byte("First."), 0600))
-	scanPathCaseLibrary(t, ctx, root)
-	t.Cleanup(func() { cleanUpPathCaseLibrary(t, ctx, root, 0) })
+	scanPathCaseLibrary(ctx, t, root)
+	t.Cleanup(func() { cleanUpPathCaseLibrary(ctx, t, root, 0) })
 	require.NoError(t, os.WriteFile(second, []byte("Second."), 0600))
 	if b, err := os.ReadFile(first); err != nil || string(b) != "First." {
 		t.Skipf("the filesystem treats %s and %s as one file", firstName, secondName)
 	}
-	scanPathCaseLibrary(t, ctx, root)
+	scanPathCaseLibrary(ctx, t, root)
 	a := readPathCase(t, root, first).file
 	b := readPathCase(t, root, second).file
 	require.NotNil(t, a, "%s keeps its row", firstName)
@@ -381,8 +381,8 @@ func testScannerCaseDistinctFiles(t *testing.T, upperPath, lowerPath string) {
 	for _, p := range []string{upper, lower, filepath.Dir(upper), filepath.Dir(lower)} {
 		require.NoError(t, os.Chtimes(p, same, same))
 	}
-	scanPathCaseLibrary(t, ctx, root)
-	t.Cleanup(func() { cleanUpPathCaseLibrary(t, ctx, root, 0) })
+	scanPathCaseLibrary(ctx, t, root)
+	t.Cleanup(func() { cleanUpPathCaseLibrary(ctx, t, root, 0) })
 	first := readPathCase(t, filepath.Dir(upper), upper).file
 	second := readPathCase(t, filepath.Dir(lower), lower).file
 	require.NotNil(t, first)
@@ -406,15 +406,15 @@ func TestScannerCaseRenameParentOfNumberFolder(t *testing.T) {
 	if caseSensitive {
 		t.Skip("requires a case-insensitive filesystem")
 	}
-	scanPathCaseLibrary(t, ctx, root)
-	t.Cleanup(func() { cleanUpPathCaseLibrary(t, ctx, root, 0) })
+	scanPathCaseLibrary(ctx, t, root)
+	t.Cleanup(func() { cleanUpPathCaseLibrary(ctx, t, root, 0) })
 	before := readPathCase(t, oldFolder, filepath.Join(oldFolder, "clip.txt"))
 	require.NotNil(t, before.folder)
 
 	newParent := filepath.Join(root, "summer")
 	require.NoError(t, os.Rename(oldParent, newParent))
 	newFolder := filepath.Join(newParent, "123")
-	scanPathCaseLibrary(t, ctx, root)
+	scanPathCaseLibrary(ctx, t, root)
 	after := readPathCase(t, newFolder, filepath.Join(newFolder, "clip.txt"))
 	require.NotNil(t, after.folder)
 	assert.Equal(t, before.folder.ID, after.folder.ID, "123 keeps its row")
@@ -439,8 +439,8 @@ func TestScannerCaseDistinctLinks(t *testing.T) {
 	if err := os.Symlink(target, lower); err != nil {
 		t.Skipf("requires a case-sensitive filesystem: %v", err)
 	}
-	scanPathCaseLibrary(t, ctx, root)
-	t.Cleanup(func() { cleanUpPathCaseLibrary(t, ctx, root, 0) })
+	scanPathCaseLibrary(ctx, t, root)
+	t.Cleanup(func() { cleanUpPathCaseLibrary(ctx, t, root, 0) })
 	first := readPathCase(t, upper, filepath.Join(upper, "clip.txt"))
 	second := readPathCase(t, lower, filepath.Join(lower, "clip.txt"))
 	require.NotNil(t, first.folder, "É keeps its row")

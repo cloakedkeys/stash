@@ -13,7 +13,7 @@ import (
 )
 
 func TestUserUIConfigStore(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		qb := db.UserUIConfig()
 
 		other := models.User{

@@ -341,11 +341,6 @@ const (
 )
 
 const (
-	chapterIdxWithGallery = iota
-	totalChapters
-)
-
-const (
 	savedFilterIdxScene = iota
 	savedFilterIdxImage
 
@@ -390,11 +385,6 @@ var (
 	groupNames     []string
 	performerNames []string
 )
-
-type idAssociation struct {
-	first  int
-	second int
-}
 
 type linkMap map[int][]int
 
@@ -719,16 +709,6 @@ func indexToIDPtr[T any](ids []T, idx int) *T {
 	return &ids[idx]
 }
 
-func indexFromID(ids []int, id int) int {
-	for i, v := range ids {
-		if v == id {
-			return i
-		}
-	}
-
-	return -1
-}
-
 func ptr[T any](v T) *T {
 	return &v
 }
@@ -776,7 +756,8 @@ func createTestUser(ctx context.Context) error {
 
 func withRollbackTxn(f func(ctx context.Context) error) error {
 	var ret error
-	withTxn(func(ctx context.Context) error {
+	// always fails, with the fake error, so that it rolls back
+	_ = withTxn(func(ctx context.Context) error {
 		ret = f(ctx)
 		return errors.New("fake error for rollback")
 	})
@@ -784,8 +765,25 @@ func withRollbackTxn(f func(ctx context.Context) error) error {
 	return ret
 }
 
+// runTxn runs f in a transaction, and fails the test if it returns an error.
+func runTxn(t testing.TB, f func(ctx context.Context) error) {
+	t.Helper()
+	if err := withTxn(f); err != nil {
+		t.Errorf("transaction failed: %v", err)
+	}
+}
+
+// runRollbackTxn runs f in a transaction that is rolled back, and fails the
+// test if f returns an error.
+func runRollbackTxn(t testing.TB, f func(ctx context.Context) error) {
+	t.Helper()
+	if err := withRollbackTxn(f); err != nil {
+		t.Errorf("rolled back transaction failed: %v", err)
+	}
+}
+
 func runWithRollbackTxn(t *testing.T, name string, f func(t *testing.T, ctx context.Context)) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		t.Run(name, func(t *testing.T) {
 			f(t, ctx)
 		})
@@ -1060,7 +1058,7 @@ func getFileSize(index int) int64 {
 
 func getFileDuration(index int) float64 {
 	duration := (index % 4) + 1
-	duration = duration * 100
+	duration *= 100
 
 	return float64(duration) + 0.432
 }
@@ -1091,7 +1089,8 @@ func makeFile(i int) models.File {
 
 	ret = baseFile
 
-	if i >= fileIdxStartVideoFiles && i < fileIdxStartAudioFiles {
+	switch {
+	case i >= fileIdxStartVideoFiles && i < fileIdxStartAudioFiles:
 		ret = &models.VideoFile{
 			BaseFile:   baseFile,
 			Format:     getFileStringValue(i, "format"),
@@ -1103,7 +1102,7 @@ func makeFile(i int) models.File {
 			FrameRate:  getFileDuration(i) * 2,
 			BitRate:    int64(getFileDuration(i)) * 3,
 		}
-	} else if i >= fileIdxStartAudioFiles && i < fileIdxStartImageFiles {
+	case i >= fileIdxStartAudioFiles && i < fileIdxStartImageFiles:
 		ret = &models.AudioFile{
 			BaseFile:   baseFile,
 			Format:     "mp3",
@@ -1112,7 +1111,7 @@ func makeFile(i int) models.File {
 			SampleRate: 12,
 			BitRate:    123,
 		}
-	} else if i >= fileIdxStartImageFiles && i < fileIdxStartGalleryFiles {
+	case i >= fileIdxStartImageFiles && i < fileIdxStartGalleryFiles:
 		ret = &models.ImageFile{
 			BaseFile: baseFile,
 			Format:   getFileStringValue(i, "format"),
@@ -1168,11 +1167,6 @@ func getScenePhash(index int, field string) int64 {
 	return int64(index % (totalScenes - dupeScenePhashes) * 1234)
 }
 
-func getSceneStringPtr(index int, field string) *string {
-	v := getPrefixedStringValue("scene", index, field)
-	return &v
-}
-
 func getSceneNullStringPtr(index int, field string) *string {
 	return getStringPtrFromNullString(getPrefixedNullStringValue("scene", index, field))
 }
@@ -1218,29 +1212,13 @@ func getStringPtrFromNullString(r sql.NullString) *string {
 	return &v
 }
 
-func getStringPtr(r string) *string {
-	if r == "" {
-		return nil
-	}
-
-	return &r
-}
-
-func getEmptyStringFromPtr(v *string) string {
-	if v == nil {
-		return ""
-	}
-
-	return *v
-}
-
 func getOCounter(index int) int {
 	return index % 3
 }
 
 func getDuration(index int) float64 {
 	duration := index + 1
-	duration = duration * 100
+	duration *= 100
 
 	return float64(duration) + 0.432
 }
@@ -1530,11 +1508,6 @@ func getAudioStringValue(index int, field string) string {
 	return getPrefixedStringValue("audio", index, field)
 }
 
-func getAudioStringPtr(index int, field string) *string {
-	v := getPrefixedStringValue("audio", index, field)
-	return &v
-}
-
 func getAudioNullStringPtr(index int, field string) *string {
 	return getStringPtrFromNullString(getPrefixedNullStringValue("audio", index, field))
 }
@@ -1677,10 +1650,6 @@ func getGalleryStringValue(index int, field string) string {
 	return getPrefixedStringValue("gallery", index, field)
 }
 
-func getGalleryNullStringValue(index int, field string) sql.NullString {
-	return getPrefixedNullStringValue("gallery", index, field)
-}
-
 func getGalleryNullStringPtr(index int, field string) *string {
 	return getStringPtrFromNullString(getPrefixedNullStringValue("gallery", index, field))
 }
@@ -1796,12 +1765,6 @@ func getGroupStringValue(index int, field string) string {
 	return getPrefixedStringValue("group", index, field)
 }
 
-func getGroupNullStringValue(index int, field string) string {
-	ret := getPrefixedNullStringValue("group", index, field)
-
-	return ret.String
-}
-
 func getGroupEmptyString(index int, field string) string {
 	v := getPrefixedNullStringValue("group", index, field)
 	if !v.Valid {
@@ -1882,12 +1845,6 @@ func getPerformerStringValue(index int, field string) string {
 	return getPrefixedStringValue("performer", index, field)
 }
 
-func getPerformerNullStringValue(index int, field string) string {
-	ret := getPrefixedNullStringValue("performer", index, field)
-
-	return ret.String
-}
-
 func getPerformerEmptyString(index int, field string) string {
 	v := getPrefixedNullStringValue("performer", index, field)
 	if !v.Valid {
@@ -1898,7 +1855,7 @@ func getPerformerEmptyString(index int, field string) string {
 }
 
 func getPerformerBoolValue(index int) bool {
-	index = index % 2
+	index %= 2
 	return index == 1
 }
 
@@ -1960,10 +1917,10 @@ func getPerformerPenisLength(index int) *float64 {
 
 func getPerformerCircumcised(index int) *models.CircumcisedEnum {
 	var ret models.CircumcisedEnum
-	switch {
-	case index%3 == 0:
+	switch index % 3 {
+	case 0:
 		return nil
-	case index%3 == 1:
+	case 1:
 		ret = models.CircumcisedEnumCut
 	default:
 		ret = models.CircumcisedEnumUncut
@@ -2066,65 +2023,8 @@ func createPerformers(ctx context.Context, n int, o int) error {
 
 	return nil
 }
-func getTagBoolValue(index int) bool {
-	index = index % 2
-	return index == 1
-}
 func getTagStringValue(index int, field string) string {
 	return "tag_" + strconv.FormatInt(int64(index), 10) + "_" + field
-}
-
-func getTagSceneCount(id int) int {
-	idx := indexFromID(tagIDs, id)
-	return len(sceneTags.reverseLookup(idx))
-}
-
-func getTagMarkerCount(id int) int {
-	count := 0
-	idx := indexFromID(tagIDs, id)
-	for _, s := range markerSpecs {
-		if s.primaryTagIdx == idx || slices.Contains(s.tagIdxs, idx) {
-			count++
-		}
-	}
-
-	return count
-}
-
-func getTagImageCount(id int) int {
-	idx := indexFromID(tagIDs, id)
-	return len(imageTags.reverseLookup(idx))
-}
-
-func getTagGalleryCount(id int) int {
-	idx := indexFromID(tagIDs, id)
-	return len(galleryTags.reverseLookup(idx))
-}
-
-func getTagPerformerCount(id int) int {
-	idx := indexFromID(tagIDs, id)
-	return len(performerTags.reverseLookup(idx))
-}
-
-func getTagStudioCount(id int) int {
-	idx := indexFromID(tagIDs, id)
-	return len(studioTags.reverseLookup(idx))
-}
-
-func getTagParentCount(id int) int {
-	if id == tagIDs[tagIdxWithParentTag] || id == tagIDs[tagIdxWithGrandParent] || id == tagIDs[tagIdxWithParentAndChild] {
-		return 1
-	}
-
-	return 0
-}
-
-func getTagChildCount(id int) int {
-	if id == tagIDs[tagIdxWithChildTag] || id == tagIDs[tagIdxWithGrandChild] || id == tagIDs[tagIdxWithParentAndChild] {
-		return 1
-	}
-
-	return 0
 }
 
 func tagStashID(i int) models.StashID {
@@ -2239,7 +2139,7 @@ func createStudioFromModel(ctx context.Context, sqb database.StudioStore, studio
 }
 
 func getStudioBoolValue(index int) bool {
-	index = index % 2
+	index %= 2
 	return index == 1
 }
 

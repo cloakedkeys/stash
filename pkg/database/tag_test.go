@@ -17,7 +17,7 @@ import (
 )
 
 func TestMarkerFindBySceneMarkerID(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		tqb := db.Tag()
 
 		markerID := markerIDs[markerIdxWithTag]
@@ -44,7 +44,7 @@ func TestMarkerFindBySceneMarkerID(t *testing.T) {
 }
 
 func TestTagFindByGroupID(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		tqb := db.Tag()
 
 		groupID := groupIDs[groupIdxWithTag]
@@ -71,7 +71,7 @@ func TestTagFindByGroupID(t *testing.T) {
 }
 
 func TestTagFindByName(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		tqb := db.Tag()
 
 		name := tagNames[tagIdxWithScene] // find a tag by name
@@ -91,7 +91,7 @@ func TestTagFindByName(t *testing.T) {
 		if err != nil {
 			t.Errorf("Error finding tags: %s", err.Error())
 		}
-		//tag.Name should match with tagIdxWithScene since its ID is before tagIdxWithDupName
+		// tag.Name should match with tagIdxWithScene since its ID is before tagIdxWithDupName
 		assert.Equal(t, tagNames[tagIdx2WithNothing], tag.Name)
 
 		return nil
@@ -99,7 +99,7 @@ func TestTagFindByName(t *testing.T) {
 }
 
 func TestTagFindByAlias(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		tqb := db.Tag()
 
 		alias := getTagStringValue(tagIdxWithScene, "Alias")
@@ -117,7 +117,7 @@ func TestTagFindByAlias(t *testing.T) {
 }
 
 func TestTagQueryIgnoreAutoTag(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		ignoreAutoTag := true
 		tagFilter := models.TagFilterType{
 			IgnoreAutoTag: &ignoreAutoTag,
@@ -137,7 +137,7 @@ func TestTagQueryIgnoreAutoTag(t *testing.T) {
 }
 
 func TestTagQueryForAutoTag(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		tqb := db.Tag()
 
 		name := tagNames[tagIdx1WithScene] // find a tag by name
@@ -170,7 +170,7 @@ func TestTagQueryForAutoTag(t *testing.T) {
 func TestTagFindByNames(t *testing.T) {
 	var names []string
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		tqb := db.Tag()
 
 		names = append(names, tagNames[tagIdxWithScene]) // find tags by names
@@ -212,7 +212,7 @@ func TestTagFindByNames(t *testing.T) {
 }
 
 func TestTagQuerySort(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Tag()
 
 		sortBy := "scenes_count"
@@ -431,7 +431,7 @@ func TestTagQueryAlias(t *testing.T) {
 }
 
 func verifyTagQuery(t *testing.T, tagFilter *models.TagFilterType, findFilter *models.FindFilterType, verifyFn func(ctx context.Context, t *models.Tag)) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Tag()
 
 		tags := queryTags(ctx, t, sqb, tagFilter, findFilter)
@@ -635,7 +635,7 @@ func TestTagQuery(t *testing.T) {
 }
 
 func TestTagQueryIsMissingImage(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		qb := db.Tag()
 		isMissing := "image"
 		tagFilter := models.TagFilterType{
@@ -872,7 +872,7 @@ func TestTagQueryCounts(t *testing.T) {
 }
 
 func TestTagQueryParent(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		const nameField = "Name"
 		sqb := db.Tag()
 		tagCriterion := models.HierarchicalMultiCriterionInput{
@@ -949,7 +949,7 @@ func TestTagQueryParent(t *testing.T) {
 }
 
 func TestTagQueryChild(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		const nameField = "Name"
 
 		sqb := db.Tag()
@@ -1042,7 +1042,7 @@ func TestTagUpdateTagImage(t *testing.T) {
 			return fmt.Errorf("Error creating tag: %s", err.Error())
 		}
 
-		return testUpdateImage(t, ctx, tag.ID, qb.UpdateImage, qb.GetImage)
+		return testUpdateImage(ctx, t, tag.ID, qb.UpdateImage, qb.GetImage)
 	}); err != nil {
 		t.Error(err.Error())
 	}
@@ -1108,7 +1108,7 @@ func TestTagStashIDs(t *testing.T) {
 }
 
 func TestTagFindByStashID(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		qb := db.Tag()
 
 		// create tag to test against
@@ -1408,16 +1408,16 @@ func Test_TagStore_Create(t *testing.T) {
 
 			assert.NotZero(p.ID)
 
-			copy := *tt.newObject.Tag
-			copy.ID = p.ID
+			copied := *tt.newObject.Tag
+			copied.ID = p.ID
 
 			// load relationships
-			if err := loadTagRelationships(ctx, copy, p.Tag); err != nil {
+			if err := loadTagRelationships(ctx, copied, p.Tag); err != nil {
 				t.Errorf("loadTagRelationships() error = %v", err)
 				return
 			}
 
-			assert.Equal(copy, *p.Tag)
+			assert.Equal(copied, *p.Tag)
 
 			// ensure can find the tag
 			found, err := qb.Find(ctx, p.ID)
@@ -1430,11 +1430,11 @@ func Test_TagStore_Create(t *testing.T) {
 			}
 
 			// load relationships
-			if err := loadTagRelationships(ctx, copy, found); err != nil {
+			if err := loadTagRelationships(ctx, copied, found); err != nil {
 				t.Errorf("loadTagRelationships() error = %v", err)
 				return
 			}
-			assert.Equal(copy, *found)
+			assert.Equal(copied, *found)
 
 			// ensure custom fields are set
 			cf, err := qb.GetCustomFields(ctx, p.ID)
@@ -1444,8 +1444,6 @@ func Test_TagStore_Create(t *testing.T) {
 			}
 
 			assert.Equal(tt.newObject.CustomFields, cf)
-
-			return
 		})
 	}
 }
@@ -2035,7 +2033,7 @@ func TestTagQueryRating100(t *testing.T) {
 }
 
 func verifyTagsRating100(t *testing.T, ratingCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		qb := db.Tag()
 		tagFilter := models.TagFilterType{
 			Rating100: &ratingCriterion,
@@ -2061,7 +2059,7 @@ func verifyTagsRating100(t *testing.T, ratingCriterion models.IntCriterionInput)
 // TODO Query
 
 func TestTagStore_UserData(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		qb := db.Tag()
 
 		newTag := models.Tag{

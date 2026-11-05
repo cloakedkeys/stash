@@ -93,7 +93,7 @@ var untouchedFilters = []string{
 	`{"custom_fields":[{"field":"source","value":["a\\b"],"modifier":"INCLUDES"}]}`,
 }
 
-func migration26SceneIDs(t *testing.T, ctx context.Context, db *Database, objectFilter map[string]interface{}) []int {
+func migration26SceneIDs(ctx context.Context, t *testing.T, db *Database, objectFilter map[string]interface{}) []int {
 	t.Helper()
 	data, err := json.Marshal(objectFilter)
 	require.NoError(t, err)
@@ -279,8 +279,8 @@ INSERT INTO scene_custom_fields(scene_id,field,value,type) VALUES
 			var original map[string]interface{}
 			require.NoError(t, json.Unmarshal([]byte(c.filter), &original))
 			// the filter as it was saved finds something else now, which is why it's rewritten
-			require.NotEqual(t, expected[i], migration26SceneIDs(t, userCtx, db, original), "test case doesn't show a difference")
-			assert.Equal(t, expected[i], migration26SceneIDs(t, userCtx, db, saved.ObjectFilter))
+			require.NotEqual(t, expected[i], migration26SceneIDs(userCtx, t, db, original), "test case doesn't show a difference")
+			assert.Equal(t, expected[i], migration26SceneIDs(userCtx, t, db, saved.ObjectFilter))
 		})
 	}
 
@@ -297,12 +297,12 @@ INSERT INTO scene_custom_fields(scene_id,field,value,type) VALUES
 	assert.Equal(t, "kept", ui["theme"])
 	scenes := ui["defaultFilters"].(map[string]interface{})["scenes"].(map[string]interface{})
 	assert.Equal(t, map[string]interface{}{"q": "a_b"}, scenes["find_filter"])
-	assert.Equal(t, expected[0], migration26SceneIDs(t, userCtx, db, scenes["object_filter"].(map[string]interface{})))
+	assert.Equal(t, expected[0], migration26SceneIDs(userCtx, t, db, scenes["object_filter"].(map[string]interface{})))
 
 	fileUI := cfg.GetUIConfiguration()
 	assert.Equal(t, "file", fileUI["theme"])
 	fileScenes := fileUI["defaultFilters"].(map[string]interface{})["scenes"].(map[string]interface{})
-	assert.Equal(t, expected[0], migration26SceneIDs(t, userCtx, db, fileScenes["object_filter"].(map[string]interface{})))
+	assert.Equal(t, expected[0], migration26SceneIDs(userCtx, t, db, fileScenes["object_filter"].(map[string]interface{})))
 	saved, err := os.ReadFile(cfg.GetConfigFile())
 	require.NoError(t, err)
 	assert.Contains(t, string(saved), "MATCHES_REGEX")

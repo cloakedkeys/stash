@@ -15,7 +15,7 @@ import (
 )
 
 func TestMarkerFindBySceneID(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		mqb := db.SceneMarker()
 
 		sceneID := sceneIDs[sceneIdxWithMarkers]
@@ -43,7 +43,7 @@ func TestMarkerFindBySceneID(t *testing.T) {
 }
 
 func TestMarkerCountByTagID(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		mqb := db.SceneMarker()
 
 		markerCount, err := mqb.CountByTagID(ctx, tagIDs[tagIdxWithPrimaryMarkers])
@@ -75,7 +75,7 @@ func TestMarkerCountByTagID(t *testing.T) {
 }
 
 func TestMarkerQueryQ(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		q := getSceneTitle(sceneIdxWithMarkers)
 		m, _, err := db.SceneMarker().Query(ctx, nil, &models.FindFilterType{
 			Q: &q,
@@ -96,7 +96,7 @@ func TestMarkerQueryQ(t *testing.T) {
 }
 
 func TestMarkerQuerySortBySceneUpdated(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sort := "scenes_updated_at"
 		_, _, err := db.SceneMarker().Query(ctx, nil, &models.FindFilterType{
 			Sort: &sort,
@@ -151,7 +151,7 @@ func TestMarkerQueryTags(t *testing.T) {
 		findFilter   *models.FindFilterType
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		testTags := func(t *testing.T, m *models.SceneMarker, markerFilter *models.SceneMarkerFilterType) {
 			tagIDs, err := db.SceneMarker().GetTagIDs(ctx, m.ID)
 			if err != nil {
@@ -274,7 +274,7 @@ func TestMarkerQuerySceneTags(t *testing.T) {
 		findFilter   *models.FindFilterType
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		testTags := func(t *testing.T, m *models.SceneMarker, markerFilter *models.SceneMarkerFilterType) {
 			s, err := db.Scene().Find(ctx, m.SceneID)
 			if err != nil {

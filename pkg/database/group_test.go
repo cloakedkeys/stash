@@ -139,16 +139,16 @@ func Test_GroupStore_Create(t *testing.T) {
 
 			assert.NotZero(p.ID)
 
-			copy := tt.newObject
-			copy.ID = p.ID
+			copied := tt.newObject
+			copied.ID = p.ID
 
 			// load relationships
-			if err := loadGroupRelationships(ctx, copy, &p); err != nil {
+			if err := loadGroupRelationships(ctx, copied, &p); err != nil {
 				t.Errorf("loadGroupRelationships() error = %v", err)
 				return
 			}
 
-			assert.Equal(copy, p)
+			assert.Equal(copied, p)
 
 			// ensure can find the group
 			found, err := qb.Find(ctx, p.ID)
@@ -161,13 +161,11 @@ func Test_GroupStore_Create(t *testing.T) {
 			}
 
 			// load relationships
-			if err := loadGroupRelationships(ctx, copy, found); err != nil {
+			if err := loadGroupRelationships(ctx, copied, found); err != nil {
 				t.Errorf("loadGroupRelationships() error = %v", err)
 				return
 			}
-			assert.Equal(copy, *found)
-
-			return
+			assert.Equal(copied, *found)
 		})
 	}
 }
@@ -654,7 +652,7 @@ func Test_GroupStore_UpdatePartialCustomFields(t *testing.T) {
 }
 
 func TestGroupFindByName(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		mqb := db.Group()
 
 		name := groupNames[groupIdxWithScene] // find a group by name
@@ -675,9 +673,9 @@ func TestGroupFindByName(t *testing.T) {
 			t.Errorf("Error finding groups: %s", err.Error())
 		}
 		// groupIdxWithDupName and groupIdxWithScene should have similar names ( only diff should be Name vs NaMe)
-		//group.Name should match with groupIdxWithScene since its ID is before moveIdxWithDupName
+		// group.Name should match with groupIdxWithScene since its ID is before moveIdxWithDupName
 		assert.Equal(t, groupNames[groupIdxWithScene], group.Name)
-		//group.Name should match with groupIdxWithDupName if the check is not case sensitive
+		// group.Name should match with groupIdxWithDupName if the check is not case sensitive
 		assert.Equal(t, strings.ToLower(groupNames[groupIdxWithDupName]), strings.ToLower(group.Name))
 
 		return nil
@@ -685,7 +683,7 @@ func TestGroupFindByName(t *testing.T) {
 }
 
 func TestGroupFindByNames(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		var names []string
 
 		mqb := db.Group()
@@ -721,7 +719,7 @@ func groupsToIDs(i []*models.Group) []int {
 }
 
 func TestGroupGetAliases(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		// groupIdxWithAlias is the only group with aliases
 		aliases, err := db.Group().GetAliases(ctx, groupIDs[groupIdxWithAlias])
 		if err != nil {
@@ -749,7 +747,7 @@ func groupQueryIsMissing(ctx context.Context, t *testing.T, m string) []*models.
 }
 
 func TestGroupQueryIsMissingAlias(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		groups := groupQueryIsMissing(ctx, t, "aliases")
 
 		// every group except groupIdxWithAlias should be returned
@@ -869,7 +867,7 @@ func TestGroupQuery(t *testing.T) {
 }
 
 func TestGroupQueryStudio(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		mqb := db.Group()
 		studioCriterion := models.HierarchicalMultiCriterionInput{
 			Value: []string{
@@ -1007,7 +1005,7 @@ func TestGroupQueryAliases(t *testing.T) {
 }
 
 func TestGroupQueryURLExcludes(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		mqb := db.Group()
 
 		// create group with two URLs
@@ -1057,7 +1055,7 @@ func TestGroupQueryURLExcludes(t *testing.T) {
 }
 
 func verifyGroupQuery(t *testing.T, filter models.GroupFilterType, verifyFn func(s *models.Group)) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		t.Helper()
 		sqb := db.Group()
 
@@ -1094,7 +1092,7 @@ func queryGroups(ctx context.Context, t *testing.T, groupFilter *models.GroupFil
 }
 
 func TestGroupQueryTags(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		tagCriterion := models.HierarchicalMultiCriterionInput{
 			Value: []string{
 				strconv.Itoa(tagIDs[tagIdxWithGroup]),
@@ -1168,7 +1166,7 @@ func TestGroupQueryTagCount(t *testing.T) {
 }
 
 func verifyGroupsTagCount(t *testing.T, tagCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Group()
 		groupFilter := models.GroupFilterType{
 			TagCount: &tagCountCriterion,
@@ -1197,7 +1195,7 @@ func TestGroupQuerySorting(t *testing.T) {
 		Direction: &direction,
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		groups := queryGroups(ctx, t, nil, &findFilter)
 
 		// scenes should be in same order as indexes
@@ -1232,7 +1230,7 @@ func TestGroupQuerySortOrderIndex(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		// just ensure there are no errors
 		_, _, err := db.Group().Query(ctx, &groupFilter, &findFilter)
 		if err != nil {
@@ -1346,7 +1344,7 @@ func TestGroupUpdateFrontImage(t *testing.T) {
 			return fmt.Errorf("Error creating group: %s", err.Error())
 		}
 
-		return testUpdateImage(t, ctx, group.ID, qb.UpdateFrontImage, qb.GetFrontImage)
+		return testUpdateImage(ctx, t, group.ID, qb.UpdateFrontImage, qb.GetFrontImage)
 	}); err != nil {
 		t.Error(err.Error())
 	}
@@ -1366,7 +1364,7 @@ func TestGroupUpdateBackImage(t *testing.T) {
 			return fmt.Errorf("Error creating group: %s", err.Error())
 		}
 
-		return testUpdateImage(t, ctx, group.ID, qb.UpdateBackImage, qb.GetBackImage)
+		return testUpdateImage(ctx, t, group.ID, qb.UpdateBackImage, qb.GetBackImage)
 	}); err != nil {
 		t.Error(err.Error())
 	}
@@ -2497,7 +2495,7 @@ func verifyGroupsPerformerCount(ctx context.Context, t *testing.T, performerCoun
 }
 
 func TestGroupQueryPerformerCount(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		group := createGroupWithPerformers(ctx, t)
 
 		criterion := models.IntCriterionInput{
@@ -2538,7 +2536,7 @@ func TestGroupQueryPerformerCount(t *testing.T) {
 }
 
 func TestGroupQuerySortPerformerCount(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		group := createGroupWithPerformers(ctx, t)
 
 		sortBy := "performer_count"
@@ -2643,7 +2641,7 @@ func TestGroupQueryOCounter(t *testing.T) {
 // TODO Query
 
 func TestGroupStore_UserData(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		qb := db.Group()
 
 		newGroup := models.Group{

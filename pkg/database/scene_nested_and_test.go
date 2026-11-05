@@ -50,7 +50,7 @@ func intersectIDs(sets ...map[int]bool) []int {
 func TestSceneQueryNestedAndSameCriterion(t *testing.T) {
 	isMissing := func(v string) *string { return &v }
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Scene()
 
 		missingDate := querySceneIDSet(ctx, t, sqb, &models.SceneFilterType{IsMissing: isMissing("date")})
@@ -85,7 +85,7 @@ func TestSceneQueryNestedAndSameCriterion(t *testing.T) {
 }
 
 func TestSceneQueryNestedAndSameTextField(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Scene()
 
 		includes := models.StringCriterionInput{Value: "scene_", Modifier: models.CriterionModifierIncludes}

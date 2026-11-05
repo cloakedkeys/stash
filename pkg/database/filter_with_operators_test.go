@@ -32,7 +32,7 @@ type withOperatorCase[T any] struct {
 }
 
 func (c withOperatorCase[T]) run(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		if c.setup != nil {
 			if err := c.setup(ctx); err != nil {
 				t.Fatalf("setup: %v", err)
