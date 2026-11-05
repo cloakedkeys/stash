@@ -74,8 +74,9 @@ func (s *Store) MakePluginCookie(ctx context.Context) *http.Cookie {
 
 		// Use the login time of the session that authenticated the request, so
 		// the plugin has the same standing as that session and is refused once
-		// it is revoked. A request without a session (API key, signed URL, single
-		// user mode) was authenticated just now.
+		// it is revoked. For a request without a session (API key, signed URL,
+		// single user mode) this is the time the request came in. A context that
+		// carries no login time at all was authenticated just now.
 		loginTime, ok := getSessionLoginTime(ctx)
 		if !ok {
 			loginTime = time.Now()
