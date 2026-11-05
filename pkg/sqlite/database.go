@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -517,9 +518,142 @@ func (db *Database) Anonymise(outPath string) error {
 	return anon.Anonymise(context.Background())
 }
 
+// RestoreFromBackup replaces the database file with the backup, which is moved
+// into its place. The database is closed first: Windows won't replace a file
+// that's open (#2117), and an old -wal file left beside the restored database
+// would be applied to it. If it was open, it's opened again afterwards. If the
+// backup can't be moved into place, it's left where it was.
 func (db *Database) RestoreFromBackup(backupPath string) error {
+	db.resetMu.Lock()
+	defer db.resetMu.Unlock()
+
 	logger.Infof("Restoring backup database %s into %s", backupPath, db.dbPath)
-	return os.Rename(backupPath, db.dbPath)
+
+	wasOpen := db.readDB != nil || db.writeDB != nil
+
+	err := db.Close()
+	if err != nil {
+		// a pool that failed to close can't be used again either
+		db.dropPools()
+		err = fmt.Errorf("closing the database: %w", err)
+	} else {
+		err = db.checkClosed()
+	}
+	if err == nil {
+		err = moveIntoPlace(backupPath, db.dbPath)
+		if err == nil {
+			if wasOpen {
+				if err := db.Open(context.Background(), db.dbPath); err != nil {
+					return fmt.Errorf("%w (from %s): %w", database.ErrRestoredNotReopened, backupPath, err)
+				}
+			}
+			return nil
+		}
+	}
+	err = fmt.Errorf("restoring the backup %s, which is left as it was: %w", backupPath, err)
+
+	// back to the database as it was
+	if wasOpen {
+		if openErr := db.Open(context.Background(), db.dbPath); openErr != nil {
+			err = fmt.Errorf("%w; opening the database again also failed: %v", err, openErr)
+		}
+	}
+	return err
+}
+
+// renameFile is os.Rename. Tests replace it to stand in for a move between
+// drives, and syncFile and syncDir to stand in for a failing disk.
+var (
+	renameFile = os.Rename
+	// Windows only syncs a file opened for writing
+	syncFile = func(path string) error { return syncPath(path, os.O_RDWR) }
+	syncDir  = func(dir string) error {
+		// Windows can't sync a directory, and doesn't need to
+		if runtime.GOOS == "windows" {
+			return nil
+		}
+		return syncPath(dir, os.O_RDONLY)
+	}
+)
+
+// syncPath writes the file or directory at path to disk.
+func syncPath(path string, flag int) error {
+	f, err := os.OpenFile(path, flag, 0)
+	if err != nil {
+		return err
+	}
+	err = f.Sync()
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	return err
+}
+
+// moveIntoPlace moves the backup over the database file. A rename can't move
+// a file to another drive or volume (#2123), so when it fails, the backup is
+// copied beside the database, and the copy renamed over it. That way the
+// database is still replaced in one step, and a failed copy leaves it alone.
+// fsutil.SafeMove can't be used, because its copy won't replace a file. The
+// backup is removed once it's in place, as a move would.
+func moveIntoPlace(backupPath, dbPath string) error {
+	renameErr := renameFile(backupPath, dbPath)
+	if renameErr == nil {
+		return nil
+	}
+
+	tmp := dbPath + ".restoring"
+	// left by an earlier restore that stopped part way
+	_ = os.Remove(tmp)
+	if err := fsutil.CopyFile(backupPath, tmp); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("copying it failed: %w; moving it failed first: %v", err, renameErr)
+	}
+	// on disk before it replaces the database, so a power cut can't leave a
+	// half-written database
+	if err := syncFile(tmp); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("saving a copy of it to disk failed: %w; moving it failed first: %v", err, renameErr)
+	}
+	if err := renameFile(tmp, dbPath); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("replacing the database with a copy of it failed: %w; moving it failed first: %v", err, renameErr)
+	}
+	// and the rename too. The database is already restored, so if this fails,
+	// keep the backup in case the rename is lost.
+	if err := syncDir(filepath.Dir(dbPath)); err != nil {
+		logger.Warnf("The backup %s was restored, but saving the change to disk failed, so the backup is kept: %v", backupPath, err)
+		return nil
+	}
+	if err := os.Remove(backupPath); err != nil {
+		logger.Warnf("The backup %s was restored, but couldn't be removed: %v", backupPath, err)
+	}
+	return nil
+}
+
+// dropPools closes whatever Close left open after an error, ignoring further
+// errors, so that the pools can be opened again.
+func (db *Database) dropPools() {
+	db.lock()
+	defer db.unlock()
+
+	for _, pool := range []**sqlx.DB{&db.readDB, &db.writeDB} {
+		if *pool != nil {
+			_ = (*pool).Close()
+			*pool = nil
+		}
+	}
+}
+
+// checkClosed returns an error if the database's -wal or -shm file is still
+// there after closing it, which means another connection still has it open.
+// Restoring over it then would mix the backup with that connection's changes.
+func (db *Database) checkClosed() error {
+	for _, f := range []string{db.dbPath + "-wal", db.dbPath + "-shm"} {
+		if exists, _ := fsutil.FileExists(f); exists {
+			return fmt.Errorf("the database is still open elsewhere: %s is still there", f)
+		}
+	}
+	return nil
 }
 
 func (db *Database) AppSchemaVersion() uint {
