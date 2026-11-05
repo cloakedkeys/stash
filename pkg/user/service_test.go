@@ -95,7 +95,14 @@ func (m *mockStore) SetUserPassword(ctx context.Context, id int, newPassword str
 	return nil
 }
 
-func (m *mockStore) SetUserAPIKey(ctx context.Context, id int, newAPIKey string) error { return nil }
+func (m *mockStore) SetUserAPIKey(ctx context.Context, id int, newAPIKey string) error {
+	for _, u := range m.users {
+		if u.ID == id {
+			u.ApiKeyHash = newAPIKey
+		}
+	}
+	return nil
+}
 func (m *mockStore) Destroy(ctx context.Context, id int) error {
 	for k, u := range m.users {
 		if u.ID == id {
