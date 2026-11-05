@@ -28,8 +28,8 @@ import (
 // Its comments call this ordering by the number of leading zeros, which it is
 // when the names before the number are the same bytes. When they are equal
 // only ignoring case, and their characters have different lengths in UTF-8,
-// such as "k" and the Kelvin sign, the position differs too: "k0" sorts before
-// "K0". So the digits are found in the name as it is, and each run of
+// such as "k" and the Kelvin sign (U+212A, three bytes), the position differs
+// too: "k0" sorts before the Kelvin sign followed by "0". So the digits are found in the name as it is, and each run of
 // other characters is folded on its own; no character folds to or from a digit.
 //
 // Compared with the "C" collation, UTF-8 sorts by character code, as
