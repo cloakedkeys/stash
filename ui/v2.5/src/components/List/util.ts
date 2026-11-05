@@ -562,12 +562,9 @@ function totalCountImpacted(
 ) {
   return (
     oldFilter.criteria.length !== newFilter.criteria.length ||
-    oldFilter.criteria.some((c) => {
-      const newCriterion = newFilter.criteria.find(
-        (nc) => nc.getId() === c.getId()
-      );
-      return !newCriterion || !isEqual(c, newCriterion);
-    })
+    // each criterion is compared with the one in the same place, as there can
+    // be several of a kind; a reordering counts as a change
+    oldFilter.criteria.some((c, i) => !isEqual(c, newFilter.criteria[i]))
   );
 }
 

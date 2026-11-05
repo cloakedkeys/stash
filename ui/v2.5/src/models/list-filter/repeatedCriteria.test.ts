@@ -216,6 +216,72 @@ describe("the same kind of condition more than once", () => {
   });
 });
 
+// the sidebar filters show and edit the first condition of their kind
+describe("sidebar edits of a repeated kind", () => {
+  const tagsIncludes = {
+    value: { items: [{ id: "1", label: "T1" }], excluded: [], depth: 0 },
+    modifier: "INCLUDES",
+  };
+  const tagsExcludes = {
+    value: { items: [], excluded: [{ id: "2", label: "T2" }], depth: 0 },
+    modifier: "INCLUDES",
+  };
+
+  function types(f: ListFilterModel) {
+    return f.criteria.map((c) => c.criterionOption.type);
+  }
+
+  it("replace only the first condition of the kind and keep the others", () => {
+    const filter = sceneFilter([
+      ["tags", tagsIncludes],
+      ["title", { value: "beach", modifier: "INCLUDES" }],
+      ["tags", tagsExcludes],
+    ]);
+    const edited = filter.makeCriterion("tags");
+    edited.setFromSavedCriterion({
+      value: { items: [{ id: "3", label: "T3" }], excluded: [], depth: 0 },
+      modifier: "INCLUDES",
+    });
+
+    const replaced = filter.replaceCriteria("tags", [edited]);
+    expect(types(replaced)).toEqual(["tags", "title", "tags"]);
+    expect(replaced.makeFilter()).toMatchObject({
+      tags: { value: ["3"], modifier: "INCLUDES" },
+      AND: { tags: { excludes: ["2"] } },
+    });
+  });
+
+  it("remove only the first condition of the kind", () => {
+    const filter = sceneFilter([
+      ["tags", tagsIncludes],
+      ["tags", tagsExcludes],
+    ]);
+
+    for (const removed of [
+      filter.replaceCriteria("tags", []),
+      filter.removeCriterion("tags"),
+    ]) {
+      expect(removed.makeFilter()).toEqual({
+        tags: { value: [], excludes: ["2"], modifier: "INCLUDES", depth: 0 },
+      });
+    }
+  });
+
+  it("move a single condition to the end, as before", () => {
+    const filter = sceneFilter([
+      ["tags", tagsIncludes],
+      ["title", { value: "beach", modifier: "INCLUDES" }],
+    ]);
+    const edited = filter.criteria[0].clone();
+
+    expect(types(filter.replaceCriteria("tags", [edited]))).toEqual([
+      "title",
+      "tags",
+    ]);
+    expect(types(filter.replaceCriteria("tags", []))).toEqual(["title"]);
+  });
+});
+
 describe("filters without a repeat are unchanged", () => {
   it("loads an old saved filter as before", () => {
     const loaded = new ListFilterModel(FilterMode.Scenes);

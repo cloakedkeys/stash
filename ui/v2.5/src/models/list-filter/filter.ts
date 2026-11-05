@@ -531,13 +531,25 @@ export class ListFilterModel {
     return this.criteria.filter((c) => c.criterionOption.type === type);
   }
 
+  // Replaces the first criterion of the given kind, the one the sidebar
+  // filters show and edit, with newCriteria (none removes it). Other criteria
+  // of that kind are kept. With no others, newCriteria go at the end, as they
+  // always have.
   public replaceCriteria(type: CriterionType, newCriteria: Criterion[]) {
-    const criteria = [
-      ...this.criteria.filter((c) => c.criterionOption.type !== type),
-      ...newCriteria,
-    ];
+    const ofType = this.criteria.filter((c) => c.criterionOption.type === type);
+    if (ofType.length <= 1) {
+      return this.setCriteria([
+        ...this.criteria.filter((c) => c.criterionOption.type !== type),
+        ...newCriteria,
+      ]);
+    }
 
-    return this.setCriteria(criteria);
+    const index = this.criteria.indexOf(ofType[0]);
+    return this.setCriteria([
+      ...this.criteria.slice(0, index),
+      ...newCriteria,
+      ...this.criteria.slice(index + 1),
+    ]);
   }
 
   public clearCriteria(clearSearchTerm = false) {
@@ -566,15 +578,14 @@ export class ListFilterModel {
 
   public removeCriterion(type: CriterionType) {
     const ret = this.clone();
-    const c = ret.criteria.find((cc) => cc.criterionOption.type === type);
+    const index = ret.criteria.findIndex(
+      (cc) => cc.criterionOption.type === type
+    );
 
-    if (!c) return ret;
+    if (index === -1) return ret;
 
-    const newCriteria = ret.criteria.filter((cc) => {
-      return cc.getId() !== c.getId();
-    });
-
-    ret.criteria = newCriteria;
+    // only the first of the kind: there can be several
+    ret.criteria = ret.criteria.filter((_, i) => i !== index);
     ret.currentPage = 1;
     return ret;
   }
