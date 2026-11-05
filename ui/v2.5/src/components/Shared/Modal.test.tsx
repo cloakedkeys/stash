@@ -461,6 +461,29 @@ describe("Esc once something in the dialog has changed (#1113)", () => {
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
+  it("does nothing after reordering by drag and drop", () => {
+    // Identify's source handle is a plain div
+    for (const name of ["onDragStartCapture", "onDropCapture"]) {
+      const props = dialog();
+      handler(
+        props,
+        name
+      )?.({ type: name, target: element(undefined) as EventTarget });
+      pressEscape(props);
+    }
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the dialog says it has changes", () => {
+    // Identify and Generate after their source editor or Help, which replace
+    // the dialog; Edit filter after Save or Load filter
+    const props = render(
+      <ModalComponent show changed cancel={{ onClick: cancel }} />
+    );
+    handler(props, "onShow")?.({});
+    pressEscape(props);
+    expect(cancel).not.toHaveBeenCalled();
+  });
   it("keeps cancelling in search and picker dialogs", () => {
     const props = render(
       <ModalComponent show escapeAfterChanges onHide={hide} />

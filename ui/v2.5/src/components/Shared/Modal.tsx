@@ -27,6 +27,8 @@ interface IModal {
   // Esc keeps cancelling after the user typed or changed something; for
   // search and picker dialogs. By default Esc stops once anything changed.
   escapeAfterChanges?: boolean;
+  // the dialog has changes Esc must not throw away, whatever it saw itself
+  changed?: boolean;
 }
 
 const defaultOnHide = () => {};
@@ -113,6 +115,9 @@ interface IEscapeToCancel {
   // Esc keeps cancelling after the user changed something. For search and
   // picker dialogs, where a typed query is nothing to lose.
   afterChanges?: boolean;
+  // the dialog knows it has changes the hook cannot see, e.g. made before it
+  // was swapped out for another dialog and shown again
+  changed?: boolean;
 }
 
 /**
@@ -129,15 +134,16 @@ export function useEscapeToCancel({
   onCancel,
   busy,
   afterChanges,
+  changed,
 }: IEscapeToCancel) {
   // Menus close themselves on Esc before the dialog sees it, so whether a
   // menu was open is read on the way down, before they handle the key.
   const keyDown = useRef<IEscapeKeyDown>();
   // set by the first input or change in the dialog, cleared when it reopens
-  const changed = useRef(false);
+  const changedHere = useRef(false);
 
   function markChanged() {
-    changed.current = true;
+    changedHere.current = true;
   }
 
   function onKeyDownCapture(e: React.KeyboardEvent) {
@@ -176,7 +182,7 @@ export function useEscapeToCancel({
       handledInside ||
       busy ||
       !onCancel ||
-      (changed.current && !afterChanges)
+      ((changed || changedHere.current) && !afterChanges)
     ) {
       return;
     }
@@ -187,7 +193,7 @@ export function useEscapeToCancel({
   return {
     keyboard: true,
     onShow: () => {
-      changed.current = false;
+      changedHere.current = false;
     },
     onKeyDownCapture,
     // typing, pasting, checkboxes, native selects
@@ -197,6 +203,9 @@ export function useEscapeToCancel({
     // and are gone by the click
     onMouseDownCapture: onPointerCapture,
     onClickCapture: onPointerCapture,
+    // reordering by drag and drop, e.g. Identify's sources
+    onDragStartCapture: markChanged,
+    onDropCapture: markChanged,
     onEscapeKeyDown,
   };
 }
@@ -216,6 +225,7 @@ export const ModalComponent: React.FC<React.PropsWithChildren<IModal>> = ({
   footerButtons,
   leftFooterButtons,
   escapeAfterChanges,
+  changed,
 }) => {
   // Some dialogs have no Cancel button and close with the accept button
   // instead; that button is also disabled by `disabled`.
@@ -224,6 +234,7 @@ export const ModalComponent: React.FC<React.PropsWithChildren<IModal>> = ({
     onCancel: escapeAction,
     busy: isRunning || (disabled && escapeAction === accept?.onClick),
     afterChanges: escapeAfterChanges,
+    changed,
   });
 
   return (

@@ -262,7 +262,13 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
   const [savingFilter, setSavingFilter] = useState(false);
 
   const [showLoadDialog, setShowLoadDialog] = useState(false);
-  const escapeProps = useEscapeToCancel({ onCancel: () => onCancel() });
+  // The save and load filter dialogs hide this one, which loses track of what
+  // was changed in it; once one has been open, Esc stays off.
+  const [leftDialog, setLeftDialog] = useState(false);
+  const escapeProps = useEscapeToCancel({
+    onCancel: () => onCancel(),
+    changed: leftDialog,
+  });
 
   const saveFilter = useSaveFilter();
 
@@ -609,14 +615,20 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
           <div>
             <Button
               variant="secondary"
-              onClick={() => setShowLoadDialog(true)}
+              onClick={() => {
+                setLeftDialog(true);
+                setShowLoadDialog(true);
+              }}
               title={intl.formatMessage({ id: "actions.load_filter" })}
             >
               <FormattedMessage id="actions.load" />…
             </Button>
             <Button
               variant="secondary"
-              onClick={() => setShowSaveDialog(true)}
+              onClick={() => {
+                setLeftDialog(true);
+                setShowSaveDialog(true);
+              }}
               title={intl.formatMessage({ id: "actions.save_filter" })}
             >
               <FormattedMessage id="actions.save" />…
