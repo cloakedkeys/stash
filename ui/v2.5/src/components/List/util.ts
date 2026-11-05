@@ -306,13 +306,13 @@ export function useFilterOperations(props: {
 
   const removeCriterion = useCallback(
     // valueIndex is set by the x on one value of a custom fields condition,
-    // which removes just that value (#2173)
+    // which removes just that value (#2173). Both act on the condition that
+    // was clicked, as there can be several of a kind.
     (removedCriterion: Criterion, valueIndex?: number) => {
-      const { type } = removedCriterion.criterionOption;
       setFilter((cv) =>
         valueIndex !== undefined
-          ? cv.removeCustomFieldCriterion(type, valueIndex)
-          : cv.removeCriterion(type)
+          ? cv.removeCustomFieldValue(removedCriterion, valueIndex)
+          : cv.removeCriterionInstance(removedCriterion)
       );
     },
     [setFilter]
@@ -569,12 +569,9 @@ function totalCountImpacted(
 ) {
   return (
     oldFilter.criteria.length !== newFilter.criteria.length ||
-    oldFilter.criteria.some((c) => {
-      const newCriterion = newFilter.criteria.find(
-        (nc) => nc.getId() === c.getId()
-      );
-      return !newCriterion || !isEqual(c, newCriterion);
-    })
+    // each criterion is compared with the one in the same place, as there can
+    // be several of a kind; a reordering counts as a change
+    oldFilter.criteria.some((c, i) => !isEqual(c, newFilter.criteria[i]))
   );
 }
 

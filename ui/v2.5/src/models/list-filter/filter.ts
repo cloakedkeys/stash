@@ -49,6 +49,77 @@ export const MAX_PAGE_SIZE = 255;
 export function limitPageSize(pageSize: number) {
   return pageSize > MAX_PAGE_SIZE ? MAX_PAGE_SIZE : pageSize;
 }
+
+// Most object filter types have an AND sub-filter of their own type.
+const AND_KEY = "AND";
+
+// The list modes whose server filter type has no AND, OR or NOT
+// (SceneMarkerFilterType). A test checks this against the GraphQL schema.
+const MODES_WITHOUT_SUB_FILTERS = new Set<FilterMode>([
+  FilterMode.SceneMarkers,
+]);
+
+// Whether the server filter type of the mode has AND, OR and NOT
+// sub-filters, which repeated conditions need.
+export function supportsSubFilters(mode: FilterMode) {
+  return !MODES_WITHOUT_SUB_FILTERS.has(mode);
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+// Builds a filter object from criteria, each writing its own keys with apply.
+// A criterion whose keys are already used, such as a second condition of the
+// same kind, goes into the AND sub-filter instead, one level deeper for each
+// repeat: {is_missing: A, AND: {is_missing: B, AND: {is_missing: C}}}. The
+// conditions are all ANDed, as they are at the top level. Without repeats the
+// result is exactly what writing every criterion into one object gives.
+// Keys in mergeKeys hold objects that several criteria can share, as long as
+// the keys inside them differ (criteria on a related object, #1548).
+// Without useAnd (the filter type has no AND), a repeat replaces the earlier
+// condition, as all repeats did before they were allowed.
+function combineCriteria(
+  criteria: Criterion[],
+  apply: (c: Criterion, output: Record<string, unknown>) => void,
+  mergeKeys?: Set<string>,
+  useAnd = true
+) {
+  const canMerge = (k: string, a: unknown, b: unknown) =>
+    !!mergeKeys?.has(k) &&
+    isPlainObject(a) &&
+    isPlainObject(b) &&
+    !Object.keys(a as object).some((kk) => kk in (b as object));
+
+  const output: Record<string, unknown> = {};
+  for (const c of criteria) {
+    const own: Record<string, unknown> = {};
+    apply(c, own);
+
+    let target = output;
+    while (
+      useAnd &&
+      Object.keys(own).some(
+        (k) => k in target && !canMerge(k, own[k], target[k])
+      )
+    ) {
+      if (!isPlainObject(target[AND_KEY])) {
+        target[AND_KEY] = {};
+      }
+      target = target[AND_KEY] as Record<string, unknown>;
+    }
+    for (const [k, v] of Object.entries(own)) {
+      target[k] =
+        mergeKeys?.has(k) && isPlainObject(target[k]) && isPlainObject(v)
+          ? {
+              ...(target[k] as Record<string, unknown>),
+              ...(v as Record<string, unknown>),
+            }
+          : v;
+    }
+  }
+  return output;
+}
 export class ListFilterModel {
   public readonly mode: FilterMode;
   public readonly options: ListFilterOptions;
@@ -321,11 +392,22 @@ export class ListFilterModel {
 
     this.criteria = [];
     if (objectFilter) {
-      for (const [k, v] of Object.entries(objectFilter)) {
-        const criterion = this.makeCriterion(k as CriterionType);
-        criterion.setFromSavedCriterion(v);
-        this.criteria.push(criterion);
+      this.addSavedCriteria(objectFilter);
+    }
+  }
+
+  // Adds the criteria of a saved object filter. A repeated condition is saved
+  // in an AND sub-filter of the same form (see combineCriteria); its criteria
+  // are added where the sub-filter is, so they keep their order.
+  private addSavedCriteria(objectFilter: Record<string, unknown>) {
+    for (const [k, v] of Object.entries(objectFilter)) {
+      if (k === AND_KEY && isPlainObject(v)) {
+        this.addSavedCriteria(v);
+        continue;
       }
+      const criterion = this.makeCriterion(k as CriterionType);
+      criterion.setFromSavedCriterion(v);
+      this.criteria.push(criterion);
     }
   }
 
@@ -462,38 +544,49 @@ export class ListFilterModel {
     };
   }
 
+  // A list whose server filter type has no AND (markers) can't send repeated
+  // conditions. Such a list doesn't offer repeats, but one can still come
+  // from an edited web address or a saved filter; then the last condition of
+  // the kind is sent, as before repeats were allowed.
   public makeFilter() {
-    const output: Record<string, unknown> = {};
+    // criteria on a related object go inside its filter, under the related
+    // object's own name for the criterion. Several of them share that filter;
+    // a repeat of one goes into AND like any other.
+    const subFilterKeys = new Set<string>();
     for (const c of this.criteria) {
-      const { type, subFilter } = c.criterionOption;
-      if (!subFilter) {
-        c.applyToCriterionInput(output);
-        continue;
-      }
-
-      // criteria on a related object go inside its filter, under the related
-      // object's own name for the criterion
-      const subOutput: Record<string, unknown> = {};
-      c.applyToCriterionInput(subOutput);
-      if (type in subOutput) {
-        subOutput[subFilter.field] = subOutput[type];
-        delete subOutput[type];
-      }
-      output[subFilter.key] = {
-        ...(output[subFilter.key] as Record<string, unknown> | undefined),
-        ...subOutput,
-      };
+      const { subFilter } = c.criterionOption;
+      if (subFilter) subFilterKeys.add(subFilter.key);
     }
-    return output;
+
+    return combineCriteria(
+      this.criteria,
+      (c, output) => {
+        const { type, subFilter } = c.criterionOption;
+        if (!subFilter) {
+          c.applyToCriterionInput(output);
+          return;
+        }
+
+        const subOutput: Record<string, unknown> = {};
+        c.applyToCriterionInput(subOutput);
+        if (type in subOutput) {
+          subOutput[subFilter.field] = subOutput[type];
+          delete subOutput[type];
+        }
+        output[subFilter.key] = subOutput;
+      },
+      subFilterKeys,
+      supportsSubFilters(this.mode)
+    );
   }
 
+  // Saved filters are read only by the UI, so they keep every condition,
+  // in the AND form, even for lists that can't send it.
   // TODO - this needs to just use makeFilter, but it needs a migration
   public makeSavedFilter() {
-    const output: Record<string, unknown> = {};
-    for (const c of this.criteria) {
-      c.applyToSavedCriterion(output);
-    }
-    return output;
+    return combineCriteria(this.criteria, (c, output) =>
+      c.applyToSavedCriterion(output)
+    );
   }
 
   public makeSavedUIOptions(): SavedUIOptions {
@@ -507,13 +600,25 @@ export class ListFilterModel {
     return this.criteria.filter((c) => c.criterionOption.type === type);
   }
 
+  // Replaces the first criterion of the given kind, the one the sidebar
+  // filters show and edit, with newCriteria (none removes it). Other criteria
+  // of that kind are kept. With no others, newCriteria go at the end, as they
+  // always have.
   public replaceCriteria(type: CriterionType, newCriteria: Criterion[]) {
-    const criteria = [
-      ...this.criteria.filter((c) => c.criterionOption.type !== type),
-      ...newCriteria,
-    ];
+    const ofType = this.criteria.filter((c) => c.criterionOption.type === type);
+    if (ofType.length <= 1) {
+      return this.setCriteria([
+        ...this.criteria.filter((c) => c.criterionOption.type !== type),
+        ...newCriteria,
+      ]);
+    }
 
-    return this.setCriteria(criteria);
+    const index = this.criteria.indexOf(ofType[0]);
+    return this.setCriteria([
+      ...this.criteria.slice(0, index),
+      ...newCriteria,
+      ...this.criteria.slice(index + 1),
+    ]);
   }
 
   public clearCriteria(clearSearchTerm = false) {
@@ -542,15 +647,29 @@ export class ListFilterModel {
 
   public removeCriterion(type: CriterionType) {
     const ret = this.clone();
-    const c = ret.criteria.find((cc) => cc.criterionOption.type === type);
+    const index = ret.criteria.findIndex(
+      (cc) => cc.criterionOption.type === type
+    );
 
-    if (!c) return ret;
+    if (index === -1) return ret;
 
-    const newCriteria = ret.criteria.filter((cc) => {
-      return cc.getId() !== c.getId();
-    });
+    // only the first of the kind: there can be several
+    ret.criteria = ret.criteria.filter((_, i) => i !== index);
+    ret.currentPage = 1;
+    return ret;
+  }
 
-    ret.criteria = newCriteria;
+  // Removes the given criterion, which is one of this filter's criteria, and
+  // leaves any others of the same kind. A criterion that isn't one of them
+  // removes the first of its kind, as removeCriterion does.
+  public removeCriterionInstance(c: Criterion) {
+    const index = this.criteria.indexOf(c);
+    if (index === -1) {
+      return this.removeCriterion(c.criterionOption.type);
+    }
+
+    const ret = this.clone();
+    ret.criteria = ret.criteria.filter((_, i) => i !== index);
     ret.currentPage = 1;
     return ret;
   }
@@ -568,6 +687,25 @@ export class ListFilterModel {
       ret.currentPage = 1;
     }
 
+    return ret;
+  }
+
+  // Removes one value of the given custom fields criterion, which is one of
+  // this filter's criteria; there can be several of the kind. A criterion
+  // that isn't one of them uses the first of its kind, as
+  // removeCustomFieldCriterion does.
+  public removeCustomFieldValue(c: Criterion, index: number) {
+    const at = this.criteria.indexOf(c);
+    if (at === -1) {
+      return this.removeCustomFieldCriterion(c.criterionOption.type, index);
+    }
+
+    const ret = this.clone();
+    const target = ret.criteria[at];
+    if (target instanceof CustomFieldsCriterion) {
+      target.value = target.value.filter((_, i) => i !== index);
+      ret.currentPage = 1;
+    }
     return ret;
   }
 

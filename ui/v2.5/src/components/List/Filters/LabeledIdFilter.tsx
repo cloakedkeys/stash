@@ -315,13 +315,8 @@ export function useCriterion(
 
   const setCriterion = useCallback(
     (c: ModifierCriterion<ILabeledValueListValue>) => {
-      const newCriteria = filter.criteria.filter(
-        (cc) => cc.criterionOption.type !== option.type
-      );
-
-      if (c.isValid()) newCriteria.push(c);
-
-      setFilter(filter.setCriteria(newCriteria));
+      // replaces only the condition shown, keeping others of the same kind
+      setFilter(filter.replaceCriteria(option.type, c.isValid() ? [c] : []));
     },
     [option.type, setFilter, filter]
   );

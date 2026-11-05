@@ -671,13 +671,10 @@ const LibrarySidebarFolderFilter: React.FC<SidebarFolderFilterProps> = (
       excluded: [],
     };
 
-    const newCriteria = props.filter.criteria.filter(
-      (cc) => cc.criterionOption.type !== option.type
+    // replaces only the condition shown, keeping others of the same kind
+    setFilter(
+      props.filter.replaceCriteria(option.type, c.isValid() ? [c] : [])
     );
-
-    if (c.isValid()) newCriteria.push(c);
-
-    setFilter(props.filter.setCriteria(newCriteria));
   }
 
   function onSelectSubfolders() {
