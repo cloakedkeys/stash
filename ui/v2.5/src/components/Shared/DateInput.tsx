@@ -31,9 +31,19 @@ const ShowPickerButton = forwardRef<
   HTMLButtonElement,
   {
     onClick: (event: React.MouseEvent) => void;
+    onKeyDown?: (event: React.KeyboardEvent) => void;
   }
->(({ onClick }, ref) => (
-  <Button variant="secondary" onClick={onClick} ref={ref}>
+>(({ onClick, onKeyDown }, ref) => (
+  <Button
+    variant="secondary"
+    onClick={onClick}
+    // let the picker close its open calendar on Esc, so that Esc in a dialog
+    // closes the calendar rather than the dialog
+    onKeyDown={(e: React.KeyboardEvent) => {
+      if (e.key === "Escape") onKeyDown?.(e);
+    }}
+    ref={ref}
+  >
     <Icon icon={faCalendar} />
   </Button>
 ));
