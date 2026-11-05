@@ -38,7 +38,10 @@ func FilterTags(excludeRegexps []*regexp.Regexp, tags []*models.ScrapedTag) (new
 	for _, t := range tags {
 		ignore := false
 		for _, reg := range excludeRegexps {
-			if reg.MatchString(strings.ToLower(t.Name)) {
+			// Patterns ignore case by default (see CompileExclusionRegexps), so the
+			// name is matched as written; a pattern starting with (?-i) can then
+			// ask for capital letters.
+			if reg.MatchString(t.Name) {
 				ignore = true
 				ignoredTags = sliceutil.AppendUnique(ignoredTags, t.Name)
 				break

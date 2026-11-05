@@ -577,7 +577,7 @@
       "available_scrapers": "Available Scrapers",
       "entity_metadata": "{entityType} Metadata",
       "entity_scrapers": "{entityType} scrapers",
-      "excluded_tag_patterns_desc": "Regexps of tag names to exclude from scraping results.",
+      "excluded_tag_patterns_desc": "Regexps of tag names to exclude from scraping results. Matching ignores case; start a pattern with (?-i) to match capital letters exactly.",
       "excluded_tag_patterns_head": "Excluded tag patterns",
       "installed_scrapers": "Installed Scrapers",
       "scraper": "Scraper",

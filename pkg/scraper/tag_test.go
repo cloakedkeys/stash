@@ -27,6 +27,16 @@ func TestFilterTagsExclusionPatterns(t *testing.T) {
 		{`\Bcam\B`, "cam", false},
 		{`\PL`, "3d", true},
 		{`\PL`, "plain", false},
+		// (?-i) turns case back on, so patterns can ask for capital letters
+		{"(?-i)BAR", "BAR", true},
+		{"(?-i)BAR", "bar", false},
+		{`(?-i)^\p{Lu}+$`, "VR", true},
+		{`(?-i)^\p{Lu}+$`, "Vr", false},
+		{`(?-i)[[:upper:]]{2}`, "4K HDR", true},
+		{`(?-i)[[:upper:]]{2}`, "4k hdr", false},
+		// non-ASCII names still ignore case
+		{"^ÉCOLE$", "école", true},
+		{"^straße$", "STRASSE", false},
 		// every branch of an alternation ignores case
 		{"^FOO$|^Bar$", "foo", true},
 		{"^FOO$|^Bar$", "BAR", true},
