@@ -16,6 +16,10 @@ vi.mock("react-router-dom", () => ({
   }),
   Link: () => null,
 }));
+// the loaded page has the scene filter row, which reads the configuration
+vi.mock("src/hooks/Config", () => ({
+  useConfigurationContext: () => ({ configuration: { interface: {} } }),
+}));
 vi.mock("src/core/generated-graphql", async (importOriginal) => ({
   ...(await importOriginal<typeof import("src/core/generated-graphql")>()),
   useFindDuplicateScenesQuery: (options: unknown) => {

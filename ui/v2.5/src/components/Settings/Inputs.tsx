@@ -3,6 +3,7 @@ import React, { PropsWithChildren, useState } from "react";
 import { Button, Collapse, Form, Modal, ModalProps } from "react-bootstrap";
 import { FormattedMessage, useIntl } from "react-intl";
 import { Icon } from "../Shared/Icon";
+import { useEscapeToCancel } from "../Shared/Modal";
 import { StringListInput } from "../Shared/StringListInput";
 import { PatchComponent } from "src/patch";
 import { useSettings, useSettingsOptional } from "./context";
@@ -317,9 +318,16 @@ const _SettingModal = <T extends {}>(props: ISettingModal<T>) => {
 
   const intl = useIntl();
   const [currentValue, setCurrentValue] = useState<T | undefined>(value);
+  const escapeProps = useEscapeToCancel({ onCancel: () => close() });
 
   return (
-    <Modal show onHide={() => close()} id="setting-dialog" {...modalProps}>
+    <Modal
+      show
+      onHide={() => close()}
+      id="setting-dialog"
+      {...escapeProps}
+      {...modalProps}
+    >
       <Form
         onSubmit={(e) => {
           close(currentValue);

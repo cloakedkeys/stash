@@ -40,6 +40,8 @@ const PerformerScrapeModal: React.FC<IProps> = ({
   return (
     <ModalComponent
       show
+      // a search or picker: a typed query is nothing to lose
+      escapeAfterChanges
       onHide={onHide}
       header={`Scrape performer from ${scraper.name}`}
       accept={{

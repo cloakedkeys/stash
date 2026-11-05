@@ -1,6 +1,7 @@
 import { Button, Modal } from "react-bootstrap";
 import { FormattedMessage } from "react-intl";
 import { PatchComponent } from "src/patch";
+import { useEscapeToCancel } from "./Modal";
 
 export interface IAlertModalProps {
   text: JSX.Element | string;
@@ -21,8 +22,10 @@ export const AlertModal: React.FC<IAlertModalProps> = PatchComponent(
     onConfirm,
     onCancel,
   }) => {
+    const escapeProps = useEscapeToCancel({ onCancel });
+
     return (
-      <Modal show={show}>
+      <Modal show={show} {...escapeProps}>
         <Modal.Body>{text}</Modal.Body>
         <Modal.Footer>
           <Button variant={confirmVariant} onClick={() => onConfirm()}>

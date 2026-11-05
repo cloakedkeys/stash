@@ -74,6 +74,8 @@ export const SceneCoverPicker: React.FC<{
   return (
     <ModalComponent
       show
+      // a search or picker: a typed query is nothing to lose
+      escapeAfterChanges
       header={intl.formatMessage({ id: "actions.set_from_scene_cover" })}
       onHide={close}
       accept={{ onClick: close }}

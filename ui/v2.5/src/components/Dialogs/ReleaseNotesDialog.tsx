@@ -21,6 +21,7 @@ export const ReleaseNotesDialog: React.FC<IReleaseNotesDialog> = ({
       show
       icon={faCogs}
       header={intl.formatMessage({ id: "release_notes" })}
+      onHide={onClose}
       accept={{
         onClick: onClose,
         text: intl.formatMessage({ id: "actions.close" }),
