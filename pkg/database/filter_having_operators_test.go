@@ -81,6 +81,7 @@ func (c operatorCase[T]) run(t *testing.T) {
 		// the conditions must split the items for the checks to mean anything
 		assert.NotEmpty(t, h.sorted(), "having condition finds nothing")
 		assert.NotEqual(t, all.sorted(), h.sorted(), "having condition finds everything")
+		assert.NotEmpty(t, w.sorted(), "where condition finds nothing")
 		assert.NotEqual(t, w.sorted(), all.sorted(), "where condition finds everything")
 
 		combine := func(first func() *T, set func(o *models.OperatorFilter[T], sub *T), second func() *T) idSet {
@@ -231,7 +232,8 @@ func TestHavingConditionsUnderOperators(t *testing.T) {
 	t.Run("tags scene count", func(t *testing.T) {
 		operatorCase[models.TagFilterType]{
 			where: func() *models.TagFilterType {
-				return &models.TagFilterType{Name: regexCriterion(firstIndexesRegex)}
+				// tag names look like tag_0_Name
+				return &models.TagFilterType{Name: regexCriterion("^tag_[0-4]_")}
 			},
 			having: func() *models.TagFilterType {
 				return &models.TagFilterType{SceneCount: &models.HierarchicalCountInput{Value: 0, Modifier: models.CriterionModifierGreaterThan}}
@@ -300,7 +302,7 @@ func TestHavingConditionsUnderOperators(t *testing.T) {
 	t.Run("folders parent folder includes all", func(t *testing.T) {
 		operatorCase[models.FolderFilterType]{
 			where: func() *models.FolderFilterType {
-				return &models.FolderFilterType{Path: regexCriterion("_00[01][0-4]$")}
+				return &models.FolderFilterType{Path: regexCriterion("folder_00[01][0-4]_Path$")}
 			},
 			having: func() *models.FolderFilterType {
 				return &models.FolderFilterType{ParentFolder: &models.HierarchicalMultiCriterionInput{

@@ -29,9 +29,6 @@ type withOperatorCase[T any] struct {
 	op    func(f *T) *models.OperatorFilter[T]
 	// optional; adds data the fixtures don't have. Rolled back afterwards.
 	setup func(ctx context.Context) error
-	// if set, the checks where the WITH condition is directly under OR are
-	// skipped, for this reason
-	skipOr string
 }
 
 func (c withOperatorCase[T]) run(t *testing.T) {
@@ -77,21 +74,14 @@ func (c withOperatorCase[T]) run(t *testing.T) {
 				assert.Equal(t, want.sorted(), got.sorted(), name)
 			}
 		}
-		checkOr := func(name string, want idSet, f *T) {
-			if c.skipOr != "" {
-				t.Logf("skipping %s: %s", name, c.skipOr)
-				return
-			}
-			check(name, want, f)
-		}
 		and := func(a, b *T) *T { c.op(a).And = b; return a }
 		or := func(a, b *T) *T { c.op(a).Or = b; return a }
 		not := func(a, b *T) *T { c.op(a).Not = b; return a }
 
 		check("plain AND with", setAnd(p, w), and(c.plain(), c.with()))
 		check("with AND plain", setAnd(w, p), and(c.with(), c.plain()))
-		checkOr("plain OR with", setOr(p, w), or(c.plain(), c.with()))
-		checkOr("with OR plain", setOr(w, p), or(c.with(), c.plain()))
+		check("plain OR with", setOr(p, w), or(c.plain(), c.with()))
+		check("with OR plain", setOr(w, p), or(c.with(), c.plain()))
 		check("plain NOT with", setMinus(p, w), not(c.plain(), c.with()))
 		check("with NOT plain", setMinus(w, p), not(c.with(), c.plain()))
 		check("NOT with", setMinus(all, w), not(new(T), c.with()))
@@ -99,18 +89,18 @@ func (c withOperatorCase[T]) run(t *testing.T) {
 		// deeper down
 		check("plain OR (plain AND with)", setOr(p, setAnd(p, w)), or(c.plain(), and(c.plain(), c.with())))
 		check("plain AND (NOT with)", setMinus(p, w), and(c.plain(), not(new(T), c.with())))
-		checkOr("NOT (plain OR with)", setMinus(all, setOr(p, w)), not(new(T), or(c.plain(), c.with())))
+		check("NOT (plain OR with)", setMinus(all, setOr(p, w)), not(new(T), or(c.plain(), c.with())))
 
 		// the same condition at two levels, with different values
 		check("with AND with2", setAnd(w, w2), and(c.with(), c.with2()))
-		checkOr("with OR with2", setOr(w, w2), or(c.with(), c.with2()))
+		check("with OR with2", setOr(w, w2), or(c.with(), c.with2()))
 		check("with NOT with2", setMinus(w, w2), not(c.with(), c.with2()))
 
 		return nil
 	})
 }
 
-func idStrings(ids []int, idxs ...int) []string {
+func indexIDStrings(ids []int, idxs ...int) []string {
 	var ret []string
 	for _, idx := range idxs {
 		ret = append(ret, strconv.Itoa(ids[idx]))
@@ -146,13 +136,13 @@ func TestWithConditionsUnderOperators(t *testing.T) {
 			plain: scenePlain,
 			with: func() *models.SceneFilterType {
 				return &models.SceneFilterType{PerformerTags: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdxWithPerformer),
+					Value:    indexIDStrings(tagIDs, tagIdxWithPerformer),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
 			with2: func() *models.SceneFilterType {
 				return &models.SceneFilterType{PerformerTags: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdx2WithPerformer),
+					Value:    indexIDStrings(tagIDs, tagIdx2WithPerformer),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
@@ -168,13 +158,13 @@ func TestWithConditionsUnderOperators(t *testing.T) {
 			},
 			with: func() *models.ImageFilterType {
 				return &models.ImageFilterType{PerformerTags: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdxWithPerformer),
+					Value:    indexIDStrings(tagIDs, tagIdxWithPerformer),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
 			with2: func() *models.ImageFilterType {
 				return &models.ImageFilterType{PerformerTags: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdx2WithPerformer),
+					Value:    indexIDStrings(tagIDs, tagIdx2WithPerformer),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
@@ -201,13 +191,13 @@ func TestWithConditionsUnderOperators(t *testing.T) {
 			},
 			with: func() *models.GalleryFilterType {
 				return &models.GalleryFilterType{PerformerTags: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdxWithPerformer),
+					Value:    indexIDStrings(tagIDs, tagIdxWithPerformer),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
 			with2: func() *models.GalleryFilterType {
 				return &models.GalleryFilterType{PerformerTags: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdx2WithPerformer),
+					Value:    indexIDStrings(tagIDs, tagIdx2WithPerformer),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
@@ -232,13 +222,13 @@ func TestWithConditionsUnderOperators(t *testing.T) {
 			},
 			with: func() *models.AudioFilterType {
 				return &models.AudioFilterType{PerformerTags: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdxWithPerformer),
+					Value:    indexIDStrings(tagIDs, tagIdxWithPerformer),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
 			with2: func() *models.AudioFilterType {
 				return &models.AudioFilterType{PerformerTags: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdx2WithPerformer),
+					Value:    indexIDStrings(tagIDs, tagIdx2WithPerformer),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
@@ -277,13 +267,13 @@ func TestWithConditionsUnderOperators(t *testing.T) {
 			plain: tagPlain,
 			with: func() *models.TagFilterType {
 				return &models.TagFilterType{MarkersFilter: &models.SceneMarkerFilterType{Tags: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdxWithMarkers),
+					Value:    indexIDStrings(tagIDs, tagIdxWithMarkers),
 					Modifier: models.CriterionModifierIncludes,
 				}}}
 			},
 			with2: func() *models.TagFilterType {
 				return &models.TagFilterType{MarkersFilter: &models.SceneMarkerFilterType{Tags: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdxWithGrandParent),
+					Value:    indexIDStrings(tagIDs, tagIdxWithGrandParent),
 					Modifier: models.CriterionModifierIncludes,
 				}}}
 			},
@@ -297,14 +287,14 @@ func TestWithConditionsUnderOperators(t *testing.T) {
 			plain: tagPlain,
 			with: func() *models.TagFilterType {
 				return &models.TagFilterType{Parents: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdxWithGrandChild),
+					Value:    indexIDStrings(tagIDs, tagIdxWithGrandChild),
 					Modifier: models.CriterionModifierIncludes,
 					Depth:    intPtr(-1),
 				}}
 			},
 			with2: func() *models.TagFilterType {
 				return &models.TagFilterType{Parents: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(tagIDs, tagIdxWithChildTag),
+					Value:    indexIDStrings(tagIDs, tagIdxWithChildTag),
 					Modifier: models.CriterionModifierIncludes,
 					Depth:    intPtr(-1),
 				}}
@@ -374,13 +364,13 @@ func TestWithConditionsUnderOperators(t *testing.T) {
 			plain: groupPlain,
 			with: func() *models.GroupFilterType {
 				return &models.GroupFilterType{Performers: &models.MultiCriterionInput{
-					Value:    idStrings(performerIDs, performerIdx1WithScene),
+					Value:    indexIDStrings(performerIDs, performerIdx1WithScene),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
 			with2: func() *models.GroupFilterType {
 				return &models.GroupFilterType{Performers: &models.MultiCriterionInput{
-					Value:    idStrings(performerIDs, performerIdxWithTag),
+					Value:    indexIDStrings(performerIDs, performerIdxWithTag),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
@@ -395,14 +385,14 @@ func TestWithConditionsUnderOperators(t *testing.T) {
 			plain: groupPlain,
 			with: func() *models.GroupFilterType {
 				return &models.GroupFilterType{ContainingGroups: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(groupIDs, groupIdxWithGrandChild),
+					Value:    indexIDStrings(groupIDs, groupIdxWithGrandChild),
 					Modifier: models.CriterionModifierIncludes,
 					Depth:    intPtr(-1),
 				}}
 			},
 			with2: func() *models.GroupFilterType {
 				return &models.GroupFilterType{ContainingGroups: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(groupIDs, groupIdxWithChild),
+					Value:    indexIDStrings(groupIDs, groupIdxWithChild),
 					Modifier: models.CriterionModifierIncludes,
 					Depth:    intPtr(-1),
 				}}
@@ -432,16 +422,16 @@ func TestWithConditionsUnderOperators(t *testing.T) {
 			plain: performerPlain,
 			with: func() *models.PerformerFilterType {
 				return &models.PerformerFilterType{Studios: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(studioIDs, studioIdxWithScenePerformer, studioIdxWithImagePerformer),
+					Value:    indexIDStrings(studioIDs, studioIdxWithScenePerformer, studioIdxWithImagePerformer),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
 			// includes and excludes
 			with2: func() *models.PerformerFilterType {
 				return &models.PerformerFilterType{Studios: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(studioIDs, studioIdxWithGalleryPerformer, studioIdx1WithTwoScenePerformer),
+					Value:    indexIDStrings(studioIDs, studioIdxWithGalleryPerformer, studioIdx1WithTwoScenePerformer),
 					Modifier: models.CriterionModifierIncludes,
-					Excludes: idStrings(studioIDs, studioIdx2WithTwoScenePerformer),
+					Excludes: indexIDStrings(studioIDs, studioIdx2WithTwoScenePerformer),
 				}}
 			},
 			query: performerQuery,
@@ -454,14 +444,14 @@ func TestWithConditionsUnderOperators(t *testing.T) {
 			plain: performerPlain,
 			with: func() *models.PerformerFilterType {
 				return &models.PerformerFilterType{Groups: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(groupIDs, groupIdxWithScene),
+					Value:    indexIDStrings(groupIDs, groupIdxWithScene),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
 			// with sub-groups, which uses a recursive WITH clause
 			with2: func() *models.PerformerFilterType {
 				return &models.PerformerFilterType{Groups: &models.HierarchicalMultiCriterionInput{
-					Value:    idStrings(groupIDs, groupIdxWithChildWithScene),
+					Value:    indexIDStrings(groupIDs, groupIdxWithChildWithScene),
 					Modifier: models.CriterionModifierIncludes,
 					Depth:    intPtr(-1),
 				}}
@@ -477,19 +467,18 @@ func TestWithConditionsUnderOperators(t *testing.T) {
 			plain: performerPlain,
 			with: func() *models.PerformerFilterType {
 				return &models.PerformerFilterType{Performers: &models.MultiCriterionInput{
-					Value:    idStrings(performerIDs, performerIdx1WithScene),
+					Value:    indexIDStrings(performerIDs, performerIdx1WithScene),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
 			with2: func() *models.PerformerFilterType {
 				return &models.PerformerFilterType{Performers: &models.MultiCriterionInput{
-					Value:    idStrings(performerIDs, performerIdxWithTag),
+					Value:    indexIDStrings(performerIDs, performerIdxWithTag),
 					Modifier: models.CriterionModifierIncludes,
 				}}
 			},
-			query:  performerQuery,
-			op:     performerOp,
-			skipOr: "appears with only uses an inner join, which OR makes a left join, so it matches everything (a separate, older bug)",
+			query: performerQuery,
+			op:    performerOp,
 		}.run(t)
 	})
 }

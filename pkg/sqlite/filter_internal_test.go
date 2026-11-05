@@ -641,7 +641,7 @@ func TestStringCriterionHandlerNotNull(t *testing.T) {
 	assert.Len(f.whereClauses[0].args, 0)
 }
 
-func TestIsolateLevelsWithClauses(t *testing.T) {
+func TestIsolateSubFilterLevelsWithClauses(t *testing.T) {
 	assert := assert.New(t)
 
 	newLevel := func(cte string) *filterBuilder {
@@ -656,7 +656,7 @@ func TestIsolateLevelsWithClauses(t *testing.T) {
 	// a filter without sub-filters is left as it is
 	f := newLevel("cte")
 	before := *f
-	f.isolateLevels("t")
+	f.isolateSubFilterLevels("t")
 	assert.Equal(before, *f)
 
 	// so is an AND sub-filter without WITH clauses
@@ -668,7 +668,7 @@ func TestIsolateLevelsWithClauses(t *testing.T) {
 	f.and(sf)
 	before = *f
 	beforeSub := *sf
-	f.isolateLevels("t")
+	f.isolateSubFilterLevels("t")
 	assert.Equal(before, *f)
 	assert.Equal(beforeSub, *sf)
 
@@ -678,7 +678,7 @@ func TestIsolateLevelsWithClauses(t *testing.T) {
 	sf = newLevel("cte")
 	sf.recursiveWith = true
 	f.and(sf)
-	f.isolateLevels("t")
+	f.isolateSubFilterLevels("t")
 
 	assert.Len(f.withClauses, 1)
 	assert.Len(f.joins, 1)

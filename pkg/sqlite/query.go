@@ -176,9 +176,9 @@ func (qb *queryBuilder) addFilter(f *filterBuilder) error {
 		return err
 	}
 
-	// #2167 - HAVING clauses under OR or NOT
-	// #2170 - WITH clauses in sub-filters
-	f.isolateLevels(qb.repository.tableName)
+	// #2167, #2172 - levels that can't share one joined query select their
+	// own ids. #2170 - so do sub-filter levels with WITH clauses
+	f.isolateSubFilterLevels(qb.repository.tableName)
 
 	clause, args := f.generateWithClauses()
 	if len(clause) > 0 {
