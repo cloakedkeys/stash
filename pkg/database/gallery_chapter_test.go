@@ -11,7 +11,7 @@ import (
 )
 
 func TestChapterFindByGalleryID(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		mqb := db.GalleryChapter()
 
 		galleryID := galleryIDs[galleryIdxWithChapters]

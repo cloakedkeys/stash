@@ -59,12 +59,13 @@ func sampleValue(v reflect.Value, modifier models.CriterionModifier, fieldName s
 		// two values, since some modifiers need that many
 		s := reflect.MakeSlice(v.Type(), 2, 2)
 		for i := 0; i < s.Len(); i++ {
-			if s.Index(i).Kind() == reflect.String {
+			switch s.Index(i).Kind() {
+			case reflect.String:
 				// lists of strings are almost always IDs
 				s.Index(i).SetString("1")
-			} else if s.Index(i).Kind() == reflect.Interface {
+			case reflect.Interface:
 				s.Index(i).Set(reflect.ValueOf("1"))
-			} else {
+			default:
 				sampleValue(s.Index(i), modifier, fieldName, inFilter)
 			}
 		}

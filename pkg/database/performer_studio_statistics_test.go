@@ -81,10 +81,11 @@ func TestPerformerStudioStatistics(t *testing.T) {
 						fileIDs = []models.FileID{f.ID}
 					}
 					require.NoError(t, db.Scene().Create(ctx, &s, fileIDs))
-					if statistic == "o_scene" {
+					switch statistic {
+					case "o_scene":
 						_, err := db.Scene().AddO(ctx, s.ID, dates)
 						require.NoError(t, err)
-					} else if statistic == "play_count" {
+					case "play_count":
 						_, err := db.Scene().AddViews(ctx, s.ID, dates)
 						require.NoError(t, err)
 					}

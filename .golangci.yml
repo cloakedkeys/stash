@@ -1,4 +1,8 @@
 version: "2"
+run:
+  # also lint the database integration tests, which only build with this tag
+  build-tags:
+    - integration
 linters:
   default: none
   enable:

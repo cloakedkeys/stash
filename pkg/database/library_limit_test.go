@@ -36,7 +36,7 @@ type limitFixture struct {
 	actorVisible, actorHidden                              int
 }
 
-func createLimitFixture(t *testing.T, ctx context.Context) *limitFixture {
+func createLimitFixture(ctx context.Context, t *testing.T) *limitFixture {
 	t.Helper()
 	f := &limitFixture{}
 	n := 0
@@ -467,7 +467,7 @@ func (f *limitFixture) allObjects() map[string][]int {
 
 func TestLibraryLimitReads(t *testing.T) {
 	runWithRollbackTxn(t, "matrix", func(t *testing.T, unlimited context.Context) {
-		f := createLimitFixture(t, unlimited)
+		f := createLimitFixture(unlimited, t)
 		objects := f.allObjects()
 		reads := limitReadsOfKinds()
 
@@ -589,7 +589,7 @@ func TestLibraryLimitReads(t *testing.T) {
 // The stores have other ways of finding objects, some of them written in SQL.
 func TestLibraryLimitOtherFinders(t *testing.T) {
 	runWithRollbackTxn(t, "finders", func(t *testing.T, unlimited context.Context) {
-		f := createLimitFixture(t, unlimited)
+		f := createLimitFixture(unlimited, t)
 		ctx := models.WithLibraryLimit(unlimited, &models.LibraryLimit{FolderIDs: []int{int(f.rootFolder)}})
 
 		tagIDs := func(rows []*models.Tag, err error) []int {

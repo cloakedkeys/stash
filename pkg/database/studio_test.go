@@ -19,7 +19,7 @@ import (
 )
 
 func TestStudioFindByName(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 
 		name := studioNames[studioIdxWithScene] // find a studio by name
@@ -155,16 +155,16 @@ func Test_StudioStore_Create(t *testing.T) {
 
 			assert.NotZero(p.ID)
 
-			copy := *tt.newObject.Studio
-			copy.ID = p.ID
+			copied := *tt.newObject.Studio
+			copied.ID = p.ID
 
 			// load relationships
-			if err := loadStudioRelationships(ctx, copy, p.Studio); err != nil {
+			if err := loadStudioRelationships(ctx, copied, p.Studio); err != nil {
 				t.Errorf("loadStudioRelationships() error = %v", err)
 				return
 			}
 
-			assert.Equal(copy, *p.Studio)
+			assert.Equal(copied, *p.Studio)
 
 			// ensure can find the Studio
 			found, err := qb.Find(ctx, p.ID)
@@ -177,11 +177,11 @@ func Test_StudioStore_Create(t *testing.T) {
 			}
 
 			// load relationships
-			if err := loadStudioRelationships(ctx, copy, found); err != nil {
+			if err := loadStudioRelationships(ctx, copied, found); err != nil {
 				t.Errorf("loadStudioRelationships() error = %v", err)
 				return
 			}
-			assert.Equal(copy, *found)
+			assert.Equal(copied, *found)
 
 			// ensure custom fields are set
 			cf, err := qb.GetCustomFields(ctx, p.ID)
@@ -191,8 +191,6 @@ func Test_StudioStore_Create(t *testing.T) {
 			}
 
 			assert.Equal(tt.newObject.CustomFields, cf)
-
-			return
 		})
 	}
 }
@@ -321,7 +319,7 @@ func Test_StudioStore_Update(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			copy := *tt.updatedObject.Studio
+			copied := *tt.updatedObject.Studio
 
 			if err := qb.Update(ctx, &tt.updatedObject); (err != nil) != tt.wantErr {
 				t.Errorf("StudioStore.Update() error = %v, wantErr %v", err, tt.wantErr)
@@ -337,12 +335,12 @@ func Test_StudioStore_Update(t *testing.T) {
 			}
 
 			// load relationships
-			if err := loadStudioRelationships(ctx, copy, s); err != nil {
+			if err := loadStudioRelationships(ctx, copied, s); err != nil {
 				t.Errorf("loadStudioRelationships() error = %v", err)
 				return
 			}
 
-			assert.Equal(copy, *s)
+			assert.Equal(copied, *s)
 
 			// ensure custom fields are correct
 			if tt.updatedObject.CustomFields.Full != nil {
@@ -627,7 +625,7 @@ func TestStudioQueryNameOr(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 
 		studios := queryStudio(ctx, t, sqb, &studioFilter, nil)
@@ -660,7 +658,7 @@ func TestStudioQueryNameAndUrl(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 
 		studios := queryStudio(ctx, t, sqb, &studioFilter, nil)
@@ -704,7 +702,7 @@ func TestStudioQueryNameNotUrl(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 
 		studios := queryStudio(ctx, t, sqb, &studioFilter, nil)
@@ -741,7 +739,7 @@ func TestStudioIllegalQuery(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 
 		_, _, err := sqb.Query(ctx, studioFilter, nil)
@@ -762,7 +760,7 @@ func TestStudioIllegalQuery(t *testing.T) {
 }
 
 func TestStudioQueryIgnoreAutoTag(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		ignoreAutoTag := true
 		studioFilter := models.StudioFilterType{
 			IgnoreAutoTag: &ignoreAutoTag,
@@ -782,7 +780,7 @@ func TestStudioQueryIgnoreAutoTag(t *testing.T) {
 }
 
 func TestStudioQueryForAutoTag(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		tqb := db.Studio()
 
 		name := studioNames[studioIdxWithGroup] // find a studio by name
@@ -810,7 +808,7 @@ func TestStudioQueryForAutoTag(t *testing.T) {
 }
 
 func TestStudioQueryParent(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 		studioCriterion := models.MultiCriterionInput{
 			Value: []string{
@@ -893,7 +891,7 @@ func TestStudioDestroyParent(t *testing.T) {
 }
 
 func TestStudioFindChildren(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 
 		studios, err := sqb.FindChildren(ctx, studioIDs[studioIdxWithChildStudio])
@@ -969,7 +967,7 @@ func TestStudioUpdateStudioImage(t *testing.T) {
 			return fmt.Errorf("Error creating studio: %s", err.Error())
 		}
 
-		return testUpdateImage(t, ctx, created.ID, qb.UpdateImage, qb.GetImage)
+		return testUpdateImage(ctx, t, created.ID, qb.UpdateImage, qb.GetImage)
 	}); err != nil {
 		t.Error(err.Error())
 	}
@@ -995,7 +993,7 @@ func TestStudioQuerySceneCount(t *testing.T) {
 }
 
 func verifyStudiosSceneCount(t *testing.T, sceneCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 		studioFilter := models.StudioFilterType{
 			SceneCount: &sceneCountCriterion,
@@ -1036,7 +1034,7 @@ func TestStudioQueryImageCount(t *testing.T) {
 }
 
 func verifyStudiosImageCount(t *testing.T, imageCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 		studioFilter := models.StudioFilterType{
 			ImageCount: &imageCountCriterion,
@@ -1092,7 +1090,7 @@ func TestStudioQueryGalleryCount(t *testing.T) {
 }
 
 func verifyStudiosGalleryCount(t *testing.T, galleryCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 		studioFilter := models.StudioFilterType{
 			GalleryCount: &galleryCountCriterion,
@@ -1291,7 +1289,7 @@ func queryStudios(ctx context.Context, t *testing.T, studioFilter *models.Studio
 }
 
 func TestStudioQueryTags(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		tagCriterion := models.HierarchicalMultiCriterionInput{
 			Value: []string{
 				strconv.Itoa(tagIDs[tagIdxWithStudio]),
@@ -1363,7 +1361,7 @@ func TestStudioQueryTagCount(t *testing.T) {
 }
 
 func verifyStudiosTagCount(t *testing.T, tagCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 		studioFilter := models.StudioFilterType{
 			TagCount: &tagCountCriterion,
@@ -1385,7 +1383,7 @@ func verifyStudiosTagCount(t *testing.T, tagCountCriterion models.IntCriterionIn
 }
 
 func verifyStudioQuery(t *testing.T, filter models.StudioFilterType, verifyFn func(ctx context.Context, s *models.Studio)) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		t.Helper()
 		sqb := db.Studio()
 
@@ -1403,7 +1401,7 @@ func verifyStudioQuery(t *testing.T, filter models.StudioFilterType, verifyFn fu
 }
 
 func verifyStudiosRating(t *testing.T, ratingCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 		studioFilter := models.StudioFilterType{
 			Rating100: &ratingCriterion,
@@ -1424,7 +1422,7 @@ func verifyStudiosRating(t *testing.T, ratingCriterion models.IntCriterionInput)
 }
 
 func TestStudioQueryIsMissingRating(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 		isMissing := "rating"
 		studioFilter := models.StudioFilterType{
@@ -1684,7 +1682,7 @@ func TestStudioQueryFast(t *testing.T) {
 
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Studio()
 		for _, f := range filters {
 			for _, ff := range findFilters {
@@ -1955,7 +1953,7 @@ func TestStudioQueryCustomFields(t *testing.T) {
 // TODO Query
 
 func TestStudioOCountByStudioID(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		// studioIdxWithTwoImages has images 13 and 14 with o_counter 1 and 2
 		count, err := db.Image().OCountByStudioID(ctx, studioIDs[studioIdxWithTwoImages], 0)
 		if err != nil {
@@ -1989,7 +1987,7 @@ func TestStudioOCountByStudioID(t *testing.T) {
 }
 
 func TestStudioOCounterIncludesGalleries(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		totalBefore, err := db.Gallery().OCount(ctx)
 		if err != nil {
 			t.Fatalf("GalleryStore.OCount() error = %v", err)
@@ -2052,7 +2050,7 @@ func TestStudioOCounterIncludesGalleries(t *testing.T) {
 }
 
 func TestStudioQuerySortOCounter(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sortBy := "o_counter"
 		direction := models.SortDirectionEnumDesc
 		// return all studios - otherwise the default page size hides required studios
@@ -2079,7 +2077,7 @@ func TestStudioQuerySortOCounter(t *testing.T) {
 }
 
 func TestStudioQuerySortOCounterAll(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sortBy := "o_counter_all"
 		direction := models.SortDirectionEnumDesc
 		findFilter := &models.FindFilterType{
@@ -2097,7 +2095,7 @@ func TestStudioQuerySortOCounterAll(t *testing.T) {
 }
 
 func TestStudioQuerySortFavorite(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sortBy := "favorite"
 		direction := models.SortDirectionEnumDesc
 		allPages := models.PerPageAll
@@ -2131,7 +2129,7 @@ func TestStudioQuerySortFavorite(t *testing.T) {
 // sorts used by the studio table match the counts it shows: performer counts
 // include images and galleries, and the _all sorts include sub-studios
 func TestStudioQuerySortMatchesShownCounts(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		parent := models.NewStudio()
 		parent.Name = "AAA TestStudioSortParent"
 		if err := db.Studio().Create(ctx, &models.CreateStudioInput{Studio: &parent}); err != nil {
@@ -2194,7 +2192,7 @@ func TestStudioQuerySortMatchesShownCounts(t *testing.T) {
 }
 
 func TestStudioQuerySortPerformerCount(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sortBy := "performer_count"
 		direction := models.SortDirectionEnumDesc
 		findFilter := &models.FindFilterType{
@@ -2301,7 +2299,7 @@ func verifyStudiosPerformerCount(ctx context.Context, t *testing.T, performerCou
 }
 
 func TestStudioQueryPerformerCount(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		studio := createStudioWithPerformers(ctx, t)
 
 		criterion := models.IntCriterionInput{
@@ -2338,7 +2336,7 @@ func TestStudioQueryPerformerCount(t *testing.T) {
 }
 
 func TestStudioQuerySortPerformerCountAll(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sortBy := "performer_count_all"
 		direction := models.SortDirectionEnumDesc
 		findFilter := &models.FindFilterType{
@@ -2368,7 +2366,7 @@ func TestStudioQuerySortPerformerCountAll(t *testing.T) {
 }
 
 func TestStudioStore_UserData(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		qb := db.Studio()
 
 		newStudio := models.Studio{
