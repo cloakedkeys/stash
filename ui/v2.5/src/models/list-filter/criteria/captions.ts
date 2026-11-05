@@ -1,5 +1,9 @@
 import { CriterionModifier } from "src/core/generated-graphql";
-import { languageMap, valueToCode } from "src/utils/caption";
+import {
+  currentLanguageName,
+  languageMap,
+  valueToCode,
+} from "src/utils/caption";
 import { ModifierCriterionOption, StringCriterion } from "./criterion";
 
 const languageStrings = Array.from(languageMap.values());
@@ -21,6 +25,16 @@ export const CaptionsCriterionOption = new ModifierCriterionOption({
 export class CaptionCriterion extends StringCriterion {
   constructor() {
     super(CaptionsCriterionOption);
+  }
+
+  // Filters saved with an old language name show and edit as the current name.
+  protected decodeValue(v: unknown) {
+    super.decodeValue(typeof v === "string" ? currentLanguageName(v) : v);
+  }
+
+  public setFromSavedCriterion(criterion: unknown) {
+    super.setFromSavedCriterion(criterion);
+    this.value = currentLanguageName(this.value);
   }
 
   public toCriterionInput() {
