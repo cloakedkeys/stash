@@ -36,6 +36,11 @@ interface IEscapeKeyDown {
   onClosedMenu: boolean;
 }
 
+/** True while an IME (Japanese, Chinese, ...) is composing text. */
+export function isComposing(e: KeyboardEvent) {
+  return e.isComposing || e.keyCode === 229;
+}
+
 function readEscapeKeyDown(e: React.KeyboardEvent): IEscapeKeyDown {
   const target = e.target as Partial<Element>;
   // react-select inputs and dropdown toggles both mark themselves as popup
@@ -74,6 +79,12 @@ export function useEscapeToCancel(onCancel?: () => void, busy?: boolean) {
   function onEscapeKeyDown(e: KeyboardEvent) {
     const seen = keyDown.current?.event === e ? keyDown.current : undefined;
     keyDown.current = undefined;
+
+    // Esc during IME input cancels the composition, not the dialog
+    if (isComposing(e)) {
+      e.preventDefault();
+      return;
+    }
 
     // react-select and Bootstrap dropdowns claim Esc even with their menu
     // closed, so a claim only counts when something was open to close.

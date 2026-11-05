@@ -5,6 +5,7 @@ import ReactDatePicker from "react-datepicker";
 import TextUtils from "src/utils/text";
 import { normalizeDateString } from "src/utils/yup";
 import { Icon } from "./Icon";
+import { isComposing } from "./Modal";
 
 import "react-datepicker/dist/react-datepicker.css";
 import { useIntl } from "react-intl";
@@ -40,7 +41,7 @@ const ShowPickerButton = forwardRef<
     // let the picker close its open calendar on Esc, so that Esc in a dialog
     // closes the calendar rather than the dialog
     onKeyDown={(e: React.KeyboardEvent) => {
-      if (e.key === "Escape") onKeyDown?.(e);
+      if (e.key === "Escape" && !isComposing(e.nativeEvent)) onKeyDown?.(e);
     }}
     ref={ref}
   >

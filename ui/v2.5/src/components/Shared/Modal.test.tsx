@@ -3,9 +3,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { IntlProvider } from "react-intl";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FilterMode } from "src/core/generated-graphql";
-import { ModalComponent } from "./Modal";
+import { isComposing, ModalComponent } from "./Modal";
 import { AlertModal } from "./Alert";
 import { LoadFilterDialog, SaveFilterDialog } from "../List/SavedFilterList";
+import { ReleaseNotesDialog } from "../Dialogs/ReleaseNotesDialog";
+import FieldSelector from "../Tagger/FieldSelector";
+import { hideSidebarOnEscape } from "../List/Filters/FilterSidebar";
 
 // The props each react-bootstrap Modal was last rendered with.
 type ModalProps = {
@@ -32,6 +35,8 @@ vi.mock("react-bootstrap", async (importOriginal) => {
     ),
   };
 });
+
+vi.mock("./MarkdownPage", () => ({ MarkdownPage: () => null }));
 
 vi.mock("src/core/StashService", () => ({
   useFindSavedFilters: () => ({ data: undefined }),
@@ -79,15 +84,24 @@ function element(target: Target): Partial<Element> {
  * focus (`inside`), then the document keydown listener of the top Modal -
  * react-bootstrap's handleEscapeKeyDown followed by react-overlays, which calls
  * onHide unless the event was default-prevented.
+ *
+ * This copies react-bootstrap 1.6.8 cjs/Modal.js handleEscapeKeyDown and
+ * react-overlays 5.2.1 cjs/Modal.js handleDocumentKeyDown; re-check it when
+ * either is upgraded.
+ *
+ * `composing` presses Esc while an IME is composing text, as a browser reports
+ * it with keyCode 27 (some report keyCode 229, which react-overlays ignores).
  */
 function pressEscape(
   props: ModalProps,
   target?: Target,
-  inside?: (e: KeyboardEvent) => void
+  inside?: (e: KeyboardEvent) => void,
+  composing = false
 ) {
   const fake = {
     key: "Escape",
     keyCode: 27,
+    isComposing: composing,
     defaultPrevented: false,
     preventDefault: () => {
       fake.defaultPrevented = true;
@@ -276,5 +290,87 @@ describe("Esc in dialogs not built on ModalComponent (#1113)", () => {
       )
     );
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Esc during IME input (#1113)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("leaves the dialog open", () => {
+    const cancel = vi.fn();
+    const hide = vi.fn();
+    pressEscape(
+      render(<ModalComponent show cancel={{ onClick: cancel }} />),
+      undefined,
+      undefined,
+      true
+    );
+    pressEscape(
+      render(<ModalComponent show onHide={hide} />),
+      undefined,
+      undefined,
+      true
+    );
+    expect(cancel).not.toHaveBeenCalled();
+    expect(hide).not.toHaveBeenCalled();
+  });
+
+  it("counts both ways browsers report composition", () => {
+    const key = (init: Partial<KeyboardEvent>) =>
+      ({ isComposing: false, keyCode: 27, ...init }) as KeyboardEvent;
+    expect(isComposing(key({ isComposing: true }))).toBe(true);
+    expect(isComposing(key({ keyCode: 229 }))).toBe(true);
+    expect(isComposing(key({}))).toBe(false);
+  });
+});
+
+describe("Esc in Close-only dialogs (#1113)", () => {
+  it("closes the release notes", () => {
+    const onClose = vi.fn();
+    pressEscape(
+      render(
+        <ReleaseNotesDialog
+          notes={[{ date: 1, version: "v1", content: "" }]}
+          onClose={onClose}
+        />
+      )
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels the tagger field selector without saving", () => {
+    const onSelect = vi.fn();
+    const onCancel = vi.fn();
+    pressEscape(
+      render(
+        <FieldSelector
+          show
+          fields={["title", "date"]}
+          excludedFields={["date"]}
+          onSelect={onSelect}
+          onCancel={onCancel}
+        />
+      )
+    );
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+});
+
+describe("Esc with the filter sidebar open (#1113)", () => {
+  it("hides the sidebar when no dialog is open", () => {
+    const setShowSidebar = vi.fn();
+    const e = { preventDefault: vi.fn() };
+    hideSidebarOnEscape(e, true, setShowSidebar, false);
+    expect(setShowSidebar).toHaveBeenCalledWith(false);
+    expect(e.preventDefault).toHaveBeenCalled();
+  });
+
+  it("leaves Esc to an open dialog", () => {
+    const setShowSidebar = vi.fn();
+    const e = { preventDefault: vi.fn() };
+    hideSidebarOnEscape(e, true, setShowSidebar, true);
+    expect(setShowSidebar).not.toHaveBeenCalled();
+    expect(e.preventDefault).not.toHaveBeenCalled();
   });
 });

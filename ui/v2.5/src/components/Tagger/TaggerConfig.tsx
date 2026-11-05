@@ -76,6 +76,7 @@ const TaggerConfig: React.FC<ITaggerConfigProps> = ({
         show={showExclusionModal}
         fields={fields}
         onSelect={handleFieldSelect}
+        onCancel={() => setShowExclusionModal(false)}
         excludedFields={excludedFields}
       />
     </>
