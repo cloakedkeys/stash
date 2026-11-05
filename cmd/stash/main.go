@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
-	"syscall"
 
 	// fallback timezone database for systems without tzdata installed
 	_ "time/tzdata"
@@ -23,7 +22,9 @@ import (
 	"github.com/stashapp/stash/internal/log"
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/internal/stoprequests"
 	"github.com/stashapp/stash/pkg/database"
+	"github.com/stashapp/stash/pkg/database/migrationguard"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/postgres"
 	"github.com/stashapp/stash/ui"
@@ -35,6 +36,13 @@ import (
 var exitCode = 0
 
 func main() {
+	// Stop requests are caught from before main starts (see stoprequests), so
+	// that one that comes during startup doesn't end Stash at once, perhaps in
+	// the middle of creating the database (#2103). stopCtx is cancelled once a
+	// stop request takes effect.
+	stopCtx, cancelStopCtx := contextUntil(stoprequests.Stopped())
+	defer cancelStopCtx()
+
 	defer func() {
 		if exitCode != 0 {
 			os.Exit(exitCode)
@@ -83,6 +91,10 @@ func main() {
 
 	l := initLog(cfg)
 
+	stoprequests.OnWaiting(func() {
+		logger.Info(waitingMessage(migrationguard.Doing(), runtime.GOOS))
+	})
+
 	if cpuProfilePath != "" {
 		f, err := initProfiling(cpuProfilePath)
 		if err != nil {
@@ -94,10 +106,15 @@ func main() {
 	}
 
 	if migrateSQLiteFlag != "" {
-		// before the manager, which would open the database
-		if err := migrateSQLiteToPostgres(cfg, migrateSQLiteFlag); err != nil {
-			exitError(fmt.Errorf("error migrating to PostgreSQL: %w", err))
+		if stoppedDuringStartup(stoprequests.Requested(), nil) {
+			return
 		}
+
+		// before the manager, which would open the database. A stop waits for
+		// the PostgreSQL schema to be built, then ends the copy, which runs in
+		// a single transaction, so nothing is left half copied.
+		err := migrateSQLiteToPostgres(stopCtx, cfg, migrateSQLiteFlag)
+		finishCopy(stoprequests.Requested(), err)
 		return
 	}
 
@@ -105,12 +122,29 @@ func main() {
 	// ffmpeg hardware checks later on
 	desktop.InitIsDesktop()
 
-	mgr, err := manager.Initialize(cfg, l)
+	if stoppedDuringStartup(stoprequests.Requested(), nil) {
+		return
+	}
+
+	// A stop request cancels opening the database, such as while waiting for
+	// a PostgreSQL server, but waits for a schema build or upgrade to finish.
+	mgr, err := manager.Initialize(stopCtx, cfg, l)
+	if stoppedDuringStartup(stoprequests.Requested(), err) {
+		if mgr != nil {
+			mgr.Shutdown()
+		}
+		return
+	}
 	if err != nil {
 		exitError(fmt.Errorf("manager initialization error: %w", err))
 		return
 	}
 	defer mgr.Shutdown()
+
+	if getUsersFlag || resetPasswordFlag != "" {
+		// as before #2103, a stop ends these commands at once
+		stoprequests.Release()
+	}
 
 	if getUsersFlag {
 		if err := mgr.PrintUsers(context.Background()); err != nil {
@@ -143,18 +177,80 @@ func main() {
 		}
 	}()
 
-	go handleSignals(exit)
+	go stoprequests.Forward(exit)
 	desktop.Start(exit, &ui.FaviconProvider)
 
 	exitCode = <-exit
 }
 
-func migrateSQLiteToPostgres(cfg *config.Config, sqlitePath string) error {
+func migrateSQLiteToPostgres(ctx context.Context, cfg *config.Config, sqlitePath string) error {
 	target := cfg.GetDatabasePath()
 	if !database.IsPostgresPath(target) {
 		return errors.New("set the STASH_DATABASE environment variable to the address of the PostgreSQL database to copy into")
 	}
-	return postgres.MigrateFromSQLite(context.Background(), sqlitePath, target, os.Stdout)
+	return postgres.MigrateFromSQLite(ctx, sqlitePath, target, os.Stdout)
+}
+
+// finishCopy ends the copy to PostgreSQL, which returned err. If a stop
+// request took effect and ended the copy, nothing was copied, and the exit
+// code isn't 0, as when a stop ended the copy before #2103.
+func finishCopy(stopRequested bool, err error) {
+	switch {
+	case err == nil:
+	case stopRequested:
+		exitCode = 1
+		logger.Infof("Stopped before the copy to PostgreSQL finished. Nothing was copied, so it can be run again: %v", err)
+	default:
+		exitError(fmt.Errorf("error migrating to PostgreSQL: %w", err))
+	}
+}
+
+// contextUntil returns a context that is cancelled once done is closed.
+func contextUntil(done <-chan struct{}) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		select {
+		case <-done:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
+}
+
+// stoppedDuringStartup reports whether a stop request has taken effect during
+// startup, in which case Stash stops with the clean shutdown and exit code 0
+// of a normal stop. err is the error of the startup step the stop ended, if
+// any.
+func stoppedDuringStartup(stopRequested bool, err error) bool {
+	if !stopRequested {
+		return false
+	}
+	logStopDuringStartup()
+	switch {
+	case err == nil:
+	case errors.Is(err, context.Canceled), errors.Is(err, migrationguard.ErrStopping):
+		// the stop request ended the step
+		logger.Debugf("Startup ended by the stop request: %v", err)
+	default:
+		// the step failed for another reason, which mustn't be hidden
+		logger.Errorf("Startup failed: %v", err)
+	}
+	return true
+}
+
+// waitingMessage is logged for a stop request that waits for a database
+// migration of the given kind to finish. It says how to stop Stash at once.
+func waitingMessage(kind migrationguard.Kind, goos string) string {
+	what := "update"
+	if kind == migrationguard.Build {
+		what = "build"
+	}
+	force := "use kill -9"
+	if goos == "windows" {
+		force = "end the Stash process"
+	}
+	return fmt.Sprintf("Stash will stop once the database %s has finished. To stop it now anyway, %s", what, force)
 }
 
 // initLogTemp initializes a temporary logger for use before the config is loaded.
@@ -212,11 +308,6 @@ func exitError(err error) {
 	}
 }
 
-func handleSignals(exit chan<- int) {
-	// handle signals
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-
-	<-signals
-	exit <- 0
+func logStopDuringStartup() {
+	logger.Info("Stopping, because a stop was requested while Stash was starting")
 }

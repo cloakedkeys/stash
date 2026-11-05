@@ -8,6 +8,7 @@ import (
 	sqlite3mig "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jmoiron/sqlx"
+	"github.com/stashapp/stash/pkg/database/migrationguard"
 	"github.com/stashapp/stash/pkg/logger"
 )
 
@@ -190,6 +191,17 @@ func (db *Database) RunAllMigrations(ctx context.Context) error {
 	databaseSchemaVersion, _, _ := m.m.Version()
 	stepNumber := appSchemaVersion - databaseSchemaVersion
 	if stepNumber != 0 {
+		// a stop waits for this to finish, so the database isn't left half built
+		kind := migrationguard.Update
+		if databaseSchemaVersion == 0 {
+			kind = migrationguard.Build
+		}
+		end, err := migrationguard.Begin(kind)
+		if err != nil {
+			return err
+		}
+		defer end()
+
 		logger.Infof("Migrating database from version %d to %d", databaseSchemaVersion, appSchemaVersion)
 
 		// run each migration individually, and run custom migrations as needed

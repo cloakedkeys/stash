@@ -17,6 +17,7 @@ import (
 	"github.com/stashapp/stash/internal/log"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/database"
+	"github.com/stashapp/stash/pkg/database/migrationguard"
 	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/job"
@@ -37,6 +38,10 @@ import (
 type Manager struct {
 	Config *config.Config
 	Logger *log.Logger
+
+	// migrations is what Shutdown waits for; nil means the guard for this
+	// process. Tests set a guard of their own.
+	migrations *migrationguard.Guard
 
 	// ImageThumbnailGenerateWaitGroup is the global wait group image thumbnail generation
 	// It uses the parallel tasks setting from the configuration.
@@ -304,7 +309,7 @@ func (s *Manager) Setup(ctx context.Context, input SetupInput) error {
 	newCtx := models.WithSetupContext(ctx)
 
 	// finish initialization
-	if err := s.postInit(newCtx); err != nil {
+	if err := s.postInit(newCtx, newCtx); err != nil {
 		return fmt.Errorf("error completing initialization: %v", err)
 	}
 
@@ -446,6 +451,21 @@ func (s *Manager) GetSystemStatus() *SystemStatus {
 // Shutdown gracefully stops the manager
 func (s *Manager) Shutdown() {
 	// TODO: Each part of the manager needs to gracefully stop at some point
+
+	// Closing the database under a running migration would leave it half
+	// upgraded, so wait for the migration to finish. No new one starts after
+	// this (#2103).
+	guard := s.migrations
+	if guard == nil {
+		guard = migrationguard.Default()
+	}
+	guard.Stop(func() {
+		what := "update"
+		if guard.Doing() == migrationguard.Build {
+			what = "build"
+		}
+		logger.Infof("Waiting for the database %s to finish before stopping", what)
+	})
 
 	if s.StreamManager != nil {
 		s.StreamManager.Shutdown()
