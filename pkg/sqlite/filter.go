@@ -449,11 +449,12 @@ func (f *filterBuilder) isolateSubFilterLevels(table string) {
 	var outerJoins joins
 	for ff := f; ff != nil; ff = ff.subFilter {
 		var isolate bool
-		if ff != f && len(ff.withClauses) > 0 {
+		switch {
+		case ff != f && len(ff.withClauses) > 0:
 			isolate = true
-		} else if orNot {
+		case orNot:
 			isolate = len(ff.joins) > 0 || len(ff.havingClauses) > 0 || (underNot && len(ff.whereClauses) > 0)
-		} else {
+		default:
 			isolate = ff.joins.sharesJoinName(outerJoins)
 		}
 		underNot = underNot || ff.subFilterOp == notOp
