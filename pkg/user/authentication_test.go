@@ -5,10 +5,71 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/require"
 )
+
+// Replacing a key twice quickly must give a new key each time, and the
+// replaced key must stop working (#2136).
+func TestReplacedAPIKeyStopsWorking(t *testing.T) {
+	config.InitializeEmpty().SetString(config.JWTSignKey, "user-apikey-replace-test-key")
+	ctx := context.Background()
+	store := newMockStore()
+	hash, err := hashPassword("password")
+	require.NoError(t, err)
+	u := &models.User{ID: 1, Username: "reader", Roles: models.Roles{models.RoleEnumRead}}
+	store.users[u.Username] = u
+	store.passwords[u.ID] = hash
+	s := &Service{Store: store, Config: &mockConfig{}}
+	require.NoError(t, s.Init(ctx))
+
+	first, err := s.GenerateAPIKey(ctx, u.Username)
+	require.NoError(t, err)
+	second, err := s.GenerateAPIKey(ctx, u.Username)
+	require.NoError(t, err)
+	require.NotEqual(t, first, second, "keys made back to back differ")
+
+	_, err = s.AuthenticateByAPIKey(ctx, first)
+	require.ErrorIs(t, err, ErrAccessDenied, "replaced key is refused")
+	keyUser, err := s.AuthenticateByAPIKey(ctx, second)
+	require.NoError(t, err)
+	require.Equal(t, u.ID, keyUser.ID)
+
+	// the key still names its user and is checked the same way
+	userID, err := GetUserIDFromAPIKey(second)
+	require.NoError(t, err)
+	require.Equal(t, u.Username, userID)
+}
+
+// Keys made before keys had a random ID must keep working (#2136).
+func TestAPIKeyWithoutIDStillWorks(t *testing.T) {
+	config.InitializeEmpty().SetString(config.JWTSignKey, "user-apikey-old-test-key")
+	ctx := context.Background()
+	store := newMockStore()
+	hash, err := hashPassword("password")
+	require.NoError(t, err)
+	u := &models.User{ID: 1, Username: "reader", Roles: models.Roles{models.RoleEnumRead}}
+	store.users[u.Username] = u
+	store.passwords[u.ID] = hash
+	s := &Service{Store: store, Config: &mockConfig{}}
+	require.NoError(t, s.Init(ctx))
+
+	// the format keys had before: user name, subject and issue time only
+	claims := &APIKeyClaims{UserID: u.Username, RegisteredClaims: jwt.RegisteredClaims{
+		Subject:  APIKeySubject,
+		IssuedAt: jwt.NewNumericDate(time.Unix(1700000000, 0)),
+	}}
+	oldKey, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(config.GetInstance().GetJWTSignKey())
+	require.NoError(t, err)
+	u.ApiKeyHash, err = HashAPIKey(oldKey)
+	require.NoError(t, err)
+
+	keyUser, err := s.AuthenticateByAPIKey(ctx, oldKey)
+	require.NoError(t, err, "old key still works")
+	require.Equal(t, u.ID, keyUser.ID)
+}
 
 func TestAuthenticationIsolationAndRevocation(t *testing.T) {
 	config.InitializeEmpty().SetString(config.JWTSignKey, "user-authentication-test-key")

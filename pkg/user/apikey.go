@@ -1,7 +1,10 @@
 package user
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -17,10 +20,23 @@ type APIKeyClaims struct {
 	jwt.RegisteredClaims
 }
 
+// apiKeyIDBytes is the number of random bytes in each key's ID.
+const apiKeyIDBytes = 16
+
 func generateAPIKey(userID string) (string, error) {
+	// The user name and the time in whole seconds are the same for keys made
+	// in the same second, so each key also gets a random ID. Without it,
+	// replacing a key twice quickly gives back the same key, and the key that
+	// was meant to be replaced keeps working.
+	id := make([]byte, apiKeyIDBytes)
+	if _, err := rand.Read(id); err != nil {
+		return "", fmt.Errorf("generating api key id: %w", err)
+	}
+
 	claims := &APIKeyClaims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:       hex.EncodeToString(id),
 			Subject:  APIKeySubject,
 			IssuedAt: jwt.NewNumericDate(time.Now()),
 		},
