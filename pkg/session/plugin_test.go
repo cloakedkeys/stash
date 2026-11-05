@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,6 +146,76 @@ func TestMakePluginCookieWithoutCurrentUser(t *testing.T) {
 	}
 	if len(visited) != 2 {
 		t.Errorf("visited hooks = %v, want 2 entries", visited)
+	}
+}
+
+// A request signed in with an API key: the plugin cookie carries the key's
+// fingerprint, so it can be refused once the key is deleted (#2122).
+func TestMakePluginCookieCarriesAPIKeyFingerprint(t *testing.T) {
+	s := newTestStore()
+
+	fp := APIKeyFingerprint("stored-key-hash")
+	ctx := SetCurrentUser(context.Background(), models.User{ID: 7, Username: "admin"})
+	ctx = SetAPIKeyFingerprint(ctx, fp)
+
+	cookie := s.MakePluginCookie(ctx)
+	if cookie == nil {
+		t.Fatal("MakePluginCookie returned nil")
+	}
+
+	sess, _ := readPluginCookie(t, s, cookie)
+	if sess == nil || sess.UserID != "admin" {
+		t.Fatalf("session = %+v, want user admin", sess)
+	}
+	if sess.APIKeyFingerprint != fp {
+		t.Errorf("api key fingerprint = %q, want %q", sess.APIKeyFingerprint, fp)
+	}
+	if strings.Contains(sess.APIKeyFingerprint, "stored-key-hash") {
+		t.Error("the cookie must not contain the stored key hash")
+	}
+}
+
+// Cookies for a request without an API key, and browser logins, have no key
+// fingerprint, so deleting a key doesn't affect them.
+func TestPluginCookieWithoutAPIKeyHasNoFingerprint(t *testing.T) {
+	s := newTestStore()
+
+	ctx := SetCurrentUser(context.Background(), models.User{ID: 7, Username: "admin"})
+	ctx = SetSessionLoginTime(ctx, time.Unix(0, 1700000000123456789))
+
+	sess, _ := readPluginCookie(t, s, s.MakePluginCookie(ctx))
+	if sess == nil || sess.APIKeyFingerprint != "" {
+		t.Fatalf("session = %+v, want no api key fingerprint", sess)
+	}
+
+	// an empty fingerprint in the context is ignored
+	ctx = SetAPIKeyFingerprint(ctx, "")
+	sess, _ = readPluginCookie(t, s, s.MakePluginCookie(ctx))
+	if sess == nil || sess.APIKeyFingerprint != "" {
+		t.Fatalf("session = %+v, want no api key fingerprint", sess)
+	}
+
+	// no user, no fingerprint, even if one is set
+	ctx = SetAPIKeyFingerprint(context.Background(), APIKeyFingerprint("stored-key-hash"))
+	sess, _ = readPluginCookie(t, s, s.MakePluginCookie(ctx))
+	if sess == nil || sess.APIKeyFingerprint != "" {
+		t.Fatalf("session = %+v, want no api key fingerprint", sess)
+	}
+}
+
+func TestMatchesAPIKeyFingerprint(t *testing.T) {
+	fp := APIKeyFingerprint("stored-key-hash")
+	if !MatchesAPIKeyFingerprint(fp, "stored-key-hash") {
+		t.Error("fingerprint must match its own key")
+	}
+	if MatchesAPIKeyFingerprint(fp, "") {
+		t.Error("fingerprint must not match a deleted key")
+	}
+	if MatchesAPIKeyFingerprint(fp, "replacement-key-hash") {
+		t.Error("fingerprint must not match a replacement key")
+	}
+	if MatchesAPIKeyFingerprint("", "stored-key-hash") {
+		t.Error("an empty fingerprint must not match")
 	}
 }
 

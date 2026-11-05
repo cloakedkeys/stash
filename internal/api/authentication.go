@@ -258,6 +258,8 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 
 					// Only a successfully checked key exempts a request from origin checks.
 					ctx = context.WithValue(ctx, authenticatedAPIKeyCtxKey, true)
+					// plugin cookies made for this request only work while the key does
+					ctx = session.SetAPIKeyFingerprint(ctx, session.APIKeyFingerprint(u.ApiKeyHash))
 				} else if signedUser, signedErr := authenticateSignedRequest(ctx, r, txnMgr, g); signedErr != nil {
 					logger.Errorf("error authenticating signed request: %v", signedErr)
 					httpError(w, r, "internal server error", http.StatusInternalServerError)
@@ -265,16 +267,16 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 				} else if signedUser != nil {
 					u = signedUser
 				} else {
-					session, getErr := sessions.GetSession(w, r)
+					sess, getErr := sessions.GetSession(w, r)
 					if getErr != nil {
 						logger.Errorf("error getting session user ID: %v", getErr)
 						httpError(w, r, "internal server error", http.StatusInternalServerError)
 						return
 					}
 
-					if session != nil {
+					if sess != nil {
 						if err := txn.WithReadTxn(ctx, txnMgr, func(ctx context.Context) error {
-							u, err = g.AuthenticateSession(ctx, session.UserID, session.LoginTime)
+							u, err = g.AuthenticateSession(ctx, sess.UserID, sess.LoginTime)
 							return err
 						}); err != nil {
 							if errors.Is(err, user.ErrInternalError) {
@@ -282,8 +284,17 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 								httpError(w, r, "internal server error", http.StatusInternalServerError)
 								return
 							}
+						} else if u != nil && sess.APIKeyFingerprint != "" && !session.MatchesAPIKeyFingerprint(sess.APIKeyFingerprint, u.ApiKeyHash) {
+							// a plugin cookie made from an API key request, and the
+							// key has since been deleted or replaced
+							logger.Infof("[authentication] API key of user %s has changed since the plugin session started", u.Username)
+							u = nil
 						} else if u != nil {
-							sessionLoginTime = session.LoginTime
+							sessionLoginTime = sess.LoginTime
+							if sess.APIKeyFingerprint != "" {
+								// plugin cookies made for this request stay tied to the key
+								ctx = session.SetAPIKeyFingerprint(ctx, sess.APIKeyFingerprint)
+							}
 						}
 					}
 				}

@@ -82,6 +82,14 @@ func (s *Store) MakePluginCookie(ctx context.Context) *http.Cookie {
 		}
 		session.Values[loginTimeKey] = loginTime.Unix()
 		session.Values[loginTimeNanosKey] = loginTime.UnixNano()
+
+		// Tie the cookie to the API key that signed in the request, so that
+		// deleting or replacing the key ends the plugin's access too. This
+		// doesn't touch the user's update time, which would also log the user
+		// out of their own browser sessions.
+		if fp, ok := getAPIKeyFingerprint(ctx); ok {
+			session.Values[apiKeyFingerprintKey] = fp
+		}
 	}
 
 	session.Values[visitedPluginHooksKey] = visitedPlugins

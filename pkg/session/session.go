@@ -3,6 +3,9 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"sync"
@@ -21,6 +24,7 @@ const (
 	contextVisitedPlugins
 	contextLocalRequest
 	contextSessionLoginTime
+	contextAPIKeyFingerprint
 )
 
 const (
@@ -28,6 +32,7 @@ const (
 	loginTimeKey          = "loginTime"
 	loginTimeNanosKey     = "loginTimeNanos"
 	visitedPluginHooksKey = "visitedPluginsHooks"
+	apiKeyFingerprintKey  = "apiKey"
 )
 
 const (
@@ -181,6 +186,10 @@ func (s *Store) Logout(w http.ResponseWriter, r *http.Request) error {
 type Session struct {
 	UserID    string
 	LoginTime time.Time
+	// APIKeyFingerprint is set on plugin cookies made for a request that was
+	// signed in with an API key. The cookie is only valid while the user still
+	// has that key. Empty for a normal login.
+	APIKeyFingerprint string
 }
 
 func (s *Store) GetSession(w http.ResponseWriter, r *http.Request) (*Session, error) {
@@ -205,6 +214,7 @@ func (s *Store) GetSession(w http.ResponseWriter, r *http.Request) (*Session, er
 		if loginTimeNanos, ok := session.Values[loginTimeNanosKey].(int64); ok {
 			ret.LoginTime = time.Unix(0, loginTimeNanos)
 		}
+		ret.APIKeyFingerprint, _ = session.Values[apiKeyFingerprintKey].(string)
 
 		return ret, nil
 	}
@@ -228,6 +238,33 @@ func SetSessionLoginTime(ctx context.Context, loginTime time.Time) context.Conte
 func getSessionLoginTime(ctx context.Context) (time.Time, bool) {
 	t, ok := ctx.Value(contextSessionLoginTime).(time.Time)
 	return t, ok
+}
+
+// APIKeyFingerprint identifies the API key whose stored hash is apiKeyHash,
+// without putting the hash itself in a cookie. A new key, or no key, gives a
+// different fingerprint.
+func APIKeyFingerprint(apiKeyHash string) string {
+	sum := sha256.Sum256([]byte("stash plugin cookie api key:" + apiKeyHash))
+	return hex.EncodeToString(sum[:])
+}
+
+// MatchesAPIKeyFingerprint reports whether fingerprint identifies the API key
+// whose stored hash is apiKeyHash.
+func MatchesAPIKeyFingerprint(fingerprint, apiKeyHash string) bool {
+	want := APIKeyFingerprint(apiKeyHash)
+	return subtle.ConstantTimeCompare([]byte(fingerprint), []byte(want)) == 1
+}
+
+// SetAPIKeyFingerprint records that the current request was signed in with the
+// API key that has this fingerprint. Plugin cookies made for the request carry
+// it, so they stop working once the user's key is deleted or replaced.
+func SetAPIKeyFingerprint(ctx context.Context, fingerprint string) context.Context {
+	return context.WithValue(ctx, contextAPIKeyFingerprint, fingerprint)
+}
+
+func getAPIKeyFingerprint(ctx context.Context) (string, bool) {
+	fp, ok := ctx.Value(contextAPIKeyFingerprint).(string)
+	return fp, ok && fp != ""
 }
 
 // GetCurrentUser gets the current user id from the provided context
