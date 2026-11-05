@@ -55,8 +55,8 @@ export function limitPageSize(pageSize: number) {
   return pageSize > MAX_PAGE_SIZE ? MAX_PAGE_SIZE : pageSize;
 }
 
-// Every object filter type has AND, OR and NOT sub-filters of its own type,
-// and an ALL_OF list of them.
+// Object filter types have AND, OR and NOT sub-filters of their own type,
+// and an ALL_OF list of them, except markers (see supportsSubFilters).
 const AND_KEY = "AND";
 const OR_KEY = "OR";
 const NOT_KEY = "NOT";
@@ -70,6 +70,18 @@ const URL_GROUP_TYPES: Record<string, GroupKind> = {
 };
 // in the web address, set on a condition that also matches empty values
 const URL_OR_EMPTY_KEY = "or_empty";
+
+// The list modes whose server filter type has no AND, OR or NOT
+// (SceneMarkerFilterType). A test checks this against the GraphQL schema.
+const MODES_WITHOUT_SUB_FILTERS = new Set<FilterMode>([
+  FilterMode.SceneMarkers,
+]);
+
+// Whether the server filter type of the mode has AND, OR and NOT
+// sub-filters, which repeated conditions need.
+export function supportsSubFilters(mode: FilterMode) {
+  return !MODES_WITHOUT_SUB_FILTERS.has(mode);
+}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -156,10 +168,13 @@ type ApplyCriterion = (c: Criterion, output: Record<string, unknown>) => void;
 // result is exactly what writing every criterion into one object gives.
 // Keys in mergeKeys hold objects that several criteria can share, as long as
 // the keys inside them differ.
+// Without useAnd (the filter type has no AND), a repeat replaces the earlier
+// condition, as all repeats did before they were allowed.
 function combineCriteria(
   criteria: Criterion[],
   apply: ApplyCriterion,
-  mergeKeys?: Set<string>
+  mergeKeys?: Set<string>,
+  useAnd = true
 ) {
   const canMerge = (k: string, a: unknown, b: unknown) =>
     !!mergeKeys?.has(k) &&
@@ -174,6 +189,7 @@ function combineCriteria(
 
     let target = output;
     while (
+      useAnd &&
       Object.keys(own).some(
         (k) => k in target && !canMerge(k, own[k], target[k])
       )
@@ -185,7 +201,7 @@ function combineCriteria(
     }
     for (const [k, v] of Object.entries(own)) {
       target[k] =
-        k in target && isPlainObject(target[k]) && isPlainObject(v)
+        mergeKeys?.has(k) && isPlainObject(target[k]) && isPlainObject(v)
           ? { ...target[k], ...v }
           : v;
     }
@@ -724,6 +740,10 @@ export class ListFilterModel {
     };
   }
 
+  // A list whose server filter type has no AND (markers) can't send repeated
+  // conditions. Such a list doesn't offer repeats, but one can still come
+  // from an edited web address or a saved filter; then the last condition of
+  // the kind is sent, as before repeats were allowed.
   public makeFilter() {
     // criteria on a related object go inside its filter, under the related
     // object's own name for the criterion. Several of them share that filter.
@@ -733,23 +753,29 @@ export class ListFilterModel {
       if (subFilter) subFilterKeys.add(subFilter.key);
     }
 
-    return this.makeObjectFilter((c, output) => {
-      const { type, subFilter } = c.criterionOption;
-      if (!subFilter) {
-        c.applyToCriterionInput(output);
-        return;
-      }
+    return this.makeObjectFilter(
+      (c, output) => {
+        const { type, subFilter } = c.criterionOption;
+        if (!subFilter) {
+          c.applyToCriterionInput(output);
+          return;
+        }
 
-      const subOutput: Record<string, unknown> = {};
-      c.applyToCriterionInput(subOutput);
-      if (type in subOutput) {
-        subOutput[subFilter.field] = subOutput[type];
-        delete subOutput[type];
-      }
-      output[subFilter.key] = subOutput;
-    }, subFilterKeys);
+        const subOutput: Record<string, unknown> = {};
+        c.applyToCriterionInput(subOutput);
+        if (type in subOutput) {
+          subOutput[subFilter.field] = subOutput[type];
+          delete subOutput[type];
+        }
+        output[subFilter.key] = subOutput;
+      },
+      subFilterKeys,
+      supportsSubFilters(this.mode)
+    );
   }
 
+  // Saved filters are read only by the UI, so they keep every condition,
+  // in the AND form, even for lists that can't send it.
   // TODO - this needs to just use makeFilter, but it needs a migration
   public makeSavedFilter() {
     return this.makeObjectFilter((c, output) =>
@@ -764,7 +790,18 @@ export class ListFilterModel {
   //   Any of [a, b]:  {a, OR: {b}}
   //   None of [a, b]: {NOT: {a, OR: {b}}}
   // Without groups the result is exactly what it was before.
-  private makeObjectFilter(apply: ApplyCriterion, mergeKeys?: Set<string>) {
+  // Without useAnd (the filter type has no AND, OR, NOT or ALL_OF) groups
+  // and "or empty" can't be sent: every condition is sent as a plain
+  // condition, and a repeat replaces the earlier one, as before.
+  private makeObjectFilter(
+    apply: ApplyCriterion,
+    mergeKeys?: Set<string>,
+    useAnd = true
+  ) {
+    if (!useAnd) {
+      return combineCriteria(this.criteria, apply, mergeKeys, false);
+    }
+
     const output = combineCriteria(
       this.criteria.filter((c) => !inGroup(c) && !matchesEmptyToo(c)),
       apply,

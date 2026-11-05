@@ -1,9 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   FilterMode,
   SavedFilterDataFragment,
 } from "src/core/generated-graphql";
-import { ListFilterModel } from "./filter";
+import { ListFilterModel, supportsSubFilters } from "./filter";
 import { CriterionType } from "./types";
 
 vi.mock("src/core/createClient", () => ({ createClient: () => ({}) }));
@@ -54,6 +55,15 @@ function legacyLoad(objectFilter: Record<string, unknown>) {
   }
   return filter;
 }
+
+const tagsIncludesT1 = {
+  value: { items: [{ id: "1", label: "T1" }], excluded: [], depth: 0 },
+  modifier: "INCLUDES",
+};
+const tagsIncludesT2 = {
+  value: { items: [{ id: "2", label: "T2" }], excluded: [], depth: 0 },
+  modifier: "INCLUDES",
+};
 
 const missingDate = { value: "date", modifier: "EQUALS" };
 const missingTags = { value: "tags", modifier: "EQUALS" };
@@ -279,6 +289,66 @@ describe("sidebar edits of a repeated kind", () => {
       "tags",
     ]);
     expect(types(filter.replaceCriteria("tags", []))).toEqual(["title"]);
+  });
+});
+
+// the server filter type of each list mode
+const modeFilterTypes: Record<FilterMode, string> = {
+  [FilterMode.Audios]: "AudioFilterType",
+  [FilterMode.Galleries]: "GalleryFilterType",
+  [FilterMode.Groups]: "GroupFilterType",
+  [FilterMode.Images]: "ImageFilterType",
+  [FilterMode.Movies]: "MovieFilterType",
+  [FilterMode.Performers]: "PerformerFilterType",
+  [FilterMode.Scenes]: "SceneFilterType",
+  [FilterMode.SceneMarkers]: "SceneMarkerFilterType",
+  [FilterMode.Stories]: "StoryFilterType",
+  [FilterMode.Studios]: "StudioFilterType",
+  [FilterMode.Tags]: "TagFilterType",
+};
+
+describe("lists whose filter type has no AND", () => {
+  it("are known for every list mode, as the GraphQL schema says", () => {
+    const schema = readFileSync(
+      new URL(
+        "../../../../../graphql/schema/types/filters.graphql",
+        import.meta.url
+      ),
+      "utf8"
+    );
+
+    for (const mode of Object.values(FilterMode)) {
+      const typeName = modeFilterTypes[mode];
+      const body = schema.match(
+        new RegExp(`^input ${typeName} \\{([\\s\\S]*?)^\\}`, "m")
+      )?.[1];
+      expect(body, typeName).toBeDefined();
+      expect(supportsSubFilters(mode), typeName).toBe(/^\s*AND:/m.test(body!));
+    }
+    expect(supportsSubFilters(FilterMode.SceneMarkers)).toBe(false);
+  });
+
+  it("send the last condition of a repeated kind, as before", () => {
+    const filter = new ListFilterModel(FilterMode.SceneMarkers);
+    filter.criteria = [
+      ["tags", tagsIncludesT1],
+      ["tags", tagsIncludesT2],
+    ].map(([type, saved]) => {
+      const c = filter.makeCriterion(type as CriterionType);
+      c.setFromSavedCriterion(saved);
+      return c;
+    });
+
+    expect(filter.makeFilter()).toEqual(legacyMakeFilter(filter));
+    expect(JSON.stringify(filter.makeFilter())).not.toContain('"AND"');
+    expect(filter.makeFilter()).toEqual({
+      tags: { value: ["2"], excludes: [], modifier: "INCLUDES", depth: 0 },
+    });
+
+    // a saved filter keeps both, for the UI to load back
+    const loaded = new ListFilterModel(FilterMode.SceneMarkers);
+    loaded.configureFromSavedFilter(savedFilter(filter.makeSavedFilter()));
+    expect(loaded.criteria).toHaveLength(2);
   });
 });
 

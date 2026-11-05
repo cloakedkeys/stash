@@ -14,7 +14,10 @@ import {
 } from "src/models/list-filter/criteria/criterion";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useConfigurationContext } from "src/hooks/Config";
-import { ListFilterModel } from "src/models/list-filter/filter";
+import {
+  ListFilterModel,
+  supportsSubFilters,
+} from "src/models/list-filter/filter";
 import { getFilterOptions } from "src/models/list-filter/factory";
 import { FilterTags } from "./FilterTags";
 import { CriterionEditor } from "./CriterionEditor";
@@ -656,9 +659,11 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
               onRemoveCriterion={(c) => removeCriterionString(c)}
               onTogglePin={(c) => onTogglePinFilter(c)}
               onAddAnother={
-                // custom fields already hold several conditions
+                // custom fields already hold several conditions, and some
+                // lists can't send repeats
                 editingIndex !== undefined &&
-                !(criterion instanceof CustomFieldsCriterion)
+                !(criterion instanceof CustomFieldsCriterion) &&
+                supportsSubFilters(currentFilter.mode)
                   ? addAnother
                   : undefined
               }
