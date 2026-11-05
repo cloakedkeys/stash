@@ -21,9 +21,12 @@ import { useDebounce } from "src/hooks/debounce";
 import { ClearableInput } from "../Shared/ClearableInput";
 import { useStopWheelScroll } from "src/utils/form";
 
+// wait is how long typing must pause before the term is set; 0 sets it
+// straight away
 export function useDebouncedSearchInput(
   filter: ListFilterModel,
-  setFilter: (filter: ListFilterModel) => void
+  setFilter: (filter: ListFilterModel) => void,
+  wait = 500
 ) {
   const callback = useCallback(
     (value: string) => {
@@ -37,7 +40,9 @@ export function useDebouncedSearchInput(
 
   const onClear = useCallback(() => callback(""), [callback]);
 
-  const searchCallback = useDebounce(callback, 500);
+  const debounced = useDebounce(callback, wait);
+  const searchCallback: (value: string) => void =
+    wait > 0 ? debounced : callback;
 
   return { searchCallback, onClear };
 }
@@ -46,7 +51,10 @@ export const SearchTermInput: React.FC<{
   filter: ListFilterModel;
   onFilterUpdate: (newFilter: ListFilterModel) => void;
   focus?: ReturnType<typeof useFocus>;
-}> = ({ filter, onFilterUpdate, focus: providedFocus }) => {
+  // set the term on every key press, for a filter that is only used later,
+  // such as the Edit Filter dialog's (#2179)
+  immediate?: boolean;
+}> = ({ filter, onFilterUpdate, focus: providedFocus, immediate = false }) => {
   const intl = useIntl();
   const [localInput, setLocalInput] = useState(filter.searchTerm);
 
@@ -60,7 +68,8 @@ export const SearchTermInput: React.FC<{
 
   const { searchCallback, onClear } = useDebouncedSearchInput(
     filter,
-    onFilterUpdate
+    onFilterUpdate,
+    immediate ? 0 : undefined
   );
 
   useEffect(() => {

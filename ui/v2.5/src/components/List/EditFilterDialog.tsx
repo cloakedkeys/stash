@@ -629,6 +629,9 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
                 <SearchTermInput
                   filter={currentFilter}
                   onFilterUpdate={setCurrentFilter}
+                  // nothing is fetched until Apply, which must see every key
+                  // press (#2179)
+                  immediate
                 />
               </div>
             )}
