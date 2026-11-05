@@ -228,9 +228,11 @@ func SetCurrentUser(ctx context.Context, u models.User) context.Context {
 	return context.WithValue(ctx, contextUser, u)
 }
 
-// SetSessionLoginTime records the login time of the session cookie that
-// authenticated the current request. Plugin cookies made for the request
-// carry it, so they are revoked together with the user's own session.
+// SetSessionLoginTime records the login time of the current request: the login
+// time of the session cookie that authenticated it, or for a request without a
+// session, the time it came in. Plugin cookies made for the request carry it,
+// so they are revoked together with the user's own session, or by any change to
+// the user after the request.
 func SetSessionLoginTime(ctx context.Context, loginTime time.Time) context.Context {
 	return context.WithValue(ctx, contextSessionLoginTime, loginTime)
 }

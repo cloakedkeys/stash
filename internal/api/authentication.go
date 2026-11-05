@@ -153,6 +153,8 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
+			// when the request came in, before its user is checked
+			requestTime := time.Now()
 
 			g := getUsers()
 			singleUserMode := g.IsSingleUserMode()
@@ -315,10 +317,17 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 			if u != nil {
 				// set the user object in the context
 				ctx = session.SetCurrentUser(ctx, *u)
-				if !sessionLoginTime.IsZero() {
-					// plugin cookies made for this request keep the session's login time
-					ctx = session.SetSessionLoginTime(ctx, sessionLoginTime)
+				// Plugins started by this request keep the session's login
+				// time. A request without a session (API key, signed URL,
+				// single user mode) was checked when it came in, so that is
+				// its login time, even for a task that starts later. A
+				// password reset or role change after this then ends the
+				// plugin, as it ends the user's sessions.
+				loginTime := sessionLoginTime
+				if loginTime.IsZero() {
+					loginTime = requestTime
 				}
+				ctx = session.SetSessionLoginTime(ctx, loginTime)
 			}
 
 			r = r.WithContext(ctx)

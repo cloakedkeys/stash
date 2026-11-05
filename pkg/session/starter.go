@@ -12,9 +12,9 @@ import (
 // in-process can be checked the same way a returning cookie is.
 type PluginStarter struct {
 	User models.User
-	// LoginTime is the login time of the session that signed in the request.
-	// Zero if the request had no session (API key, signed URL, single user
-	// mode), as for MakePluginCookie, which then uses the time the plugin
+	// LoginTime is the login time of the request: its session's login time,
+	// or the time it came in if it had no session. Zero if the context carries
+	// none, as for MakePluginCookie, which then uses the time the plugin
 	// starts.
 	LoginTime time.Time
 	// APIKeyFingerprint is set if the request was signed in with an API key.
@@ -50,7 +50,7 @@ func (s *PluginStarter) PluginContext() context.Context {
 
 	loginTime := s.LoginTime
 	if loginTime.IsZero() {
-		// as MakePluginCookie: a request without a session was checked just now
+		// as MakePluginCookie: a context with no login time was checked just now
 		loginTime = time.Now()
 	}
 	ctx = SetSessionLoginTime(ctx, loginTime)

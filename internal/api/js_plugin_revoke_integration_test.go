@@ -210,6 +210,34 @@ func TestJSPluginLosesAccessMidRunOnDatabase(t *testing.T) {
 		me(t, got[1], "boss")
 	})
 
+	// #2132: a JavaScript task queued from an API key request is dated from
+	// when the request came in, so a password reset or role change while it
+	// waits ends it before it starts
+	t.Run("task queued with a key before a password reset", func(t *testing.T) {
+		start := startedWith(newKey("boss"))
+		nextSecond()
+		inTxn(func(ctx context.Context) error { return h.users.ChangeUserPassword(ctx, "boss", "new-password") })
+
+		got := h.runFrom(start, jsMeQuery)
+		refused(t, got[0])
+
+		// a task queued after the reset works
+		nextSecond()
+		got = h.runFrom(startedWith(newKey("boss")), jsMeQuery)
+		me(t, got[0], "boss")
+	})
+
+	t.Run("task queued with a key before a role change", func(t *testing.T) {
+		start := startedWith(newKey("other"))
+		nextSecond()
+		inTxn(func(ctx context.Context) error {
+			return h.users.UpdateUser(ctx, "other", models.User{Username: "other", Roles: models.Roles{models.RoleEnumAdmin, models.RoleEnumModify}})
+		})
+
+		got := h.runFrom(start, jsMeQuery)
+		refused(t, got[0])
+	})
+
 	// t.Run order matters below: each changes the viewer for good
 
 	t.Run("library limit change applies mid-run", func(t *testing.T) {

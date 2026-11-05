@@ -210,6 +210,39 @@ func TestPluginCookieAuthenticatesCallback(t *testing.T) {
 			"plugin cookie must be refused once the user's session is revoked")
 	})
 
+	// #2132: a task queued from a request without a session is dated from
+	// when the request came in, not when the task starts
+	t.Run("api key task queued before a password reset", func(t *testing.T) {
+		users.admin.UpdatedAt = notUpdatedSinceLogin
+
+		before := time.Now()
+		w := request("admin-key", nil)
+		require.Equal(t, http.StatusOK, w.Code)
+		require.NotNil(t, requestCtx)
+		queuedCtx := requestCtx
+		after := time.Now()
+
+		// the password is reset while the task waits in the queue
+		time.Sleep(2 * time.Millisecond)
+		users.admin.UpdatedAt = time.Now()
+		time.Sleep(2 * time.Millisecond)
+
+		// the task starts and makes its plugin cookie now
+		c := sessions.MakePluginCookie(queuedCtx)
+		require.NotNil(t, c)
+		lt := loginTimeOf(c)
+		require.False(t, lt.Before(before) || lt.After(after),
+			"login time %v must be when the request came in, between %v and %v", lt, before, after)
+		require.Equal(t, http.StatusUnauthorized, request("", c).Code,
+			"a task queued before the password reset must not call back")
+
+		// a task queued after the reset works
+		users.admin.UpdatedAt = time.Now().Add(-time.Millisecond)
+		w = request("admin-key", nil)
+		require.Equal(t, http.StatusOK, w.Code)
+		require.Equal(t, http.StatusOK, request("", sessions.MakePluginCookie(requestCtx)).Code)
+	})
+
 	t.Run("queued task started after revocation", func(t *testing.T) {
 		users.admin.UpdatedAt = notUpdatedSinceLogin
 
