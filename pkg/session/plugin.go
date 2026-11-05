@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/gob"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
@@ -66,7 +67,21 @@ func (s *Store) MakePluginCookie(ctx context.Context) *http.Cookie {
 
 	session := sessions.NewSession(s.sessionStore, cookieName)
 	if currentUser != nil {
-		session.Values[userIDKey] = *currentUser
+		// Store the username, the same string value Login stores and
+		// GetSession reads. The user struct can't be gob-encoded into the
+		// cookie, which left plugins without a session cookie.
+		session.Values[userIDKey] = currentUser.Username
+
+		// Use the login time of the session that authenticated the request, so
+		// the plugin has the same standing as that session and is refused once
+		// it is revoked. A request without a session (API key, signed URL, single
+		// user mode) was authenticated just now.
+		loginTime, ok := getSessionLoginTime(ctx)
+		if !ok {
+			loginTime = time.Now()
+		}
+		session.Values[loginTimeKey] = loginTime.Unix()
+		session.Values[loginTimeNanosKey] = loginTime.UnixNano()
 	}
 
 	session.Values[visitedPluginHooksKey] = visitedPlugins

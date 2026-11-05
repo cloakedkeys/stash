@@ -20,6 +20,7 @@ const (
 	contextUser key = iota
 	contextVisitedPlugins
 	contextLocalRequest
+	contextSessionLoginTime
 )
 
 const (
@@ -215,6 +216,18 @@ func SetCurrentUser(ctx context.Context, u models.User) context.Context {
 	ctx = models.WithUserID(ctx, u.ID)
 	ctx = models.WithLibraryLimit(ctx, u.LibraryLimit)
 	return context.WithValue(ctx, contextUser, u)
+}
+
+// SetSessionLoginTime records the login time of the session cookie that
+// authenticated the current request. Plugin cookies made for the request
+// carry it, so they are revoked together with the user's own session.
+func SetSessionLoginTime(ctx context.Context, loginTime time.Time) context.Context {
+	return context.WithValue(ctx, contextSessionLoginTime, loginTime)
+}
+
+func getSessionLoginTime(ctx context.Context) (time.Time, bool) {
+	t, ok := ctx.Value(contextSessionLoginTime).(time.Time)
+	return t, ok
 }
 
 // GetCurrentUser gets the current user id from the provided context
