@@ -3,9 +3,29 @@
 
 package desktop
 
-// The notification script below is taken unchanged from
-// github.com/go-toast/toast (MIT License, Copyright (c) 2016 Jacob Marshall).
-// Stash used to call that package's Push, which starts PowerShell with
+// The notification script and the defaults applied in script() are from
+// https://github.com/go-toast/toast
+// Copyright (c) 2016 Jacob Marshall
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+// The script is used unchanged. Stash used to call that package's Push, which starts PowerShell with
 // os/exec directly. That PowerShell shared Stash's console, so a Ctrl-C or
 // Ctrl-Break sent to Stash also stopped it, and the notification failed with
 // exit status 0xc000013a. Running the same script through pkg/exec gives
