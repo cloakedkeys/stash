@@ -39,9 +39,9 @@ func FilterTags(excludeRegexps []*regexp.Regexp, tags []*models.ScrapedTag) (new
 		ignore := false
 		for _, reg := range excludeRegexps {
 			// Patterns ignore case by default (see CompileExclusionRegexps), so the
-			// name is matched as written; a pattern starting with (?-i) can then
-			// ask for capital letters.
-			if reg.MatchString(t.Name) {
+			// name is matched as written; a pattern with (?-i) can then ask for
+			// capital letters.
+			if reg.MatchString(foldSpecialLetters(t.Name)) {
 				ignore = true
 				ignoredTags = sliceutil.AppendUnique(ignoredTags, t.Name)
 				break
@@ -54,6 +54,25 @@ func FilterTags(excludeRegexps []*regexp.Regexp, tags []*models.ScrapedTag) (new
 	}
 
 	return newTags, ignoredTags
+}
+
+// foldSpecialLetters lower-cases the only two letters whose lower-case form a
+// case-insensitive pattern doesn't treat as the same letter: the Turkish
+// capital dotted I and the Kelvin sign. Names used to be lower-cased before
+// matching, so this keeps "istanbul" matching "İstanbul".
+func foldSpecialLetters(s string) string {
+	if !strings.ContainsAny(s, "İK") {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case 'İ':
+			return 'i'
+		case 'K':
+			return 'k'
+		}
+		return r
+	}, s)
 }
 
 // CompileExclusionRegexps compiles a list of tag exclusion patterns into a list of regular expressions

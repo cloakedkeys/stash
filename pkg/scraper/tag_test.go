@@ -37,6 +37,12 @@ func TestFilterTagsExclusionPatterns(t *testing.T) {
 		// non-ASCII names still ignore case
 		{"^ÉCOLE$", "école", true},
 		{"^straße$", "STRASSE", false},
+		// the Turkish capital dotted I and the Kelvin sign match as before
+		{"istanbul", "İstanbul", true},
+		{"ISTANBUL", "İSTANBUL", true},
+		{`^\w+$`, "İzmir", true},
+		{`\W`, "İzmir", false},
+		{`^k\b`, "K", true},
 		// every branch of an alternation ignores case
 		{"^FOO$|^Bar$", "foo", true},
 		{"^FOO$|^Bar$", "BAR", true},
