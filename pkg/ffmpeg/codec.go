@@ -47,6 +47,9 @@ var (
 	AudioCodecCopy    AudioCodec = "copy"
 )
 
+// Options that ffmpeg also applies to audio streams (-q, -global_quality,
+// -level) or warns about as ambiguous (-profile) carry the :v specifier, so
+// they only reach the video encoder.
 func (c VideoCodec) ExtraArgs() (args Args) {
 	switch c {
 	// CPU Codecs
@@ -75,7 +78,7 @@ func (c VideoCodec) ExtraArgs() (args Args) {
 	case VideoCodecN264H:
 		args = append(args,
 			"-tune", "hq",
-			"-profile", "high",
+			"-profile:v", "high",
 			"-rc", "vbr",
 			"-rc-lookahead", "60",
 			"-surfaces", "64",
@@ -87,12 +90,12 @@ func (c VideoCodec) ExtraArgs() (args Args) {
 		)
 	case VideoCodecI264, VideoCodecIVP9:
 		args = append(args,
-			"-global_quality", "20",
+			"-global_quality:v", "20",
 			"-preset", "faster",
 		)
 	case VideoCodecI264C:
 		args = append(args,
-			"-q", "20",
+			"-q:v", "20",
 			"-preset", "faster",
 		)
 	case VideoCodecV264, VideoCodecVVP9:
@@ -124,7 +127,7 @@ func (c VideoCodec) ExtraArgsHQ(preset string, crf int) (args Args) {
 		args = append(args,
 			"-pix_fmt", "yuv420p",
 			"-profile:v", "high",
-			"-level", "4.2",
+			"-level:v", "4.2",
 			"-preset", preset,
 			"-crf", strconv.Itoa(crf),
 			"-sc_threshold", "0",
@@ -150,7 +153,7 @@ func (c VideoCodec) ExtraArgsHQ(preset string, crf int) (args Args) {
 	case VideoCodecN264H:
 		args = append(args,
 			"-tune", "hq",
-			"-profile", "high",
+			"-profile:v", "high",
 			"-rc", "vbr",
 			"-rc-lookahead", "60",
 			"-surfaces", "64",
@@ -162,12 +165,12 @@ func (c VideoCodec) ExtraArgsHQ(preset string, crf int) (args Args) {
 		)
 	case VideoCodecI264, VideoCodecIVP9:
 		args = append(args,
-			"-global_quality", "15",
+			"-global_quality:v", "15",
 			"-preset", "slow",
 		)
 	case VideoCodecI264C:
 		args = append(args,
-			"-q", "15",
+			"-q:v", "15",
 			"-preset", "slow",
 		)
 	case VideoCodecV264, VideoCodecVVP9:
