@@ -405,8 +405,10 @@ func pluginGQLHandler(gql http.Handler, txnMgr models.TxnManager, getUsers func(
 // JavaScript plugins make in-process. Those requests don't pass through
 // authenticateHandler, so the plugin brings the user whose request started it
 // in the request context. In single-user mode every request acts as the single
-// user, as authenticateHandler does. In multi-user mode a plugin that nobody
-// started keeps running without a user.
+// user, as authenticateHandler does. In multi-user mode each call is checked
+// as a returning plugin cookie is, and a plugin that nobody started is treated
+// as an unauthenticated request: it acts as the guest account if there is one,
+// and is refused otherwise.
 func pluginUserHandler(txnMgr models.TxnManager, getUsers func() UserAuthenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -422,15 +424,28 @@ func pluginUserHandler(txnMgr models.TxnManager, getUsers func() UserAuthenticat
 				if u != nil {
 					r = r.WithContext(session.SetCurrentUser(r.Context(), *u))
 				}
-			} else if starter := session.GetCurrentUser(r.Context()); starter != nil {
-				u, err := checkPluginCaller(r.Context(), txnMgr, g, starter.Username)
-				if err != nil {
-					logger.Errorf("error checking plugin user: %v", err)
-					w.WriteHeader(http.StatusInternalServerError)
-					return
+			} else {
+				var u *models.User
+				if starter := session.GetCurrentUser(r.Context()); starter != nil {
+					var err error
+					u, err = checkPluginCaller(r.Context(), txnMgr, g, starter.Username)
+					if err != nil {
+						logger.Errorf("error checking plugin user: %v", err)
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+				}
+
+				if u == nil {
+					// Nobody started the plugin, or its user was refused, as a
+					// returning plugin cookie can be. It acts as an
+					// unauthenticated request does: as the guest account if
+					// there is one, and refused otherwise. The role checks let a
+					// call with no user through, which is only meant for a new
+					// system that has no accounts yet.
+					u = g.GetGuestUser(r.Context())
 				}
 				if u == nil {
-					// as for a returning plugin cookie that is refused
 					w.WriteHeader(http.StatusUnauthorized)
 					return
 				}

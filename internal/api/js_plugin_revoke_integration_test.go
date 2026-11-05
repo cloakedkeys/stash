@@ -149,6 +149,27 @@ func TestJSPluginLosesAccessMidRunOnDatabase(t *testing.T) {
 		refused(t, got[2])
 	})
 
+	// #2121: a refused plugin acts as an unauthenticated request does, so
+	// with the guest account turned on it carries on as the guest, as a
+	// refused plugin cookie does
+	t.Run("key deleted mid-run with guest account", func(t *testing.T) {
+		require.NoError(t, h.users.SetGuestUserEnabled(true))
+		defer func() { require.NoError(t, h.users.SetGuestUserEnabled(false)) }()
+
+		start := startedWith(newKey("boss"))
+		h.onCall = func(n int) {
+			if n == 1 {
+				clearKey("boss")
+			}
+		}
+		defer func() { h.onCall = nil }()
+
+		got := h.runFrom(start, jsMeQuery, jsMeQuery, `mutation { reloadPlugins }`)
+		me(t, got[0], "boss")
+		me(t, got[1], "guest")
+		assert.Contains(t, got[2].Error, `"message":"unauthorized"`, "the guest can't do what an admin can")
+	})
+
 	t.Run("hook started by the plugin ends with the key", func(t *testing.T) {
 		start := startedWith(newKey("boss"))
 		got := h.runFrom(start, `mutation { tagCreate(input: { name: "from js plugin" }) { id } }`)
