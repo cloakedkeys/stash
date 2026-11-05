@@ -51,6 +51,9 @@ export const GenerateDialog: React.FC<IGenerateDialog> = ({
   const [configRead, setConfigRead] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [animation, setAnimation] = useState(true);
+  // Help replaces this dialog, which loses track of what was changed in it;
+  // once Help has been open, Esc stays off.
+  const [leftDialog, setLeftDialog] = useState(false);
 
   const intl = useIntl();
   const Toast = useToast();
@@ -171,6 +174,7 @@ export const GenerateDialog: React.FC<IGenerateDialog> = ({
 
   function onShowManual() {
     setAnimation(false);
+    setLeftDialog(true);
     setShowManual(true);
   }
 
@@ -191,6 +195,7 @@ export const GenerateDialog: React.FC<IGenerateDialog> = ({
       modalProps={{ animation, size: "lg" }}
       icon={faCogs}
       header={intl.formatMessage({ id: "actions.generate" })}
+      changed={leftDialog}
       accept={{
         onClick: onGenerate,
         text: intl.formatMessage({ id: "actions.generate" }),

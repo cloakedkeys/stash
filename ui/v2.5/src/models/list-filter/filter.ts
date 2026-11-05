@@ -75,26 +75,48 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 // repeat: {is_missing: A, AND: {is_missing: B, AND: {is_missing: C}}}. The
 // conditions are all ANDed, as they are at the top level. Without repeats the
 // result is exactly what writing every criterion into one object gives.
+// Keys in mergeKeys hold objects that several criteria can share, as long as
+// the keys inside them differ (criteria on a related object, #1548).
 // Without useAnd (the filter type has no AND), a repeat replaces the earlier
 // condition, as all repeats did before they were allowed.
 function combineCriteria(
   criteria: Criterion[],
   apply: (c: Criterion, output: Record<string, unknown>) => void,
+  mergeKeys?: Set<string>,
   useAnd = true
 ) {
+  const canMerge = (k: string, a: unknown, b: unknown) =>
+    !!mergeKeys?.has(k) &&
+    isPlainObject(a) &&
+    isPlainObject(b) &&
+    !Object.keys(a as object).some((kk) => kk in (b as object));
+
   const output: Record<string, unknown> = {};
   for (const c of criteria) {
     const own: Record<string, unknown> = {};
     apply(c, own);
 
     let target = output;
-    while (useAnd && Object.keys(own).some((k) => k in target)) {
+    while (
+      useAnd &&
+      Object.keys(own).some(
+        (k) => k in target && !canMerge(k, own[k], target[k])
+      )
+    ) {
       if (!isPlainObject(target[AND_KEY])) {
         target[AND_KEY] = {};
       }
       target = target[AND_KEY] as Record<string, unknown>;
     }
-    Object.assign(target, own);
+    for (const [k, v] of Object.entries(own)) {
+      target[k] =
+        mergeKeys?.has(k) && isPlainObject(target[k]) && isPlainObject(v)
+          ? {
+              ...(target[k] as Record<string, unknown>),
+              ...(v as Record<string, unknown>),
+            }
+          : v;
+    }
   }
   return output;
 }
@@ -527,9 +549,33 @@ export class ListFilterModel {
   // from an edited web address or a saved filter; then the last condition of
   // the kind is sent, as before repeats were allowed.
   public makeFilter() {
+    // criteria on a related object go inside its filter, under the related
+    // object's own name for the criterion. Several of them share that filter;
+    // a repeat of one goes into AND like any other.
+    const subFilterKeys = new Set<string>();
+    for (const c of this.criteria) {
+      const { subFilter } = c.criterionOption;
+      if (subFilter) subFilterKeys.add(subFilter.key);
+    }
+
     return combineCriteria(
       this.criteria,
-      (c, output) => c.applyToCriterionInput(output),
+      (c, output) => {
+        const { type, subFilter } = c.criterionOption;
+        if (!subFilter) {
+          c.applyToCriterionInput(output);
+          return;
+        }
+
+        const subOutput: Record<string, unknown> = {};
+        c.applyToCriterionInput(subOutput);
+        if (type in subOutput) {
+          subOutput[subFilter.field] = subOutput[type];
+          delete subOutput[type];
+        }
+        output[subFilter.key] = subOutput;
+      },
+      subFilterKeys,
       supportsSubFilters(this.mode)
     );
   }
@@ -637,8 +683,29 @@ export class ListFilterModel {
     if (c instanceof CustomFieldsCriterion) {
       const newCriteria = c.value.filter((_, i) => i !== index);
       c.value = newCriteria;
+      // the results change, as when a condition is removed
+      ret.currentPage = 1;
     }
 
+    return ret;
+  }
+
+  // Removes one value of the given custom fields criterion, which is one of
+  // this filter's criteria; there can be several of the kind. A criterion
+  // that isn't one of them uses the first of its kind, as
+  // removeCustomFieldCriterion does.
+  public removeCustomFieldValue(c: Criterion, index: number) {
+    const at = this.criteria.indexOf(c);
+    if (at === -1) {
+      return this.removeCustomFieldCriterion(c.criterionOption.type, index);
+    }
+
+    const ret = this.clone();
+    const target = ret.criteria[at];
+    if (target instanceof CustomFieldsCriterion) {
+      target.value = target.value.filter((_, i) => i !== index);
+      ret.currentPage = 1;
+    }
     return ret;
   }
 

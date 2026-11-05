@@ -275,6 +275,11 @@ export class CriterionOption {
   // used for legacy criteria that are not shown in the UI
   public readonly hidden: boolean = false;
 
+  // Set for criteria on a related object, such as the scene of a marker:
+  // the criterion is sent inside that object's filter (key, e.g. scene_filter)
+  // as that object's own criterion (field, e.g. performer_tags).
+  public readonly subFilter?: { key: string; field: CriterionType };
+
   constructor(options: ICriterionOptionParams) {
     this.type = options.type;
     this.messageID = options.messageID;
@@ -286,6 +291,35 @@ export class CriterionOption {
   public makeCriterion(config?: ConfigDataFragment) {
     return this.makeCriterionFn(this, config);
   }
+}
+
+// Offers a criterion of a related object's list on another list, such as the
+// scene list's "Performer Tags" as "Scene Performer Tags" on the marker list.
+// It uses the related list's criterion, and so its editor, but has its own type
+// (for saved filters and URLs) and label, and is sent inside subFilterKey.
+export function createSubFilterCriterionOption(
+  option: CriterionOption,
+  subFilterKey: string,
+  type: CriterionType,
+  messageID: string,
+  sfwMessageID?: string
+): CriterionOption {
+  const ret: CriterionOption = Object.assign(
+    Object.create(Object.getPrototypeOf(option)),
+    option,
+    {
+      type,
+      messageID,
+      sfwMessageID,
+      subFilter: { key: subFilterKey, field: option.type },
+      makeCriterionFn: (_: CriterionOption, config?: ConfigDataFragment) => {
+        const c = option.makeCriterion(config);
+        c.criterionOption = ret;
+        return c;
+      },
+    }
+  );
+  return ret;
 }
 
 interface IModifierCriterionOptionParams extends ICriterionOptionParams {

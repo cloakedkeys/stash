@@ -182,6 +182,8 @@ export const SceneQueryModal: React.FC<IProps> = ({
   return (
     <ModalComponent
       show
+      // a search or picker: a typed query is nothing to lose
+      escapeAfterChanges
       onHide={onHide}
       modalProps={{ size: "lg", dialogClassName: "scrape-query-dialog" }}
       header={intl.formatMessage(

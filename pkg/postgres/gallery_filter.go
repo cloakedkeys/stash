@@ -50,6 +50,10 @@ func (qb *galleryFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		sub := &galleryFilterHandler{sf}
 		handleSubFilter(ctx, sub, f, galleryFilter.OperatorFilter)
 	}
+
+	handleAllOf(ctx, f, galleryFilter.AllOf, func(sf *models.GalleryFilterType) criterionHandler {
+		return &galleryFilterHandler{sf}
+	})
 }
 
 func (qb *galleryFilterHandler) criterionHandler() criterionHandler {

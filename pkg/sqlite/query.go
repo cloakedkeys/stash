@@ -170,11 +170,40 @@ func (qb *queryBuilder) addJoins(joins ...join) {
 	}
 }
 
+// resolveAllOf turns the ALL_OF filters of each level into WHERE clauses that
+// select the matching ids with a query of their own.
+func (qb *queryBuilder) resolveAllOf(f *filterBuilder) {
+	table := qb.repository.tableName
+	for ff := f; ff != nil; ff = ff.subFilter {
+		for _, sub := range ff.allOf {
+			if sub.err == nil && sub.empty() {
+				continue
+			}
+
+			subQuery := qb.repository.newQuery()
+			selectIDs(&subQuery, table)
+			if err := subQuery.addFilter(sub); err != nil {
+				ff.setError(err)
+				continue
+			}
+
+			ff.addWhere(fmt.Sprintf("%s.id IN (%s)", table, subQuery.toSQL(false)), subQuery.allArgs()...)
+		}
+		ff.allOf = nil
+	}
+}
+
 func (qb *queryBuilder) addFilter(f *filterBuilder) error {
+	qb.resolveAllOf(f)
+
 	err := f.getError()
 	if err != nil {
 		return err
 	}
+
+	// #2167, #2172 - levels that can't share one joined query select their
+	// own ids. #2170 - so do sub-filter levels with WITH clauses
+	f.isolateSubFilterLevels(qb.repository.tableName)
 
 	clause, args := f.generateWithClauses()
 	if len(clause) > 0 {

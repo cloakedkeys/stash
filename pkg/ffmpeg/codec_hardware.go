@@ -72,6 +72,7 @@ func (f *FFMpeg) initHWSupport(ctx context.Context) {
 		VideoCodecI264,
 		VideoCodecI264C,
 		VideoCodecV264,
+		VideoCodecA264,
 		VideoCodecR264,
 		VideoCodecRK264,
 		VideoCodecIVP9,
@@ -157,7 +158,9 @@ func (f *FFMpeg) initHWSupport(ctx context.Context) {
 }
 
 func (f *FFMpeg) HWCanFullHWTranscode(ctx context.Context, codec VideoCodec, path string, width int, height int, reqHeight int) bool {
-	if codec == VideoCodecCopy {
+	// AMF has no hardware decode path here; it always encodes frames decoded
+	// by the CPU, so a test run would only repeat the normal command.
+	if codec == VideoCodecCopy || codec == VideoCodecA264 {
 		return false
 	}
 
@@ -288,6 +291,9 @@ func (f *FFMpeg) HWFilterInit(toCodec VideoCodec, fullhw bool) VideoFilter {
 		VideoCodecI264C,
 		VideoCodecIVP9:
 		if !fullhw {
+			// Convert first: hwupload keeps 10-bit frames as 10-bit (p010),
+			// which h264_qsv can't encode (#2165).
+			videoFilter = videoFilter.Append("format=nv12")
 			videoFilter = videoFilter.Append("hwupload=extra_hw_frames=64")
 			videoFilter = videoFilter.Append("format=qsv")
 		}
@@ -356,6 +362,13 @@ func templateReplaceScale(input string, template string, match []int, width, hei
 
 // Replace video filter scaling with hardware scaling for full hardware transcoding (also fixes the format)
 func (f *FFMpeg) HWCodecFilter(args VideoFilter, codec VideoCodec, width, height int, fullhw bool) VideoFilter {
+	if codec == VideoCodecA264 {
+		// AMF takes frames from system memory, but not 10-bit ones
+		// ("10-bit input video is not supported by AMF H264 encoder").
+		// Convert after scaling, so scaling works on the source format.
+		return args.Append("format=nv12")
+	}
+
 	sargs := string(args)
 
 	match := scaler_re.FindStringSubmatchIndex(sargs)
@@ -478,7 +491,9 @@ func (f *FFMpeg) HWCodecHLSCompatible(defaultCodec VideoCodec) VideoCodec {
 	return defaultCodec
 }
 
-// Return a hardware accelerated codec for MP4 if available, otherwise the default
+// Return a hardware accelerated codec for live MP4 streams if available, otherwise the default.
+// VAAPI is left out: h264_vaapi was found broken with the fragmented MP4 output
+// (frag_keyframe+empty_moov) that live MP4 streams use (stashapp/stash#3419).
 func (f *FFMpeg) HWCodecMP4Compatible(defaultCodec VideoCodec) VideoCodec {
 	for _, element := range f.getHWCodecSupport() {
 		switch element {
@@ -486,6 +501,27 @@ func (f *FFMpeg) HWCodecMP4Compatible(defaultCodec VideoCodec) VideoCodec {
 			VideoCodecN264H,
 			VideoCodecI264,
 			VideoCodecI264C,
+			VideoCodecM264,
+			VideoCodecRK264:
+			return element
+		}
+	}
+	return defaultCodec
+}
+
+// Return a hardware accelerated H264 codec for generated MP4 files (previews,
+// marker previews and transcodes) if available, otherwise the default.
+// Generated files are ordinary MP4 files, not fragmented ones, so unlike
+// HWCodecMP4Compatible this also allows VAAPI, as well as AMD AMF.
+func (f *FFMpeg) HWCodecGenerateCompatible(defaultCodec VideoCodec) VideoCodec {
+	for _, element := range f.getHWCodecSupport() {
+		switch element {
+		case VideoCodecN264,
+			VideoCodecN264H,
+			VideoCodecI264,
+			VideoCodecI264C,
+			VideoCodecV264,
+			VideoCodecA264,
 			VideoCodecM264,
 			VideoCodecRK264:
 			return element

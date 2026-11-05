@@ -50,6 +50,10 @@ func (qb *groupFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		sub := &groupFilterHandler{sf}
 		handleSubFilter(ctx, sub, f, groupFilter.OperatorFilter)
 	}
+
+	handleAllOf(ctx, f, groupFilter.AllOf, func(sf *models.GroupFilterType) criterionHandler {
+		return &groupFilterHandler{sf}
+	})
 }
 
 var groupHierarchyHandler = hierarchicalRelationshipHandler{

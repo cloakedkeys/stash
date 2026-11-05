@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { FormattedMessage, IntlShape, useIntl } from "react-intl";
 import { useFindSavedFilters } from "src/core/StashService";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
+import { useEscapeToCancel } from "../Shared/Modal";
 import { Button, Form, Modal } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
 import { useConfigurationContext } from "src/hooks/Config";
@@ -47,6 +48,7 @@ const AddContentModal: React.FC<IAddSavedFilterModalProps> = ({
   candidates,
 }) => {
   const intl = useIntl();
+  const escapeProps = useEscapeToCancel({ onCancel: () => onClose() });
 
   const premadeFilterOptions = useMemo(
     () => generatePremadeFrontPageContent(intl),
@@ -202,7 +204,7 @@ const AddContentModal: React.FC<IAddSavedFilterModalProps> = ({
   }
 
   return (
-    <Modal show onHide={() => onClose()}>
+    <Modal show onHide={() => onClose()} {...escapeProps}>
       <Modal.Header>
         <FormattedMessage id="actions.add" />
       </Modal.Header>

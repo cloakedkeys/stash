@@ -55,6 +55,10 @@ func (qb *folderFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		sub := &folderFilterHandler{folderFilter: sf, table: qb.table}
 		handleSubFilter(ctx, sub, f, folderFilter.OperatorFilter)
 	}
+
+	handleAllOf(ctx, f, folderFilter.AllOf, func(sf *models.FolderFilterType) criterionHandler {
+		return &folderFilterHandler{folderFilter: sf, table: qb.table, isRelated: qb.isRelated}
+	})
 }
 
 func (qb *folderFilterHandler) criterionHandler() criterionHandler {

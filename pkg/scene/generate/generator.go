@@ -86,7 +86,7 @@ func (g *Generator) DetermineCodecAndHW(ctx context.Context, path string, width,
 	codec := ffmpeg.VideoCodecLibX264
 	fullhw := false
 	if g.FFMpegConfig.GetGenerationHardwareAcceleration() {
-		codec = g.Encoder.HWCodecMP4Compatible(codec)
+		codec = g.Encoder.HWCodecGenerateCompatible(codec)
 		fullhw = codec != ffmpeg.VideoCodecLibX264 &&
 			g.Encoder.HWCanFullHWTranscode(ctx, codec, path, width, height, targetHeight)
 	}

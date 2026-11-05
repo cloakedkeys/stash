@@ -1,4 +1,5 @@
 import cloneDeep from "lodash-es/cloneDeep";
+import isEqual from "lodash-es/isEqual";
 import React, {
   useCallback,
   useEffect,
@@ -22,6 +23,7 @@ import { getFilterOptions } from "src/models/list-filter/factory";
 import { FilterTags } from "./FilterTags";
 import { CriterionEditor } from "./CriterionEditor";
 import { Icon } from "../Shared/Icon";
+import { useEscapeToCancel } from "../Shared/Modal";
 import {
   faChevronDown,
   faChevronRight,
@@ -252,13 +254,49 @@ interface IEditFilterProps {
   filter: ListFilterModel;
   // the kind of criterion to open, or one of filter's criteria
   editingCriterion?: string | Criterion;
+  // for searches that take only criteria, such as the duplicate checker
+  hideSearchTerm?: boolean;
   onApply: (filter: ListFilterModel) => void;
   onCancel: () => void;
+}
+
+// The filter that Apply gives back: when the conditions or search term
+// changed, the results change, so it shows the first page, as the filter bar
+// does (#2175). Otherwise it stays on the same page.
+export function filterToApply(
+  original: ListFilterModel,
+  edited: ListFilterModel
+) {
+  if (
+    edited.searchTerm === original.searchTerm &&
+    isEqual(edited.makeSavedFilter(), original.makeSavedFilter())
+  ) {
+    return edited;
+  }
+
+  const ret = edited.clone();
+  ret.currentPage = 1;
+  return ret;
+}
+
+// Save… saves the filter as edited in the dialog, not the one it opened
+// with (#2178), and returns it to be applied.
+export async function saveEditedFilter(
+  save: (f: ListFilterModel, name: string, id?: string) => Promise<unknown>,
+  original: ListFilterModel,
+  edited: ListFilterModel,
+  name: string,
+  id?: string
+) {
+  const toSave = filterToApply(original, edited);
+  await save(toSave, name, id);
+  return toSave;
 }
 
 export const EditFilterDialog: React.FC<IEditFilterProps> = ({
   filter,
   editingCriterion,
+  hideSearchTerm = false,
   onApply,
   onCancel,
 }) => {
@@ -283,6 +321,13 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
   const [savingFilter, setSavingFilter] = useState(false);
 
   const [showLoadDialog, setShowLoadDialog] = useState(false);
+  // The save and load filter dialogs hide this one, which loses track of what
+  // was changed in it; once one has been open, Esc stays off.
+  const [leftDialog, setLeftDialog] = useState(false);
+  const escapeProps = useEscapeToCancel({
+    onCancel: () => onCancel(),
+    changed: leftDialog,
+  });
 
   const saveFilter = useSaveFilter();
 
@@ -505,12 +550,7 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
 
   function removeCriterion(c: Criterion, valueIndex?: number) {
     if (valueIndex !== undefined) {
-      setCurrentFilter(
-        currentFilter.removeCustomFieldCriterion(
-          c.criterionOption.type,
-          valueIndex
-        )
-      );
+      setCurrentFilter(currentFilter.removeCustomFieldValue(c, valueIndex));
     } else {
       removeCriteria([c]);
     }
@@ -550,7 +590,13 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
   async function onSaveFilter(name: string, id?: string) {
     try {
       setSavingFilter(true);
-      await saveFilter(filter, name, id);
+      const saved = await saveEditedFilter(
+        saveFilter,
+        filter,
+        currentFilter,
+        name,
+        id
+      );
 
       Toast.success(
         intl.formatMessage(
@@ -563,7 +609,7 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
         )
       );
       setShowSaveDialog(false);
-      onApply(currentFilter);
+      onApply(saved);
     } catch (err) {
       Toast.error(err);
     } finally {
@@ -600,6 +646,7 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
       <Modal
         show={!showSaveDialog && !showLoadDialog}
         onHide={() => onCancel()}
+        {...escapeProps}
         // need sfw mode class because dialog is outside body
         className={cx("edit-filter-dialog", {
           "sfw-content-mode": sfwContentMode,
@@ -623,15 +670,20 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
               "criterion-selected": !!criterion,
             })}
           >
-            <div className="search-term-row">
-              <span>
-                <FormattedMessage id="search_filter.search_term" />
-              </span>
-              <SearchTermInput
-                filter={currentFilter}
-                onFilterUpdate={setCurrentFilter}
-              />
-            </div>
+            {!hideSearchTerm && (
+              <div className="search-term-row">
+                <span>
+                  <FormattedMessage id="search_filter.search_term" />
+                </span>
+                <SearchTermInput
+                  filter={currentFilter}
+                  onFilterUpdate={setCurrentFilter}
+                  // nothing is fetched until Apply, which must see every key
+                  // press (#2179)
+                  immediate
+                />
+              </div>
+            )}
             <CriterionOptionList
               criteria={criteriaList}
               currentCriterion={criterion}
@@ -676,14 +728,20 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
           <div>
             <Button
               variant="secondary"
-              onClick={() => setShowLoadDialog(true)}
+              onClick={() => {
+                setLeftDialog(true);
+                setShowLoadDialog(true);
+              }}
               title={intl.formatMessage({ id: "actions.load_filter" })}
             >
               <FormattedMessage id="actions.load" />…
             </Button>
             <Button
               variant="secondary"
-              onClick={() => setShowSaveDialog(true)}
+              onClick={() => {
+                setLeftDialog(true);
+                setShowSaveDialog(true);
+              }}
               title={intl.formatMessage({ id: "actions.save_filter" })}
             >
               <FormattedMessage id="actions.save" />…
@@ -693,7 +751,9 @@ export const EditFilterDialog: React.FC<IEditFilterProps> = ({
             <Button variant="secondary" onClick={() => onCancel()}>
               <FormattedMessage id="actions.cancel" />
             </Button>
-            <Button onClick={() => onApply(currentFilter)}>
+            <Button
+              onClick={() => onApply(filterToApply(filter, currentFilter))}
+            >
               <FormattedMessage id="actions.apply" />
             </Button>
           </div>

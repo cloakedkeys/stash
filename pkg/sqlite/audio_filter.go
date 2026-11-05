@@ -49,6 +49,10 @@ func (qb *audioFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 		sub := &audioFilterHandler{sf}
 		handleSubFilter(ctx, sub, f, audioFilter.OperatorFilter)
 	}
+
+	handleAllOf(ctx, f, audioFilter.AllOf, func(sf *models.AudioFilterType) criterionHandler {
+		return &audioFilterHandler{sf}
+	})
 }
 
 func (qb *audioFilterHandler) criterionHandler() criterionHandler {
