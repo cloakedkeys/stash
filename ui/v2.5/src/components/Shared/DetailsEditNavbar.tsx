@@ -5,6 +5,7 @@ import { useAutoTagTrigger } from "src/hooks/useAutoTagTrigger";
 import { ImageInput } from "./ImageInput";
 import { AutoTagConfirmDialog } from "./AutoTagConfirmDialog";
 import cx from "classnames";
+import { useEscapeToCancel } from "./Modal";
 import { useCanAdminister, useCanModify } from "src/hooks/CurrentUser";
 
 interface IProps {
@@ -41,6 +42,9 @@ export const DetailsEditNavbar: React.FC<IProps> = (props: IProps) => {
     () => props.onAutoTag?.(),
     () => setIsAutoTagAlertOpen(true)
   );
+  const deleteAlertEscapeProps = useEscapeToCancel({
+    onCancel: () => setIsDeleteAlertOpen(false),
+  });
 
   // everything here changes the object
   if (!canModify) return null;
@@ -149,7 +153,7 @@ export const DetailsEditNavbar: React.FC<IProps> = (props: IProps) => {
 
   function renderDeleteAlert() {
     return (
-      <Modal show={isDeleteAlertOpen}>
+      <Modal show={isDeleteAlertOpen} {...deleteAlertEscapeProps}>
         <Modal.Body>
           <FormattedMessage
             id="dialogs.delete_confirm"

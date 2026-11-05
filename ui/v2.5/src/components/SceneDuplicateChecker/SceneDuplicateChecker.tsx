@@ -36,6 +36,7 @@ import {
   faExclamationTriangle,
   faFileAlt,
   faFilm,
+  faFilter,
   faImages,
   faMapMarkerAlt,
   faPencilAlt,
@@ -45,6 +46,16 @@ import {
 import { SceneMergeModal } from "../Scenes/SceneMergeDialog";
 import { objectTitle } from "src/core/files";
 import { FileSize } from "../Shared/FileSize";
+import { useConfigurationContext } from "src/hooks/Config";
+import { EditFilterDialog } from "../List/EditFilterDialog";
+import { FilterTags } from "../List/FilterTags";
+import { ListFilterModel } from "src/models/list-filter/filter";
+import { Criterion } from "src/models/list-filter/criteria/criterion";
+import {
+  makeSceneFilter,
+  sceneFilterFromQuery,
+  setSceneFilterQuery,
+} from "./sceneFilter";
 
 const CLASSNAME = "duplicate-checker";
 
@@ -72,6 +83,15 @@ export const SceneDuplicateChecker: React.FC = () => {
     query.get("durationDiff") ?? defaultDurationDiff
   );
 
+  const { configuration } = useConfigurationContext();
+  const sceneFilter = useMemo(
+    () => sceneFilterFromQuery(history.location.search, configuration),
+    [history.location.search, configuration]
+  );
+  const [editingFilter, setEditingFilter] = useState<{
+    criterion?: string;
+  }>();
+
   const [currentPageSize, setCurrentPageSize] = useState(pageSize);
   const [isMultiDelete, setIsMultiDelete] = useState(false);
   const [deletingScenes, setDeletingScenes] = useState(false);
@@ -87,6 +107,7 @@ export const SceneDuplicateChecker: React.FC = () => {
     variables: {
       distance: hashDistance,
       duration_diff: durationDiff,
+      scene_filter: makeSceneFilter(sceneFilter),
     },
   });
 
@@ -179,6 +200,40 @@ export const SceneDuplicateChecker: React.FC = () => {
     }
     history.push({ search: newQuery.toString() });
   };
+
+  const setSceneFilter = (filter: ListFilterModel) => {
+    const newQuery = setSceneFilterQuery(query, filter);
+    newQuery.delete("page");
+    history.push({ search: newQuery.toString() });
+  };
+
+  function removeCriterion(c: Criterion, valueIndex?: number) {
+    const newFilter =
+      valueIndex !== undefined
+        ? sceneFilter.removeCustomFieldCriterion(
+            c.criterionOption.type,
+            valueIndex
+          )
+        : sceneFilter.removeCriterion(c.criterionOption.type);
+    setSceneFilter(newFilter);
+  }
+
+  function maybeRenderEditFilter() {
+    if (!editingFilter) return;
+
+    return (
+      <EditFilterDialog
+        filter={sceneFilter}
+        editingCriterion={editingFilter.criterion}
+        hideSearchTerm
+        onApply={(f) => {
+          setEditingFilter(undefined);
+          setSceneFilter(f);
+        }}
+        onCancel={() => setEditingFilter(undefined)}
+      />
+    );
+  }
 
   const resetCheckboxSelection = () => {
     const updatedScenes: Record<string, boolean> = {};
@@ -708,6 +763,7 @@ export const SceneDuplicateChecker: React.FC = () => {
         )}
         {renderMergeDialog()}
         {maybeRenderEdit()}
+        {maybeRenderEditFilter()}
         <h4>
           <FormattedMessage id="dupe_check.title" />
         </h4>
@@ -800,6 +856,37 @@ export const SceneDuplicateChecker: React.FC = () => {
                 </Form.Control>
               </Col>
             </Row>
+          </Form.Group>
+
+          <Form.Group>
+            <Row noGutters className="align-items-center">
+              <Form.Label>
+                <FormattedMessage id="dupe_check.scene_filter" />
+              </Form.Label>
+              <Col xs="auto">
+                <Button
+                  variant="secondary"
+                  className="ml-4"
+                  onClick={() => setEditingFilter({})}
+                >
+                  <Icon icon={faFilter} />{" "}
+                  <FormattedMessage id="search_filter.edit_filter" />
+                </Button>
+              </Col>
+              <Col>
+                <FilterTags
+                  criteria={sceneFilter.criteria}
+                  onEditCriterion={(c) =>
+                    setEditingFilter({ criterion: c.criterionOption.type })
+                  }
+                  onRemoveCriterion={removeCriterion}
+                  onRemoveAll={() => setSceneFilter(sceneFilter.empty())}
+                />
+              </Col>
+            </Row>
+            <Form.Text>
+              <FormattedMessage id="dupe_check.scene_filter_description" />
+            </Form.Text>
           </Form.Group>
 
           {codecOptions.length > 0 && (

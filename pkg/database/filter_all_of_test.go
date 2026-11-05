@@ -414,6 +414,67 @@ func TestFilterAllOfRelated(t *testing.T) {
 	})
 }
 
+// The file path and dir conditions use the file's folder. An ALL_OF item is
+// its own subquery, so it must join the folder itself.
+func TestFilterAllOfFilePathAndDir(t *testing.T) {
+	withTxn(func(ctx context.Context) error {
+		fileSet := func(f *models.FileFilterType) idSet {
+			t.Helper()
+			r, err := db.File().Query(ctx, models.FileQueryOptions{
+				QueryOptions: models.QueryOptions{FindFilter: allItems()},
+				FileFilter:   f,
+			})
+			require.NoError(t, err)
+			ret := idSet{}
+			for _, id := range r.IDs {
+				ret[int(id)] = true
+			}
+			return ret
+		}
+		path := func(r string) *models.FileFilterType {
+			return &models.FileFilterType{Path: regexCriterion(r)}
+		}
+		dir := func(r string) *models.FileFilterType {
+			return &models.FileFilterType{Dir: regexCriterion(r)}
+		}
+		or := func(a, b *models.FileFilterType) *models.FileFilterType {
+			a.Or = b
+			return a
+		}
+		allOf := func(items ...*models.FileFilterType) *models.FileFilterType {
+			return &models.FileFilterType{OperatorFilter: models.OperatorFilter[models.FileFilterType]{AllOf: items}}
+		}
+
+		a, b, c, d := fileSet(path(allOfA)), fileSet(path(allOfB)), fileSet(path(allOfC)), fileSet(path(allOfD))
+		anyDir := fileSet(dir("."))
+		for name, s := range map[string]idSet{"A": a, "B": b, "C": c, "D": d, "any dir": anyDir} {
+			require.NotEmpty(t, s, "%s finds nothing", name)
+		}
+
+		check := func(name string, want idSet, f *models.FileFilterType) {
+			t.Helper()
+			assert.Equal(t, want.sorted(), fileSet(f).sorted(), name)
+		}
+		check("ALL_OF [path A or B, path C or D]", setAnd(setOr(a, b), setOr(c, d)),
+			allOf(or(path(allOfA), path(allOfB)), or(path(allOfC), path(allOfD))))
+		check("ALL_OF [dir any, path A]", setAnd(anyDir, a), allOf(dir("."), path(allOfA)))
+		check("ALL_OF [dir none, path A]", idSet{}, allOf(dir("^no such dir$"), path(allOfA)))
+		check("ALL_OF [path A or dir none]", a, allOf(or(path(allOfA), dir("^no such dir$"))))
+
+		// scenes with a file that matches the ALL_OF items
+		sceneFiles := func(f *models.FileFilterType) idSet {
+			return querySceneSet(ctx, t, &models.SceneFilterType{FilesFilter: f})
+		}
+		withFileA := sceneFiles(path(allOfA))
+		require.NotEmpty(t, withFileA)
+		assert.Equal(t, withFileA.sorted(), sceneFiles(allOf(dir("."), path(allOfA))).sorted(), "files_filter ALL_OF [dir any, path A]")
+		assert.Empty(t, sceneFiles(allOf(dir("^no such dir$"), path(allOfA))).sorted(), "files_filter ALL_OF [dir none, path A]")
+		assert.Equal(t, withFileA.sorted(), sceneFiles(allOf(path("."), path(allOfA))).sorted(), "files_filter ALL_OF [path any, path A]")
+
+		return nil
+	})
+}
+
 // An invalid ALL_OF item is reported, not skipped.
 func TestFilterAllOfInvalidItem(t *testing.T) {
 	withTxn(func(ctx context.Context) error {

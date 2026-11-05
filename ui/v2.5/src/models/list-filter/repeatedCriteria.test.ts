@@ -396,3 +396,31 @@ describe("filters without a repeat are unchanged", () => {
     expect(filter.makeSavedFilter()).toEqual({});
   });
 });
+
+// #2173 with repeats: the x on one custom field value acts on the condition
+// that was clicked
+describe("removing one value of a repeated custom fields condition", () => {
+  const source = { field: "source", value: ["dvd"], modifier: "EQUALS" };
+  const region = { field: "region", value: ["2"], modifier: "NOT_EQUALS" };
+  const studio = { field: "studio", value: ["x"], modifier: "EQUALS" };
+
+  it("changes the clicked condition, not the first of its kind", () => {
+    const filter = sceneFilter([
+      ["custom_fields", [source]],
+      ["custom_fields", [region, studio]],
+    ]);
+    filter.currentPage = 3;
+
+    const removed = filter.removeCustomFieldValue(filter.criteria[1], 0);
+    expect(removed.makeFilter()).toEqual({
+      custom_fields: [source],
+      AND: { custom_fields: [studio] },
+    });
+    expect(removed.currentPage).toBe(1);
+    // the filter it came from is unchanged
+    expect(filter.makeFilter()).toEqual({
+      custom_fields: [source],
+      AND: { custom_fields: [region, studio] },
+    });
+  });
+});

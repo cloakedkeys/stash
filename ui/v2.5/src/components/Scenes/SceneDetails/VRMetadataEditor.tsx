@@ -4,6 +4,7 @@ import { Button, Form, Modal } from "react-bootstrap";
 import { FormattedMessage } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import { useToast } from "src/hooks/Toast";
+import { useEscapeToCancel } from "src/components/Shared/Modal";
 
 type CorrectionField =
   | "horizontal_offset"
@@ -79,6 +80,7 @@ export const VRMetadataEditor: React.FC<IProps> = ({ file }) => {
   const Toast = useToast();
   const [saveMetadata, { loading }] = GQL.useFileSetVrMetadataMutation();
   const [show, setShow] = useState(false);
+  const escapeProps = useEscapeToCancel({ onCancel: () => setShow(false) });
   const [projection, setProjection] = useState<GQL.VideoProjection | "">("");
   const [stereoMode, setStereoMode] = useState<GQL.StereoMode | "">("");
   const [corrections, setCorrections] = useState<
@@ -225,7 +227,12 @@ export const VRMetadataEditor: React.FC<IProps> = ({ file }) => {
         </Button>
       </dd>
 
-      <Modal show={show} onHide={() => setShow(false)} size="lg">
+      <Modal
+        show={show}
+        onHide={() => setShow(false)}
+        size="lg"
+        {...escapeProps}
+      >
         <Modal.Header closeButton>
           <Modal.Title>
             <FormattedMessage id="media_info.edit_vr_metadata" />

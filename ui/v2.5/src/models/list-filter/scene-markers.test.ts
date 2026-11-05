@@ -159,3 +159,54 @@ describe("marker list filters on the marker's scene (#1548)", () => {
     });
   });
 });
+
+// #2160: the marker filter has no AND, so a repeated condition sends only
+// the last one, still inside scene_filter next to the others
+describe("repeated scene criteria on the marker list", () => {
+  function repeated() {
+    const filter = new ListFilterModel(FilterMode.SceneMarkers);
+    filter.criteria = [
+      markerCriterion(filter, "scene_path", CriterionModifier.Includes, "/a"),
+      markerCriterion(
+        filter,
+        "scene_performer_favorite",
+        CriterionModifier.Equals,
+        "true"
+      ),
+      markerCriterion(filter, "scene_path", CriterionModifier.Includes, "/b"),
+    ];
+    return filter;
+  }
+
+  const sent = {
+    scene_filter: {
+      path: { value: "/b", modifier: CriterionModifier.Includes },
+      performer_favorite: true,
+    },
+  };
+
+  it("sends the last of a kind and keeps the others in scene_filter", () => {
+    expect(repeated().makeFilter()).toEqual(sent);
+  });
+
+  it("keeps every condition through a saved filter", () => {
+    const saved = repeated().makeSavedFilter();
+    expect(saved).toEqual({
+      scene_path: { value: "/a", modifier: CriterionModifier.Includes },
+      scene_performer_favorite: expect.anything(),
+      AND: {
+        scene_path: { value: "/b", modifier: CriterionModifier.Includes },
+      },
+    });
+
+    const loaded = new ListFilterModel(FilterMode.SceneMarkers);
+    loaded.configureFromSavedFilter(savedFilter(saved));
+    expect(loaded.criteria.map((c) => c.criterionOption.type)).toEqual([
+      "scene_path",
+      "scene_performer_favorite",
+      "scene_path",
+    ]);
+    expect(loaded.makeSavedFilter()).toEqual(saved);
+    expect(loaded.makeFilter()).toEqual(sent);
+  });
+});

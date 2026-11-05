@@ -12,6 +12,7 @@ interface IProps {
   fields: string[];
   excludedFields: string[];
   onSelect: (fields: string[]) => void;
+  onCancel?: () => void;
 }
 
 const FieldSelector: React.FC<IProps> = ({
@@ -19,11 +20,21 @@ const FieldSelector: React.FC<IProps> = ({
   fields,
   excludedFields,
   onSelect,
+  onCancel,
 }) => {
   const intl = useIntl();
-  const [excluded, setExcluded] = useState<Record<string, boolean>>(
-    listToMap(excludedFields.filter((field) => fields.includes(field)))
-  );
+  const savedExcluded = () =>
+    listToMap(excludedFields.filter((field) => fields.includes(field)));
+  const [excluded, setExcluded] =
+    useState<Record<string, boolean>>(savedExcluded);
+
+  // drop the unsaved toggles, so the dialog shows the saved fields next time
+  const cancel = onCancel
+    ? () => {
+        setExcluded(savedExcluded());
+        onCancel();
+      }
+    : undefined;
 
   const toggleField = (field: string) =>
     setExcluded({
@@ -49,6 +60,7 @@ const FieldSelector: React.FC<IProps> = ({
       show={show}
       icon={faList}
       dialogClassName="FieldSelect"
+      cancel={cancel && { onClick: cancel, variant: "secondary" }}
       accept={{
         text: intl.formatMessage({ id: "actions.save" }),
         onClick: () =>

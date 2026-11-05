@@ -432,6 +432,8 @@ export const StashBoxIDSearchModal: React.FC<IProps> = ({
   return (
     <ModalComponent
       show
+      // a search or picker: a typed query is nothing to lose
+      escapeAfterChanges
       onHide={handleClose}
       header={intl.formatMessage(
         { id: "stashbox_search.header" },

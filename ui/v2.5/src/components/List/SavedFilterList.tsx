@@ -41,6 +41,7 @@ import {
   faSave,
 } from "@fortawesome/free-solid-svg-icons";
 import { AlertModal } from "../Shared/Alert";
+import { useEscapeToCancel } from "../Shared/Modal";
 import cx from "classnames";
 import { TruncatedInlineText } from "../Shared/TruncatedText";
 import { OperationButton } from "../Shared/OperationButton";
@@ -90,6 +91,10 @@ export const SaveFilterDialog: React.FC<{
 }> = ({ mode, onClose, isSaving = false }) => {
   const intl = useIntl();
   const [filterName, setFilterName] = useState("");
+  const escapeProps = useEscapeToCancel({
+    onCancel: () => onClose(),
+    busy: isSaving,
+  });
 
   const { data } = useFindSavedFilters(mode);
 
@@ -101,7 +106,7 @@ export const SaveFilterDialog: React.FC<{
   }, [data?.findSavedFilters, filterName]);
 
   return (
-    <Modal show className="save-filter-dialog">
+    <Modal show className="save-filter-dialog" {...escapeProps}>
       <Modal.Header>
         <FormattedMessage id="actions.save_filter" />
       </Modal.Header>
@@ -162,11 +167,15 @@ export const LoadFilterDialog: React.FC<{
 }> = ({ mode, onClose }) => {
   const intl = useIntl();
   const [filterName, setFilterName] = useState("");
+  const escapeProps = useEscapeToCancel({
+    onCancel: () => onClose(),
+    afterChanges: true,
+  });
 
   const { data } = useFindSavedFilters(mode);
 
   return (
-    <Modal show className="load-filter-dialog">
+    <Modal show className="load-filter-dialog" {...escapeProps}>
       <Modal.Header>
         <FormattedMessage id="actions.load_filter" />
       </Modal.Header>
@@ -255,12 +264,14 @@ const DeleteAlert: React.FC<{
   deletingFilter: SavedFilterDataFragment | undefined;
   onClose: (confirm?: boolean) => void;
 }> = ({ deletingFilter, onClose }) => {
+  const escapeProps = useEscapeToCancel({ onCancel: () => onClose() });
+
   if (!deletingFilter) {
     return null;
   }
 
   return (
-    <Modal show>
+    <Modal show {...escapeProps}>
       <Modal.Body>
         <FormattedMessage
           id="dialogs.delete_confirm"
@@ -285,12 +296,14 @@ const OverwriteAlert: React.FC<{
   overwritingFilter: SavedFilterDataFragment | undefined;
   onClose: (confirm?: boolean) => void;
 }> = ({ overwritingFilter, onClose }) => {
+  const escapeProps = useEscapeToCancel({ onCancel: () => onClose() });
+
   if (!overwritingFilter) {
     return null;
   }
 
   return (
-    <Modal show>
+    <Modal show {...escapeProps}>
       <Modal.Body>
         <FormattedMessage
           id="dialogs.overwrite_filter_warning"

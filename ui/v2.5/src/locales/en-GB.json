@@ -1309,6 +1309,8 @@
       "medium": "Medium"
     },
     "preferred_codec_label": "Preferred Video Codec",
+    "scene_filter": "Scene Filter",
+    "scene_filter_description": "Only scenes that match this filter are checked, for example to leave out organized scenes, a folder, a tag or short clips.",
     "search_accuracy_label": "Search Accuracy",
     "select_all_but_largest_file": "Select every file in each duplicated group, except the largest file",
     "select_all_but_largest_resolution": "Select every file in each duplicated group, except the file with highest resolution",

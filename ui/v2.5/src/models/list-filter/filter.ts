@@ -167,7 +167,7 @@ type ApplyCriterion = (c: Criterion, output: Record<string, unknown>) => void;
 // conditions are all ANDed, as they are at the top level. Without repeats the
 // result is exactly what writing every criterion into one object gives.
 // Keys in mergeKeys hold objects that several criteria can share, as long as
-// the keys inside them differ.
+// the keys inside them differ (criteria on a related object, #1548).
 // Without useAnd (the filter type has no AND), a repeat replaces the earlier
 // condition, as all repeats did before they were allowed.
 function combineCriteria(
@@ -746,7 +746,8 @@ export class ListFilterModel {
   // the kind is sent, as before repeats were allowed.
   public makeFilter() {
     // criteria on a related object go inside its filter, under the related
-    // object's own name for the criterion. Several of them share that filter.
+    // object's own name for the criterion. Several of them share that filter;
+    // a repeat of one goes into AND like any other.
     const subFilterKeys = new Set<string>();
     for (const c of this.criteria) {
       const { subFilter } = c.criterionOption;
@@ -990,14 +991,17 @@ export class ListFilterModel {
     if (c instanceof CustomFieldsCriterion) {
       const newCriteria = c.value.filter((_, i) => i !== index);
       c.value = newCriteria;
+      // the results change, as when a condition is removed
+      ret.currentPage = 1;
     }
 
     return ret;
   }
 
   // Removes one value of the given custom fields criterion, which is one of
-  // this filter's criteria; it can be in a group. A criterion that isn't one
-  // of them uses the first ungrouped one, as removeCustomFieldCriterion does.
+  // this filter's criteria; there can be several of the kind, and it can be
+  // in a group. A criterion that isn't one of them uses the first ungrouped
+  // one, as removeCustomFieldCriterion does.
   public removeCustomFieldValue(c: Criterion, index: number) {
     const at = this.criteria.indexOf(c);
     if (at === -1) {
@@ -1008,6 +1012,7 @@ export class ListFilterModel {
     const target = ret.criteria[at];
     if (target instanceof CustomFieldsCriterion) {
       target.value = target.value.filter((_, i) => i !== index);
+      ret.currentPage = 1;
     }
     return ret;
   }
