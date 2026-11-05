@@ -1412,10 +1412,12 @@ func (i *Config) GetGuestUserEnabled() bool {
 }
 
 func (i *Config) SetGuestUserEnabled(enabled bool) {
-	i.RLock()
-	defer i.RUnlock()
+	// The write lock, held for both the change and the write: Write takes it
+	// itself, so calling it while holding the read lock would wait forever.
+	i.Lock()
+	defer i.Unlock()
 	i.set(GuestAccountEnabled, enabled)
-	_ = i.Write()
+	_ = i.writeNoLock()
 }
 
 func (i *Config) GetUserGraphqlRateLimit() int {
