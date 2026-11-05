@@ -380,6 +380,57 @@ func (f *filterBuilder) getSubFilterClause(clause, subFilterClause string) strin
 	return ret
 }
 
+// hasOrNot reports whether the filter or one of its sub-filters is combined
+// with OR or NOT.
+func (f *filterBuilder) hasOrNot() bool {
+	for ff := f; ff != nil; ff = ff.subFilter {
+		if ff.subFilter != nil && ff.subFilterOp != andOp {
+			return true
+		}
+	}
+	return false
+}
+
+// isolateHavingClauses makes the conditions of each level that has HAVING
+// clauses into one WHERE clause that selects the matching ids by itself:
+//
+//	<table>.id IN (SELECT <table>.id FROM <table> <joins> WHERE <where>
+//	  GROUP BY <table>.id HAVING <having>)
+//
+// The WHERE and HAVING clauses of the levels are otherwise combined
+// separately, so a HAVING clause under OR or NOT was always ANDed (#2167).
+// Filters without OR or NOT are left as they are.
+func (f *filterBuilder) isolateHavingClauses(table string) {
+	if !f.hasOrNot() {
+		return
+	}
+
+	for ff := f; ff != nil; ff = ff.subFilter {
+		if len(ff.havingClauses) == 0 {
+			continue
+		}
+
+		var args []interface{}
+		sql := fmt.Sprintf("%[1]s.id IN (SELECT %[1]s.id FROM %[1]s%[2]s", table, ff.joins.toSQL(false))
+		for _, j := range ff.joins {
+			if !j.sort {
+				args = append(args, j.args...)
+			}
+		}
+		if where, a := ff.andClauses(ff.whereClauses); where != "" {
+			sql += " WHERE " + where
+			args = append(args, a...)
+		}
+		having, a := ff.andClauses(ff.havingClauses)
+		sql += fmt.Sprintf(" GROUP BY %s.id HAVING %s)", table, having)
+		args = append(args, a...)
+
+		ff.whereClauses = []sqlClause{makeClause(sql, args...)}
+		ff.havingClauses = nil
+		ff.joins = nil
+	}
+}
+
 // generateWhereClauses generates the SQL where clause for this filter.
 // All where clauses within the filter are ANDed together. This is combined
 // with the sub-filter, which will use the applicable operator (AND/OR/AND NOT).
