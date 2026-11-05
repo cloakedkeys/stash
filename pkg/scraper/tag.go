@@ -59,7 +59,9 @@ func CompileExclusionRegexps(patterns []string) []*regexp.Regexp {
 	var excludeRegexps []*regexp.Regexp
 
 	for _, excludePattern := range excludePatterns {
-		reg, err := regexp.Compile(strings.ToLower(excludePattern))
+		// Match without regard to case. Lower-casing the pattern itself would turn
+		// escapes like \S, \D, \W and \B into their opposites.
+		reg, err := regexp.Compile("(?i)" + excludePattern)
 		if err != nil {
 			logger.Errorf("Invalid tag exclusion pattern: %v", err)
 		} else {
