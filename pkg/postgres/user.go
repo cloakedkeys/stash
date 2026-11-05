@@ -364,6 +364,10 @@ func (qb *UserStore) FindMany(ctx context.Context, ids []int) ([]*models.User, e
 
 // returns nil, sql.ErrNoRows if not found
 func (qb *UserStore) find(ctx context.Context, id int) (*models.User, error) {
+	if idOutOfRange(id) {
+		return nil, sql.ErrNoRows
+	}
+
 	q := qb.selectDataset().Prepared(true).Where(userTableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)

@@ -222,10 +222,14 @@ func (s *customFieldsStore) deleteCustomFields(ctx context.Context, id int, keys
 }
 
 func (s *customFieldsStore) GetCustomFields(ctx context.Context, id int) (map[string]interface{}, error) {
+	ret := make(map[string]interface{})
+	if idOutOfRange(id) {
+		return ret, nil
+	}
+
 	q := dialect.Select("field", "value", "type").From(s.table).Prepared(true).Where(s.fk.Eq(id))
 
 	const single = false
-	ret := make(map[string]interface{})
 	err := queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
 		var err error
 		var field string

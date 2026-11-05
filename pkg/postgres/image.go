@@ -490,6 +490,10 @@ func (qb *ImageStore) FindMany(ctx context.Context, ids []int) ([]*models.Image,
 
 // returns nil, sql.ErrNoRows if not found
 func (qb *ImageStore) find(ctx context.Context, id int) (*models.Image, error) {
+	if idOutOfRange(id) {
+		return nil, sql.ErrNoRows
+	}
+
 	q := qb.selectDataset().Prepared(true).Where(qb.tableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)

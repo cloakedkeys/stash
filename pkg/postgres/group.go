@@ -425,6 +425,10 @@ func (qb *GroupStore) FindMany(ctx context.Context, ids []int) ([]*models.Group,
 
 // returns nil, sql.ErrNoRows if not found
 func (qb *GroupStore) find(ctx context.Context, id int) (*models.Group, error) {
+	if idOutOfRange(id) {
+		return nil, sql.ErrNoRows
+	}
+
 	q := qb.selectDataset().Prepared(true).Where(qb.tableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)

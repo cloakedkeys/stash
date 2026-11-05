@@ -468,6 +468,10 @@ func (qb *TagStore) FindMany(ctx context.Context, ids []int) ([]*models.Tag, err
 
 // returns nil, sql.ErrNoRows if not found
 func (qb *TagStore) find(ctx context.Context, id int) (*models.Tag, error) {
+	if idOutOfRange(id) {
+		return nil, sql.ErrNoRows
+	}
+
 	q := qb.selectDataset().Prepared(true).Where(qb.tableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)

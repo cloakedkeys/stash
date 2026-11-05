@@ -601,6 +601,10 @@ func (qb *SceneStore) FindMany(ctx context.Context, ids []int) ([]*models.Scene,
 
 // returns nil, sql.ErrNoRows if not found
 func (qb *SceneStore) find(ctx context.Context, id int) (*models.Scene, error) {
+	if idOutOfRange(id) {
+		return nil, sql.ErrNoRows
+	}
+
 	q := qb.selectDataset().Prepared(true).Where(qb.tableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)

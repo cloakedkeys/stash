@@ -179,6 +179,10 @@ func (qb *GalleryChapterStore) FindMany(ctx context.Context, ids []int) ([]*mode
 
 // returns nil, sql.ErrNoRows if not found
 func (qb *GalleryChapterStore) find(ctx context.Context, id int) (*models.GalleryChapter, error) {
+	if idOutOfRange(id) {
+		return nil, sql.ErrNoRows
+	}
+
 	q := qb.selectDataset().Prepared(true).Where(qb.tableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)

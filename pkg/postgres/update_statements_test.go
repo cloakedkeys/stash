@@ -5,12 +5,9 @@ package postgres
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 
-	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/models"
-	"github.com/stashapp/stash/pkg/txn"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,12 +17,7 @@ var errRollback = errors.New("roll back")
 // written into the SQL text, every update is a new statement that the driver prepares on the
 // server, which costs extra round trips on each update (#2194).
 func TestUpdatePartialReusesStatements(t *testing.T) {
-	ctx := context.Background()
-	cfg := config.InitializeEmpty()
-	cfg.SetConfigFile(filepath.Join(t.TempDir(), "config.yml"))
-	db := NewDatabase()
-	require.NoError(t, db.Open(ctx, migrationFixture(t)))
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	db := openTestDatabase(t)
 
 	const n = 20
 	update := map[string]func(ctx context.Context, id, tagID int) error{
@@ -53,12 +45,11 @@ func TestUpdatePartialReusesStatements(t *testing.T) {
 			if table == "performers" {
 				col = "name"
 			}
-			// count is the number of statements prepared on the connection
-			const count = "SELECT COUNT(*) FROM pg_prepared_statements"
-			var before, after int
-			// failing the test inside the transaction would leave it open, so the
-			// transaction only collects the counts, and is rolled back
-			err := txn.WithTxn(models.WithUserID(ctx, 1), db, func(ctx context.Context) error {
+			// the names of the statements prepared on the connection. Comparing names, not
+			// the count, also catches a full cache dropping one statement for each new one.
+			const names = "SELECT name FROM pg_prepared_statements ORDER BY name"
+			var before, after []string
+			rolledBack(t, db, func(ctx context.Context) error {
 				var tagID int
 				if err := dbWrapper.Get(ctx, &tagID, "INSERT INTO tags (name, created_at, updated_at) VALUES ('tag', NOW(), NOW()) RETURNING id"); err != nil {
 					return err
@@ -69,11 +60,11 @@ func TestUpdatePartialReusesStatements(t *testing.T) {
 				}
 
 				// the first update prepares the statements an update needs, and the
-				// first count prepares the count query
+				// first listing prepares the listing query
 				if err := f(ctx, ids[0], tagID); err != nil {
 					return err
 				}
-				if err := dbWrapper.Get(ctx, &before, count); err != nil {
+				if err := dbWrapper.Select(ctx, &before, names); err != nil {
 					return err
 				}
 				for _, id := range ids[1:] {
@@ -81,12 +72,12 @@ func TestUpdatePartialReusesStatements(t *testing.T) {
 						return err
 					}
 				}
-				if err := dbWrapper.Get(ctx, &after, count); err != nil {
+				if err := dbWrapper.Select(ctx, &after, names); err != nil {
 					return err
 				}
-				return errRollback
+				return nil
 			})
-			require.ErrorIs(t, err, errRollback)
+			require.NotEmpty(t, before)
 			require.Equal(t, before, after, "updating %d more %s prepared new statements", n-1, table)
 		})
 	}

@@ -215,6 +215,10 @@ func (qb *SavedFilterStore) FindMany(ctx context.Context, ids []int, ignoreNotFo
 
 // returns nil, sql.ErrNoRows if not found
 func (qb *SavedFilterStore) find(ctx context.Context, id int) (*models.SavedFilter, error) {
+	if idOutOfRange(id) {
+		return nil, sql.ErrNoRows
+	}
+
 	q := qb.selectDataset(ctx).Prepared(true).Where(qb.tableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)
