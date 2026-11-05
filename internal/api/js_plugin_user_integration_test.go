@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/plugin"
+	"github.com/stashapp/stash/pkg/plugin/hook"
 	"github.com/stashapp/stash/pkg/session"
 	"github.com/stashapp/stash/pkg/txn"
 	"github.com/stashapp/stash/pkg/user"
@@ -47,9 +49,29 @@ func (jsPluginUserServerConfig) SetGuestUserEnabled(bool)  {}
 // jsPluginUserHarness runs a JavaScript plugin against the real schema, with
 // the in-process GraphQL handler put together as the server does.
 type jsPluginUserHarness struct {
-	t     *testing.T
-	db    database.Database
-	cache *plugin.Cache
+	t        *testing.T
+	db       database.Database
+	cache    *plugin.Cache
+	users    *user.Service
+	sessions *session.Store
+
+	// onCall, if set, runs before each of the plugin's GraphQL calls, with the
+	// number of calls made so far in the run
+	onCall func(n int)
+	calls  int
+
+	// hookCookies are the plugin cookies made for the hooks that the plugin's
+	// calls start
+	hookCookies []*http.Cookie
+}
+
+// jsPluginHookRecorder stands in for the plugin cache when the plugin's calls
+// start hooks: it makes the cookie a hook plugin would get.
+// The hooks themselves don't run.
+type jsPluginHookRecorder struct{ h *jsPluginUserHarness }
+
+func (r jsPluginHookRecorder) ExecutePostHooks(ctx context.Context, _ int, _ hook.TriggerEnum, _ interface{}, _ []string) {
+	r.h.hookCookies = append(r.h.hookCookies, r.h.sessions.MakePluginCookie(ctx))
 }
 
 func newJSPluginUserHarness(ctx context.Context, t *testing.T, db database.Database, singleUserMode bool) *jsPluginUserHarness {
@@ -62,13 +84,22 @@ func newJSPluginUserHarness(ctx context.Context, t *testing.T, db database.Datab
 	require.NoError(t, txn.WithReadTxn(ctx, db, users.Init))
 	require.Equal(t, singleUserMode, users.IsSingleUserMode())
 
-	r := &Resolver{repository: db.Repository(), hookExecutor: &mockHookExecutor{}, userService: users}
+	h := &jsPluginUserHarness{t: t, db: db, users: users}
+	r := &Resolver{repository: db.Repository(), hookExecutor: jsPluginHookRecorder{h}, userService: users}
 	gql := newTestGraphQLServer(r)
 	gql.AroundFields(r.LibraryLimitMiddleware)
 	// the server's own handler chain, as Initialize registers it
 	sessions := session.NewStore(cfg, nil, nil)
-	handler := pluginGQLHandler(gql, db.Repository().TxnManager, func() UserAuthenticator { return users },
+	h.sessions = sessions
+	chain := pluginGQLHandler(gql, db.Repository().TxnManager, func() UserAuthenticator { return users },
 		sessions.VisitedPluginHandler(), loaders.Middleware{Repository: db.Repository()})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h.onCall != nil {
+			h.onCall(h.calls)
+		}
+		h.calls++
+		chain.ServeHTTP(w, r)
+	})
 
 	pluginDir := filepath.Join(dir, "whoami")
 	require.NoError(t, os.MkdirAll(pluginDir, 0755))
@@ -90,7 +121,8 @@ for (var i = 0; i < input.Args.queries.length; i++) {
 	cache.RegisterGQLHandler(handler)
 	cache.ReloadPlugins()
 
-	return &jsPluginUserHarness{t: t, db: db, cache: cache}
+	h.cache = cache
+	return h
 }
 
 type jsPluginResult struct {
@@ -106,6 +138,14 @@ func (h *jsPluginUserHarness) run(u *models.User, queries ...string) []jsPluginR
 	if u != nil {
 		ctx = session.SetCurrentUser(ctx, *u)
 	}
+	return h.runFrom(ctx, queries...)
+}
+
+// runFrom runs the plugin as started by a request with the given context.
+func (h *jsPluginUserHarness) runFrom(ctx context.Context, queries ...string) []jsPluginResult {
+	h.t.Helper()
+	h.calls = 0
+	h.hookCookies = nil
 
 	list := make([]interface{}, len(queries))
 	for i, q := range queries {

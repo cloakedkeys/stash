@@ -3,8 +3,8 @@ package plugin
 import (
 	"net/http"
 
-	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/plugin/common"
+	"github.com/stashapp/stash/pkg/session"
 )
 
 type PluginTask struct {
@@ -43,9 +43,10 @@ type pluginTask struct {
 	gqlHandler   http.Handler
 	serverConfig ServerConfig
 
-	// user is the user whose request started the task, if any. JavaScript
-	// plugins act as this user when they call GraphQL in-process.
-	user *models.User
+	// starter is who started the task, if anyone. JavaScript plugins act as
+	// this user when they call GraphQL in-process, and are checked the same
+	// way a plugin cookie is.
+	starter *session.PluginStarter
 
 	progress chan float64
 	result   *common.PluginOutput

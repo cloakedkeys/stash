@@ -22,25 +22,42 @@ import (
 
 // pluginCookieUsers applies the same revocation rule as user.Service: a
 // session is refused when the user was updated after its login time.
+//
+// Each user has at most one API key, "<username>-key", which is valid while
+// the user's ApiKeyHash is "<username>-key-hash". Setting ApiKeyHash to ""
+// deletes the key; any other value stands for a replacement key.
 type pluginCookieUsers struct {
 	apiTestUsers
 	admin *models.User
+	other *models.User
+}
+
+func (s *pluginCookieUsers) all() []*models.User {
+	ret := []*models.User{s.admin}
+	if s.other != nil {
+		ret = append(ret, s.other)
+	}
+	return ret
 }
 
 func (s *pluginCookieUsers) AuthenticateByAPIKey(_ context.Context, key string) (*models.User, error) {
-	if key == "admin-key" {
-		u := *s.admin
-		return &u, nil
+	for _, u := range s.all() {
+		if key == u.Username+"-key" && u.ApiKeyHash == u.Username+"-key-hash" {
+			c := *u
+			return &c, nil
+		}
 	}
 	return nil, user.ErrAccessDenied
 }
 
 func (s *pluginCookieUsers) AuthenticateSession(_ context.Context, username string, loginTime time.Time) (*models.User, error) {
-	if username != s.admin.Username || s.admin.UpdatedAt.After(loginTime) {
-		return nil, user.ErrAccessDenied
+	for _, u := range s.all() {
+		if username == u.Username && !u.UpdatedAt.After(loginTime) {
+			c := *u
+			return &c, nil
+		}
 	}
-	u := *s.admin
-	return &u, nil
+	return nil, user.ErrAccessDenied
 }
 
 // TestPluginCookieAuthenticatesCallback checks that the cookie handed to a
@@ -65,9 +82,10 @@ func TestPluginCookieAuthenticatesCallback(t *testing.T) {
 	updatedSinceLogin := now.Add(-time.Hour)
 
 	users := &pluginCookieUsers{admin: &models.User{
-		ID:       1,
-		Username: "admin",
-		Roles:    models.Roles{models.RoleEnumAdmin},
+		ID:         1,
+		Username:   "admin",
+		Roles:      models.Roles{models.RoleEnumAdmin},
+		ApiKeyHash: "admin-key-hash",
 	}}
 	sessions := session.NewStore(cfg, users, &tx)
 

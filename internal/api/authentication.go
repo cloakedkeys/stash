@@ -258,6 +258,8 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 
 					// Only a successfully checked key exempts a request from origin checks.
 					ctx = context.WithValue(ctx, authenticatedAPIKeyCtxKey, true)
+					// plugin cookies made for this request only work while the key does
+					ctx = session.SetAPIKeyFingerprint(ctx, session.APIKeyFingerprint(u.ApiKeyHash))
 				} else if signedUser, signedErr := authenticateSignedRequest(ctx, r, txnMgr, g); signedErr != nil {
 					logger.Errorf("error authenticating signed request: %v", signedErr)
 					httpError(w, r, "internal server error", http.StatusInternalServerError)
@@ -265,25 +267,27 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 				} else if signedUser != nil {
 					u = signedUser
 				} else {
-					session, getErr := sessions.GetSession(w, r)
+					sess, getErr := sessions.GetSession(w, r)
 					if getErr != nil {
 						logger.Errorf("error getting session user ID: %v", getErr)
 						httpError(w, r, "internal server error", http.StatusInternalServerError)
 						return
 					}
 
-					if session != nil {
-						if err := txn.WithReadTxn(ctx, txnMgr, func(ctx context.Context) error {
-							u, err = g.AuthenticateSession(ctx, session.UserID, session.LoginTime)
-							return err
-						}); err != nil {
-							if errors.Is(err, user.ErrInternalError) {
-								logger.Errorf("error authenticating user by ID: %v", err)
-								httpError(w, r, "internal server error", http.StatusInternalServerError)
-								return
+					if sess != nil {
+						var authErr error
+						u, authErr = authenticateSession(ctx, txnMgr, g, sess.UserID, sess.LoginTime, sess.APIKeyFingerprint)
+						if authErr != nil {
+							logger.Errorf("error authenticating user by ID: %v", authErr)
+							httpError(w, r, "internal server error", http.StatusInternalServerError)
+							return
+						}
+						if u != nil {
+							sessionLoginTime = sess.LoginTime
+							if sess.APIKeyFingerprint != "" {
+								// plugin cookies made for this request stay tied to the key
+								ctx = session.SetAPIKeyFingerprint(ctx, sess.APIKeyFingerprint)
 							}
-						} else if u != nil {
-							sessionLoginTime = session.LoginTime
 						}
 					}
 				}
@@ -322,6 +326,49 @@ func authenticateHandlerWithServices(txnMgr models.TxnManager, cfg authenticatio
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// authenticateSession checks the user of a session: the user must exist, not
+// be locked and not have changed since loginTime. If the session was made from
+// an API key request (apiKeyFingerprint is set), the user must still have that
+// key. It returns nil if the session is refused, and an error only for an
+// internal error.
+func authenticateSession(ctx context.Context, txnMgr models.TxnManager, g UserAuthenticator, username string, loginTime time.Time, apiKeyFingerprint string) (*models.User, error) {
+	var u *models.User
+	if err := txn.WithReadTxn(ctx, txnMgr, func(ctx context.Context) error {
+		var err error
+		u, err = g.AuthenticateSession(ctx, username, loginTime)
+		return err
+	}); err != nil {
+		if errors.Is(err, user.ErrInternalError) {
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	if u != nil && apiKeyFingerprint != "" && !session.MatchesAPIKeyFingerprint(apiKeyFingerprint, u.ApiKeyHash) {
+		// a plugin session made from an API key request, and the key has
+		// since been deleted or replaced
+		logger.Infof("[authentication] API key of user %s has changed since the plugin session started", u.Username)
+		return nil, nil
+	}
+
+	return u, nil
+}
+
+// checkPluginCaller checks the user that an in-process plugin call acts as,
+// the same way a returning plugin cookie is checked. It returns the user as
+// stored now, or nil if the call is refused.
+func checkPluginCaller(ctx context.Context, txnMgr models.TxnManager, g UserAuthenticator, username string) (*models.User, error) {
+	loginTime, apiKeyFingerprint, ok := session.GetPluginCallAuth(ctx)
+	if !ok {
+		// the plugin context always carries a login time; without one the
+		// call can't be checked
+		logger.Infof("[authentication] plugin call for user %s has no login time", username)
+		return nil, nil
+	}
+
+	return authenticateSession(ctx, txnMgr, g, username, loginTime, apiKeyFingerprint)
 }
 
 // singleUser returns the single user, with the admin role, that every request
@@ -375,6 +422,21 @@ func pluginUserHandler(txnMgr models.TxnManager, getUsers func() UserAuthenticat
 				if u != nil {
 					r = r.WithContext(session.SetCurrentUser(r.Context(), *u))
 				}
+			} else if starter := session.GetCurrentUser(r.Context()); starter != nil {
+				u, err := checkPluginCaller(r.Context(), txnMgr, g, starter.Username)
+				if err != nil {
+					logger.Errorf("error checking plugin user: %v", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				if u == nil {
+					// as for a returning plugin cookie that is refused
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+
+				// the user as stored now, so role and library limit changes apply
+				r = r.WithContext(session.SetCurrentUser(r.Context(), *u))
 			}
 
 			next.ServeHTTP(w, r)
