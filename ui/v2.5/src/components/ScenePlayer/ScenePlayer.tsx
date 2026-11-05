@@ -43,7 +43,7 @@ import {
   InteractiveContext,
 } from "src/hooks/Interactive/context";
 import { SceneInteractiveStatus } from "src/hooks/Interactive/status";
-import { languageMap } from "src/utils/caption";
+import { canonicalLanguageCode, languageName } from "src/utils/caption";
 import { VIDEO_PLAYER_ID } from "./util";
 import { objectTitle } from "src/core/files";
 import {
@@ -954,13 +954,10 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
         for (const caption of scene.captions) {
           const lang = caption.language_code;
-          let label = lang;
-          if (languageMap.has(lang)) {
-            label = languageMap.get(lang)!;
-          }
-
-          label = label + " (" + caption.caption_type + ")";
-          const setAsDefault = !hasDefault && languageCode === lang;
+          const label = languageName(lang) + " (" + caption.caption_type + ")";
+          const setAsDefault =
+            !hasDefault &&
+            canonicalLanguageCode(languageCode) === canonicalLanguageCode(lang);
           if (setAsDefault) {
             hasDefault = true;
           }
@@ -1001,7 +998,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
           continue;
 
         const lang = track.language_code || "und";
-        const language = languageMap.get(lang) ?? lang;
+        const language = languageName(lang);
         const title = track.title ? " - " + track.title : "";
         sourceSelector.addTextTrack(
           {
