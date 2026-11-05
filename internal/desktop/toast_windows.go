@@ -144,5 +144,5 @@ func (n toastNotification) push() error {
 		return err
 	}
 
-	return stashExec.Command("PowerShell", "-ExecutionPolicy", "Bypass", "-File", file).Run()
+	return stashExec.Run(stashExec.Command("PowerShell", "-ExecutionPolicy", "Bypass", "-File", file))
 }

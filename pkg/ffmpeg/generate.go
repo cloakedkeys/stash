@@ -8,6 +8,8 @@ import (
 	"io"
 	"os/exec"
 	"strings"
+
+	stashExec "github.com/stashapp/stash/pkg/exec"
 )
 
 // Generate runs ffmpeg with the given args and waits for it to finish.
@@ -19,7 +21,7 @@ func (f *FFMpeg) Generate(ctx context.Context, args Args) error {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
-	if err := cmd.Start(); err != nil {
+	if err := stashExec.Start(cmd); err != nil {
 		return fmt.Errorf("error starting command: %w", err)
 	}
 
@@ -40,7 +42,7 @@ func (f *FFMpeg) GenerateOutput(ctx context.Context, args []string, stdin io.Rea
 	cmd := f.Command(ctx, args)
 	cmd.Stdin = stdin
 
-	ret, err := cmd.Output()
+	ret, err := stashExec.Output(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("error running ffmpeg command <%s>: %w", strings.Join(args, " "), err)
 	}

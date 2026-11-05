@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	stashExec "github.com/stashapp/stash/pkg/exec"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
@@ -208,7 +209,7 @@ func (sm *StreamManager) startTranscodeStream(ctx *fsutil.LockContext, args Args
 		return nil, err
 	}
 
-	if err = cmd.Start(); err != nil {
+	if err = stashExec.Start(cmd); err != nil {
 		return nil, err
 	}
 	wait := ctx.AttachCommand(cmd)

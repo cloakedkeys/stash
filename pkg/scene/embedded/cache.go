@@ -291,12 +291,12 @@ func (c Cache) probeFile(ctx context.Context) ([]byte, error) {
 	if c.probe != nil {
 		return c.probe(ctx)
 	}
-	return stashExec.CommandContext(ctx, c.FFProbe, "-v", "error", "-show_streams", "-of", "json", "-i", c.Source).Output()
+	return stashExec.Output(stashExec.CommandContext(ctx, c.FFProbe, "-v", "error", "-show_streams", "-of", "json", "-i", c.Source))
 }
 
 func (c Cache) extractFile(ctx context.Context, index int, tmp string) error {
 	if c.extract != nil {
 		return c.extract(ctx, index, tmp)
 	}
-	return stashExec.CommandContext(ctx, c.FFMpeg, "-nostdin", "-v", "error", "-y", "-i", c.Source, "-map", "0:"+strconv.Itoa(index), "-c:s", "webvtt", "-f", "webvtt", tmp).Run()
+	return stashExec.Run(stashExec.CommandContext(ctx, c.FFMpeg, "-nostdin", "-v", "error", "-y", "-i", c.Source, "-map", "0:"+strconv.Itoa(index), "-c:s", "webvtt", "-f", "webvtt", tmp))
 }

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	stashExec "github.com/stashapp/stash/pkg/exec"
 	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/fsutil"
 )
@@ -180,7 +181,7 @@ func (g Generator) generate(ctx *fsutil.LockContext, args []string) error {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
-	if err := cmd.Start(); err != nil {
+	if err := stashExec.Start(cmd); err != nil {
 		return fmt.Errorf("error starting command: %w", err)
 	}
 
@@ -208,7 +209,7 @@ func (g Generator) generateOutput(lockCtx *fsutil.LockContext, args []string) ([
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
-	if err := cmd.Start(); err != nil {
+	if err := stashExec.Start(cmd); err != nil {
 		return nil, fmt.Errorf("error starting command: %w", err)
 	}
 

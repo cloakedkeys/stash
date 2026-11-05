@@ -320,7 +320,7 @@ func (s *scriptScraper) runScraperScript(ctx context.Context, command []string, 
 		logger.Error("Scraper stdout not available: " + err.Error())
 	}
 
-	if err = cmd.Start(); err != nil {
+	if err = stashExec.Start(cmd); err != nil {
 		logger.Error("Error running scraper script: " + err.Error())
 		return errors.New("error running scraper script")
 	}

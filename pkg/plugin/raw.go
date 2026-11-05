@@ -93,7 +93,7 @@ func (t *rawPluginTask) Start() error {
 
 	t.waitGroup.Add(1)
 	t.done = make(chan bool, 1)
-	if err = cmd.Start(); err != nil {
+	if err = stashExec.Start(cmd); err != nil {
 		return fmt.Errorf("error running plugin: %v", err)
 	}
 

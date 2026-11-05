@@ -22,7 +22,7 @@ const minimumFFProbeVersion = 5
 
 func ValidateFFProbe(ffprobePath string) error {
 	cmd := stashExec.Command(ffprobePath, "-h")
-	bytes, err := cmd.CombinedOutput()
+	bytes, err := stashExec.CombinedOutput(cmd)
 	output := string(bytes)
 	if err != nil {
 		var exitErr *exec.ExitError
@@ -181,7 +181,7 @@ func (f *FFProbe) getVersion() error {
 	cmd.Stdout = &stdout
 
 	var err error
-	if err = cmd.Run(); err != nil {
+	if err = stashExec.Run(cmd); err != nil {
 		return err
 	}
 
@@ -249,7 +249,7 @@ func (f *FFProbe) NewVideoFile(videoPath string) (*VideoFile, error) {
 	args = append(args, videoPath)
 
 	cmd := stashExec.Command(f.path, args...)
-	out, err := cmd.Output()
+	out, err := stashExec.Output(cmd)
 
 	if err != nil {
 		return nil, fmt.Errorf("FFProbe encountered an error with <%s>.\nError JSON:\n%s\nError: %s", videoPath, string(out), err.Error())
@@ -267,7 +267,7 @@ func (f *FFProbe) NewVideoFile(videoPath string) (*VideoFile, error) {
 // Used when the frame count is missing or incorrect.
 func (f *FFProbe) GetReadFrameCount(path string) (int64, error) {
 	args := []string{"-v", "quiet", "-print_format", "json", "-count_frames", "-show_format", "-show_streams", "-show_error", path}
-	out, err := stashExec.Command(f.path, args...).Output()
+	out, err := stashExec.Output(stashExec.Command(f.path, args...))
 
 	if err != nil {
 		return 0, fmt.Errorf("FFProbe encountered an error with <%s>.\nError JSON:\n%s\nError: %s", path, string(out), err.Error())
@@ -504,7 +504,7 @@ func (f *FFProbe) NewAudioFile(audioPath string) (*AudioFile, error) {
 	args = append(args, audioPath)
 
 	cmd := stashExec.Command(f.path, args...)
-	out, err := cmd.Output()
+	out, err := stashExec.Output(cmd)
 
 	if err != nil {
 		return nil, fmt.Errorf("FFProbe encountered an error with <%s>.\nError JSON:\n%s\nError: %s", audioPath, string(out), err.Error())

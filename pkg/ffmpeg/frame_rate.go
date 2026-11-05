@@ -6,6 +6,8 @@ import (
 	"math"
 	"regexp"
 	"strconv"
+
+	stashExec "github.com/stashapp/stash/pkg/exec"
 )
 
 // FrameInfo contains the number of frames and the frame rate for a video file.
@@ -28,7 +30,7 @@ func (f *FFMpeg) CalculateFrameRate(ctx context.Context, v *VideoFile) (*FrameIn
 	command := f.Command(ctx, args)
 	var stdErrBuffer bytes.Buffer
 	command.Stderr = &stdErrBuffer // Frames go to stderr rather than stdout
-	err := command.Run()
+	err := stashExec.Run(command)
 	if err == nil {
 		var ret FrameInfo
 		stdErrString := stdErrBuffer.String()

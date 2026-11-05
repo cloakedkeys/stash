@@ -141,6 +141,40 @@ func runHelper(mode string) int {
 		return 3
 	case "sleep":
 		time.Sleep(time.Minute)
+	case "spawn":
+		// Start a long-lived grandchild the way a plugin would, report its
+		// pid, then wait.
+		gc := exec.Command(os.Args[0], "-test.run=^TestHelperProcess$")
+		gc.Env = append(os.Environ(), helperEnv+"=sleep")
+		if err := gc.Start(); err != nil {
+			fmt.Println("grandchild error:", err)
+			return 1
+		}
+		fmt.Println(gc.Process.Pid)
+		time.Sleep(time.Minute)
+	case "owner":
+		// Act as Stash: start a helper that starts a grandchild, report both
+		// pids, then exit without stopping either.
+		child := helperCommand(context.Background(), "spawn")
+		stdout, err := child.StdoutPipe()
+		if err != nil {
+			return 1
+		}
+		if err := Start(child); err != nil {
+			fmt.Println("start error:", err)
+			return 1
+		}
+		var grandchild int
+		if _, err := fmt.Fscan(stdout, &grandchild); err != nil {
+			fmt.Println("read error:", err)
+			return 1
+		}
+		fmt.Println(child.Process.Pid, grandchild)
+		return 0
+	case "fail":
+		fmt.Fprint(os.Stdout, "partial")
+		fmt.Fprint(os.Stderr, "something went wrong")
+		return 2
 	}
 	return 0
 }
@@ -174,7 +208,7 @@ func TestCommandDoesNotShareConsole(t *testing.T) {
 		t.Fatalf("test process is not on its own console list")
 	}
 
-	out, err := helperCommand(context.Background(), "console").Output()
+	out, err := Output(helperCommand(context.Background(), "console"))
 	if err != nil {
 		t.Fatalf("helper failed: %v\n%s", err, out)
 	}
@@ -217,7 +251,7 @@ func TestCommandPipes(t *testing.T) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
+	err := Run(cmd)
 	var exitErr *exec.ExitError
 	if err == nil || !errors.As(err, &exitErr) || exitErr.ExitCode() != 3 {
 		t.Fatalf("expected exit code 3, got %v", err)
@@ -234,7 +268,7 @@ func TestCommandContextCancelStopsChild(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cmd := helperCommand(ctx, "sleep")
-	if err := cmd.Start(); err != nil {
+	if err := Start(cmd); err != nil {
 		t.Fatal(err)
 	}
 
@@ -255,7 +289,7 @@ func TestCommandContextCancelStopsChild(t *testing.T) {
 
 func TestCommandKillStopsChild(t *testing.T) {
 	cmd := helperCommand(context.Background(), "sleep")
-	if err := cmd.Start(); err != nil {
+	if err := Start(cmd); err != nil {
 		t.Fatal(err)
 	}
 
