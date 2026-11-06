@@ -16,14 +16,12 @@ import (
 )
 
 // #2235: chosen ids must be passed to the query as values. An id that isn't
-// a number must not change the query: it is refused, or matches nothing.
+// a number must not change the query: it is refused with "invalid id".
 func TestFilterIDsNotInQueryText(t *testing.T) {
-	// refusedOrEmpty passes when the query failed, or found nothing
 	refusedOrEmpty := func(t *testing.T, n int, err error) {
 		t.Helper()
-		if err == nil {
-			assert.Zero(t, n, "an id that isn't a number must not match anything")
-		}
+		assert.ErrorContains(t, err, "invalid id")
+		assert.Zero(t, n, "an id that isn't a number must not match anything")
 	}
 
 	runWithRollbackTxn(t, "performers by the performers they appear with", func(t *testing.T, ctx context.Context) {
@@ -171,6 +169,178 @@ func TestFileZipFileExcludesList(t *testing.T) {
 		assert.Contains(t, res.IDs, zipA, "a file that isn't in a zip file is kept")
 		assert.NotContains(t, res.IDs, inX)
 	})
+}
+
+// #2235: the folder zip file filter ignored the excludes list.
+func TestFolderZipFileExcludesList(t *testing.T) {
+	runWithRollbackTxn(t, "folders by zip file", func(t *testing.T, ctx context.Context) {
+		root := &models.Folder{Path: filepath.Join(t.TempDir(), "folder zip excludes")}
+		require.NoError(t, db.Folder().Create(ctx, root))
+		newZip := func(name string) models.FileID {
+			f := &models.BaseFile{ParentFolderID: root.ID, Basename: name}
+			require.NoError(t, db.File().Create(ctx, f))
+			return f.ID
+		}
+		newFolder := func(name string, zip *models.FileID) models.FolderID {
+			f := &models.Folder{Path: filepath.Join(root.Path, name), ParentFolderID: &root.ID, DirEntry: models.DirEntry{ZipFileID: zip}}
+			require.NoError(t, db.Folder().Create(ctx, f))
+			return f.ID
+		}
+		zipA, zipX := newZip("a.zip"), newZip("x.zip")
+		inA, inX, loose := newFolder("in a", &zipA), newFolder("in x", &zipX), newFolder("loose", nil)
+
+		res, err := db.Folder().Query(ctx, models.FolderQueryOptions{
+			QueryOptions: models.QueryOptions{FindFilter: perPageAll()},
+			FolderFilter: &models.FolderFilterType{ZipFile: &models.MultiCriterionInput{
+				Excludes: []string{strconv.Itoa(int(zipX))}, Modifier: models.CriterionModifierIncludes,
+			}},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, res.IDs, inA)
+		assert.Contains(t, res.IDs, loose, "a folder that isn't in a zip file is kept")
+		assert.NotContains(t, res.IDs, inX)
+	})
+}
+
+// #2235, #2197: an id too large for the id columns is no row's id, so it
+// matches nothing, without an error, in every filter that takes ids.
+// PostgreSQL id columns are 32-bit; SQLite must give the same results.
+func TestFilterIDsOutOfRange(t *testing.T) {
+	const big = "3000000000"
+	all := -1
+	scenes := func(ctx context.Context, f *models.SceneFilterType) ([]int, error) {
+		res, err := db.Scene().Query(ctx, models.SceneQueryOptions{QueryOptions: models.QueryOptions{FindFilter: perPageAll()}, SceneFilter: f})
+		if err != nil {
+			return nil, err
+		}
+		return res.IDs, nil
+	}
+	performers := func(ctx context.Context, f *models.PerformerFilterType) ([]int, error) {
+		ps, _, err := db.Performer().Query(ctx, f, perPageAll())
+		var ids []int
+		for _, p := range ps {
+			ids = append(ids, p.ID)
+		}
+		return ids, err
+	}
+
+	done := false
+	run := func(t *testing.T, ctx context.Context, c int) {
+		tg := models.Tag{Name: "out of range tag"}
+		require.NoError(t, db.Tag().Create(ctx, &models.CreateTagInput{Tag: &tg}))
+		var pids []int
+		for _, n := range []string{"A", "B"} {
+			p := models.Performer{Name: "out of range " + n}
+			require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &p}))
+			pids = append(pids, p.ID)
+		}
+		s := models.Scene{Title: "out of range scene", TagIDs: models.NewRelatedIDs([]int{tg.ID}), PerformerIDs: models.NewRelatedIDs(pids)}
+		require.NoError(t, db.Scene().Create(ctx, &s, nil))
+		tagID, pA, pB := strconv.Itoa(tg.ID), strconv.Itoa(pids[0]), strconv.Itoa(pids[1])
+
+		// queries that must find nothing
+		none := []struct {
+			name  string
+			query func() ([]int, error)
+		}{
+			{"scenes by tags, sub-tags", func() ([]int, error) {
+				return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+			}},
+			{"scenes by tags, includes all", func() ([]int, error) {
+				return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{tagID, big}, Modifier: models.CriterionModifierIncludesAll, Depth: &all}})
+			}},
+			{"scenes by galleries", func() ([]int, error) {
+				return scenes(ctx, &models.SceneFilterType{Galleries: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}})
+			}},
+			{"scenes by performers", func() ([]int, error) {
+				return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}})
+			}},
+			{"scenes by performers, includes all", func() ([]int, error) {
+				return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{pA, big}, Modifier: models.CriterionModifierIncludesAll}})
+			}},
+			{"scenes by performers, equals", func() ([]int, error) {
+				return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{pA, pB, big}, Modifier: models.CriterionModifierEquals}})
+			}},
+			{"scenes by studios, sub-studios", func() ([]int, error) {
+				return scenes(ctx, &models.SceneFilterType{Studios: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+			}},
+			{"performers they appear with", func() ([]int, error) {
+				return performers(ctx, &models.PerformerFilterType{Performers: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}})
+			}},
+			{"performers by groups, sub-groups", func() ([]int, error) {
+				return performers(ctx, &models.PerformerFilterType{Groups: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+			}},
+			{"performers by studios, sub-studios", func() ([]int, error) {
+				return performers(ctx, &models.PerformerFilterType{Studios: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+			}},
+			{"tags by parent tags, all levels", func() ([]int, error) {
+				ts, _, err := db.Tag().Query(ctx, &models.TagFilterType{Parents: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}}, perPageAll())
+				var ids []int
+				for _, x := range ts {
+					ids = append(ids, x.ID)
+				}
+				return ids, err
+			}},
+			{"files by zip file", func() ([]int, error) {
+				res, err := db.File().Query(ctx, models.FileQueryOptions{QueryOptions: models.QueryOptions{FindFilter: perPageAll()}, FileFilter: &models.FileFilterType{ZipFile: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}}})
+				if err != nil {
+					return nil, err
+				}
+				var ids []int
+				for _, id := range res.IDs {
+					ids = append(ids, int(id))
+				}
+				return ids, nil
+			}},
+			{"scene markers by tags, sub-tags", func() ([]int, error) {
+				ms, _, err := db.SceneMarker().Query(ctx, &models.SceneMarkerFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}}, perPageAll())
+				var ids []int
+				for _, m := range ms {
+					ids = append(ids, m.ID)
+				}
+				return ids, err
+			}},
+		}
+		// an out-of-range id in an excludes list leaves nothing out
+		keeps := []struct {
+			name   string
+			query  func() ([]int, error)
+			wantID int
+		}{
+			{"scenes by tags, excludes list", func() ([]int, error) {
+				return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{tagID}, Excludes: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+			}, s.ID},
+			{"scenes by performers, excludes", func() ([]int, error) {
+				return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierExcludes}})
+			}, s.ID},
+			{"performers they appear with, excludes list", func() ([]int, error) {
+				return performers(ctx, &models.PerformerFilterType{Performers: &models.MultiCriterionInput{Value: []string{pA}, Excludes: []string{big}, Modifier: models.CriterionModifierIncludes}})
+			}, pids[1]},
+		}
+		// one case per transaction, as a failed query ends a PostgreSQL
+		// transaction
+		if c < len(none) {
+			tt := none[c]
+			ids, err := tt.query()
+			if assert.NoError(t, err, tt.name) {
+				assert.Empty(t, ids, tt.name)
+			}
+			return
+		}
+		if c-len(none) < len(keeps) {
+			tt := keeps[c-len(none)]
+			ids, err := tt.query()
+			if assert.NoError(t, err, tt.name) {
+				assert.Contains(t, ids, tt.wantID, tt.name)
+			}
+			return
+		}
+		done = true
+	}
+
+	for c := 0; !done; c++ {
+		runWithRollbackTxn(t, "case "+strconv.Itoa(c), func(t *testing.T, ctx context.Context) { run(t, ctx, c) })
+	}
 }
 
 // #2235: the zip file "excludes" modifier also dropped files and folders that

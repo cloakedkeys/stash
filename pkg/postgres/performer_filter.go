@@ -726,6 +726,12 @@ func (qb *performerFilterHandler) studiosCriterionHandler(studios *models.Hierar
 				return
 			}
 
+			inRange, ok := hierarchicalCriterionIDsInRange(f, *studios)
+			if !ok {
+				return
+			}
+			studios := &inRange
+
 			if len(studios.Value) == 0 && len(studios.Excludes) == 0 {
 				return
 			}
@@ -833,6 +839,12 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 			if !supportedModifier(f, "groups", groups.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll, models.CriterionModifierExcludes) {
 				return
 			}
+
+			inRange, ok := hierarchicalCriterionIDsInRange(f, *groups)
+			if !ok {
+				return
+			}
+			groups := &inRange
 
 			// the excludes list leaves out performers in scenes with any of those
 			// groups, with sub-groups to the same depth, as in the Tags filter (#2235)
@@ -1010,6 +1022,12 @@ func (qb *performerFilterHandler) appearsWithCriterionHandler(performers *models
 			if !supportedModifier(f, "performers", performers.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll) {
 				return
 			}
+
+			inRange, ok := multiCriterionIDsInRange(f, *performers)
+			if !ok {
+				return
+			}
+			performers := &inRange
 
 			// the ids are passed as values, not written into the query text,
 			// and an id that isn't a number is refused (#2235)

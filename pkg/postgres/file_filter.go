@@ -146,6 +146,12 @@ func (qb *fileFilterHandler) zipFileCriterionHandler(criterion *models.MultiCrit
 				return
 			}
 
+			inRange, ok := multiCriterionIDsInRange(f, *criterion)
+			if !ok {
+				return
+			}
+			criterion := &inRange
+
 			// the excludes list leaves out items in any of those zip files, and keeps
 			// items that aren't in a zip file, as in the Tags filter (#2235)
 			if len(criterion.Excludes) > 0 {

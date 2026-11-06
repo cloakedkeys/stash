@@ -152,6 +152,11 @@ func (h hierarchicalRelationshipHandler) hierarchicalCriterionHandler(criterion 
 				return
 			}
 
+			var ok bool
+			if c, ok = hierarchicalCriterionIDsInRange(f, c); !ok {
+				return
+			}
+
 			if len(c.Value) == 0 && len(c.Excludes) == 0 {
 				return
 			}

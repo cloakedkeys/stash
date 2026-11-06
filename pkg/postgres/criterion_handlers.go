@@ -434,6 +434,11 @@ func (m *joinedMultiCriterionHandlerBuilder) handler(c *models.MultiCriterionInp
 				return
 			}
 
+			var ok bool
+			if criterion, ok = multiCriterionIDsInRange(f, criterion); !ok {
+				return
+			}
+
 			if len(criterion.Value) == 0 && len(criterion.Excludes) == 0 {
 				return
 			}
@@ -513,9 +518,10 @@ type multiCriterionHandlerBuilder struct {
 	addJoinsFunc func(f *filterBuilder, joinType joinType)
 }
 
-func (m *multiCriterionHandlerBuilder) handler(criterion *models.MultiCriterionInput) criterionHandlerFunc {
+func (m *multiCriterionHandlerBuilder) handler(c *models.MultiCriterionInput) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
-		if criterion != nil {
+		if c != nil {
+			criterion := c
 			if criterion.Modifier == models.CriterionModifierIsNull || criterion.Modifier == models.CriterionModifierNotNull {
 				var notClause string
 				if criterion.Modifier == models.CriterionModifierNotNull {
@@ -535,6 +541,12 @@ func (m *multiCriterionHandlerBuilder) handler(criterion *models.MultiCriterionI
 			if !supportedModifier(f, m.foreignTable, criterion.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll, models.CriterionModifierExcludes) {
 				return
 			}
+
+			inRange, ok := multiCriterionIDsInRange(f, *criterion)
+			if !ok {
+				return
+			}
+			criterion = &inRange
 
 			// the excludes list leaves out objects linked to any of those, the
 			// same check as the excludes modifier, as in the Tags filter (#2235)
@@ -832,6 +844,11 @@ func (m *hierarchicalMultiCriterionHandlerBuilder) handler(c *models.Hierarchica
 				return
 			}
 
+			var ok bool
+			if criterion, ok = hierarchicalCriterionIDsInRange(f, criterion); !ok {
+				return
+			}
+
 			if len(criterion.Value) == 0 && len(criterion.Excludes) == 0 {
 				return
 			}
@@ -943,6 +960,11 @@ func (m *joinedHierarchicalMultiCriterionHandlerBuilder) handler(c *models.Hiera
 				return
 			}
 
+			var ok bool
+			if criterion, ok = hierarchicalCriterionIDsInRange(f, criterion); !ok {
+				return
+			}
+
 			// combine excludes if excludes modifier is selected
 			if criterion.Modifier == models.CriterionModifierExcludes {
 				criterion.Modifier = models.CriterionModifierIncludesAll
@@ -1022,6 +1044,11 @@ func (h *joinedPerformerTagsHandler) handle(ctx context.Context, f *filterBuilde
 			// valid
 		default:
 			f.setError(fmt.Errorf("invalid modifier %s for performer tags", criterion.Modifier))
+		}
+
+		var ok bool
+		if criterion, ok = hierarchicalCriterionIDsInRange(f, criterion); !ok {
+			return
 		}
 
 		strFormatMap := utils.StrFormatMap{

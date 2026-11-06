@@ -206,6 +206,12 @@ func (qb *groupFilterHandler) performersCriterionHandler(performers *models.Mult
 				return
 			}
 
+			inRange, ok := multiCriterionIDsInRange(f, *performers)
+			if !ok {
+				return
+			}
+			performers := &inRange
+
 			// the excludes list leaves out groups with a scene with any of those
 			// performers, as in the Tags filter (#2235)
 			if len(performers.Excludes) > 0 {
