@@ -273,10 +273,16 @@ func (m *schema42Migrator) migrateDuplicatePerformers(ctx context.Context) error
 		gotSome := false
 
 		if err := m.withTxn(ctx, func(tx *sqlx.Tx) error {
+			// The first performer of a name keeps no disambiguation, so it is
+			// the one the others clash with. Only it counts: a performer that
+			// the pass below gave a disambiguation from its name, in a run that
+			// stopped part way, isn't a clash, and wasn't one in a run that
+			// didn't stop (#2231).
 			query := `
 SELECT id, name FROM performers WHERE performers.disambiguation IS NULL AND EXISTS (
-  SELECT 1 FROM performers p2 WHERE 
+  SELECT 1 FROM performers p2 WHERE
     performers.name = p2.name AND
+	p2.disambiguation IS NULL AND
 	performers.rowid > p2.rowid
 )`
 
