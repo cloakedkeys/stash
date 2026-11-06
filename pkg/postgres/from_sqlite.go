@@ -152,7 +152,12 @@ func MigrateFromSQLite(ctx context.Context, sqlitePath string, postgresPath stri
 	}
 
 	fmt.Fprintln(out, "Updating PostgreSQL's statistics")
-	if _, err := conn.Exec(ctx, "ANALYZE"); err != nil {
+	var ownTables string
+	err = conn.QueryRow(ctx, ownTablesQuery).Scan(&ownTables)
+	if err == nil && ownTables != "" {
+		_, err = conn.Exec(ctx, "ANALYZE "+ownTables)
+	}
+	if err != nil {
 		fmt.Fprintf(out, "WARNING: the library was copied, but updating PostgreSQL's statistics failed, so some pages may be slow until it next runs: %v\n", err)
 	}
 
