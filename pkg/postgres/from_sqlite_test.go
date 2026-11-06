@@ -363,7 +363,7 @@ func TestMigrateFromSQLiteRefuses(t *testing.T) {
 		want string
 	}{
 		"older PostgreSQL database":      {"UPDATE schema_migrations SET version = version - 1", "isn't at the version this build needs"},
-		"unfinished PostgreSQL database": {"UPDATE schema_migrations SET dirty = true", "didn't finish"},
+		"unfinished PostgreSQL database": {"UPDATE schema_migrations SET dirty = true", "isn't at the version this build needs"}, // opening it sets the version back (#2195)
 	} {
 		t.Run(name, func(t *testing.T) {
 			dsn := migrationFixture(t)
