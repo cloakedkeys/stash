@@ -76,7 +76,17 @@ func (m *schema97Migrator) createInitialUser(ctx context.Context) error {
 		}
 	}
 
-	if err := m.withTxn(ctx, func(tx *sqlx.Tx) error {
+	// migration 97 makes the users table, so it has a user only if this
+	// step made one before Stash stopped (#2221). The config changes below
+	// still run, in case they didn't happen.
+	var hasUser bool
+	if err := m.db.GetContext(ctx, &hasUser, "SELECT EXISTS (SELECT 1 FROM `users`)"); err != nil {
+		return fmt.Errorf("checking for an existing user: %w", err)
+	}
+
+	if hasUser {
+		logger.Info("The initial user already exists")
+	} else if err := m.withTxn(ctx, func(tx *sqlx.Tx) error {
 		const insertSQL = "INSERT INTO `users` (`id`,`username`,`password_hash`,`api_key`,`created_at`,`updated_at`) VALUES (?,?,?,?,?,?)"
 
 		const id = 1

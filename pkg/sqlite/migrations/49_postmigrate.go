@@ -112,7 +112,10 @@ type schema49Migrator struct {
 
 func (m *schema49Migrator) migrateSavedFilters(ctx context.Context) error {
 	if err := m.withTxn(ctx, func(tx *sqlx.Tx) error {
-		rows, err := tx.Query("SELECT id, mode, find_filter FROM saved_filters ORDER BY id")
+		// migration 49 leaves object_filter empty, and this fills it in, at
+		// least with {}. Converting a filter that is already converted would
+		// lose its criteria, so a second run skips them (#2221).
+		rows, err := tx.Query("SELECT id, mode, find_filter FROM saved_filters WHERE object_filter IS NULL ORDER BY id")
 		if err != nil {
 			return err
 		}

@@ -101,7 +101,7 @@ func (m *Migrator) getMigrate() (*migrate.Migrate, error) {
 // The driver runs the whole file in one transaction, so the record is kept
 // together with the file's changes or not at all. runPostMigrations removes
 // it once they have finished; until then they run again before the database
-// is used (runPendingPostMigrations), even after a crash or a backup that
+// is used (RunPendingPostMigrations), even after a crash or a backup that
 // couldn't be put back.
 type pendingMarkSource struct {
 	source.Driver
@@ -161,10 +161,10 @@ func pendingPostMigrations(ctx context.Context, conn *sqlx.DB) ([]uint, error) {
 	return versions, nil
 }
 
-// runPendingPostMigrations runs again the post migrations that didn't finish
+// RunPendingPostMigrations runs again the post migrations that didn't finish
 // last time, oldest first (#2221). Until they have finished, the upgrade
 // isn't done: the database isn't used, and no later migration runs.
-func (m *Migrator) runPendingPostMigrations(ctx context.Context) error {
+func (m *Migrator) RunPendingPostMigrations(ctx context.Context) error {
 	versions, err := pendingPostMigrations(ctx, m.conn)
 	if err != nil {
 		return err
@@ -190,7 +190,7 @@ func (m *Migrator) RunMigration(ctx context.Context, newVersion uint) error {
 	}
 
 	// a post migration that didn't finish last time comes before the next migration
-	if err := m.runPendingPostMigrations(ctx); err != nil {
+	if err := m.RunPendingPostMigrations(ctx); err != nil {
 		return err
 	}
 
@@ -289,7 +289,7 @@ func (db *Database) runPendingPostMigrations(ctx context.Context) error {
 		return err
 	}
 	defer m.Close()
-	return m.runPendingPostMigrations(ctx)
+	return m.RunPendingPostMigrations(ctx)
 }
 
 func (db *Database) ReInitialise() error {
