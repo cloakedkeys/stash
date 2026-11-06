@@ -191,6 +191,37 @@ func TestFailedMigrationNewMigrator(t *testing.T) {
 	assert.Equal(t, last-1, m.CurrentSchemaVersion())
 }
 
+// When the latest migration fails, the next start doesn't report the database
+// as ready at the new version: the symptom of #2195. The build here is made to
+// end at the migration the test makes fail.
+func TestFailedLatestMigrationNotReady(t *testing.T) {
+	ctx := context.Background()
+	dsn := migrationFixture(t)
+	config.InitializeEmpty()
+	saved := appSchemaVersion
+	appSchemaVersion = appVersionMigration
+	t.Cleanup(func() { appSchemaVersion = saved })
+
+	db := NewDatabase()
+	db.dbPath = dsn
+	m, err := NewMigrator(db)
+	require.NoError(t, err)
+	migrateTo(t, m, appVersionMigration-1)
+	_, err = m.conn.Exec("CREATE TABLE app_version (blocker INTEGER)")
+	require.NoError(t, err)
+	require.Error(t, m.RunMigration(ctx, appVersionMigration))
+	m.Close()
+
+	restarted := NewDatabase()
+	require.NoError(t, restarted.Open(ctx, dsn))
+	defer restarted.Close()
+	assert.Equal(t, appVersionMigration-1, restarted.Version())
+	var needed *database.MigrationNeededError
+	require.ErrorAs(t, restarted.Ready(), &needed, "a failed latest migration counts as done")
+	assert.Equal(t, appVersionMigration-1, needed.CurrentSchemaVersion)
+	assert.Equal(t, appVersionMigration, needed.RequiredSchemaVersion)
+}
+
 // A migration whose first schema version fails leaves no version, so a new
 // database is built from the start next time.
 func TestFailedFirstMigration(t *testing.T) {

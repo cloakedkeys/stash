@@ -313,15 +313,10 @@ func (r *joinRepository) getIDs(ctx context.Context, id int) ([]int, error) {
 }
 
 func (r *joinRepository) insert(ctx context.Context, id int, foreignIDs ...int) error {
-	stmt, err := dbWrapper.Prepare(ctx, fmt.Sprintf("INSERT INTO %s (%s, %s) VALUES (?, ?)", r.tableName, r.idColumn, r.fkColumn))
-	if err != nil {
-		return err
-	}
-
-	defer stmt.Close()
+	stmt := fmt.Sprintf("INSERT INTO %s (%s, %s) VALUES (?, ?)", r.tableName, r.idColumn, r.fkColumn)
 
 	for _, fk := range foreignIDs {
-		if _, err := dbWrapper.ExecStmt(ctx, stmt, id, fk); err != nil {
+		if _, err := dbWrapper.Exec(ctx, stmt, id, fk); err != nil {
 			return joinInsertError(err, r.fkColumn, fk)
 		}
 	}
@@ -330,15 +325,10 @@ func (r *joinRepository) insert(ctx context.Context, id int, foreignIDs ...int) 
 
 // insertOrIgnore inserts a join into the table, silently failing in the event that a conflict occurs (ie when the join already exists)
 func (r *joinRepository) insertOrIgnore(ctx context.Context, id int, foreignIDs ...int) error {
-	stmt, err := dbWrapper.Prepare(ctx, fmt.Sprintf("INSERT INTO %s (%s, %s) VALUES (?, ?) ON CONFLICT (%[2]s, %s) DO NOTHING", r.tableName, r.idColumn, r.fkColumn))
-	if err != nil {
-		return err
-	}
-
-	defer stmt.Close()
+	stmt := fmt.Sprintf("INSERT INTO %s (%s, %s) VALUES (?, ?) ON CONFLICT (%[2]s, %s) DO NOTHING", r.tableName, r.idColumn, r.fkColumn)
 
 	for _, fk := range foreignIDs {
-		if _, err := dbWrapper.ExecStmt(ctx, stmt, id, fk); err != nil {
+		if _, err := dbWrapper.Exec(ctx, stmt, id, fk); err != nil {
 			return joinInsertError(err, r.fkColumn, fk)
 		}
 	}

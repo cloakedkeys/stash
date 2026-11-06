@@ -534,7 +534,11 @@ func (qb *GalleryStore) FindMany(ctx context.Context, ids []int) ([]*models.Gall
 
 // returns nil, sql.ErrNoRows if not found
 func (qb *GalleryStore) find(ctx context.Context, id int) (*models.Gallery, error) {
-	q := qb.selectDataset().Where(qb.tableMgr.byID(id))
+	if idOutOfRange(id) {
+		return nil, sql.ErrNoRows
+	}
+
+	q := qb.selectDataset().Prepared(true).Where(qb.tableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)
 	if err != nil {
