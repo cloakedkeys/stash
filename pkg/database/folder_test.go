@@ -84,10 +84,10 @@ func Test_FolderStore_Create(t *testing.T) {
 
 			assert.NotZero(s.ID)
 
-			copy := tt.newObject
-			copy.ID = s.ID
+			copied := tt.newObject
+			copied.ID = s.ID
 
-			assert.Equal(copy, s)
+			assert.Equal(copied, s)
 
 			// ensure can find the folder
 			found, err := qb.FindByPath(ctx, path, true)
@@ -95,7 +95,7 @@ func Test_FolderStore_Create(t *testing.T) {
 				t.Errorf("FolderStore.Find() error = %v", err)
 			}
 
-			assert.Equal(copy, *found)
+			assert.Equal(copied, *found)
 		})
 	}
 }
@@ -171,7 +171,7 @@ func Test_FolderStore_Update(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			copy := *tt.updatedObject
+			copied := *tt.updatedObject
 
 			if err := qb.Update(ctx, tt.updatedObject); (err != nil) != tt.wantErr {
 				t.Errorf("FolderStore.Update() error = %v, wantErr %v", err, tt.wantErr)
@@ -186,7 +186,7 @@ func Test_FolderStore_Update(t *testing.T) {
 				t.Errorf("FolderStore.Find() error = %v", err)
 			}
 
-			assert.Equal(copy, *s)
+			assert.Equal(copied, *s)
 		})
 	}
 }

@@ -114,7 +114,7 @@ func TestGroupRelationConcurrentEdits(t *testing.T) {
 		return ret
 	}
 	t.Cleanup(func() {
-		_ = withTxn(func(ctx context.Context) error {
+		runTxn(t, func(ctx context.Context) error {
 			for _, id := range made {
 				if err := db.Group().Destroy(ctx, id); err != nil {
 					return err

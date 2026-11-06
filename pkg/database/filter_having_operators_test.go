@@ -62,7 +62,6 @@ func setMinus(a, b idSet) idSet {
 }
 
 type operatorCase[T any] struct {
-	name string
 	// returns a new filter for the condition the database checks by row
 	where func() *T
 	// returns a new filter for the condition it checks after grouping
@@ -72,7 +71,7 @@ type operatorCase[T any] struct {
 }
 
 func (c operatorCase[T]) run(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		var empty T
 		all := c.query(ctx, t, &empty)
 		w := c.query(ctx, t, c.where())

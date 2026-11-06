@@ -18,14 +18,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func createPortraitPerformer(t *testing.T, ctx context.Context, name string) int {
+func createPortraitPerformer(ctx context.Context, t *testing.T, name string) int {
 	t.Helper()
 	p := models.Performer{Name: name}
 	require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &p}))
 	return p.ID
 }
 
-func addPortrait(t *testing.T, ctx context.Context, id int, data string) string {
+func addPortrait(ctx context.Context, t *testing.T, id int, data string) string {
 	t.Helper()
 	added, err := db.Performer().AddAlternateImage(ctx, id, []byte(data))
 	require.NoError(t, err)
@@ -33,7 +33,7 @@ func addPortrait(t *testing.T, ctx context.Context, id int, data string) string 
 	return md5.FromBytes([]byte(data))
 }
 
-func portraitChecksums(t *testing.T, ctx context.Context, id int) []string {
+func portraitChecksums(ctx context.Context, t *testing.T, id int) []string {
 	t.Helper()
 	images, err := db.Performer().GetAlternateImages(ctx, id)
 	require.NoError(t, err)
@@ -51,13 +51,13 @@ func portraitChecksums(t *testing.T, ctx context.Context, id int) []string {
 func TestPerformerAlternateImages(t *testing.T) {
 	runWithRollbackTxn(t, "references and order", func(t *testing.T, ctx context.Context) {
 		qb := db.Performer()
-		id := createPortraitPerformer(t, ctx, t.Name())
-		other := createPortraitPerformer(t, ctx, t.Name()+" other")
-		assert.Empty(t, portraitChecksums(t, ctx, id))
+		id := createPortraitPerformer(ctx, t, t.Name())
+		other := createPortraitPerformer(ctx, t, t.Name()+" other")
+		assert.Empty(t, portraitChecksums(ctx, t, id))
 		require.NoError(t, qb.UpdateImage(ctx, id, []byte("primary")))
 		primary := md5.FromBytes([]byte("primary"))
-		a := addPortrait(t, ctx, id, "alternate a")
-		b := addPortrait(t, ctx, id, "alternate b")
+		a := addPortrait(ctx, t, id, "alternate a")
+		b := addPortrait(ctx, t, id, "alternate b")
 		images, err := qb.GetAlternateImages(ctx, id)
 		require.NoError(t, err)
 		assert.Equal(t, []models.PerformerImage{{Checksum: a, Position: 0}, {Checksum: b, Position: 1}}, images)
@@ -71,7 +71,7 @@ func TestPerformerAlternateImages(t *testing.T) {
 		after, err := db.Blobs().Count(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, count, after)
-		assert.Equal(t, []string{a, b}, portraitChecksums(t, ctx, id))
+		assert.Equal(t, []string{a, b}, portraitChecksums(ctx, t, id))
 		data, err := qb.GetAlternateImage(ctx, id, a)
 		require.NoError(t, err)
 		assert.Equal(t, []byte("alternate a"), data)
@@ -79,37 +79,37 @@ func TestPerformerAlternateImages(t *testing.T) {
 		require.Error(t, err)
 		require.Error(t, qb.SetPrimaryImage(ctx, other, a))
 		require.Error(t, qb.RemoveAlternateImage(ctx, other, a))
-		assert.Equal(t, []string{a, b}, portraitChecksums(t, ctx, id))
+		assert.Equal(t, []string{a, b}, portraitChecksums(ctx, t, id))
 
 		// Invalid reorder requests must not partially change the order.
 		for _, checksums := range [][]string{{a}, {a, a}, {a, "unknown"}} {
 			require.Error(t, qb.ReorderAlternateImages(ctx, id, checksums))
-			assert.Equal(t, []string{a, b}, portraitChecksums(t, ctx, id))
+			assert.Equal(t, []string{a, b}, portraitChecksums(ctx, t, id))
 		}
 		require.NoError(t, qb.ReorderAlternateImages(ctx, id, []string{b, a}))
-		assert.Equal(t, []string{b, a}, portraitChecksums(t, ctx, id))
+		assert.Equal(t, []string{b, a}, portraitChecksums(ctx, t, id))
 		require.NoError(t, qb.SetPrimaryImage(ctx, id, b))
 		data, err = qb.GetImage(ctx, id)
 		require.NoError(t, err)
 		assert.Equal(t, []byte("alternate b"), data)
-		assert.Equal(t, []string{primary, a}, portraitChecksums(t, ctx, id))
+		assert.Equal(t, []string{primary, a}, portraitChecksums(ctx, t, id))
 		after, err = db.Blobs().Count(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, count, after, "swapping only changes references")
 
 		// The old primary writer still replaces only the primary.
 		require.NoError(t, qb.UpdateImage(ctx, id, []byte("replacement")))
-		assert.Equal(t, []string{primary, a}, portraitChecksums(t, ctx, id))
+		assert.Equal(t, []string{primary, a}, portraitChecksums(ctx, t, id))
 		require.NoError(t, qb.UpdateImage(ctx, id, nil))
-		assert.Equal(t, []string{primary, a}, portraitChecksums(t, ctx, id))
+		assert.Equal(t, []string{primary, a}, portraitChecksums(ctx, t, id))
 		require.NoError(t, qb.SetPrimaryImage(ctx, id, a))
 		data, err = qb.GetImage(ctx, id)
 		require.NoError(t, err)
 		assert.Equal(t, []byte("alternate a"), data)
-		assert.Equal(t, []string{primary}, portraitChecksums(t, ctx, id))
+		assert.Equal(t, []string{primary}, portraitChecksums(ctx, t, id))
 		require.NoError(t, qb.RemoveAlternateImage(ctx, id, primary))
 		require.Error(t, qb.RemoveAlternateImage(ctx, id, primary), "only an owned alternate can be removed")
-		assert.Empty(t, portraitChecksums(t, ctx, id))
+		assert.Empty(t, portraitChecksums(ctx, t, id))
 		exists, err := db.Blobs().EntryExists(ctx, primary)
 		require.NoError(t, err)
 		assert.False(t, exists)
@@ -124,13 +124,13 @@ func TestPerformerUpdateImageRemovesMatchingAlternate(t *testing.T) {
 		}
 		runWithRollbackTxn(t, name, func(t *testing.T, ctx context.Context) {
 			qb := db.Performer()
-			id := createPortraitPerformer(t, ctx, t.Name())
+			id := createPortraitPerformer(ctx, t, t.Name())
 			require.NoError(t, qb.UpdateImage(ctx, id, []byte("old primary")))
-			chosen := addPortrait(t, ctx, id, "new primary")
-			remaining := addPortrait(t, ctx, id, "remaining alternate")
+			chosen := addPortrait(ctx, t, id, "new primary")
+			remaining := addPortrait(ctx, t, id, "remaining alternate")
 
 			require.NoError(t, qb.UpdateImage(ctx, id, []byte("new primary")))
-			assert.Equal(t, []string{remaining}, portraitChecksums(t, ctx, id))
+			assert.Equal(t, []string{remaining}, portraitChecksums(ctx, t, id))
 			data, err := qb.GetImage(ctx, id)
 			require.NoError(t, err)
 			assert.Equal(t, []byte("new primary"), data)
@@ -145,7 +145,7 @@ func TestPerformerUpdateImageRemovesMatchingAlternate(t *testing.T) {
 			data, err = qb.GetImage(ctx, id)
 			require.NoError(t, err)
 			assert.Empty(t, data)
-			assert.Equal(t, []string{remaining}, portraitChecksums(t, ctx, id))
+			assert.Equal(t, []string{remaining}, portraitChecksums(ctx, t, id))
 			exists, err = db.Blobs().EntryExists(ctx, chosen)
 			require.NoError(t, err)
 			assert.False(t, exists, "clearing removes the primary blob")
@@ -159,10 +159,10 @@ func TestPerformerUpdateImageRemovesMatchingAlternate(t *testing.T) {
 func TestPerformerAlternateImageSharing(t *testing.T) {
 	runWithRollbackTxn(t, "shared blobs", func(t *testing.T, ctx context.Context) {
 		qb := db.Performer()
-		a := createPortraitPerformer(t, ctx, t.Name()+" a")
-		b := createPortraitPerformer(t, ctx, t.Name()+" b")
-		checksum := addPortrait(t, ctx, a, "shared portrait")
-		addPortrait(t, ctx, b, "shared portrait")
+		a := createPortraitPerformer(ctx, t, t.Name()+" a")
+		b := createPortraitPerformer(ctx, t, t.Name()+" b")
+		checksum := addPortrait(ctx, t, a, "shared portrait")
+		addPortrait(ctx, t, b, "shared portrait")
 		require.NoError(t, qb.RemoveAlternateImage(ctx, a, checksum))
 		data, err := qb.GetAlternateImage(ctx, b, checksum)
 		require.NoError(t, err)
@@ -180,7 +180,7 @@ func TestPerformerAlternateImageSharing(t *testing.T) {
 		require.NoError(t, db.Tag().UpdateImage(ctx, tag.ID, data))
 		require.NoError(t, qb.UpdateImage(ctx, a, data))
 		require.NoError(t, qb.Destroy(ctx, b))
-		assert.Empty(t, portraitChecksums(t, ctx, b))
+		assert.Empty(t, portraitChecksums(ctx, t, b))
 		data, err = qb.GetImage(ctx, a)
 		require.NoError(t, err)
 		assert.Equal(t, []byte("shared portrait"), data)
@@ -193,10 +193,10 @@ func TestPerformerAlternateImageSharing(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, exists)
 
-		id := createPortraitPerformer(t, ctx, t.Name()+" destroy")
-		checksum = addPortrait(t, ctx, id, "unshared portrait")
+		id := createPortraitPerformer(ctx, t, t.Name()+" destroy")
+		checksum = addPortrait(ctx, t, id, "unshared portrait")
 		require.NoError(t, qb.Destroy(ctx, id))
-		assert.Empty(t, portraitChecksums(t, ctx, id))
+		assert.Empty(t, portraitChecksums(ctx, t, id))
 		exists, err = db.Blobs().EntryExists(ctx, checksum)
 		require.NoError(t, err)
 		assert.False(t, exists)
@@ -207,39 +207,39 @@ func TestPerformerMergePortraits(t *testing.T) {
 	for _, hasPrimary := range []bool{false, true} {
 		runWithRollbackTxn(t, map[bool]string{false: "no destination primary", true: "destination primary"}[hasPrimary], func(t *testing.T, ctx context.Context) {
 			qb := db.Performer()
-			destination := createPortraitPerformer(t, ctx, t.Name()+" destination")
-			onlyAlternates := createPortraitPerformer(t, ctx, t.Name()+" only alternates")
-			source := createPortraitPerformer(t, ctx, t.Name()+" source")
-			second := createPortraitPerformer(t, ctx, t.Name()+" second")
-			third := createPortraitPerformer(t, ctx, t.Name()+" third")
+			destination := createPortraitPerformer(ctx, t, t.Name()+" destination")
+			onlyAlternates := createPortraitPerformer(ctx, t, t.Name()+" only alternates")
+			source := createPortraitPerformer(ctx, t, t.Name()+" source")
+			second := createPortraitPerformer(ctx, t, t.Name()+" second")
+			third := createPortraitPerformer(ctx, t, t.Name()+" third")
 			if hasPrimary {
 				require.NoError(t, qb.UpdateImage(ctx, destination, []byte("destination primary")))
 			}
-			a := addPortrait(t, ctx, destination, "destination alternate")
+			a := addPortrait(ctx, t, destination, "destination alternate")
 			require.NoError(t, qb.UpdateImage(ctx, source, []byte("source primary")))
 			b := md5.FromBytes([]byte("source primary"))
-			addPortrait(t, ctx, onlyAlternates, "source primary")
-			addPortrait(t, ctx, onlyAlternates, "destination alternate")
-			addPortrait(t, ctx, source, "destination alternate")
-			c := addPortrait(t, ctx, source, "source alternate")
+			addPortrait(ctx, t, onlyAlternates, "source primary")
+			addPortrait(ctx, t, onlyAlternates, "destination alternate")
+			addPortrait(ctx, t, source, "destination alternate")
+			c := addPortrait(ctx, t, source, "source alternate")
 			if hasPrimary {
-				addPortrait(t, ctx, source, "destination primary")
+				addPortrait(ctx, t, source, "destination primary")
 			}
 			require.NoError(t, qb.UpdateImage(ctx, second, []byte("source primary")))
-			addPortrait(t, ctx, second, "source alternate")
+			addPortrait(ctx, t, second, "source alternate")
 			require.NoError(t, qb.UpdateImage(ctx, third, []byte("later primary")))
 			d := md5.FromBytes([]byte("later primary"))
 			require.NoError(t, qb.Merge(ctx, []int{onlyAlternates, source, second, third}, destination))
 			if hasPrimary {
-				assert.Equal(t, []string{a, b, c, d}, portraitChecksums(t, ctx, destination))
+				assert.Equal(t, []string{a, b, c, d}, portraitChecksums(ctx, t, destination))
 			} else {
-				assert.Equal(t, []string{a, c, d}, portraitChecksums(t, ctx, destination))
+				assert.Equal(t, []string{a, c, d}, portraitChecksums(ctx, t, destination))
 			}
 			for _, id := range []int{onlyAlternates, source, second, third} {
 				p, err := qb.Find(ctx, id)
 				require.NoError(t, err)
 				assert.Nil(t, p)
-				assert.Empty(t, portraitChecksums(t, ctx, id))
+				assert.Empty(t, portraitChecksums(ctx, t, id))
 			}
 			alternates := map[string]string{a: "destination alternate", c: "source alternate", d: "later primary"}
 			if hasPrimary {
@@ -261,11 +261,11 @@ func TestPerformerMergePortraits(t *testing.T) {
 	}
 	runWithRollbackTxn(t, "sources only have alternates", func(t *testing.T, ctx context.Context) {
 		qb := db.Performer()
-		destination := createPortraitPerformer(t, ctx, t.Name()+" destination")
-		source := createPortraitPerformer(t, ctx, t.Name()+" source")
-		a := addPortrait(t, ctx, source, "source alternate")
+		destination := createPortraitPerformer(ctx, t, t.Name()+" destination")
+		source := createPortraitPerformer(ctx, t, t.Name()+" source")
+		a := addPortrait(ctx, t, source, "source alternate")
 		require.NoError(t, qb.Merge(ctx, []int{source}, destination))
-		assert.Equal(t, []string{a}, portraitChecksums(t, ctx, destination))
+		assert.Equal(t, []string{a}, portraitChecksums(ctx, t, destination))
 		data, err := qb.GetImage(ctx, destination)
 		require.NoError(t, err)
 		assert.Empty(t, data)
@@ -287,8 +287,8 @@ func TestPerformerPortraitFilesystemRollback(t *testing.T) {
 		}
 	})
 	require.NoError(t, withTxn(func(ctx context.Context) error {
-		id = createPortraitPerformer(t, ctx, t.Name())
-		addPortrait(t, ctx, id, t.Name())
+		id = createPortraitPerformer(ctx, t, t.Name())
+		addPortrait(ctx, t, id, t.Name())
 		return nil
 	}))
 	forced := errors.New("forced failure after deleting portrait")
@@ -349,8 +349,8 @@ func TestPerformerPortraitFilesystemRollback(t *testing.T) {
 func TestAnonymiserClearsAlternatePortraits(t *testing.T) {
 	var id int
 	require.NoError(t, withTxn(func(ctx context.Context) error {
-		id = createPortraitPerformer(t, ctx, t.Name())
-		addPortrait(t, ctx, id, "private alternate portrait")
+		id = createPortraitPerformer(ctx, t, t.Name())
+		addPortrait(ctx, t, id, "private alternate portrait")
 		return nil
 	}))
 	t.Cleanup(func() {
@@ -379,8 +379,8 @@ func TestPerformerAlternateBlobStorageMigration(t *testing.T) {
 		}
 	})
 	require.NoError(t, withTxn(func(ctx context.Context) error {
-		id = createPortraitPerformer(t, ctx, t.Name())
-		addPortrait(t, ctx, id, t.Name())
+		id = createPortraitPerformer(ctx, t, t.Name())
+		addPortrait(ctx, t, id, t.Name())
 		checksums, err := db.Blobs().FindBlobs(ctx, 1000, "")
 		require.NoError(t, err)
 		assert.Contains(t, checksums, checksum, "the migration enumerator includes alternate portraits")

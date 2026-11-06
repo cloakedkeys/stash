@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newResetTestDatabase(t *testing.T, ctx context.Context) *Database {
+func newResetTestDatabase(ctx context.Context, t *testing.T) *Database {
 	t.Helper()
 	db := NewDatabase()
 	require.NoError(t, db.Open(ctx, filepath.Join(t.TempDir(), "stash.sqlite")))
@@ -30,7 +30,7 @@ func newResetTestDatabase(t *testing.T, ctx context.Context) *Database {
 func TestRequestDuringReset(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	db := newResetTestDatabase(t, ctx)
+	db := newResetTestDatabase(ctx, t)
 
 	// Use a real account so the request also checks account restoration.
 	require.NoError(t, txn.WithTxn(ctx, db, func(ctx context.Context) error {
@@ -111,7 +111,7 @@ func TestResetWaitsForDatabaseWork(t *testing.T) {
 		t.Run(scope, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			db := newResetTestDatabase(t, ctx)
+			db := newResetTestDatabase(ctx, t)
 
 			var workCtx context.Context
 			var release func()

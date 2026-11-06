@@ -39,11 +39,12 @@ func TestImageGalleryOrderSharedFiles(t *testing.T) {
 				g := models.NewGallery()
 				input := models.CreateGalleryInput{Gallery: &g}
 				var zip *models.FileID
-				if kind == "zip" {
+				switch kind {
+				case "zip":
 					id := newFile(folderIDs[folderIdxWithFiles], name+".zip", nil)
 					zip = &id
 					input.FileIDs = []models.FileID{id}
-				} else if kind == "folder" {
+				case "folder":
 					g.FolderID = &folder.ID
 				}
 				require.NoError(t, db.Gallery().Create(ctx, &input))

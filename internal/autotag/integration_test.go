@@ -90,10 +90,10 @@ func runTests(m *testing.M) int {
 	err := populateDB()
 	if err != nil {
 		panic(fmt.Sprintf("Could not populate database: %s", err.Error()))
-	} else {
-		// run the tests
-		return m.Run()
 	}
+
+	// run the tests
+	return m.Run()
 }
 
 func TestMain(m *testing.M) {
@@ -505,6 +505,14 @@ func withTxn(f func(ctx context.Context) error) error {
 	return txn.WithTxn(testCtx, db, f)
 }
 
+// runTxn runs f in a transaction, and fails the test if it returns an error.
+func runTxn(t testing.TB, f func(ctx context.Context) error) {
+	t.Helper()
+	if err := withTxn(f); err != nil {
+		t.Errorf("transaction failed: %v", err)
+	}
+}
+
 func withDB(f func(ctx context.Context) error) error {
 	return txn.WithDatabase(testCtx, db, f)
 }
@@ -584,7 +592,7 @@ func TestParsePerformerScenes(t *testing.T) {
 	}
 
 	// verify that scenes were tagged correctly
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		pqb := r.Performer
 
 		scenes, err := r.Scene.All(ctx)
@@ -640,7 +648,7 @@ func TestParseStudioScenes(t *testing.T) {
 	}
 
 	// verify that scenes were tagged correctly
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		scenes, err := r.Scene.All(ctx)
 		if err != nil {
 			t.Error(err.Error())
@@ -700,7 +708,7 @@ func TestParseTagScenes(t *testing.T) {
 	}
 
 	// verify that scenes were tagged correctly
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		scenes, err := r.Scene.All(ctx)
 		if err != nil {
 			t.Error(err.Error())
@@ -754,7 +762,7 @@ func TestParsePerformerImages(t *testing.T) {
 	}
 
 	// verify that images were tagged correctly
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		pqb := r.Performer
 
 		images, err := r.Image.All(ctx)
@@ -811,7 +819,7 @@ func TestParseStudioImages(t *testing.T) {
 	}
 
 	// verify that images were tagged correctly
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		images, err := r.Image.All(ctx)
 		if err != nil {
 			t.Error(err.Error())
@@ -871,7 +879,7 @@ func TestParseTagImages(t *testing.T) {
 	}
 
 	// verify that images were tagged correctly
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		images, err := r.Image.All(ctx)
 		if err != nil {
 			t.Error(err.Error())
@@ -926,7 +934,7 @@ func TestParsePerformerGalleries(t *testing.T) {
 	}
 
 	// verify that galleries were tagged correctly
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		pqb := r.Performer
 
 		galleries, err := r.Gallery.All(ctx)
@@ -983,7 +991,7 @@ func TestParseStudioGalleries(t *testing.T) {
 	}
 
 	// verify that galleries were tagged correctly
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		galleries, err := r.Gallery.All(ctx)
 		if err != nil {
 			t.Error(err.Error())
@@ -1043,7 +1051,7 @@ func TestParseTagGalleries(t *testing.T) {
 	}
 
 	// verify that galleries were tagged correctly
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		galleries, err := r.Gallery.All(ctx)
 		if err != nil {
 			t.Error(err.Error())

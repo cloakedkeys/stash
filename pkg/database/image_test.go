@@ -194,16 +194,16 @@ func Test_imageQueryBuilder_Create(t *testing.T) {
 
 			assert.NotZero(s.ID)
 
-			copy := *tt.newObject.Image
-			copy.ID = s.ID
+			copied := *tt.newObject.Image
+			copied.ID = s.ID
 
 			// load relationships
-			if err := loadImageRelationships(ctx, copy, &s); err != nil {
+			if err := loadImageRelationships(ctx, copied, &s); err != nil {
 				t.Errorf("loadImageRelationships() error = %v", err)
 				return
 			}
 
-			assert.Equal(copy, s)
+			assert.Equal(copied, s)
 
 			// ensure can find the image
 			found, err := qb.Find(ctx, s.ID)
@@ -212,12 +212,12 @@ func Test_imageQueryBuilder_Create(t *testing.T) {
 			}
 
 			// load relationships
-			if err := loadImageRelationships(ctx, copy, found); err != nil {
+			if err := loadImageRelationships(ctx, copied, found); err != nil {
 				t.Errorf("loadImageRelationships() error = %v", err)
 				return
 			}
 
-			assert.Equal(copy, *found)
+			assert.Equal(copied, *found)
 		})
 	}
 }
@@ -228,12 +228,6 @@ func clearImageFileIDs(image *models.Image) {
 			f.Base().ID = 0
 		}
 	}
-}
-
-func makeImageFileWithID(i int) *models.ImageFile {
-	ret := makeImageFile(i)
-	ret.ID = imageFileIDs[i]
-	return ret
 }
 
 func Test_imageQueryBuilder_Update(t *testing.T) {
@@ -380,7 +374,7 @@ func Test_imageQueryBuilder_Update(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			copy := *tt.updatedObject
+			copied := *tt.updatedObject
 
 			if err := qb.Update(ctx, tt.updatedObject); (err != nil) != tt.wantErr {
 				t.Errorf("imageQueryBuilder.Update() error = %v, wantErr %v", err, tt.wantErr)
@@ -396,12 +390,12 @@ func Test_imageQueryBuilder_Update(t *testing.T) {
 			}
 
 			// load relationships
-			if err := loadImageRelationships(ctx, copy, s); err != nil {
+			if err := loadImageRelationships(ctx, copied, s); err != nil {
 				t.Errorf("loadImageRelationships() error = %v", err)
 				return
 			}
 
-			assert.Equal(copy, *s)
+			assert.Equal(copied, *s)
 		})
 	}
 }
@@ -1078,7 +1072,6 @@ func Test_imageQueryBuilder_Destroy(t *testing.T) {
 }
 
 func makeImageWithID(index int) *models.Image {
-	const fromDB = true
 	ret := makeImage(index)
 	ret.ID = imageIDs[index]
 
@@ -1379,7 +1372,6 @@ func Test_imageQueryBuilder_FindByGalleryID(t *testing.T) {
 			}
 
 			assert.Equal(tt.want, got)
-			return
 		})
 	}
 }
@@ -1584,7 +1576,7 @@ func Test_imageStore_FindByZipFileID(t *testing.T) {
 }
 
 func TestImageQueryQ(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		const imageIdx = 2
 
 		q := getImageStringValue(imageIdx, titleField)
@@ -1598,7 +1590,7 @@ func TestImageQueryQ(t *testing.T) {
 }
 
 func TestImageQueryQ_Details(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		const imageIdx = 3
 
 		q := getImageStringValue(imageIdx, detailsField)
@@ -1650,7 +1642,7 @@ func createImageTestFile(ctx context.Context, t *testing.T, basename string, siz
 
 // #5503 - total size/megapixels must include secondary files of equal size/dimensions
 func TestImageQueryTotalSizeMultipleFiles(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		iqb := db.Image()
 
 		const fileSize = int64(1234)
@@ -1693,7 +1685,7 @@ func TestImageQueryTotalSizeMultipleFiles(t *testing.T) {
 
 // #7262 - filesize sort must use the combined size of all files
 func TestImageQuerySortFileSizeMultipleFiles(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		iqb := db.Image()
 
 		// each file is smaller than the single file, but combined they are larger
@@ -1760,7 +1752,7 @@ func imageQueryQ(ctx context.Context, t *testing.T, sqb models.ImageReader, q st
 
 func verifyImageQuery(t *testing.T, filter models.ImageFilterType, verifyFn func(ctx context.Context, s *models.Image)) {
 	t.Helper()
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		t.Helper()
 		sqb := db.Image()
 
@@ -1842,7 +1834,7 @@ func TestImageQueryPath(t *testing.T) {
 }
 
 func verifyImagePath(t *testing.T, pathCriterion models.StringCriterionInput, expected int) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		imageFilter := models.ImageFilterType{
 			Path: &pathCriterion,
@@ -1882,7 +1874,7 @@ func TestImageQueryPathOr(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 
 		images := queryImages(ctx, t, sqb, &imageFilter, nil)
@@ -1918,7 +1910,7 @@ func TestImageQueryPathAndRating(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 
 		images := queryImages(ctx, t, sqb, &imageFilter, nil)
@@ -1958,7 +1950,7 @@ func TestImageQueryPathNotRating(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 
 		images := queryImages(ctx, t, sqb, &imageFilter, nil)
@@ -1991,7 +1983,7 @@ func TestImageIllegalQuery(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 
 		_, _, err := queryImagesWithCount(ctx, sqb, imageFilter, nil)
@@ -2037,7 +2029,7 @@ func TestImageQueryRating100(t *testing.T) {
 }
 
 func verifyImagesRating100(t *testing.T, ratingCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		imageFilter := models.ImageFilterType{
 			Rating100: &ratingCriterion,
@@ -2076,7 +2068,7 @@ func TestImageQueryOCounter(t *testing.T) {
 }
 
 func verifyImagesOCounter(t *testing.T, oCounterCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		imageFilter := models.ImageFilterType{
 			OCounter: &oCounterCriterion,
@@ -2105,7 +2097,7 @@ func TestImageQueryResolution(t *testing.T) {
 }
 
 func verifyImagesResolution(t *testing.T, resolution models.ResolutionEnum) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		imageFilter := models.ImageFilterType{
 			Resolution: &models.ResolutionCriterionInput{
@@ -2158,7 +2150,7 @@ func verifyImageResolution(t *testing.T, height int, resolution models.Resolutio
 }
 
 func TestImageQueryIsMissingGalleries(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		isMissing := "galleries"
 		imageFilter := models.ImageFilterType{
@@ -2195,7 +2187,7 @@ func TestImageQueryIsMissingGalleries(t *testing.T) {
 }
 
 func TestImageQueryIsMissingStudio(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		isMissing := "studio"
 		imageFilter := models.ImageFilterType{
@@ -2230,7 +2222,7 @@ func TestImageQueryIsMissingStudio(t *testing.T) {
 }
 
 func TestImageQueryIsMissingPerformers(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		isMissing := "performers"
 		imageFilter := models.ImageFilterType{
@@ -2267,7 +2259,7 @@ func TestImageQueryIsMissingPerformers(t *testing.T) {
 }
 
 func TestImageQueryIsMissingTags(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		isMissing := "tags"
 		imageFilter := models.ImageFilterType{
@@ -2299,7 +2291,7 @@ func TestImageQueryIsMissingTags(t *testing.T) {
 }
 
 func TestImageQueryIsMissingRating(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		isMissing := "rating"
 		imageFilter := models.ImageFilterType{
@@ -2323,7 +2315,7 @@ func TestImageQueryIsMissingRating(t *testing.T) {
 }
 
 func TestImageQueryGallery(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		galleryCriterion := models.MultiCriterionInput{
 			Value: []string{
@@ -2747,7 +2739,7 @@ func TestImageQueryStudio(t *testing.T) {
 }
 
 func TestImageQueryStudioDepth(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		depth := 2
 		studioCriterion := models.HierarchicalMultiCriterionInput{
@@ -3034,7 +3026,7 @@ func TestImageQueryTagCount(t *testing.T) {
 }
 
 func verifyImagesTagCount(t *testing.T, tagCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		imageFilter := models.ImageFilterType{
 			TagCount: &tagCountCriterion,
@@ -3075,7 +3067,7 @@ func TestImageQueryPerformerCount(t *testing.T) {
 }
 
 func verifyImagesPerformerCount(t *testing.T, performerCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Image()
 		imageFilter := models.ImageFilterType{
 			PerformerCount: &performerCountCriterion,
@@ -3187,7 +3179,7 @@ func TestImageQuerySorting(t *testing.T) {
 }
 
 func TestImageQueryPagination(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		perPage := 1
 		findFilter := models.FindFilterType{
 			PerPage: &perPage,
@@ -3476,7 +3468,7 @@ func TestImageQueryCustomFields(t *testing.T) {
 }
 
 func TestImageStore_UserData(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		qb := db.Image()
 
 		newImage := models.Image{

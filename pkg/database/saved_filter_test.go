@@ -13,7 +13,7 @@ import (
 )
 
 func TestSavedFilterFind(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		savedFilter, err := db.SavedFilter().Find(ctx, savedFilterIDs[savedFilterIdxImage])
 
 		if err != nil {
@@ -27,7 +27,7 @@ func TestSavedFilterFind(t *testing.T) {
 }
 
 func TestSavedFilterFindByMode(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		savedFilters, err := db.SavedFilter().FindByMode(ctx, models.FilterModeScenes)
 
 		if err != nil {
@@ -65,7 +65,7 @@ func TestSavedFilterDestroy(t *testing.T) {
 	var id int
 
 	// create the saved filter to destroy
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		newFilter := models.SavedFilter{
 			Name:         filterName,
 			Mode:         models.FilterModeScenes,
@@ -82,12 +82,12 @@ func TestSavedFilterDestroy(t *testing.T) {
 		return err
 	})
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		return db.SavedFilter().Destroy(ctx, id)
 	})
 
 	// now try to find it
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		found, err := db.SavedFilter().Find(ctx, id)
 		if err == nil {
 			assert.Nil(t, found)
@@ -105,7 +105,7 @@ func TestSavedFilterDestroy(t *testing.T) {
 // TODO Query
 
 func TestSavedFilterPerUser(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		qb := db.SavedFilter()
 
 		other := models.User{

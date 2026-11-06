@@ -18,7 +18,7 @@ import (
 // threeGroups are new groups, unlinked, for one test case.
 type threeGroups struct{ a, b, c *models.Group }
 
-func newThreeGroups(t *testing.T, ctx context.Context) threeGroups {
+func newThreeGroups(ctx context.Context, t *testing.T) threeGroups {
 	t.Helper()
 	var ret [3]*models.Group
 	for i, name := range []string{"relation store A", "relation store B", "relation store C"} {
@@ -67,8 +67,8 @@ func createGroupWithLinks(ctx context.Context, containing bool, ids ...int) erro
 func runGroupRelationCase(t *testing.T, f func(ctx context.Context, g threeGroups) error) error {
 	t.Helper()
 	var err error
-	_ = withRollbackTxn(func(ctx context.Context) error {
-		err = f(ctx, newThreeGroups(t, ctx))
+	runRollbackTxn(t, func(ctx context.Context) error {
+		err = f(ctx, newThreeGroups(ctx, t))
 		return nil
 	})
 	return err
@@ -241,7 +241,7 @@ func TestGroupRelationStoreErrors(t *testing.T) {
 // a containing group, links other there with the same order_index. That row then breaks
 // the containing group's order_index UNIQUE rule, not its primary key, as two
 // edits at once can on PostgreSQL. It lasts until the transaction ends.
-func orderIndexClash(t *testing.T, ctx context.Context, other int) {
+func orderIndexClash(ctx context.Context, t *testing.T, other int) {
 	t.Helper()
 	stmts := []string{fmt.Sprintf(`CREATE TRIGGER relation_store_clash BEFORE INSERT ON groups_relations WHEN NEW.sub_id <> %d
 BEGIN INSERT INTO groups_relations (containing_id, sub_id, order_index) VALUES (NEW.containing_id, %d, NEW.order_index); END`, other, other)}
@@ -295,7 +295,7 @@ func TestGroupRelationOrderIndexClash(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := runGroupRelationCase(t, func(ctx context.Context, g threeGroups) error {
-				orderIndexClash(t, ctx, g.c.ID)
+				orderIndexClash(ctx, t, g.c.ID)
 				return tt.run(ctx, g)
 			})
 			require.Error(t, err)

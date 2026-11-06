@@ -173,16 +173,16 @@ func Test_PerformerStore_Create(t *testing.T) {
 
 			assert.NotZero(p.ID)
 
-			copy := *tt.newObject.Performer
-			copy.ID = p.ID
+			copied := *tt.newObject.Performer
+			copied.ID = p.ID
 
 			// load relationships
-			if err := loadPerformerRelationships(ctx, copy, p.Performer); err != nil {
+			if err := loadPerformerRelationships(ctx, copied, p.Performer); err != nil {
 				t.Errorf("loadPerformerRelationships() error = %v", err)
 				return
 			}
 
-			assert.Equal(copy, *p.Performer)
+			assert.Equal(copied, *p.Performer)
 
 			// ensure can find the performer
 			found, err := qb.Find(ctx, p.ID)
@@ -195,11 +195,11 @@ func Test_PerformerStore_Create(t *testing.T) {
 			}
 
 			// load relationships
-			if err := loadPerformerRelationships(ctx, copy, found); err != nil {
+			if err := loadPerformerRelationships(ctx, copied, found); err != nil {
 				t.Errorf("loadPerformerRelationships() error = %v", err)
 				return
 			}
-			assert.Equal(copy, *found)
+			assert.Equal(copied, *found)
 
 			// ensure custom fields are set
 			cf, err := qb.GetCustomFields(ctx, p.ID)
@@ -370,7 +370,7 @@ func Test_PerformerStore_Update(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			copy := *tt.updatedObject.Performer
+			copied := *tt.updatedObject.Performer
 
 			if err := qb.Update(ctx, &tt.updatedObject); (err != nil) != tt.wantErr {
 				t.Errorf("PerformerStore.Update() error = %v, wantErr %v", err, tt.wantErr)
@@ -386,12 +386,12 @@ func Test_PerformerStore_Update(t *testing.T) {
 			}
 
 			// load relationships
-			if err := loadPerformerRelationships(ctx, copy, s); err != nil {
+			if err := loadPerformerRelationships(ctx, copied, s); err != nil {
 				t.Errorf("loadPerformerRelationships() error = %v", err)
 				return
 			}
 
-			assert.Equal(copy, *s)
+			assert.Equal(copied, *s)
 
 			// ensure custom fields are correct
 			if tt.updatedObject.CustomFields.Full != nil {
@@ -727,7 +727,7 @@ func Test_PerformerStore_UpdatePartialCustomFields(t *testing.T) {
 }
 
 func TestPerformerFindBySceneID(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		pqb := db.Performer()
 		sceneID := sceneIDs[sceneIdxWithPerformer]
 
@@ -758,7 +758,7 @@ func TestPerformerFindBySceneID(t *testing.T) {
 }
 
 func TestPerformerFindByImageID(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		pqb := db.Performer()
 		imageID := imageIDs[imageIdxWithPerformer]
 
@@ -789,7 +789,7 @@ func TestPerformerFindByImageID(t *testing.T) {
 }
 
 func TestPerformerFindByGalleryID(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		pqb := db.Performer()
 		galleryID := galleryIDs[galleryIdxWithPerformer]
 
@@ -828,7 +828,7 @@ func TestPerformerFindByNames(t *testing.T) {
 		return ret
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		var names []string
 
 		pqb := db.Performer()
@@ -897,7 +897,7 @@ func TestPerformerQueryEthnicityOr(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		performers := queryPerformers(ctx, t, &performerFilter, nil)
 
 		assert.Len(t, performers, 2)
@@ -928,7 +928,7 @@ func TestPerformerQueryEthnicityAndRating(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		performers := queryPerformers(ctx, t, &performerFilter, nil)
 
 		if !assert.Len(t, performers, 1) {
@@ -968,7 +968,7 @@ func TestPerformerQueryEthnicityNotRating(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		performers := queryPerformers(ctx, t, &performerFilter, nil)
 
 		for _, performer := range performers {
@@ -1057,7 +1057,7 @@ func TestPerformerIllegalQuery(t *testing.T) {
 }
 
 func TestPerformerQueryIgnoreAutoTag(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		ignoreAutoTag := true
 		performerFilter := models.PerformerFilterType{
 			IgnoreAutoTag: &ignoreAutoTag,
@@ -1925,7 +1925,7 @@ func verifyFloat(t *testing.T, value *float64, criterion models.FloatCriterionIn
 }
 
 func TestPerformerQueryForAutoTag(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		tqb := db.Performer()
 
 		name := performerNames[performerIdx1WithScene] // find a performer by name
@@ -1958,7 +1958,7 @@ func TestPerformerUpdatePerformerImage(t *testing.T) {
 			return fmt.Errorf("Error creating performer: %s", err.Error())
 		}
 
-		return testUpdateImage(t, ctx, performer.ID, qb.UpdateImage, qb.GetImage)
+		return testUpdateImage(ctx, t, performer.ID, qb.UpdateImage, qb.GetImage)
 	}); err != nil {
 		t.Error(err.Error())
 	}
@@ -2020,7 +2020,7 @@ func TestPerformerQueryAge(t *testing.T) {
 }
 
 func verifyPerformerAge(t *testing.T, ageCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		qb := db.Performer()
 		performerFilter := models.PerformerFilterType{
 			Age: &ageCriterion,
@@ -2043,7 +2043,7 @@ func verifyPerformerAge(t *testing.T, ageCriterion models.IntCriterionInput) {
 			age := cd.Year() - d.Year()
 			// using YearDay screws up on leap years
 			if cd.Month() < d.Month() || (cd.Month() == d.Month() && cd.Day() < d.Day()) {
-				age = age - 1
+				age--
 			}
 
 			if !verifyInt(t, age, ageCriterion) {
@@ -2162,7 +2162,7 @@ func TestPerformerQueryCareerStart(t *testing.T) {
 		Modifier: models.CriterionModifierEquals,
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		qb := db.Performer()
 		performerFilter := models.PerformerFilterType{
 			CareerStart: &criterion,
@@ -2188,7 +2188,7 @@ func TestPerformerQueryCareerEnd(t *testing.T) {
 		Modifier: models.CriterionModifierEquals,
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		qb := db.Performer()
 		performerFilter := models.PerformerFilterType{
 			CareerEnd: &criterion,
@@ -2253,7 +2253,7 @@ func TestPerformerQueryURL(t *testing.T) {
 }
 
 func verifyPerformerQuery(t *testing.T, filter models.PerformerFilterType, verifyFn func(s *models.Performer)) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		t.Helper()
 		performers := queryPerformers(ctx, t, &filter, nil)
 
@@ -2285,7 +2285,7 @@ func queryPerformers(ctx context.Context, t *testing.T, performerFilter *models.
 }
 
 func TestPerformerQueryTags(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		tagCriterion := models.HierarchicalMultiCriterionInput{
 			Value: []string{
 				strconv.Itoa(tagIDs[tagIdxWithPerformer]),
@@ -2357,7 +2357,7 @@ func TestPerformerQueryTagCount(t *testing.T) {
 }
 
 func verifyPerformersTagCount(t *testing.T, tagCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Performer()
 		performerFilter := models.PerformerFilterType{
 			TagCount: &tagCountCriterion,
@@ -2398,7 +2398,7 @@ func TestPerformerQuerySceneCount(t *testing.T) {
 }
 
 func verifyPerformersSceneCount(t *testing.T, sceneCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		performerFilter := models.PerformerFilterType{
 			SceneCount: &sceneCountCriterion,
 		}
@@ -2438,7 +2438,7 @@ func TestPerformerQueryImageCount(t *testing.T) {
 }
 
 func verifyPerformersImageCount(t *testing.T, imageCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		performerFilter := models.PerformerFilterType{
 			ImageCount: &imageCountCriterion,
 		}
@@ -2493,7 +2493,7 @@ func TestPerformerQueryGalleryCount(t *testing.T) {
 }
 
 func verifyPerformersGalleryCount(t *testing.T, galleryCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		performerFilter := models.PerformerFilterType{
 			GalleryCount: &galleryCountCriterion,
 		}
@@ -2523,7 +2523,7 @@ func verifyPerformersGalleryCount(t *testing.T, galleryCountCriterion models.Int
 }
 
 func TestPerformerQueryStudio(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		testCases := []struct {
 			studioIndex    int
 			performerIndex int
@@ -2703,7 +2703,7 @@ func TestPerformerQueryRating100(t *testing.T) {
 }
 
 func verifyPerformersRating100(t *testing.T, ratingCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		performerFilter := models.PerformerFilterType{
 			Rating100: &ratingCriterion,
 		}
@@ -2727,7 +2727,7 @@ func performerQueryIsMissing(ctx context.Context, t *testing.T, m string) []*mod
 }
 
 func TestPerformerQueryIsMissingRating(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		performers := performerQueryIsMissing(ctx, t, "rating")
 
 		assert.True(t, len(performers) > 0)
@@ -2741,7 +2741,7 @@ func TestPerformerQueryIsMissingRating(t *testing.T) {
 }
 
 func TestPerformerQueryIsMissingImage(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		performers := performerQueryIsMissing(ctx, t, "image")
 
 		assert.True(t, len(performers) > 0)
@@ -2759,7 +2759,7 @@ func TestPerformerQueryIsMissingImage(t *testing.T) {
 }
 
 func TestPerformerQueryIsMissingAlias(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		performers := performerQueryIsMissing(ctx, t, "aliases")
 
 		assert.True(t, len(performers) > 0)
@@ -2784,7 +2784,7 @@ func TestPerformerQuerySortScenesCount(t *testing.T) {
 		Direction: &direction,
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		// just ensure it queries without error
 		performers, _, err := db.Performer().Query(ctx, nil, findFilter)
 		if err != nil {
@@ -2825,7 +2825,7 @@ func TestPerformerQuerySortFavorite(t *testing.T) {
 		PerPage:   &allPages,
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		// descending: every favourite comes before every non-favourite
 		performers := queryPerformers(ctx, t, nil, findFilter)
 		assert.True(t, len(performers) > 1)
@@ -2892,7 +2892,7 @@ func TestPerformerQuerySortBirthdate(t *testing.T) {
 }
 
 func TestPerformerCountByTagID(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Performer()
 		count, err := sqb.CountByTagID(ctx, tagIDs[tagIdxWithPerformer])
 
@@ -2980,7 +2980,7 @@ func TestPerformerCountByGroupIDSubGroups(t *testing.T) {
 }
 
 func TestPerformerCount(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Performer()
 		count, err := sqb.Count(ctx)
 
@@ -2995,7 +2995,7 @@ func TestPerformerCount(t *testing.T) {
 }
 
 func TestPerformerAll(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Performer()
 		all, err := sqb.All(ctx)
 
@@ -3019,9 +3019,6 @@ func performersToIDs(i []*models.Performer) []int {
 }
 
 func TestPerformerStore_FindByStashID(t *testing.T) {
-	type args struct {
-		stashID models.StashID
-	}
 	tests := []struct {
 		name        string
 		stashID     models.StashID
@@ -3061,9 +3058,6 @@ func TestPerformerStore_FindByStashID(t *testing.T) {
 }
 
 func TestPerformerStore_FindByStashIDStatus(t *testing.T) {
-	type args struct {
-		stashID models.StashID
-	}
 	tests := []struct {
 		name             string
 		hasStashID       bool
@@ -3123,7 +3117,7 @@ func TestPerformerStore_FindByStashIDStatus(t *testing.T) {
 }
 
 func TestPerformerQueryUnicodeSearchCaseInsensitive(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		qb := db.Performer()
 
 		// test cases with various Unicode characters
@@ -3213,7 +3207,7 @@ func TestPerformerQueryUnicodeSearchCaseInsensitive(t *testing.T) {
 }
 
 func TestPerformerQuerySearchExcludeTerm(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		qb := db.Performer()
 
 		performer := models.Performer{
@@ -3394,7 +3388,7 @@ func TestPerformerMerge(t *testing.T) {
 }
 
 func TestPerformerOCounterIncludesGalleries(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		performer := models.Performer{Name: "TestPerformerOCounterGalleries"}
 		if err := db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &performer}); err != nil {
 			t.Fatalf("creating performer: %v", err)
@@ -3530,7 +3524,7 @@ func TestPerformerQueryOCounter(t *testing.T) {
 // TODO Query
 
 func TestPerformerStore_UserData(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		qb := db.Performer()
 
 		newPerformer := models.Performer{

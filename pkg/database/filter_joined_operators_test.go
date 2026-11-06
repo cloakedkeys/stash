@@ -179,7 +179,7 @@ func TestJoinedConditionsUnderOperators(t *testing.T) {
 		}, false},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		// the result of a condition on its own, at the top level
 		sets := map[string]idSet{}
 		all, _ := sceneIDsSet(ctx, t, &models.SceneFilterType{})

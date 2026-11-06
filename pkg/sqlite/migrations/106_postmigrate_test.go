@@ -98,7 +98,7 @@ func sortedIDs(ids []int) []int {
 	return ret
 }
 
-func querySceneIDs(t *testing.T, ctx context.Context, db *sqlite.Database, objectFilter map[string]interface{}) []int {
+func querySceneIDs(ctx context.Context, t *testing.T, db *sqlite.Database, objectFilter map[string]interface{}) []int {
 	t.Helper()
 	data, err := json.Marshal(objectFilter)
 	require.NoError(t, err)
@@ -128,7 +128,7 @@ func decodeObject(t *testing.T, s string) map[string]interface{} {
 }
 
 // databaseAt105 makes a new database at schema 105, ready for migration 106.
-func databaseAt105(t *testing.T, ctx context.Context) (*sqlx.DB, *sqlite.Database, *sqlite.Migrator) {
+func databaseAt105(ctx context.Context, t *testing.T) (*sqlx.DB, *sqlite.Database, *sqlite.Migrator) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "stash.sqlite")
 	raw, err := sqlx.Open("sqlite3", dbPath)
@@ -175,7 +175,7 @@ func TestMigration106ConfigFileOnce(t *testing.T) {
 	// the default filter is saved after the earlier migrations, since 58 renames its keys
 	migrateNewDatabase := func(value string) {
 		t.Helper()
-		_, _, m := databaseAt105(t, ctx)
+		_, _, m := databaseAt105(ctx, t)
 		saveDefault(value)
 		require.NoError(t, m.RunMigration(ctx, 106))
 	}
@@ -205,7 +205,7 @@ func TestMigration106SavedFilterWildcards(t *testing.T) {
 	ctx := context.Background()
 	config.InitializeEmpty()
 	dir := t.TempDir()
-	raw, db, m := databaseAt105(t, ctx)
+	raw, db, m := databaseAt105(ctx, t)
 	var err error
 
 	_, err = raw.Exec(`
@@ -292,8 +292,8 @@ INSERT INTO scene_custom_fields(scene_id,field,value) VALUES
 			t.Logf("the old query finds %v; saved filter is now %v", expected[i], saved.ObjectFilter)
 
 			// the filter as it was saved finds something else now, which is why it's rewritten
-			require.NotEqual(t, expected[i], querySceneIDs(t, userCtx, db, decodeObject(t, c.filter)), "test case doesn't show a difference")
-			assert.Equal(t, expected[i], querySceneIDs(t, userCtx, db, saved.ObjectFilter))
+			require.NotEqual(t, expected[i], querySceneIDs(userCtx, t, db, decodeObject(t, c.filter)), "test case doesn't show a difference")
+			assert.Equal(t, expected[i], querySceneIDs(userCtx, t, db, saved.ObjectFilter))
 		})
 	}
 
@@ -312,12 +312,12 @@ INSERT INTO scene_custom_fields(scene_id,field,value) VALUES
 	assert.Equal(t, "kept", ui["theme"])
 	scenes := ui["defaultFilters"].(map[string]interface{})["scenes"].(map[string]interface{})
 	assert.Equal(t, map[string]interface{}{"q": "a_b"}, scenes["find_filter"])
-	assert.Equal(t, expected[0], querySceneIDs(t, userCtx, db, scenes["object_filter"].(map[string]interface{})))
+	assert.Equal(t, expected[0], querySceneIDs(userCtx, t, db, scenes["object_filter"].(map[string]interface{})))
 
 	fileUI := cfg.GetUIConfiguration()
 	assert.Equal(t, "file", fileUI["theme"])
 	fileScenes := fileUI["defaultFilters"].(map[string]interface{})["scenes"].(map[string]interface{})
-	assert.Equal(t, expected[0], querySceneIDs(t, userCtx, db, fileScenes["object_filter"].(map[string]interface{})))
+	assert.Equal(t, expected[0], querySceneIDs(userCtx, t, db, fileScenes["object_filter"].(map[string]interface{})))
 	saved, err := os.ReadFile(cfg.GetConfigFile())
 	require.NoError(t, err)
 	assert.Contains(t, string(saved), "MATCHES_REGEX")

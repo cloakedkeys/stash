@@ -210,22 +210,22 @@ func Test_fileFileStore_Create(t *testing.T) {
 
 			assert.NotZero(s.Base().ID)
 
-			var copy models.File
+			var copied models.File
 			switch t := s.(type) {
 			case *models.BaseFile:
 				v := *t
-				copy = &v
+				copied = &v
 			case *models.VideoFile:
 				v := *t
-				copy = &v
+				copied = &v
 			case *models.ImageFile:
 				v := *t
-				copy = &v
+				copied = &v
 			}
 
-			copy.Base().ID = s.Base().ID
+			copied.Base().ID = s.Base().ID
 
-			assert.Equal(copy, s)
+			assert.Equal(copied, s)
 
 			// ensure can find the scene
 			found, err := qb.Find(ctx, s.Base().ID)
@@ -237,9 +237,7 @@ func Test_fileFileStore_Create(t *testing.T) {
 				return
 			}
 
-			assert.Equal(copy, found[0])
-
-			return
+			assert.Equal(copied, found[0])
 		})
 	}
 }
@@ -424,7 +422,7 @@ func Test_fileStore_Update(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			copy := tt.updatedObject
+			copied := tt.updatedObject
 
 			if err := qb.Update(ctx, tt.updatedObject); (err != nil) != tt.wantErr {
 				t.Errorf("FileStore.Update() error = %v, wantErr %v", err, tt.wantErr)
@@ -443,9 +441,7 @@ func Test_fileStore_Update(t *testing.T) {
 				return
 			}
 
-			assert.Equal(copy, s[0])
-
-			return
+			assert.Equal(copied, s[0])
 		})
 	}
 }

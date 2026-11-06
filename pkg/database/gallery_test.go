@@ -61,11 +61,11 @@ func loadGalleryRelationships(ctx context.Context, expected models.Gallery, actu
 	return nil
 }
 
-func sortGallery(copy *models.Gallery) {
+func sortGallery(copied *models.Gallery) {
 	// Ordering is not ensured
-	copy.SceneIDs.Sort()
-	copy.PerformerIDs.Sort()
-	copy.TagIDs.Sort()
+	copied.SceneIDs.Sort()
+	copied.PerformerIDs.Sort()
+	copied.TagIDs.Sort()
 }
 
 func sortByID[T any](list []T, getID func(T) int) {
@@ -196,20 +196,20 @@ func Test_galleryQueryBuilder_Create(t *testing.T) {
 
 			assert.NotZero(s.ID)
 
-			copy := tt.newObject
-			copy.ID = s.ID
+			copied := tt.newObject
+			copied.ID = s.ID
 
 			// load relationships
-			if err := loadGalleryRelationships(ctx, copy, &s); err != nil {
+			if err := loadGalleryRelationships(ctx, copied, &s); err != nil {
 				t.Errorf("loadGalleryRelationships() error = %v", err)
 				return
 			}
 
 			// Ordering is not ensured
-			sortGallery(&copy)
+			sortGallery(&copied)
 			sortGallery(&s)
 
-			assert.Equal(copy, s)
+			assert.Equal(copied, s)
 
 			// ensure can find the scene
 			found, err := qb.Find(ctx, s.ID)
@@ -222,17 +222,15 @@ func Test_galleryQueryBuilder_Create(t *testing.T) {
 			}
 
 			// load relationships
-			if err := loadGalleryRelationships(ctx, copy, found); err != nil {
+			if err := loadGalleryRelationships(ctx, copied, found); err != nil {
 				t.Errorf("loadGalleryRelationships() error = %v", err)
 				return
 			}
 
-			sortGallery(&copy)
+			sortGallery(&copied)
 			sortGallery(found)
 
-			assert.Equal(copy, *found)
-
-			return
+			assert.Equal(copied, *found)
 		})
 	}
 }
@@ -392,7 +390,7 @@ func Test_galleryQueryBuilder_Update(t *testing.T) {
 		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
 			assert := assert.New(t)
 
-			copy := *tt.updatedObject
+			copied := *tt.updatedObject
 
 			if err := qb.Update(ctx, &models.UpdateGalleryInput{
 				Gallery: tt.updatedObject,
@@ -411,18 +409,16 @@ func Test_galleryQueryBuilder_Update(t *testing.T) {
 			}
 
 			// load relationships
-			if err := loadGalleryRelationships(ctx, copy, s); err != nil {
+			if err := loadGalleryRelationships(ctx, copied, s); err != nil {
 				t.Errorf("loadGalleryRelationships() error = %v", err)
 				return
 			}
 
 			// Ordering is not ensured
-			sortGallery(&copy)
+			sortGallery(&copied)
 			sortGallery(s)
 
-			assert.Equal(copy, *s)
-
-			return
+			assert.Equal(copied, *s)
 		})
 	}
 }
@@ -981,7 +977,6 @@ func Test_galleryQueryBuilder_Destroy(t *testing.T) {
 
 			assert.Nil(err)
 			assert.Nil(i)
-			return
 
 		})
 	}
@@ -1429,7 +1424,7 @@ func Test_galleryQueryBuilder_AudioIDs(t *testing.T) {
 }
 
 func TestGalleryQueryAudios(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 
 		audioCriterion := models.MultiCriterionInput{
@@ -1460,7 +1455,7 @@ func TestGalleryQueryAudios(t *testing.T) {
 }
 
 func TestGalleryQueryIsMissingAudios(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		isMissing := "audios"
 		galleryFilter := models.GalleryFilterType{
@@ -1667,7 +1662,7 @@ func Test_galleryStore_FindByFolderID(t *testing.T) {
 }
 
 func TestGalleryQueryQ(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		const galleryIdx = 0
 
 		q := getGalleryStringValue(galleryIdx, pathField)
@@ -1813,22 +1808,6 @@ func TestGalleryQueryParentFolderExcludes(t *testing.T) {
 	}
 }
 
-func verifyGalleriesPath(ctx context.Context, t *testing.T, pathCriterion models.StringCriterionInput) {
-	galleryFilter := models.GalleryFilterType{
-		Path: &pathCriterion,
-	}
-
-	sqb := db.Gallery()
-	galleries, _, err := sqb.Query(ctx, &galleryFilter, nil)
-	if err != nil {
-		t.Errorf("Error querying gallery: %s", err.Error())
-	}
-
-	for _, gallery := range galleries {
-		verifyString(t, gallery.Path, pathCriterion)
-	}
-}
-
 func TestGalleryQueryPathOr(t *testing.T) {
 	const gallery1Idx = 1
 	const gallery2Idx = 2
@@ -1851,7 +1830,7 @@ func TestGalleryQueryPathOr(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 
 		galleries := queryGallery(ctx, t, sqb, &galleryFilter, nil)
@@ -1887,7 +1866,7 @@ func TestGalleryQueryPathAndRating(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 
 		galleries := queryGallery(ctx, t, sqb, &galleryFilter, nil)
@@ -1927,7 +1906,7 @@ func TestGalleryQueryPathNotRating(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 
 		galleries := queryGallery(ctx, t, sqb, &galleryFilter, nil)
@@ -1960,7 +1939,7 @@ func TestGalleryIllegalQuery(t *testing.T) {
 		},
 	}
 
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 
 		_, _, err := sqb.Query(ctx, galleryFilter, nil)
@@ -2025,7 +2004,7 @@ func TestGalleryQueryURL(t *testing.T) {
 }
 
 func verifyGalleryQuery(t *testing.T, filter models.GalleryFilterType, verifyFn func(s *models.Gallery)) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		t.Helper()
 		sqb := db.Gallery()
 
@@ -2074,7 +2053,7 @@ func TestGalleryQueryRating100(t *testing.T) {
 }
 
 func verifyGalleriesRating100(t *testing.T, ratingCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		galleryFilter := models.GalleryFilterType{
 			Rating100: &ratingCriterion,
@@ -2094,7 +2073,7 @@ func verifyGalleriesRating100(t *testing.T, ratingCriterion models.IntCriterionI
 }
 
 func TestGalleryQueryIsMissingScene(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		qb := db.Gallery()
 		isMissing := "scenes"
 		galleryFilter := models.GalleryFilterType{
@@ -2138,7 +2117,7 @@ func queryGallery(ctx context.Context, t *testing.T, sqb models.GalleryReader, g
 }
 
 func TestGalleryQueryIsMissingStudio(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		isMissing := "studio"
 		galleryFilter := models.GalleryFilterType{
@@ -2167,7 +2146,7 @@ func TestGalleryQueryIsMissingStudio(t *testing.T) {
 }
 
 func TestGalleryQueryIsMissingPerformers(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		isMissing := "performers"
 		galleryFilter := models.GalleryFilterType{
@@ -2198,7 +2177,7 @@ func TestGalleryQueryIsMissingPerformers(t *testing.T) {
 }
 
 func TestGalleryQueryIsMissingTags(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		isMissing := "tags"
 		galleryFilter := models.GalleryFilterType{
@@ -2224,7 +2203,7 @@ func TestGalleryQueryIsMissingTags(t *testing.T) {
 }
 
 func TestGalleryQueryIsMissingDate(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		isMissing := "date"
 		galleryFilter := models.GalleryFilterType{
@@ -2612,7 +2591,7 @@ func TestGalleryQueryStudio(t *testing.T) {
 }
 
 func TestGalleryQueryStudioDepth(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		depth := 2
 		studioCriterion := models.HierarchicalMultiCriterionInput{
@@ -2887,7 +2866,7 @@ func TestGalleryQueryTagCount(t *testing.T) {
 }
 
 func verifyGalleriesTagCount(t *testing.T, tagCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		galleryFilter := models.GalleryFilterType{
 			TagCount: &tagCountCriterion,
@@ -2928,7 +2907,7 @@ func TestGalleryQueryPerformerCount(t *testing.T) {
 }
 
 func verifyGalleriesPerformerCount(t *testing.T, performerCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		galleryFilter := models.GalleryFilterType{
 			PerformerCount: &performerCountCriterion,
@@ -2970,7 +2949,7 @@ func TestGalleryQueryOCounter(t *testing.T) {
 }
 
 func verifyGalleriesOCounter(t *testing.T, oCounterCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		galleryFilter := models.GalleryFilterType{
 			OCounter: &oCounterCriterion,
@@ -2988,7 +2967,7 @@ func verifyGalleriesOCounter(t *testing.T, oCounterCriterion models.IntCriterion
 }
 
 func TestGalleryQuerySortOCounter(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sortBy := "o_counter"
 		direction := models.SortDirectionEnumDesc
 		findFilter := &models.FindFilterType{
@@ -3141,7 +3120,7 @@ func Test_galleryQueryBuilder_ResetOCounter(t *testing.T) {
 }
 
 func TestGalleryQueryAverageResolution(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		qb := db.Gallery()
 		resolution := models.ResolutionEnumLow
 		galleryFilter := models.GalleryFilterType{
@@ -3179,7 +3158,7 @@ func TestGalleryQueryImageCount(t *testing.T) {
 }
 
 func verifyGalleriesImageCount(t *testing.T, imageCountCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		galleryFilter := models.GalleryFilterType{
 			ImageCount: &imageCountCriterion,
@@ -3612,7 +3591,7 @@ func TestGalleryStore_RemoveImages(t *testing.T) {
 }
 
 func TestGalleryQueryHasChapters(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 		hasChapters := "true"
 		galleryFilter := models.GalleryFilterType{
@@ -3643,7 +3622,7 @@ func TestGalleryQueryHasChapters(t *testing.T) {
 }
 
 func TestGallerySetAndResetCover(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		sqb := db.Gallery()
 
 		imagePath2 := getFilePath(folderIdxWithImageFiles, getImageBasename(imageIdx2WithGallery))
@@ -3915,7 +3894,7 @@ func TestGalleryQueryCustomFields(t *testing.T) {
 // TODO Destroy
 
 func TestGalleryStore_UserData(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		qb := db.Gallery()
 
 		newGallery := models.Gallery{

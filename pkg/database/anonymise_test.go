@@ -143,50 +143,63 @@ func findInDatabase(t *testing.T, path string, needles []string) []string {
 
 	rows, err := out.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
 	require.NoError(t, err)
+	defer rows.Close()
 	var tables []string
 	for rows.Next() {
 		var name string
 		require.NoError(t, rows.Scan(&name))
 		tables = append(tables, name)
 	}
-	require.NoError(t, rows.Close())
+	require.NoError(t, rows.Err())
 	require.NotEmpty(t, tables)
 
 	var found []string
 	for _, table := range tables {
-		rows, err := out.Query(fmt.Sprintf(`SELECT * FROM "%s"`, table))
-		require.NoError(t, err)
+		found = append(found, findInTable(t, out, table, needles)...)
+	}
 
-		columns, err := rows.Columns()
-		require.NoError(t, err)
+	return found
+}
 
-		for rows.Next() {
-			values := make([]interface{}, len(columns))
-			scan := make([]interface{}, len(columns))
-			for i := range values {
-				scan[i] = &values[i]
+// findInTable returns the location of every value in the table containing
+// one of the given strings.
+func findInTable(t *testing.T, out *sql.DB, table string, needles []string) []string {
+	t.Helper()
+
+	rows, err := out.Query(fmt.Sprintf(`SELECT * FROM "%s"`, table))
+	require.NoError(t, err)
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	require.NoError(t, err)
+
+	var found []string
+	for rows.Next() {
+		values := make([]interface{}, len(columns))
+		scan := make([]interface{}, len(columns))
+		for i := range values {
+			scan[i] = &values[i]
+		}
+		require.NoError(t, rows.Scan(scan...))
+
+		for i, v := range values {
+			var text string
+			switch x := v.(type) {
+			case string:
+				text = x
+			case []byte:
+				text = string(x)
+			default:
+				continue
 			}
-			require.NoError(t, rows.Scan(scan...))
-
-			for i, v := range values {
-				var text string
-				switch x := v.(type) {
-				case string:
-					text = x
-				case []byte:
-					text = string(x)
-				default:
-					continue
-				}
-				for _, needle := range needles {
-					if strings.Contains(text, needle) {
-						found = append(found, fmt.Sprintf("%s.%s contains %q", table, columns[i], needle))
-					}
+			for _, needle := range needles {
+				if strings.Contains(text, needle) {
+					found = append(found, fmt.Sprintf("%s.%s contains %q", table, columns[i], needle))
 				}
 			}
 		}
-		require.NoError(t, rows.Close())
 	}
+	require.NoError(t, rows.Err())
 
 	return found
 }

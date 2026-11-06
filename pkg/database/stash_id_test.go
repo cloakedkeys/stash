@@ -47,33 +47,18 @@ func testStashIDReaderWriter(ctx context.Context, t *testing.T, r stashIDReaderW
 	testNoStashIDs(ctx, t, r, id)
 }
 
-func testStashIDReaderWriterFail(ctx context.Context, t *testing.T, r stashIDReaderWriter, id int) {
-	// ensure no stash IDs to begin with
-	testNoStashIDs(ctx, t, r, id)
-
-	// ensure GetStashIDs with non-existing also returns none
-	testNoStashIDs(ctx, t, r, -1)
-
-	// add stash ids
-	var stashIDStr = getUUID("stashID")
-	const endpoint = "endpoint"
+// testStashIDsMissingItem checks that saving stash IDs for an item that
+// doesn't exist fails. On PostgreSQL the failure ends the transaction, so run
+// it in a transaction of its own.
+func testStashIDsMissingItem(ctx context.Context, t *testing.T, r stashIDReaderWriter, missingID int) {
+	t.Helper()
 	stashID := models.StashID{
-		StashID:   stashIDStr,
-		Endpoint:  endpoint,
+		StashID:   getUUID("stashID"),
+		Endpoint:  "endpoint",
 		UpdatedAt: epochTime,
 	}
 
-	// update stash ids and ensure was updated
-	if err := r.UpdateStashIDs(ctx, id, []models.StashID{stashID}); err != nil {
-		t.Error(err.Error())
-	}
-
-	testStashIDs(ctx, t, r, id, []models.StashID{stashID})
-
-	// update non-existing id - should return error
-	if err := r.UpdateStashIDs(ctx, -1, []models.StashID{stashID}); err == nil {
-		t.Error("expected error when updating non-existing id")
-	}
+	assert.Error(t, r.UpdateStashIDs(ctx, missingID, []models.StashID{stashID}), "saving stash IDs for missing item %d", missingID)
 }
 
 func testNoStashIDs(ctx context.Context, t *testing.T, r stashIDReaderWriter, id int) {

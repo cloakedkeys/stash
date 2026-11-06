@@ -102,7 +102,7 @@ func (c allOfCase[T]) run(ctx context.Context, t *testing.T) {
 }
 
 func TestFilterAllOf(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		t.Run("scenes", func(t *testing.T) {
 			allOfCase[models.SceneFilterType]{
 				text: func(r string) *models.SceneFilterType {
@@ -323,7 +323,7 @@ func TestFilterAllOf(t *testing.T) {
 // Conditions the database checks after grouping (HAVING) must keep working
 // inside ALL_OF items, also when those sit under OR or NOT (#2167).
 func TestFilterAllOfGroupedConditions(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		title := func(r string) *models.SceneFilterType {
 			return &models.SceneFilterType{Title: regexCriterion(r)}
 		}
@@ -375,7 +375,7 @@ func TestFilterAllOfGroupedConditions(t *testing.T) {
 // Related filters such as performers_filter and files_filter take ALL_OF too.
 // files_filter is joined straight into the scene query unless it has ALL_OF.
 func TestFilterAllOfRelated(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		perf := func(r string) *models.PerformerFilterType {
 			return &models.PerformerFilterType{Name: regexCriterion(r)}
 		}
@@ -417,7 +417,7 @@ func TestFilterAllOfRelated(t *testing.T) {
 // The file path and dir conditions use the file's folder. An ALL_OF item is
 // its own subquery, so it must join the folder itself.
 func TestFilterAllOfFilePathAndDir(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		fileSet := func(f *models.FileFilterType) idSet {
 			t.Helper()
 			r, err := db.File().Query(ctx, models.FileQueryOptions{
@@ -477,7 +477,7 @@ func TestFilterAllOfFilePathAndDir(t *testing.T) {
 
 // An invalid ALL_OF item is reported, not skipped.
 func TestFilterAllOfInvalidItem(t *testing.T) {
-	withTxn(func(ctx context.Context) error {
+	runTxn(t, func(ctx context.Context) error {
 		bad := &models.SceneFilterType{}
 		bad.And = &models.SceneFilterType{}
 		bad.Or = &models.SceneFilterType{}
