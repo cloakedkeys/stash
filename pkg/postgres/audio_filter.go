@@ -58,7 +58,7 @@ func (qb *audioFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 func (qb *audioFilterHandler) criterionHandler() criterionHandler {
 	audioFilter := qb.audioFilter
 	return compoundHandler{
-		intCriterionHandler(audioFilter.ID, "audios.id", nil),
+		idCriterionHandler(audioFilter.ID, "audios.id"),
 		pathCriterionHandler(audioFilter.Path, "folders.path", "files.basename", qb.addFoldersTable),
 		qb.fileCountCriterionHandler(audioFilter.FileCount),
 		stringCriterionHandler(audioFilter.Title, "audios.title"),

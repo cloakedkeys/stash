@@ -58,7 +58,7 @@ func (qb *imageFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 func (qb *imageFilterHandler) criterionHandler() criterionHandler {
 	imageFilter := qb.imageFilter
 	return compoundHandler{
-		intCriterionHandler(imageFilter.ID, "images.id", nil),
+		idCriterionHandler(imageFilter.ID, "images.id"),
 		criterionHandlerFunc(func(ctx context.Context, f *filterBuilder) {
 			if imageFilter.Checksum != nil {
 				joinType := joinTypeInner

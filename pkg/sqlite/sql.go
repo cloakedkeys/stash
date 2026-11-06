@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"regexp"
@@ -388,16 +389,24 @@ func supportedModifier(f *filterBuilder, name string, m models.CriterionModifier
 	return false
 }
 
-// idValues converts criterion ids to numbers, so that an id that isn't a
-// number is refused instead of reaching the query text (#2235).
-func idValues(values []string) ([]int, error) {
-	ret := make([]int, len(values))
+// idValues checks that criterion ids are numbers, so that an id that isn't a
+// number is refused instead of reaching the query text (#2235). It returns
+// each as a number literal that is safe in the query text. A number too
+// large for 64 bits is kept as its digits: SQLite reads it as a real number
+// that no id equals, so it matches nothing, as on PostgreSQL (#2248).
+func idValues(values []string) ([]string, error) {
+	ret := make([]string, len(values))
 	for i, v := range values {
-		id, err := strconv.Atoi(v)
-		if err != nil {
+		id, err := strconv.ParseInt(v, 10, 64)
+		switch {
+		case err == nil:
+			ret[i] = strconv.FormatInt(id, 10)
+		case errors.Is(err, strconv.ErrRange):
+			// ParseInt only reports a range error for a sign and digits
+			ret[i] = v
+		default:
 			return nil, fmt.Errorf("invalid id %q: must be a number", v)
 		}
-		ret[i] = id
 	}
 	return ret, nil
 }

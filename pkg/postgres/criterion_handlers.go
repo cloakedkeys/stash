@@ -239,6 +239,19 @@ func intCriterionHandler(c *models.IntCriterionInput, column string, addJoinFn f
 	}
 }
 
+// idCriterionHandler is intCriterionHandler for an id column. The values are
+// sent as 64-bit numbers, so that a value outside the range of the 32-bit id
+// columns compares as it does on SQLite, instead of failing (#2248). The
+// column is still compared as itself, so its index can be used.
+func idCriterionHandler(c *models.IntCriterionInput, column string) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		if c != nil {
+			clause, args := getIntCriterionWhereClause(column, *c)
+			f.addWhere(strings.ReplaceAll(clause, "?", "CAST(? AS BIGINT)"), args...)
+		}
+	}
+}
+
 func floatCriterionHandler(c *models.FloatCriterionInput, column string, addJoinFn func(f *filterBuilder, joinType joinType)) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if c != nil {

@@ -59,7 +59,7 @@ func (qb *galleryFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 func (qb *galleryFilterHandler) criterionHandler() criterionHandler {
 	filter := qb.galleryFilter
 	return compoundHandler{
-		intCriterionHandler(filter.ID, "galleries.id", nil),
+		idCriterionHandler(filter.ID, "galleries.id"),
 		stringCriterionHandler(filter.Title, "galleries.title"),
 		stringCriterionHandler(filter.Code, "galleries.code"),
 		stringCriterionHandler(filter.Details, "galleries.details"),
