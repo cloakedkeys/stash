@@ -134,7 +134,9 @@ func (qb *folderFilterHandler) zipFileCriterionHandler(criterion *models.MultiCr
 			case models.CriterionModifierIncludes:
 				whereClause = fmt.Sprintf("%s.zip_file_id IN %s", qb.table.Name(), getInBinding(len(criterion.Value)))
 			case models.CriterionModifierExcludes:
-				whereClause = fmt.Sprintf("%s.zip_file_id NOT IN %s", qb.table.Name(), getInBinding(len(criterion.Value)))
+				// keep folders that aren't in a zip file, as the Tags filter's excludes
+				// keeps scenes with no tags (#2235)
+				whereClause = fmt.Sprintf("(%[1]s.zip_file_id IS NULL OR %[1]s.zip_file_id NOT IN %s)", qb.table.Name(), getInBinding(len(criterion.Value)))
 			}
 
 			f.addWhere(whereClause, args...)

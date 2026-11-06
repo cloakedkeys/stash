@@ -890,9 +890,15 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 			}
 
 			// Simplified approach: direct group-scene-performer relationship without hierarchy
+			// an id that isn't a number is refused, the same on both databases (#2235)
+			ids, err := idValues(groups.Value)
+			if err != nil {
+				f.setError(err)
+				return
+			}
 			var args []interface{}
-			for _, val := range groups.Value {
-				args = append(args, val)
+			for _, id := range ids {
+				args = append(args, id)
 			}
 
 			// If depth is specified and not 0, we need hierarchy, otherwise use simple approach

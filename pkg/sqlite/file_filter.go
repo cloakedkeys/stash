@@ -171,7 +171,9 @@ func (qb *fileFilterHandler) zipFileCriterionHandler(criterion *models.MultiCrit
 			case models.CriterionModifierIncludes:
 				whereClause = "files.zip_file_id IN " + getInBinding(len(criterion.Value))
 			case models.CriterionModifierExcludes:
-				whereClause = "files.zip_file_id NOT IN " + getInBinding(len(criterion.Value))
+				// keep files that aren't in a zip file, as the Tags filter's excludes
+				// keeps scenes with no tags (#2235)
+				whereClause = "(files.zip_file_id IS NULL OR files.zip_file_id NOT IN " + getInBinding(len(criterion.Value)) + ")"
 			}
 
 			f.addWhere(whereClause, args...)

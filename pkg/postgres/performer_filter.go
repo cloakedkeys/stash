@@ -890,13 +890,15 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 			}
 
 			// Simplified approach: direct group-scene-performer relationship without hierarchy
+			// an id that isn't a number is refused, rather than skipping the
+			// filter (#2235)
+			ids, err := idValues(groups.Value)
+			if err != nil {
+				f.setError(err)
+				return
+			}
 			var valuesClauses []string
-			for _, value := range groups.Value {
-				id, err := strconv.Atoi(value)
-				if err != nil {
-					return
-				}
-
+			for _, id := range ids {
 				valuesClauses = append(valuesClauses, fmt.Sprintf("%d", id))
 			}
 			valuesClause := strings.Join(valuesClauses, ",")

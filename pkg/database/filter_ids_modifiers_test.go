@@ -70,6 +70,21 @@ func TestFilterIDsNotInQueryText(t *testing.T) {
 	})
 }
 
+// #2235: the performer Groups filter skipped itself on PostgreSQL when an id
+// wasn't a number, and matched nothing on SQLite. Both now refuse it with the
+// same error as the other filters.
+func TestPerformerGroupsNonNumericID(t *testing.T) {
+	for _, depth := range []int{0, -1} {
+		d := depth
+		runWithRollbackTxn(t, "depth "+strconv.Itoa(d), func(t *testing.T, ctx context.Context) {
+			_, _, err := db.Performer().Query(ctx, &models.PerformerFilterType{Groups: &models.HierarchicalMultiCriterionInput{
+				Value: []string{"not a number"}, Modifier: models.CriterionModifierIncludes, Depth: &d,
+			}}, perPageAll())
+			assert.ErrorContains(t, err, "invalid id")
+		})
+	}
+}
+
 // #2235: a filter that doesn't handle a modifier refuses it with an error,
 // as the gallery parent folder filter refuses "includes all", instead of
 // ignoring it and returning everything.
@@ -155,5 +170,46 @@ func TestFileZipFileExcludesList(t *testing.T) {
 		assert.Contains(t, res.IDs, inA)
 		assert.Contains(t, res.IDs, zipA, "a file that isn't in a zip file is kept")
 		assert.NotContains(t, res.IDs, inX)
+	})
+}
+
+// #2235: the zip file "excludes" modifier also dropped files and folders that
+// aren't in any zip file. Like the Tags filter's excludes, which keeps scenes
+// with no tags, it must keep them.
+func TestZipFileExcludesKeepsUnzipped(t *testing.T) {
+	runWithRollbackTxn(t, "files and folders", func(t *testing.T, ctx context.Context) {
+		root := &models.Folder{Path: filepath.Join(t.TempDir(), "zip excludes modifier")}
+		require.NoError(t, db.Folder().Create(ctx, root))
+		newFile := func(name string, zip *models.FileID) models.FileID {
+			f := &models.BaseFile{ParentFolderID: root.ID, Basename: name, DirEntry: models.DirEntry{ZipFileID: zip}}
+			require.NoError(t, db.File().Create(ctx, f))
+			return f.ID
+		}
+		zipA, zipX := newFile("a.zip", nil), newFile("x.zip", nil)
+		inA, inX := newFile("in a.jpg", &zipA), newFile("in x.jpg", &zipX)
+		excludeX := &models.MultiCriterionInput{Value: []string{strconv.Itoa(int(zipX))}, Modifier: models.CriterionModifierExcludes}
+
+		res, err := db.File().Query(ctx, models.FileQueryOptions{
+			QueryOptions: models.QueryOptions{FindFilter: perPageAll()},
+			FileFilter:   &models.FileFilterType{ZipFile: excludeX},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, res.IDs, inA)
+		assert.Contains(t, res.IDs, zipA, "a file that isn't in a zip file is kept")
+		assert.NotContains(t, res.IDs, inX)
+
+		// a folder inside zip X, and one that isn't in a zip file
+		folderInX := &models.Folder{Path: filepath.Join(root.Path, "x.zip", "inside"), ParentFolderID: &root.ID, DirEntry: models.DirEntry{ZipFileID: &zipX}}
+		require.NoError(t, db.Folder().Create(ctx, folderInX))
+		loose := &models.Folder{Path: filepath.Join(root.Path, "loose"), ParentFolderID: &root.ID}
+		require.NoError(t, db.Folder().Create(ctx, loose))
+
+		folders, err := db.Folder().Query(ctx, models.FolderQueryOptions{
+			QueryOptions: models.QueryOptions{FindFilter: perPageAll()},
+			FolderFilter: &models.FolderFilterType{ZipFile: excludeX},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, folders.IDs, loose.ID, "a folder that isn't in a zip file is kept")
+		assert.NotContains(t, folders.IDs, folderInX.ID)
 	})
 }

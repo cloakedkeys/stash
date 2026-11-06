@@ -31,9 +31,24 @@ export const PerformersCriterionOption = new ModifierCriterionOption({
   makeCriterion: () => new PerformersCriterion(),
 });
 
+// The groups list's performers filter doesn't handle "equals" and refuses it
+// (#2235), so it isn't offered there.
+export const GroupPerformersCriterionOption: ModifierCriterionOption =
+  new ModifierCriterionOption({
+    messageID: "performers",
+    type: "performers",
+    modifierOptions: modifierOptions.filter(
+      (m) => m !== CriterionModifier.Equals
+    ),
+    defaultModifier,
+    inputType,
+    makeCriterion: () =>
+      new PerformersCriterion(GroupPerformersCriterionOption),
+  });
+
 export class PerformersCriterion extends ModifierCriterion<ILabeledValueListValue> {
-  constructor() {
-    super(PerformersCriterionOption, { items: [], excluded: [] });
+  constructor(option: ModifierCriterionOption = PerformersCriterionOption) {
+    super(option, { items: [], excluded: [] });
   }
 
   public cloneValues() {
