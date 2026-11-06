@@ -35,7 +35,9 @@ func TestMigrationFilesHaveNoTransactionControl(t *testing.T) {
 
 // Statements that PostgreSQL refuses to run inside a transaction would make a
 // migration file fail every time, since the file runs as one, so none may
-// have any (#2202). Comments are left out, so they can mention them.
+// have any (#2202). ALTER TYPE ... ADD VALUE does run in one, but the new
+// value can't be used before it commits, so it is refused too. Only --
+// comments are left out, so they can mention them; /* */ comments aren't.
 func TestMigrationFilesHaveNoStatementsOutsideTransactions(t *testing.T) {
 	comment := regexp.MustCompile(`--[^\n]*`)
 	outside := regexp.MustCompile(`(?is)\b(?:CONCURRENTLY|VACUUM|ALTER\s+SYSTEM|(?:CREATE|DROP|ALTER)\s+DATABASE|(?:CREATE|DROP)\s+TABLESPACE|REINDEX\s+(?:DATABASE|SYSTEM)|DISCARD\s+ALL|ALTER\s+TYPE\s+\S+\s+ADD\s+VALUE)\b`)

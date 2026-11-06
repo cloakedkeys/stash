@@ -187,6 +187,11 @@ func (m *Migrator) RunMigration(ctx context.Context, newVersion uint) error {
 	}
 
 	if err := m.m.Steps(1); err != nil {
+		// Without the lock this migrator ran nothing, so a finished version
+		// is another one's work, and so are its post migrations.
+		if errors.Is(err, migrate.ErrLockTimeout) || errors.Is(err, migrate.ErrLocked) || errors.Is(err, migratedb.ErrLocked) {
+			return err
+		}
 		// The SQL marks its version finished in its own transaction
 		// (cleanMarkSource), so if that is recorded, only golang-migrate's
 		// own, later, write of the same mark failed: the migration is done

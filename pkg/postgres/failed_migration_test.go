@@ -4,9 +4,13 @@ package postgres
 
 import (
 	"context"
+	"io/fs"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	migratedb "github.com/golang-migrate/migrate/v4/database"
 	postgresmig "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/jmoiron/sqlx"
 	"github.com/stashapp/stash/internal/manager/config"
@@ -103,6 +107,69 @@ func TestCleanMarkRollsBackWithMigration(t *testing.T) {
 	version, dirty := readMigrationVersion(t, dsn)
 	assert.Equal(t, int(target), version)
 	assert.True(t, dirty)
+}
+
+// A migrator that gave up waiting for the lock ran nothing, so it stops, even
+// when another one has finished the same version meanwhile: that one runs
+// the post migrations, not this one too (review of #2210).
+func TestLockTimeoutDoesNotRunOthersPostMigration(t *testing.T) {
+	ctx := context.Background()
+	dsn := migrationFixture(t)
+	config.InitializeEmpty()
+
+	db := NewDatabase()
+	db.dbPath = dsn
+	m, err := NewMigrator(db)
+	require.NoError(t, err)
+	defer m.Close()
+	target := appVersionMigration
+	migrateTo(t, m, target-1)
+
+	saved := postMigrations[target]
+	t.Cleanup(func() { postMigrations[target] = saved })
+	ran := false
+	postMigrations[target] = []customMigrationFunc{func(ctx context.Context, conn *sqlx.DB) error {
+		ran = true
+		return nil
+	}}
+
+	// another instance holds the lock while it runs the same migration
+	other, err := sqlx.Open("pgx", dsn)
+	require.NoError(t, err)
+	defer other.Close()
+	otherConn, err := other.Connx(ctx)
+	require.NoError(t, err)
+	defer otherConn.Close()
+	var dbName, schema string
+	require.NoError(t, otherConn.QueryRowxContext(ctx, "SELECT current_database(), current_schema()").Scan(&dbName, &schema))
+	lockID, err := migratedb.GenerateAdvisoryLockId(dbName, schema, postgresmig.DefaultMigrationsTable)
+	require.NoError(t, err)
+	_, err = otherConn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", lockID)
+	require.NoError(t, err)
+
+	const lockTimeout = 500 * time.Millisecond
+	m.m.LockTimeout = lockTimeout
+	result := make(chan error, 1)
+	go func() { result <- m.RunMigration(ctx, target) }()
+
+	// the other instance finishes the migration, and lets go of the lock only
+	// after this one has given up waiting
+	time.Sleep(lockTimeout / 2)
+	body, err := fs.ReadFile(migrationsBox, "migrations/27_app_version.up.sql")
+	require.NoError(t, err)
+	_, err = otherConn.ExecContext(ctx, string(body)+"\n;UPDATE schema_migrations SET version = 27, dirty = false;")
+	require.NoError(t, err)
+	time.Sleep(lockTimeout)
+	_, err = otherConn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", lockID)
+	require.NoError(t, err)
+
+	select {
+	case err = <-result:
+	case <-time.After(30 * time.Second):
+		t.Fatal("RunMigration didn't return")
+	}
+	assert.ErrorIs(t, err, migrate.ErrLockTimeout)
+	assert.False(t, ran, "ran the post migrations of a migration another instance ran")
 }
 
 func readMigrationVersion(t *testing.T, dsn string) (version int, dirty bool) {
