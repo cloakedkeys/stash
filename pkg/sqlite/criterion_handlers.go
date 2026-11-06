@@ -566,6 +566,18 @@ func (m *multiCriterionHandlerBuilder) handler(criterion *models.MultiCriterionI
 				return
 			}
 
+			// the excludes list leaves out objects linked to any of those, the
+			// same check as the excludes modifier, as in the Tags filter (#2235)
+			if len(criterion.Excludes) > 0 {
+				excludes := models.MultiCriterionInput{Value: criterion.Excludes, Modifier: models.CriterionModifierExcludes}
+				var args []interface{}
+				for _, id := range excludes.Value {
+					args = append(args, id)
+				}
+				whereClause, _ := getMultiCriterionClause(m.primaryTable, m.foreignTable, m.joinTable, m.primaryFK, m.foreignFK, &excludes)
+				f.addWhere(whereClause, args...)
+			}
+
 			if len(criterion.Value) == 0 {
 				return
 			}
