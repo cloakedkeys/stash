@@ -418,12 +418,15 @@ func (qb *FolderStore) GetManyParentFolderIDs(ctx context.Context, folderIDs []m
 	for i, folderID := range folderIDs {
 		var parents []models.FolderID
 		currentID := folderID
+		// stop at a folder already seen, so a loop of parent folders ends (#2224)
+		seen := map[models.FolderID]bool{folderID: true}
 
 		for {
 			parentID, exists := folderMap[currentID]
-			if !exists || parentID == 0 {
+			if !exists || parentID == 0 || seen[parentID] {
 				break
 			}
+			seen[parentID] = true
 			parents = append(parents, parentID)
 			currentID = parentID
 		}
