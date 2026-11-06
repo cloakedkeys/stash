@@ -346,6 +346,8 @@ func TestMigrateFromSQLiteRefuses(t *testing.T) {
 		"older":      {"UPDATE schema_migrations SET version = version - 1", "Start this build of Stash on the SQLite database"},
 		"newer":      {"UPDATE schema_migrations SET version = version + 1", "newer than this build"},
 		"unfinished": {"UPDATE schema_migrations SET dirty = 1", "didn't finish"},
+		// #2221: a follow-up step that hasn't run yet
+		"unfinished follow-up step": {"CREATE TABLE IF NOT EXISTS pending_post_migrations (version INTEGER PRIMARY KEY); INSERT INTO pending_post_migrations VALUES (97)", "Start this build of Stash on the SQLite database once to finish it"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dsn := migrationFixture(t)

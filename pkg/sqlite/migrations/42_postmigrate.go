@@ -27,6 +27,22 @@ func post42(ctx context.Context, db *sqlx.DB) error {
 		},
 	}
 
+	// the unique indexes are made last, so once both are there the step has
+	// finished, and running the passes below again could change names
+	// that are already right (#2221)
+	done := true
+	for _, index := range []string{"performers_name_disambiguation_unique", "performers_name_unique"} {
+		exists, err := m.schemaObjectExists(ctx, "index", index)
+		if err != nil {
+			return err
+		}
+		done = done && exists
+	}
+	if done {
+		logger.Info("Schema version 42 post-migration has already finished")
+		return nil
+	}
+
 	if err := m.migrate(ctx); err != nil {
 		return fmt.Errorf("migrating performer aliases: %w", err)
 	}
@@ -343,8 +359,9 @@ SELECT disambiguation FROM performers WHERE name = ? ORDER BY disambiguation DES
 
 func (m *schema42Migrator) executeSchemaChanges() error {
 	return m.execAll([]string{
-		"CREATE UNIQUE INDEX `performers_name_disambiguation_unique` on `performers` (`name`, `disambiguation`) WHERE `disambiguation` IS NOT NULL",
-		"CREATE UNIQUE INDEX `performers_name_unique` on `performers` (`name`) WHERE `disambiguation` IS NULL",
+		// IF NOT EXISTS, in case Stash stopped between the two (#2221)
+		"CREATE UNIQUE INDEX IF NOT EXISTS `performers_name_disambiguation_unique` on `performers` (`name`, `disambiguation`) WHERE `disambiguation` IS NOT NULL",
+		"CREATE UNIQUE INDEX IF NOT EXISTS `performers_name_unique` on `performers` (`name`) WHERE `disambiguation` IS NULL",
 	})
 }
 

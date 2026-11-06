@@ -45,7 +45,7 @@ const (
 	stampBusyTimeout = time.Second
 )
 
-var appSchemaVersion uint = 109
+var appSchemaVersion uint = 110
 
 //go:embed migrations/*.sql
 var migrationsBox embed.FS
@@ -195,6 +195,15 @@ func (db *Database) Open(ctx context.Context, dbPath string) error {
 			return &database.MismatchedSchemaVersionError{
 				CurrentSchemaVersion:  databaseSchemaVersion,
 				RequiredSchemaVersion: appSchemaVersion,
+			}
+		}
+
+		// the upgrade isn't done until a follow-up step that didn't finish has
+		// run. A database that still needs migrating isn't used until then, and
+		// the migration runs them first, so it stays open to be migrated.
+		if databaseSchemaVersion == appSchemaVersion {
+			if err := db.runPendingPostMigrations(ctx); err != nil {
+				return err
 			}
 		}
 

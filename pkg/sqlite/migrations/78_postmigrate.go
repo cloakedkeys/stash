@@ -24,6 +24,16 @@ func post78(ctx context.Context, db *sqlx.DB) error {
 		},
 	}
 
+	// the column is dropped last, once its values have moved (#2221)
+	exists, err := m.columnExists(ctx, "performers", "career_length")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		logger.Info("Schema version 78 post-migration has already finished")
+		return nil
+	}
+
 	if err := m.migrateCareerLength(ctx); err != nil {
 		return fmt.Errorf("migrating career_length: %w", err)
 	}

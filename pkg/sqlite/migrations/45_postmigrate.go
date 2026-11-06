@@ -144,6 +144,17 @@ func (o migrateImagesTableOptions) selectColumns() string {
 }
 
 func (m *schema45Migrator) migrateImagesTable(ctx context.Context, options migrateImagesTableOptions) error {
+	// dropped once its images have moved, so a second run has nothing to do
+	// (#2221)
+	exists, err := m.schemaObjectExists(ctx, "table", options.joinTable)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		logger.Infof("%s has already moved to the blobs table", options.joinTable)
+		return nil
+	}
+
 	logger.Infof("Moving %s to blobs table", options.joinTable)
 
 	const (
@@ -247,7 +258,7 @@ func (m *schema45Migrator) insertImage(tx *sqlx.Tx, data []byte, id int, destTab
 func (m *schema45Migrator) dropTable(ctx context.Context, table string) error {
 	if err := m.withTxn(ctx, func(tx *sqlx.Tx) error {
 		logger.Debugf("Dropping %s", table)
-		_, err := tx.Exec(fmt.Sprintf("DROP TABLE `%s`", table))
+		_, err := tx.Exec(fmt.Sprintf("DROP TABLE IF EXISTS `%s`", table))
 		return err
 	}); err != nil {
 		return err
@@ -258,6 +269,15 @@ func (m *schema45Migrator) dropTable(ctx context.Context, table string) error {
 
 func (m *schema45Migrator) migrateConfig(ctx context.Context) error {
 	c := config.GetInstance()
+
+	// the images moved to the blobs table, which is new in this schema, so
+	// it has rows only if there were images, even when this runs again
+	// after the image tables were dropped (#2221)
+	if !m.hasBlobs {
+		if err := m.db.GetContext(ctx, &m.hasBlobs, "SELECT EXISTS (SELECT 1 FROM `blobs`)"); err != nil {
+			return err
+		}
+	}
 
 	// if we don't have blobs, and storage is already set, then don't overwrite
 	if !m.hasBlobs && c.GetBlobsStorage().IsValid() {
