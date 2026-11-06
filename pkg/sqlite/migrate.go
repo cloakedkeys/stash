@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -159,10 +160,33 @@ func (s markSource) ReadUp(version uint) (io.ReadCloser, string, error) {
 // Builds before #2230 cleared the mark in a transaction of its own, so a
 // database they upgraded can, rarely, be dirty with the changes kept. The
 // warning says what to do if the upgrade then fails.
+//
+// Another Stash may be running that migration right now. Its SQL holds the
+// write lock until it is saved, so the version is read again once this one
+// holds the lock, and only set back if it is still dirty.
 func (m *Migrator) resetFailedMigration() error {
-	version, dirty, err := m.driver.Version()
+	_, dirty, err := m.driver.Version()
 	if err != nil || !dirty {
 		return err
+	}
+
+	// the connection begins transactions with BEGIN IMMEDIATE
+	tx, err := m.conn.Beginx()
+	if err != nil {
+		return fmt.Errorf("resetting the schema version: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var version int
+	query := fmt.Sprintf("SELECT `version`, `dirty` FROM `%s` LIMIT 1", sqlite3mig.DefaultMigrationsTable)
+	switch err := tx.QueryRow(query).Scan(&version, &dirty); {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil
+	case err != nil:
+		return fmt.Errorf("reading the schema version: %w", err)
+	case !dirty:
+		// the other Stash finished the migration
+		return nil
 	}
 
 	previous := migratedb.NilVersion
@@ -174,8 +198,17 @@ func (m *Migrator) resetFailedMigration() error {
 		return fmt.Errorf("finding the schema version before %d: %w", version, err)
 	}
 	logger.Warnf("The upgrade of the database to schema version %[1]d didn't finish. Setting the schema version back to %[2]d so that the upgrade runs again. If it then fails because something it creates already exists, an older build of Stash may have kept the changes of version %[1]d without recording them; if so, record them with \"UPDATE schema_migrations SET version = %[1]d, dirty = 0\" and start Stash again.", version, max(previous, 0))
-	if err := m.driver.SetVersion(previous, false); err != nil {
-		return err
+	// as golang-migrate's SetVersion does, but in this transaction
+	if _, err := tx.Exec(fmt.Sprintf("DELETE FROM `%s`", sqlite3mig.DefaultMigrationsTable)); err != nil {
+		return fmt.Errorf("resetting the schema version: %w", err)
+	}
+	if previous >= 0 {
+		if _, err := tx.Exec(fmt.Sprintf("INSERT INTO `%s` (`version`, `dirty`) VALUES (?, 0)", sqlite3mig.DefaultMigrationsTable), previous); err != nil {
+			return fmt.Errorf("resetting the schema version: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("resetting the schema version: %w", err)
 	}
 	m.db.schemaVersion = uint(max(previous, 0))
 	return nil

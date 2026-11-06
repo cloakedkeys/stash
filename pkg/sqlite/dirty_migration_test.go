@@ -5,9 +5,13 @@ package sqlite
 import (
 	"context"
 	"fmt"
+	"io"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/golang-migrate/migrate/v4/source"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -80,6 +84,71 @@ func TestStoppedBeforeMarkedFinishedCarriesOn(t *testing.T) {
 	assert.Equal(t, target+1, version)
 	assert.False(t, dirty)
 	assert.Equal(t, []string{"kept"}, tagNames(t, path))
+}
+
+// A second Stash starts while the first is running a migration's SQL. It
+// must not set the version back once the first has saved it (#2230).
+func TestStartDuringMigrationKeepsIt(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "stash-go.sqlite")
+	const target uint = 107
+	endBuildAt(t, target+1)
+
+	db := NewDatabase()
+	db.dbPath = path
+	m, err := NewMigrator(db)
+	require.NoError(t, err)
+	migrateTo(t, m, target-1)
+	m.Close()
+
+	// the first Stash, as golang-migrate runs a migration: the version
+	// marked dirty, then the SQL, with its mark, in one write transaction
+	// that isn't saved yet
+	rawExec(t, path, "UPDATE schema_migrations SET version = ?, dirty = 1", target)
+	r, _, err := markSource{mustSource(t)}.ReadUp(target)
+	require.NoError(t, err)
+	sqlText, err := io.ReadAll(r)
+	_ = r.Close()
+	require.NoError(t, err)
+
+	first, err := sqlx.Open(sqlite3Driver, "file:"+filepath.ToSlash(path)+"?_journal=WAL&_busy_timeout=5000")
+	require.NoError(t, err)
+	defer first.Close()
+	conn, err := first.Conn(ctx)
+	require.NoError(t, err)
+	defer conn.Close()
+	_, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE")
+	require.NoError(t, err)
+	_, err = conn.ExecContext(ctx, string(sqlText))
+	require.NoError(t, err)
+
+	second := make(chan error, 1)
+	go func() {
+		db := NewDatabase()
+		db.dbPath = path
+		m, err := NewMigrator(db)
+		if err == nil {
+			m.Close()
+		}
+		second <- err
+	}()
+
+	// let the second Stash read the version and wait for the write lock
+	time.Sleep(500 * time.Millisecond)
+	_, err = conn.ExecContext(ctx, "COMMIT")
+	require.NoError(t, err)
+	require.NoError(t, <-second)
+
+	version, dirty, _ := schemaState(t, path)
+	assert.Equal(t, target, version)
+	assert.False(t, dirty)
+}
+
+func mustSource(t *testing.T) source.Driver {
+	t.Helper()
+	s, err := iofs.New(migrationsBox, "migrations")
+	require.NoError(t, err)
+	return s
 }
 
 // Stash stops while a migration's SQL is running, so none of it was saved
