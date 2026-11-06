@@ -43,11 +43,17 @@ type Migrator struct {
 }
 
 func NewMigrator(db *Database) (*Migrator, error) {
+	return newMigratorContext(context.Background(), db)
+}
+
+// newMigratorContext is NewMigrator, where ctx ends any wait for another
+// Stash's upgrade (resetFailedMigration).
+func newMigratorContext(ctx context.Context, db *Database) (*Migrator, error) {
 	m, err := newMigrator(db, sqlite3Driver)
 	if err != nil {
 		return m, err
 	}
-	if err := m.resetFailedMigration(); err != nil {
+	if err := m.resetFailedMigration(ctx); err != nil {
 		m.Close()
 		return m, err
 	}
@@ -195,14 +201,14 @@ func (s markSource) ReadUp(version uint) (io.ReadCloser, string, error) {
 // so this waits for that lock, reads the version again, and only sets it back
 // if it is still dirty (#2213). Without the lock file, its SQL's write lock
 // still covers the time the SQL runs (#2230).
-func (m *Migrator) resetFailedMigration() error {
+func (m *Migrator) resetFailedMigration(ctx context.Context) error {
 	_, dirty, err := m.driver.Version()
 	if err != nil || !dirty {
 		return err
 	}
 
 	if m.unlockUpgrade == nil {
-		unlock, _, err := m.db.lockUpgrade(context.Background())
+		unlock, _, err := m.db.lockUpgrade(ctx)
 		if err != nil {
 			return err
 		}
@@ -438,7 +444,7 @@ func (m *Migrator) PostMigrate(ctx context.Context) error {
 // empty version table in a new database, so its connection doesn't run PRAGMA
 // optimize on close, which would wait the busy timeout while another
 // connection holds the write lock (#2071).
-func (db *Database) getDatabaseSchemaVersion() (uint, error) {
+func (db *Database) getDatabaseSchemaVersion(ctx context.Context) (uint, error) {
 	m, err := newMigrator(db, sqlite3DriverNoOptimize)
 	if err != nil {
 		return 0, err
@@ -451,7 +457,7 @@ func (db *Database) getDatabaseSchemaVersion() (uint, error) {
 
 	// a migration that was stopped part way: NewMigrator sets the version back,
 	// with a connection that can write (#2230)
-	w, err := NewMigrator(db)
+	w, err := newMigratorContext(ctx, db)
 	if err != nil {
 		return 0, err
 	}
@@ -474,7 +480,7 @@ func (db *Database) runPendingPostMigrations(ctx context.Context) error {
 		return err
 	}
 
-	m, err := NewMigrator(db)
+	m, err := newMigratorContext(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -489,7 +495,7 @@ func (db *Database) ReInitialise() error {
 
 // RunAllMigrations runs all migrations to bring the database up to the current schema version
 func (db *Database) RunAllMigrations(ctx context.Context) error {
-	m, err := NewMigrator(db)
+	m, err := newMigratorContext(ctx, db)
 	if err != nil {
 		return err
 	}

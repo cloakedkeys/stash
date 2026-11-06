@@ -272,8 +272,13 @@ func TestSQLiteUpgradeLockEndsWithProcess(t *testing.T) {
 	require.NoError(t, first.Start())
 	defer func() { _ = first.Process.Kill(); _ = first.Wait() }()
 	lines := bufio.NewScanner(out)
-	for lines.Scan() && !strings.Contains(lines.Text(), "holding the upgrade lock") {
+	var printed []string
+	holding := false
+	for !holding && lines.Scan() {
+		printed = append(printed, lines.Text())
+		holding = strings.Contains(lines.Text(), "holding the upgrade lock")
 	}
+	require.Truef(t, holding, "the child process didn't take the upgrade lock; it printed:\n%s", strings.Join(printed, "\n"))
 
 	secondDone := upgrade(ctx, second)
 	requireWaiting(t, secondDone)
@@ -317,6 +322,27 @@ func TestSQLiteStartDuringStepWaitsForIt(t *testing.T) {
 	version, dirty, _ := schemaState(t, path)
 	assert.Equal(t, uint(108), version)
 	assert.False(t, dirty)
+}
+
+// Stopping a Stash that is waiting at startup for another's step ends the
+// wait (review of #2247).
+func TestSQLiteStartDuringStepCanBeStopped(t *testing.T) {
+	path := databaseAtVersion(t, 107, 108)
+	holdUpgradeLock(t, path)
+	rawExec(t, path, "UPDATE schema_migrations SET version = 108, dirty = 1")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	opened := make(chan error, 1)
+	second := NewDatabase()
+	go func() { opened <- second.Open(ctx, path) }()
+	requireWaiting(t, opened)
+
+	cancel()
+	require.ErrorIs(t, result(t, opened), context.Canceled)
+	// nothing was set back
+	version, dirty, _ := schemaState(t, path)
+	assert.Equal(t, uint(108), version)
+	assert.True(t, dirty)
 }
 
 // A Stash that starts while another runs the last follow-up step of its

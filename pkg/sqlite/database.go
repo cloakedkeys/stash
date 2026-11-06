@@ -80,6 +80,10 @@ type Database struct {
 
 	schemaVersion uint
 
+	// privateFile is set for a file that only this Stash opens, so its upgrade
+	// takes no upgrade lock (SetPrivateFile)
+	privateFile bool
+
 	// resetMu drains active database users and excludes new ones throughout reset.
 	resetMu sync.RWMutex
 
@@ -176,7 +180,7 @@ func (db *Database) Open(ctx context.Context, dbPath string) error {
 
 	db.dbPath, _ = strings.CutPrefix(dbPath, string(database.SqliteBackend)+":")
 
-	databaseSchemaVersion, err := db.getDatabaseSchemaVersion()
+	databaseSchemaVersion, err := db.getDatabaseSchemaVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("getting database schema version: %w", err)
 	}

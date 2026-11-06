@@ -34,6 +34,9 @@ var upgradeLockRetry = 200 * time.Millisecond
 // If the lock file can't be used, for example because the folder is read
 // only, Stash goes on without it, as before, with a warning.
 func (db *Database) lockUpgrade(ctx context.Context) (unlock func(), waited bool, err error) {
+	if db.privateFile {
+		return func() {}, false, nil
+	}
 	path := db.dbPath + upgradeLockSuffix
 	lockDB, err := sqlx.Open("sqlite3", "file:"+path+"?_busy_timeout=0")
 	if err != nil {
@@ -79,6 +82,13 @@ func (db *Database) lockUpgrade(ctx context.Context) (unlock func(), waited bool
 		_, _ = conn.ExecContext(context.Background(), "ROLLBACK")
 		release()
 	}, waited, nil
+}
+
+// SetPrivateFile says that the database file is one that only this Stash
+// opens, such as a new anonymised export, so that building it takes no
+// upgrade lock and leaves no lock file beside it. Call it before Open.
+func (db *Database) SetPrivateFile() {
+	db.privateFile = true
 }
 
 func lockUnavailable(path string, err error) (func(), bool, error) {
