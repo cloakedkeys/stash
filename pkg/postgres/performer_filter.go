@@ -817,6 +817,9 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 			case models.CriterionModifierIncludes:
 				// return performers who appear in scenes with any of the given groups
 				clauseCondition = "NOT"
+			case models.CriterionModifierIncludesAll:
+				// return performers who appear in scenes with each of the given groups
+				clauseCondition = "NOT"
 			case models.CriterionModifierExcludes:
 				// exclude performers who appear in scenes with any of the given groups
 				clauseCondition = ""
@@ -825,6 +828,25 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 			}
 
 			const derivedPerformerGroupTable = "performer_group"
+
+			// For "includes all" each scene row also gives the chosen group it
+			// matched, and a performer must match every chosen group. With
+			// sub-groups, a sub-group counts as the chosen group above it, as in
+			// the other "includes all" filters (#2225).
+			includesAll := groups.Modifier == models.CriterionModifierIncludesAll
+			performerSelect := func(rootColumn string) string {
+				if includesAll {
+					return "performer_id, " + rootColumn + " AS root_id"
+				}
+				return "performer_id"
+			}
+			performerQuery := func(unions []string) string {
+				q := strings.Join(unions, " UNION ")
+				if includesAll {
+					q = fmt.Sprintf("SELECT performer_id FROM (%s) AS performer_group_roots GROUP BY performer_id HAVING COUNT(DISTINCT root_id) = %d", q, len(groups.Value))
+				}
+				return q
+			}
 
 			// Simplified approach: direct group-scene-performer relationship without hierarchy
 			var valuesClauses []string
@@ -846,11 +868,13 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 
 			if depthVal == 0 {
 				// Simple case: no hierarchy, direct group relationship
-				f.addWith("group_values(id) AS (VALUES (" + valuesClause + "))")
+				// one row per group: VALUES (1, 2) would be a single row with
+				// two columns, and only the first group would be used
+				f.addWith("group_values(id) AS (VALUES (" + strings.Join(valuesClauses, "), (") + "))")
 
 				// f.addWith(fmt.Sprintf("group_values(id) AS (VALUES %s)", strings.Repeat("(?),", len(groups.Value)-1)+"(?)"), args...)
 
-				templStr := `SELECT performer_id FROM {joinTable}
+				templStr := `SELECT ` + performerSelect("group_values.id") + ` FROM {joinTable}
 	INNER JOIN {primaryTable} ON {joinTable}.scene_id = {primaryTable}.scene_id
 	INNER JOIN group_values ON {primaryTable}.{groupFK} = group_values.id`
 
@@ -868,7 +892,7 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 					unions = append(unions, utils.StrFormat(templStr, c))
 				}
 
-				f.addWith(fmt.Sprintf("%s AS (%s)", derivedPerformerGroupTable, strings.Join(unions, " UNION ")))
+				f.addWith(fmt.Sprintf("%s AS (%s)", derivedPerformerGroupTable, performerQuery(unions)))
 			} else {
 				// Complex case: with hierarchy
 				// With no depth limit the depth stays the same, so UNION drops a
@@ -889,7 +913,7 @@ SELECT root_id, sub_id, %s FROM groups_relations INNER JOIN group_hierarchy ON i
 
 				f.addRecursiveWith(hierarchyQuery)
 
-				templStr := `SELECT performer_id FROM {joinTable}
+				templStr := `SELECT ` + performerSelect("group_hierarchy.root_id") + ` FROM {joinTable}
 	INNER JOIN {primaryTable} ON {joinTable}.scene_id = {primaryTable}.scene_id
 	INNER JOIN group_hierarchy ON {primaryTable}.{groupFK} = group_hierarchy.item_id`
 
@@ -907,7 +931,7 @@ SELECT root_id, sub_id, %s FROM groups_relations INNER JOIN group_hierarchy ON i
 					unions = append(unions, utils.StrFormat(templStr, c))
 				}
 
-				f.addWith(fmt.Sprintf("%s AS (%s)", derivedPerformerGroupTable, strings.Join(unions, " UNION ")))
+				f.addWith(fmt.Sprintf("%s AS (%s)", derivedPerformerGroupTable, performerQuery(unions)))
 			}
 
 			f.addLeftJoin(derivedPerformerGroupTable, "", fmt.Sprintf("performers.id = %s.performer_id", derivedPerformerGroupTable))
