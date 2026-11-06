@@ -331,9 +331,11 @@ SELECT id, name FROM performers WHERE performers.disambiguation IS NULL AND EXIS
 }
 
 func (m *schema42Migrator) migrateDuplicatePerformer(tx *sqlx.Tx, performerID int, name string) error {
-	// get the highest value of disambiguation for this performer name
+	// get the highest value of disambiguation for this performer name, as a
+	// number: as text, "9" comes after "10", which would give "10" twice
+	// (#2238)
 	query := `
-SELECT disambiguation FROM performers WHERE name = ? ORDER BY disambiguation DESC LIMIT 1`
+SELECT disambiguation FROM performers WHERE name = ? ORDER BY CAST(disambiguation AS INTEGER) DESC, disambiguation DESC LIMIT 1`
 
 	var disambiguation sql.NullString
 	if err := tx.Get(&disambiguation, query, name); err != nil {

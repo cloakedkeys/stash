@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
@@ -150,4 +151,33 @@ func TestPost42RunAgainAfterFinishing(t *testing.T) {
 
 	require.NoError(t, post42(ctx, raw))
 	require.Equal(t, want, schema42Names(t, raw))
+}
+
+// samePerformerNames inserts count performers called Dup.
+func samePerformerNames(count int) string {
+	values := make([]string, count)
+	for i := range values {
+		values[i] = fmt.Sprintf("(%d,'Dup','c%d',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)", i+1, i+1)
+	}
+	return "INSERT INTO performers(id,name,checksum,created_at,updated_at) VALUES " + strings.Join(values, ",") + ";"
+}
+
+// Step 42 numbers clashing names in order. With 10 or more clashes, each still
+// gets a number of its own, so the unique index can be made (#2238). With
+// fewer, the numbers are the ones it has always given.
+func TestPost42NumbersManyClashes(t *testing.T) {
+	for _, count := range []int{10, 12} {
+		t.Run(fmt.Sprintf("%d performers", count), func(t *testing.T) {
+			raw := schema41Database(t, samePerformerNames(count))
+			applySchema42SQL(t, raw)
+			require.NoError(t, post42(context.Background(), raw))
+
+			// the first keeps its name as it is, the others are numbered from 1
+			want := []string{`1 "Dup" ""`}
+			for id := 2; id <= count; id++ {
+				want = append(want, fmt.Sprintf(`%d "Dup" "%d"`, id, id-1))
+			}
+			require.Equal(t, want, schema42Names(t, raw))
+		})
+	}
 }
