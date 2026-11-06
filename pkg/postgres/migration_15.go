@@ -13,9 +13,9 @@ import (
 )
 
 // The SQL migration reserves a locked admin so foreign keys can be populated
-// before legacy credentials are read. If this fails it is retried by pre16,
-// since the SQL migration is already recorded, and until then the admin stays
-// locked.
+// before legacy credentials are read. If this fails it runs again on the next
+// start (pending_post_migrations) or from pre16, and until then the admin
+// stays locked. Running it again after it has finished changes nothing.
 func post15(ctx context.Context, db *sqlx.DB) (retErr error) {
 	if models.IsSetupContext(ctx) {
 		result, err := db.ExecContext(ctx, `DELETE FROM users WHERE id=1 AND locked
@@ -38,9 +38,19 @@ AND NOT EXISTS (SELECT 1 FROM scenes_view_dates)`)
 			return err
 		}
 		if count != 1 {
-			return fmt.Errorf("cannot initialize a new account over existing personal data")
+			// a run that already removed the reserved admin leaves no user 1
+			var reserved bool
+			if err := db.GetContext(ctx, &reserved, `SELECT EXISTS (SELECT 1 FROM users WHERE id=1)`); err != nil {
+				return err
+			}
+			if reserved {
+				return fmt.Errorf("cannot initialize a new account over existing personal data")
+			}
 		}
 		_, err = db.ExecContext(ctx, "SELECT setval(pg_get_serial_sequence('users','id'),1,false)")
+		return err
+	}
+	if needed, err := post15Needed(ctx, db); err != nil || !needed {
 		return err
 	}
 	cfg := config.GetInstance()
@@ -109,17 +119,23 @@ AND NOT EXISTS (SELECT 1 FROM scenes_view_dates)`)
 	return nil
 }
 
-// pre16 finishes post15 if it failed last time, as it never runs again by itself.
-func pre16(ctx context.Context, db *sqlx.DB) error {
-	if models.IsSetupContext(ctx) {
-		return nil
-	}
+// post15Needed says whether post15 still has work to do outside setup: the
+// SQL migration's reserved admin is still there, or legacy credentials are
+// still in the config file. Once post15 has finished, neither is, so running
+// it again changes nothing rather than resetting the admin account (#2200).
+func post15Needed(ctx context.Context, db *sqlx.DB) (bool, error) {
 	var incomplete bool
 	if err := db.GetContext(ctx, &incomplete, `SELECT EXISTS (SELECT 1 FROM users WHERE id=1 AND password_hash='!migration-incomplete')`); err != nil {
-		return err
+		return false, err
 	}
 	cfg := config.GetInstance()
-	if !incomplete && cfg.GetLegacyUsername() == "" && cfg.GetLegacyPasswordHash() == "" && cfg.GetLegacyAPIKey() == "" {
+	return incomplete || cfg.GetLegacyUsername() != "" || cfg.GetLegacyPasswordHash() != "" || cfg.GetLegacyAPIKey() != "", nil
+}
+
+// pre16 finishes post15 if it failed last time, for databases upgraded by
+// builds that didn't run a failed post migration again (#2200).
+func pre16(ctx context.Context, db *sqlx.DB) error {
+	if models.IsSetupContext(ctx) {
 		return nil
 	}
 	return post15(ctx, db)

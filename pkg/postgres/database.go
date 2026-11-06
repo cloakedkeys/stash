@@ -31,7 +31,7 @@ const (
 	dbConnTimeout = 30 * time.Second
 )
 
-var appSchemaVersion uint = 29
+var appSchemaVersion uint = 30
 
 //go:embed migrations/*.sql
 var migrationsBox embed.FS
@@ -173,6 +173,11 @@ func (db *Database) Open(ctx context.Context, dbPath string) error {
 				CurrentSchemaVersion:  databaseSchemaVersion,
 				RequiredSchemaVersion: appSchemaVersion,
 			}
+		}
+
+		// the upgrade isn't done until a follow-up step that failed has run
+		if err := db.runPendingPostMigrations(ctx); err != nil {
+			return err
 		}
 
 	}

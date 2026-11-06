@@ -107,6 +107,10 @@ func (m *Migrator) getMigrate() (*migrate.Migrate, error) {
 // version that is still marked unfinished always means none of its changes
 // were kept. golang-migrate marks the version finished again in a separate
 // transaction afterwards, which changes nothing.
+//
+// A version with post migrations also records, in the same transaction, that
+// they are still to run (#2200). runPostMigrations removes the record once
+// they have finished.
 type cleanMarkSource struct {
 	source.Driver
 }
@@ -117,8 +121,64 @@ func (s cleanMarkSource) ReadUp(version uint) (io.ReadCloser, string, error) {
 		return r, identifier, err
 	}
 	// on a new line, in case the file ends in a comment
-	mark := fmt.Sprintf("\n;UPDATE %s SET dirty = false WHERE version = %d;\n", postgresmig.DefaultMigrationsTable, version)
+	mark := "\n;"
+	if len(postMigrations[version]) > 0 {
+		// migration 30 adds the table for every database; migrations before it
+		// that need it create it themselves
+		mark += fmt.Sprintf("CREATE TABLE IF NOT EXISTS %[1]s (version INTEGER PRIMARY KEY);\nINSERT INTO %[1]s (version) VALUES (%[2]d) ON CONFLICT DO NOTHING;\n", pendingPostMigrationsTable, version)
+	}
+	mark += fmt.Sprintf("UPDATE %s SET dirty = false WHERE version = %d;\n", postgresmig.DefaultMigrationsTable, version)
 	return readCloser{io.MultiReader(r, strings.NewReader(mark)), r}, identifier, nil
+}
+
+// pendingPostMigrationsTable lists the schema versions whose post migrations
+// haven't finished (migration 30).
+const pendingPostMigrationsTable = "pending_post_migrations"
+
+// runPostMigrations runs the post migrations of version, then removes the
+// record that they are still to run. If one fails, the record stays, so they
+// run again before the database is next used (runPendingPostMigrations).
+func (m *Migrator) runPostMigrations(ctx context.Context, version uint) error {
+	fns := postMigrations[version]
+	if len(fns) == 0 {
+		return nil
+	}
+	if err := m.runCustomMigrations(ctx, fns); err != nil {
+		return err
+	}
+	_, err := m.conn.ExecContext(ctx, "DELETE FROM "+pendingPostMigrationsTable+" WHERE version = $1", version)
+	return err
+}
+
+// runPendingPostMigrations runs again the post migrations that failed last
+// time, oldest first (#2200). Until they have finished, the upgrade isn't
+// done: the database isn't used, and no later migration runs. Each post
+// migration changes nothing when run again after it has finished, so a
+// record left by a failure to remove it is harmless.
+func (m *Migrator) runPendingPostMigrations(ctx context.Context) error {
+	var exists bool
+	if err := m.conn.GetContext(ctx, &exists, "SELECT to_regclass($1) IS NOT NULL", pendingPostMigrationsTable); err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	// a newer build's own are left for it
+	var versions []uint
+	if err := m.conn.SelectContext(ctx, &versions, "SELECT version FROM "+pendingPostMigrationsTable+" WHERE version <= $1 ORDER BY version", appSchemaVersion); err != nil {
+		return err
+	}
+	for _, version := range versions {
+		logger.Warnf("The follow-up step of the database upgrade to schema version %d didn't finish last time. Running it again.", version)
+		if err := m.runCustomMigrations(ctx, postMigrations[version]); err != nil {
+			return fmt.Errorf("the follow-up step of the database upgrade to schema version %d failed again, so Stash can't use the database until it succeeds. Fix the cause and start Stash again, or restore the database from a backup made before the upgrade: %w", version, err)
+		}
+		if _, err := m.conn.ExecContext(ctx, "DELETE FROM "+pendingPostMigrationsTable+" WHERE version = $1", version); err != nil {
+			return err
+		}
+		logger.Infof("The follow-up step of the database upgrade to schema version %d has finished.", version)
+	}
+	return nil
 }
 
 type readCloser struct {
@@ -181,6 +241,11 @@ func (m *Migrator) RunMigration(ctx context.Context, newVersion uint) error {
 		return fmt.Errorf("invalid migration version %d, expected %d", newVersion, databaseSchemaVersion+1)
 	}
 
+	// a post migration that failed last time comes before the next migration
+	if err := m.runPendingPostMigrations(ctx); err != nil {
+		return err
+	}
+
 	// run pre migrations as needed
 	if err := m.runCustomMigrations(ctx, preMigrations[newVersion]); err != nil {
 		return fmt.Errorf("running pre migrations for schema version %d: %w", newVersion, err)
@@ -204,7 +269,7 @@ func (m *Migrator) RunMigration(ctx context.Context, newVersion uint) error {
 	}
 
 	// run post migrations as needed
-	if err := m.runCustomMigrations(ctx, postMigrations[newVersion]); err != nil {
+	if err := m.runPostMigrations(ctx, newVersion); err != nil {
 		return fmt.Errorf("running post migrations for schema version %d: %w", newVersion, err)
 	}
 
@@ -246,6 +311,15 @@ func (m *Migrator) PostMigrate(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (db *Database) runPendingPostMigrations(ctx context.Context) error {
+	m, err := NewMigrator(db)
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+	return m.runPendingPostMigrations(ctx)
 }
 
 func (db *Database) getDatabaseSchemaVersion() (uint, error) {
