@@ -81,6 +81,11 @@ var (
 	// ErrRestoredNotReopened is returned by RestoreFromBackup when the backup
 	// is back in place, but the database couldn't be opened again.
 	ErrRestoredNotReopened = errors.New("the backup was restored, but the database couldn't be opened again")
+	// ErrUpgradeUnfinishedElsewhere is returned by RunMigration when another
+	// Stash was upgrading the database while this one waited, and stopped
+	// before it had finished. This one has changed nothing, so its backup
+	// mustn't be put back over what the other did (#2213).
+	ErrUpgradeUnfinishedElsewhere = errors.New("another Stash was upgrading this database at the same time and stopped before it had finished, so this one left it as it was")
 )
 
 // ErrMigrationNeeded indicates that a database migration is needed

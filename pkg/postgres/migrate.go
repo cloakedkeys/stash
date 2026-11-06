@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jmoiron/sqlx"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/database/migrationguard"
 	"github.com/stashapp/stash/pkg/logger"
 )
@@ -29,6 +29,15 @@ type Migrator struct {
 	m      *migrate.Migrate
 	source source.Driver
 	driver migratedb.Driver
+
+	// unlockUpgrade releases the lock that RunMigration takes the first time
+	// it is called and holds until Close, so that a second Stash waits for
+	// the whole upgrade rather than running part of it (#2213)
+	unlockUpgrade func()
+	// waitedForUpgrade is set when another Stash held that lock first. This
+	// one then only takes up what the other did, and runs no migration
+	// itself.
+	waitedForUpgrade bool
 }
 
 func NewMigrator(db *Database) (*Migrator, error) {
@@ -61,6 +70,10 @@ func NewMigrator(db *Database) (*Migrator, error) {
 }
 
 func (m *Migrator) Close() {
+	if m.unlockUpgrade != nil {
+		m.unlockUpgrade()
+		m.unlockUpgrade = nil
+	}
 	if m.m != nil {
 		m.m.Close()
 		m.m = nil
@@ -69,6 +82,20 @@ func (m *Migrator) Close() {
 	if m.conn != nil {
 		_ = m.conn.Close()
 	}
+}
+
+// KeepUpgradeLock hands over the lock that RunMigration took, so that Close
+// doesn't release it. The upgrade task keeps it until it has put a backup
+// back, or a second Stash could take the upgrade as done while the restore
+// runs (review of #2232). The returned function releases it, and does
+// nothing if there is no lock.
+func (m *Migrator) KeepUpgradeLock() (release func()) {
+	unlock := m.unlockUpgrade
+	m.unlockUpgrade = nil
+	if unlock == nil {
+		return func() {}
+	}
+	return unlock
 }
 
 func (m *Migrator) CurrentSchemaVersion() uint {
@@ -158,45 +185,53 @@ func (m *Migrator) runPostMigrations(ctx context.Context, version uint) error {
 // this a second Stash process could run the same post migration while the
 // first is still running it (review of #2220). It is a session lock on one
 // connection of its own, with a key of its own. The returned function
-// releases it.
-func (m *Migrator) lockPostMigrations(ctx context.Context) (func(), error) {
-	conn, err := m.conn.Connx(ctx)
+// releases it; waited says whether another Stash held it first.
+//
+// The connection has a pool of its own, so the lock can outlive the
+// migrator's connections (KeepUpgradeLock). Closing that pool ends the
+// session, which releases the lock if unlocking failed.
+func (m *Migrator) lockPostMigrations(ctx context.Context) (unlock func(), waited bool, err error) {
+	const writable = true
+	lockDB, err := m.db.open(writable)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	lockDB.SetMaxOpenConns(1)
+	conn, err := lockDB.Connx(ctx)
+	if err != nil {
+		_ = lockDB.Close()
+		return nil, false, err
+	}
+	fail := func(err error) (func(), bool, error) {
+		_ = conn.Close()
+		_ = lockDB.Close()
+		return nil, false, err
 	}
 	var dbName, schema string
 	if err := conn.QueryRowxContext(ctx, "SELECT current_database(), current_schema()").Scan(&dbName, &schema); err != nil {
-		_ = conn.Close()
-		return nil, err
+		return fail(err)
 	}
 	id, err := migratedb.GenerateAdvisoryLockId(dbName, schema, pendingPostMigrationsTable)
 	if err != nil {
-		_ = conn.Close()
-		return nil, err
+		return fail(err)
 	}
 	var got bool
 	if err := conn.GetContext(ctx, &got, "SELECT pg_try_advisory_lock($1)", id); err != nil {
-		_ = conn.Close()
-		return nil, err
+		return fail(err)
 	}
 	if !got {
 		logger.Info("Waiting until no other Stash is upgrading this database.")
 		if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", id); err != nil {
-			// the lock may have been granted as the wait was cut off, so don't
-			// hand this connection back to the pool
-			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
-			_ = conn.Close()
-			return nil, err
+			// the lock may have been granted as the wait was cut off; closing
+			// the pool ends the session
+			return fail(err)
 		}
 	}
 	return func() {
-		var released bool
-		if err := conn.GetContext(context.Background(), &released, "SELECT pg_advisory_unlock($1)", id); err != nil || !released {
-			// closing the session releases the lock
-			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
-		}
+		_, _ = conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", id)
 		_ = conn.Close()
-	}, nil
+		_ = lockDB.Close()
+	}, !got, nil
 }
 
 // pendingPostMigrations lists the versions whose post migrations failed last
@@ -225,7 +260,11 @@ func (m *Migrator) runPendingPostMigrations(ctx context.Context) error {
 	if err != nil || len(versions) == 0 {
 		return err
 	}
-	unlock, err := m.lockPostMigrations(ctx)
+	if m.unlockUpgrade != nil {
+		// RunMigration holds the lock already
+		return m.runPendingPostMigrationsLocked(ctx)
+	}
+	unlock, _, err := m.lockPostMigrations(ctx)
 	if err != nil {
 		return err
 	}
@@ -314,15 +353,39 @@ func (m *Migrator) resetFailedMigration() error {
 }
 
 func (m *Migrator) RunMigration(ctx context.Context, newVersion uint) error {
-	// held until this version's post migrations have finished; the version is
-	// read after taking it, so a migration another Stash ran meanwhile shows
-	unlock, err := m.lockPostMigrations(ctx)
-	if err != nil {
-		return err
+	// held until Close, so through the rest of the upgrade and its post
+	// migrations; the version is read after taking it, so a migration another
+	// Stash ran meanwhile shows
+	if m.unlockUpgrade == nil {
+		unlock, waited, err := m.lockPostMigrations(ctx)
+		if err != nil {
+			return err
+		}
+		m.unlockUpgrade = unlock
+		m.waitedForUpgrade = waited
 	}
-	defer unlock()
 
-	databaseSchemaVersion, _, _ := m.m.Version()
+	databaseSchemaVersion, dirty, _ := m.m.Version()
+	m.db.schemaVersion = databaseSchemaVersion
+
+	// A Stash that waited for another takes up only an upgrade the other
+	// finished: every version in place, none part way through its SQL, and
+	// no follow-up step left to run (#2213, review of #2232).
+	if m.waitedForUpgrade {
+		pending, err := m.pendingPostMigrations(ctx)
+		if err != nil {
+			return err
+		}
+		if dirty || len(pending) > 0 || newVersion > databaseSchemaVersion {
+			return fmt.Errorf("%w: it is at schema version %d. Start Stash again to finish the upgrade", database.ErrUpgradeUnfinishedElsewhere, databaseSchemaVersion)
+		}
+	}
+
+	// another Stash ran it, after this one read the version
+	if newVersion <= databaseSchemaVersion {
+		logger.Infof("Schema version %d is already in place: another Stash upgraded the database.", newVersion)
+		return nil
+	}
 
 	if newVersion != databaseSchemaVersion+1 {
 		return fmt.Errorf("invalid migration version %d, expected %d", newVersion, databaseSchemaVersion+1)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
@@ -108,7 +109,17 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 		return fmt.Errorf("error backing up database: %s", err)
 	}
 
-	err = s.runMigrations(ctx, progress)
+	// the upgrade lock, if the database has one, is kept until the backup has
+	// been put back, so no other Stash takes the upgrade as done meanwhile
+	releaseLock, err := s.runMigrations(ctx, progress)
+	defer releaseLock()
+
+	if errors.Is(err, database.ErrUpgradeUnfinishedElsewhere) {
+		// this one changed nothing, and its backup may be older than what the
+		// other Stash did, so it isn't put back (#2213)
+		s.removeBackup(backupPath, backedUp)
+		return fmt.Errorf("error performing migration: %w", err)
+	}
 
 	if err != nil {
 		errStr := fmt.Sprintf("error performing migration: %s", err)
@@ -121,12 +132,8 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 		return errors.New(restoreMessage(db.RestoreFromBackup(backupPath), errStr))
 	}
 
-	// if no backup path was provided, then delete the created backup
-	if s.BackupPath == "" && backedUp {
-		if err := os.Remove(backupPath); err != nil {
-			logger.Warnf("error removing unwanted database backup (%s): %s", backupPath, err.Error())
-		}
-	}
+	releaseLock()
+	s.removeBackup(backupPath, backedUp)
 
 	// reinitialise the database
 	if err := db.ReInitialise(); err != nil {
@@ -155,6 +162,16 @@ func restoreMessage(restoreErr error, errStr string) string {
 	}
 }
 
+// removeBackup deletes the backup made before the upgrade, unless the backup
+// path was chosen.
+func (s *MigrateJob) removeBackup(backupPath string, backedUp bool) {
+	if s.BackupPath == "" && backedUp {
+		if err := os.Remove(backupPath); err != nil {
+			logger.Warnf("error removing unwanted database backup (%s): %s", backupPath, err.Error())
+		}
+	}
+}
+
 func (s *MigrateJob) required() (ret databaseSchemaInfo, err error) {
 	m, err := s.Database.NewMigrator()
 	if err != nil {
@@ -175,14 +192,35 @@ func (s *MigrateJob) required() (ret databaseSchemaInfo, err error) {
 	return
 }
 
-func (s *MigrateJob) runMigrations(ctx context.Context, progress *job.Progress) error {
+// upgradeLockKeeper is a migrator whose upgrade lock can outlive it.
+type upgradeLockKeeper interface {
+	KeepUpgradeLock() (release func())
+}
+
+// runMigrations upgrades the database. The returned function releases the
+// migrator's upgrade lock, which it keeps after closing; it can be called
+// more than once. If the upgrade panics, the lock isn't kept: Close releases
+// it, so no other Stash, and no retry, waits for it for good (review of
+// #2232).
+func (s *MigrateJob) runMigrations(ctx context.Context, progress *job.Progress) (releaseLock func(), err error) {
+	releaseLock = func() {}
 	m, err := s.Database.NewMigrator()
 	if err != nil {
-		return err
+		return releaseLock, err
 	}
-
 	defer m.Close()
 
+	err = s.migrate(ctx, progress, m)
+
+	if k, ok := m.(upgradeLockKeeper); ok {
+		var once sync.Once
+		release := k.KeepUpgradeLock()
+		releaseLock = func() { once.Do(release) }
+	}
+	return releaseLock, err
+}
+
+func (s *MigrateJob) migrate(ctx context.Context, progress *job.Progress, m database.MigrateStore) (err error) {
 	logger.Info("Running migrations")
 
 	for {
@@ -199,7 +237,7 @@ func (s *MigrateJob) runMigrations(ctx context.Context, progress *job.Progress) 
 		})
 
 		if err != nil {
-			return fmt.Errorf("error running migration for schema %d: %s", currentSchemaVersion+1, err)
+			return fmt.Errorf("error running migration for schema %d: %w", currentSchemaVersion+1, err)
 		}
 
 		progress.Increment()

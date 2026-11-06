@@ -11,6 +11,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -188,8 +189,11 @@ func TestPendingPostMigrationsTable(t *testing.T) {
 // While one Stash is still running a migration's follow-up step, a second
 // Stash that opens the database or runs the next migration waits for it and
 // then finds nothing left to do, rather than running the same step at the
-// same time (review of #2220).
+// same time (review of #2220). The first stops at that migration, short of
+// the build's version, so the second, which waited for it, runs no migration
+// of its own either and says why (#2213).
 func TestPostMigrationNotRunTwiceAtOnce(t *testing.T) {
+	expected := map[string]error{"next migration": database.ErrUpgradeUnfinishedElsewhere}
 	for name, second := range map[string]func(ctx context.Context, dsn string) error{
 		"open": func(ctx context.Context, dsn string) error {
 			db := NewDatabase()
@@ -256,7 +260,13 @@ func TestPostMigrationNotRunTwiceAtOnce(t *testing.T) {
 
 			close(release)
 			require.NoError(t, <-firstDone)
-			require.NoError(t, <-secondDone)
+			// the first holds the lock until it is done with the database
+			m.Close()
+			if want := expected[name]; want != nil {
+				require.ErrorIs(t, <-secondDone, want)
+			} else {
+				require.NoError(t, <-secondDone)
+			}
 			assert.Equal(t, int32(1), calls.Load(), "the second Stash ran the follow-up step again")
 			assert.Empty(t, pendingPostMigrations(t, dsn))
 		})
