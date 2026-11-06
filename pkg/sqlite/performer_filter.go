@@ -722,6 +722,10 @@ func (qb *performerFilterHandler) studiosCriterionHandler(studios *models.Hierar
 				return
 			}
 
+			if !supportedModifier(f, "studios", studios.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll, models.CriterionModifierExcludes) {
+				return
+			}
+
 			if len(studios.Value) == 0 && len(studios.Excludes) == 0 {
 				return
 			}
@@ -823,6 +827,10 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 				f.addLeftJoin(groupsScenesTable, "", "performers_scenes.scene_id = groups_scenes.scene_id")
 
 				f.addWhere(fmt.Sprintf("%s groups_scenes.group_id IS NULL", notClause))
+				return
+			}
+
+			if !supportedModifier(f, "groups", groups.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll, models.CriterionModifierExcludes) {
 				return
 			}
 
@@ -984,17 +992,37 @@ func (qb *performerFilterHandler) appearsWithCriterionHandler(performers *models
 				},
 			}
 
+			// "equals", "excludes", "is null" and "not null" have no meaning
+			// defined here yet, so they are refused rather than ignored, as the
+			// gallery parent folder filter refuses "includes all" (#2235)
+			if !supportedModifier(f, "performers", performers.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll) {
+				return
+			}
+
+			// the ids are passed as values, not written into the query text,
+			// and an id that isn't a number is refused (#2235)
+			includeIDs, err := idValues(performers.Value)
+			if err != nil {
+				f.setError(err)
+				return
+			}
+			excludeIDs, err := idValues(performers.Excludes)
+			if err != nil {
+				f.setError(err)
+				return
+			}
+
 			// the excludes list leaves out performers who appear with any of
 			// those performers, as in the Tags filter (#2235)
-			if len(performers.Excludes) > 0 {
+			if len(excludeIDs) > 0 {
 				var args []interface{}
 				var unions []string
 				for _, c := range formatMaps {
-					c["inBinding"] = getInBinding(len(performers.Excludes))
+					c["inBinding"] = getInBinding(len(excludeIDs))
 					unions = append(unions, utils.StrFormat(`SELECT {primaryTable}2.performer_id FROM {primaryTable}
 			INNER JOIN {primaryTable} AS {primaryTable}2 ON {primaryTable}.{primaryFK} = {primaryTable}2.{primaryFK}
 			WHERE {primaryTable}.performer_id IN {inBinding} AND {primaryTable}2.performer_id != {primaryTable}.performer_id`, c))
-					for _, id := range performers.Excludes {
+					for _, id := range excludeIDs {
 						args = append(args, id)
 					}
 				}
@@ -1002,15 +1030,17 @@ func (qb *performerFilterHandler) appearsWithCriterionHandler(performers *models
 			}
 
 			// with no performers chosen there's nothing more to match
-			if len(performers.Value) == 0 {
+			if len(includeIDs) == 0 {
 				return
 			}
 
 			const derivedPerformerPerformersTable = "performer_performers"
 
-			valuesClause := strings.Join(performers.Value, "),(")
-
-			f.addWith("performer(id) AS (VALUES(" + valuesClause + "))")
+			var args []interface{}
+			for _, id := range includeIDs {
+				args = append(args, id)
+			}
+			f.addWith("performer(id) AS (VALUES "+strings.Repeat("(?),", len(includeIDs)-1)+"(?))", args...)
 
 			templStr := `SELECT {primaryTable}2.performer_id FROM {primaryTable}
 			INNER JOIN {primaryTable} AS {primaryTable}2 ON {primaryTable}.{primaryFK} = {primaryTable}2.{primaryFK}

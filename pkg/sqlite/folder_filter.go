@@ -105,6 +105,20 @@ func (qb *folderFilterHandler) zipFileCriterionHandler(criterion *models.MultiCr
 				return
 			}
 
+			if !supportedModifier(f, "zip file", criterion.Modifier, models.CriterionModifierIncludes, models.CriterionModifierExcludes) {
+				return
+			}
+
+			// the excludes list leaves out items in any of those zip files, and keeps
+			// items that aren't in a zip file, as in the Tags filter (#2235)
+			if len(criterion.Excludes) > 0 {
+				var args []interface{}
+				for _, id := range criterion.Excludes {
+					args = append(args, id)
+				}
+				f.addWhere(fmt.Sprintf("(%[1]s.zip_file_id IS NULL OR %[1]s.zip_file_id NOT IN %s)", qb.table.Name(), getInBinding(len(criterion.Excludes))), args...)
+			}
+
 			if len(criterion.Value) == 0 {
 				return
 			}

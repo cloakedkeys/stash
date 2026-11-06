@@ -202,6 +202,10 @@ func (qb *groupFilterHandler) performersCriterionHandler(performers *models.Mult
 				return
 			}
 
+			if !supportedModifier(f, "performers", performers.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll, models.CriterionModifierExcludes) {
+				return
+			}
+
 			// the excludes list leaves out groups with a scene with any of those
 			// performers, as in the Tags filter (#2235)
 			if len(performers.Excludes) > 0 {
