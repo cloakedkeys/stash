@@ -69,24 +69,30 @@ func dumpDatabase(t *testing.T, raw *sqlx.DB) []string {
 		if o.Type != "table" {
 			continue
 		}
-		rows, err := raw.Queryx("SELECT * FROM `" + o.Name + "`")
-		require.NoError(t, err)
-		var tableRows []string
-		for rows.Next() {
-			values, err := rows.SliceScan()
-			require.NoError(t, err)
-			for i, v := range values {
-				if b, ok := v.([]byte); ok {
-					values[i] = string(b)
-				}
-			}
-			tableRows = append(tableRows, fmt.Sprintf("%s %v", o.Name, values))
-		}
-		require.NoError(t, rows.Err())
-		require.NoError(t, rows.Close())
-		sort.Strings(tableRows)
-		out = append(out, tableRows...)
+		out = append(out, dumpTable(t, raw, o.Name)...)
 	}
+	return out
+}
+
+// dumpTable returns the table's rows as text, sorted.
+func dumpTable(t *testing.T, raw *sqlx.DB, table string) []string {
+	t.Helper()
+	rows, err := raw.Queryx("SELECT * FROM `" + table + "`")
+	require.NoError(t, err)
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		values, err := rows.SliceScan()
+		require.NoError(t, err)
+		for i, v := range values {
+			if b, ok := v.([]byte); ok {
+				values[i] = string(b)
+			}
+		}
+		out = append(out, fmt.Sprintf("%s %v", table, values))
+	}
+	require.NoError(t, rows.Err())
+	sort.Strings(out)
 	return out
 }
 

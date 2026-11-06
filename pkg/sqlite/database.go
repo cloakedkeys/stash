@@ -198,9 +198,13 @@ func (db *Database) Open(ctx context.Context, dbPath string) error {
 			}
 		}
 
-		// the upgrade isn't done until a follow-up step that didn't finish has run
-		if err := db.runPendingPostMigrations(ctx); err != nil {
-			return err
+		// the upgrade isn't done until a follow-up step that didn't finish has
+		// run. A database that still needs migrating isn't used until then, and
+		// the migration runs them first, so it stays open to be migrated.
+		if databaseSchemaVersion == appSchemaVersion {
+			if err := db.runPendingPostMigrations(ctx); err != nil {
+				return err
+			}
 		}
 
 		// if migration is needed, then still open the connection
