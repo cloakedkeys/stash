@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	migratedb "github.com/golang-migrate/migrate/v4/database"
@@ -93,34 +95,65 @@ func (m *Migrator) getMigrate() (*migrate.Migrate, error) {
 	// use sqlite3Driver so that migration has access to durationToTinyInt
 	return migrate.NewWithInstance(
 		"iofs",
-		migrations,
+		cleanMarkSource{migrations},
 		"postgres",
 		driver,
 	)
+}
+
+// cleanMarkSource adds, to the end of each migration file, the statement that
+// marks its version finished (#2202). The file runs as one transaction, so
+// the mark is kept together with the file's changes or not at all, and a
+// version that is still marked unfinished always means none of its changes
+// were kept. golang-migrate marks the version finished again in a separate
+// transaction afterwards, which changes nothing.
+type cleanMarkSource struct {
+	source.Driver
+}
+
+func (s cleanMarkSource) ReadUp(version uint) (io.ReadCloser, string, error) {
+	r, identifier, err := s.Driver.ReadUp(version)
+	if err != nil {
+		return r, identifier, err
+	}
+	// on a new line, in case the file ends in a comment
+	mark := fmt.Sprintf("\n;UPDATE %s SET dirty = false WHERE version = %d;\n", postgresmig.DefaultMigrationsTable, version)
+	return readCloser{io.MultiReader(r, strings.NewReader(mark)), r}, identifier, nil
+}
+
+type readCloser struct {
+	io.Reader
+	io.Closer
 }
 
 // resetFailedMigration sets the schema version back to the last finished one
 // when a migration failed part way (#2195).
 //
 // golang-migrate marks the new version "dirty" before running a migration's
-// SQL and clears the mark once the SQL succeeds, so a dirty version is one
-// whose SQL failed or was cut off. The driver sends each migration file as a
-// single query, and PostgreSQL runs a query of several statements as one
-// transaction (none of the files has its own BEGIN or COMMIT), so a failed
-// migration leaves none of its changes behind: the database is still at the
-// previous version. Setting the version back lets the migration run again,
-// rather than counting it as done.
+// SQL, and the SQL itself clears the mark (cleanMarkSource), so a dirty
+// version is one whose SQL failed or was cut off. The driver sends each
+// migration file as a single query, and PostgreSQL runs a query of several
+// statements as one transaction (none of the files has its own BEGIN or
+// COMMIT), so a failed migration leaves none of its changes behind: the
+// database is still at the previous version. Setting the version back lets
+// the migration run again, rather than counting it as done.
+//
+// Builds before #2202 cleared the mark in a transaction of its own, so a
+// database they upgraded can, rarely, be dirty with the changes kept. The
+// warning says what to do if the upgrade then fails.
 func (m *Migrator) resetFailedMigration() error {
-	if _, dirty, err := m.driver.Version(); err != nil || !dirty {
+	version, dirty, err := m.driver.Version()
+	if err != nil || !dirty {
 		return err
 	}
 
 	// a migration that is running holds this lock until it has finished, and
 	// its version is dirty until then, so wait for it and look again
+	logger.Infof("The database is marked as part way through the upgrade to schema version %d. Waiting until no other upgrade of it is running.", version)
 	if err := m.driver.Lock(); err != nil {
 		return err
 	}
-	version, dirty, err := m.driver.Version()
+	version, dirty, err = m.driver.Version()
 	if err == nil && dirty {
 		previous := migratedb.NilVersion
 		prev, prevErr := m.source.Prev(uint(version))
@@ -131,7 +164,7 @@ func (m *Migrator) resetFailedMigration() error {
 			err = fmt.Errorf("finding the schema version before %d: %w", version, prevErr)
 		}
 		if err == nil {
-			logger.Warnf("The upgrade of the database to schema version %d didn't finish, and none of its changes were kept. Setting the schema version back to %d so that the upgrade runs again.", version, max(previous, 0))
+			logger.Warnf("The upgrade of the database to schema version %[1]d didn't finish. Setting the schema version back to %[2]d so that the upgrade runs again. If it then fails because something it creates already exists, an older build of Stash may have kept the changes of version %[1]d without recording them; if so, record them with \"UPDATE schema_migrations SET version = %[1]d, dirty = false\" and start Stash again.", version, max(previous, 0))
 			err = m.driver.SetVersion(previous, false)
 		}
 	}
@@ -154,8 +187,20 @@ func (m *Migrator) RunMigration(ctx context.Context, newVersion uint) error {
 	}
 
 	if err := m.m.Steps(1); err != nil {
-		// migration failed
-		return err
+		// Without the lock this migrator ran nothing, so a finished version
+		// is another one's work, and so are its post migrations.
+		if errors.Is(err, migrate.ErrLockTimeout) || errors.Is(err, migrate.ErrLocked) || errors.Is(err, migratedb.ErrLocked) {
+			return err
+		}
+		// The SQL marks its version finished in its own transaction
+		// (cleanMarkSource), so if that is recorded, only golang-migrate's
+		// own, later, write of the same mark failed: the migration is done
+		// and its post migrations still have to run.
+		if version, dirty, verr := m.driver.Version(); verr != nil || dirty || version != int(newVersion) {
+			// migration failed
+			return err
+		}
+		logger.Warnf("Schema version %d was applied, but recording it afterwards failed, which changes nothing: %v", newVersion, err)
 	}
 
 	// run post migrations as needed
