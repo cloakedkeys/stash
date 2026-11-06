@@ -204,10 +204,16 @@ func TestFolderZipFileExcludesList(t *testing.T) {
 
 // #2235, #2197: an id too large for the id columns is no row's id, so it
 // matches nothing, without an error, in every filter that takes ids.
-// PostgreSQL id columns are 32-bit; SQLite must give the same results.
+// PostgreSQL id columns are 32-bit; SQLite must give the same results. An
+// id that isn't a number is still refused, also next to an out-of-range id.
 func TestFilterIDsOutOfRange(t *testing.T) {
 	const big = "3000000000"
 	all := -1
+
+	type fixture struct {
+		tagID, pA, pB string
+		sceneID, pBID int
+	}
 	scenes := func(ctx context.Context, f *models.SceneFilterType) ([]int, error) {
 		res, err := db.Scene().Query(ctx, models.SceneQueryOptions{QueryOptions: models.QueryOptions{FindFilter: perPageAll()}, SceneFilter: f})
 		if err != nil {
@@ -223,123 +229,139 @@ func TestFilterIDsOutOfRange(t *testing.T) {
 		}
 		return ids, err
 	}
-
-	done := false
-	run := func(t *testing.T, ctx context.Context, c int) {
-		tg := models.Tag{Name: "out of range tag"}
-		require.NoError(t, db.Tag().Create(ctx, &models.CreateTagInput{Tag: &tg}))
-		var pids []int
-		for _, n := range []string{"A", "B"} {
-			p := models.Performer{Name: "out of range " + n}
-			require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &p}))
-			pids = append(pids, p.ID)
+	markers := func(ctx context.Context, f *models.SceneMarkerFilterType) ([]int, error) {
+		ms, _, err := db.SceneMarker().Query(ctx, f, perPageAll())
+		var ids []int
+		for _, m := range ms {
+			ids = append(ids, m.ID)
 		}
-		s := models.Scene{Title: "out of range scene", TagIDs: models.NewRelatedIDs([]int{tg.ID}), PerformerIDs: models.NewRelatedIDs(pids)}
-		require.NoError(t, db.Scene().Create(ctx, &s, nil))
-		tagID, pA, pB := strconv.Itoa(tg.ID), strconv.Itoa(pids[0]), strconv.Itoa(pids[1])
-
-		// queries that must find nothing
-		none := []struct {
-			name  string
-			query func() ([]int, error)
-		}{
-			{"scenes by tags, sub-tags", func() ([]int, error) {
-				return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
-			}},
-			{"scenes by tags, includes all", func() ([]int, error) {
-				return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{tagID, big}, Modifier: models.CriterionModifierIncludesAll, Depth: &all}})
-			}},
-			{"scenes by galleries", func() ([]int, error) {
-				return scenes(ctx, &models.SceneFilterType{Galleries: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}})
-			}},
-			{"scenes by performers", func() ([]int, error) {
-				return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}})
-			}},
-			{"scenes by performers, includes all", func() ([]int, error) {
-				return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{pA, big}, Modifier: models.CriterionModifierIncludesAll}})
-			}},
-			{"scenes by performers, equals", func() ([]int, error) {
-				return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{pA, pB, big}, Modifier: models.CriterionModifierEquals}})
-			}},
-			{"scenes by studios, sub-studios", func() ([]int, error) {
-				return scenes(ctx, &models.SceneFilterType{Studios: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
-			}},
-			{"performers they appear with", func() ([]int, error) {
-				return performers(ctx, &models.PerformerFilterType{Performers: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}})
-			}},
-			{"performers by groups, sub-groups", func() ([]int, error) {
-				return performers(ctx, &models.PerformerFilterType{Groups: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
-			}},
-			{"performers by studios, sub-studios", func() ([]int, error) {
-				return performers(ctx, &models.PerformerFilterType{Studios: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
-			}},
-			{"tags by parent tags, all levels", func() ([]int, error) {
-				ts, _, err := db.Tag().Query(ctx, &models.TagFilterType{Parents: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}}, perPageAll())
-				var ids []int
-				for _, x := range ts {
-					ids = append(ids, x.ID)
-				}
-				return ids, err
-			}},
-			{"files by zip file", func() ([]int, error) {
-				res, err := db.File().Query(ctx, models.FileQueryOptions{QueryOptions: models.QueryOptions{FindFilter: perPageAll()}, FileFilter: &models.FileFilterType{ZipFile: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}}})
-				if err != nil {
-					return nil, err
-				}
-				var ids []int
-				for _, id := range res.IDs {
-					ids = append(ids, int(id))
-				}
-				return ids, nil
-			}},
-			{"scene markers by tags, sub-tags", func() ([]int, error) {
-				ms, _, err := db.SceneMarker().Query(ctx, &models.SceneMarkerFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}}, perPageAll())
-				var ids []int
-				for _, m := range ms {
-					ids = append(ids, m.ID)
-				}
-				return ids, err
-			}},
-		}
-		// an out-of-range id in an excludes list leaves nothing out
-		keeps := []struct {
-			name   string
-			query  func() ([]int, error)
-			wantID int
-		}{
-			{"scenes by tags, excludes list", func() ([]int, error) {
-				return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{tagID}, Excludes: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
-			}, s.ID},
-			{"scenes by performers, excludes", func() ([]int, error) {
-				return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierExcludes}})
-			}, s.ID},
-			{"performers they appear with, excludes list", func() ([]int, error) {
-				return performers(ctx, &models.PerformerFilterType{Performers: &models.MultiCriterionInput{Value: []string{pA}, Excludes: []string{big}, Modifier: models.CriterionModifierIncludes}})
-			}, pids[1]},
-		}
-		// one case per transaction, as a failed query ends a PostgreSQL
-		// transaction
-		if c < len(none) {
-			tt := none[c]
-			ids, err := tt.query()
-			if assert.NoError(t, err, tt.name) {
-				assert.Empty(t, ids, tt.name)
-			}
-			return
-		}
-		if c-len(none) < len(keeps) {
-			tt := keeps[c-len(none)]
-			ids, err := tt.query()
-			if assert.NoError(t, err, tt.name) {
-				assert.Contains(t, ids, tt.wantID, tt.name)
-			}
-			return
-		}
-		done = true
+		return ids, err
 	}
 
-	for c := 0; !done; c++ {
-		runWithRollbackTxn(t, "case "+strconv.Itoa(c), func(t *testing.T, ctx context.Context) { run(t, ctx, c) })
+	const (
+		findsNothing = iota
+		keepsItem
+		refused
+	)
+	tests := []struct {
+		name  string
+		query func(ctx context.Context, fx fixture) ([]int, error)
+		want  int
+		// for keepsItem
+		wantID func(fx fixture) int
+	}{
+		{"scenes by tags, sub-tags", func(ctx context.Context, fx fixture) ([]int, error) {
+			return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+		}, findsNothing, nil},
+		{"scenes by tags, includes all", func(ctx context.Context, fx fixture) ([]int, error) {
+			return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{fx.tagID, big}, Modifier: models.CriterionModifierIncludesAll, Depth: &all}})
+		}, findsNothing, nil},
+		{"scenes by galleries", func(ctx context.Context, fx fixture) ([]int, error) {
+			return scenes(ctx, &models.SceneFilterType{Galleries: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}})
+		}, findsNothing, nil},
+		{"scenes by performers", func(ctx context.Context, fx fixture) ([]int, error) {
+			return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}})
+		}, findsNothing, nil},
+		{"scenes by performers, includes all", func(ctx context.Context, fx fixture) ([]int, error) {
+			return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{fx.pA, big}, Modifier: models.CriterionModifierIncludesAll}})
+		}, findsNothing, nil},
+		{"scenes by performers, equals", func(ctx context.Context, fx fixture) ([]int, error) {
+			return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{fx.pA, fx.pB, big}, Modifier: models.CriterionModifierEquals}})
+		}, findsNothing, nil},
+		{"scenes by studios, sub-studios", func(ctx context.Context, fx fixture) ([]int, error) {
+			return scenes(ctx, &models.SceneFilterType{Studios: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+		}, findsNothing, nil},
+		{"performers they appear with", func(ctx context.Context, fx fixture) ([]int, error) {
+			return performers(ctx, &models.PerformerFilterType{Performers: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}})
+		}, findsNothing, nil},
+		{"performers by groups, sub-groups", func(ctx context.Context, fx fixture) ([]int, error) {
+			return performers(ctx, &models.PerformerFilterType{Groups: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+		}, findsNothing, nil},
+		{"performers by studios, sub-studios", func(ctx context.Context, fx fixture) ([]int, error) {
+			return performers(ctx, &models.PerformerFilterType{Studios: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+		}, findsNothing, nil},
+		{"tags by parent tags, all levels", func(ctx context.Context, fx fixture) ([]int, error) {
+			ts, _, err := db.Tag().Query(ctx, &models.TagFilterType{Parents: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}}, perPageAll())
+			var ids []int
+			for _, x := range ts {
+				ids = append(ids, x.ID)
+			}
+			return ids, err
+		}, findsNothing, nil},
+		{"files by zip file", func(ctx context.Context, fx fixture) ([]int, error) {
+			res, err := db.File().Query(ctx, models.FileQueryOptions{QueryOptions: models.QueryOptions{FindFilter: perPageAll()}, FileFilter: &models.FileFilterType{ZipFile: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes}}})
+			if err != nil {
+				return nil, err
+			}
+			var ids []int
+			for _, id := range res.IDs {
+				ids = append(ids, int(id))
+			}
+			return ids, nil
+		}, findsNothing, nil},
+		{"scene markers by tags, sub-tags", func(ctx context.Context, fx fixture) ([]int, error) {
+			return markers(ctx, &models.SceneMarkerFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+		}, findsNothing, nil},
+		{"scene markers by tag id", func(ctx context.Context, fx fixture) ([]int, error) {
+			id := big
+			return markers(ctx, &models.SceneMarkerFilterType{TagID: &id})
+		}, findsNothing, nil},
+
+		// an out-of-range id in an excludes list leaves nothing out
+		{"scenes by tags, excludes list", func(ctx context.Context, fx fixture) ([]int, error) {
+			return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{fx.tagID}, Excludes: []string{big}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+		}, keepsItem, func(fx fixture) int { return fx.sceneID }},
+		{"scenes by performers, excludes", func(ctx context.Context, fx fixture) ([]int, error) {
+			return scenes(ctx, &models.SceneFilterType{Performers: &models.MultiCriterionInput{Value: []string{big}, Modifier: models.CriterionModifierExcludes}})
+		}, keepsItem, func(fx fixture) int { return fx.sceneID }},
+		{"performers they appear with, excludes list", func(ctx context.Context, fx fixture) ([]int, error) {
+			return performers(ctx, &models.PerformerFilterType{Performers: &models.MultiCriterionInput{Value: []string{fx.pA}, Excludes: []string{big}, Modifier: models.CriterionModifierIncludes}})
+		}, keepsItem, func(fx fixture) int { return fx.pBID }},
+
+		// an id that isn't a number is refused, even when an out-of-range id
+		// alone would make the filter match nothing (#2245 review)
+		{"scenes by tags, includes all with a non-number", func(ctx context.Context, fx fixture) ([]int, error) {
+			return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{big, "abc"}, Modifier: models.CriterionModifierIncludesAll, Depth: &all}})
+		}, refused, nil},
+		{"scenes by tags, equals with a non-number", func(ctx context.Context, fx fixture) ([]int, error) {
+			zero := 0
+			return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{big, "abc"}, Modifier: models.CriterionModifierEquals, Depth: &zero}})
+		}, refused, nil},
+		{"scenes by tags, out-of-range includes with a non-number excluded", func(ctx context.Context, fx fixture) ([]int, error) {
+			return scenes(ctx, &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{Value: []string{big}, Excludes: []string{"abc"}, Modifier: models.CriterionModifierIncludes, Depth: &all}})
+		}, refused, nil},
+	}
+
+	// one case per transaction, as a failed query ends a PostgreSQL
+	// transaction
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			tg := models.Tag{Name: "out of range tag"}
+			require.NoError(t, db.Tag().Create(ctx, &models.CreateTagInput{Tag: &tg}))
+			var pids []int
+			for _, n := range []string{"A", "B"} {
+				p := models.Performer{Name: "out of range " + n}
+				require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &p}))
+				pids = append(pids, p.ID)
+			}
+			s := models.Scene{Title: "out of range scene", TagIDs: models.NewRelatedIDs([]int{tg.ID}), PerformerIDs: models.NewRelatedIDs(pids)}
+			require.NoError(t, db.Scene().Create(ctx, &s, nil))
+			fx := fixture{tagID: strconv.Itoa(tg.ID), pA: strconv.Itoa(pids[0]), pB: strconv.Itoa(pids[1]), sceneID: s.ID, pBID: pids[1]}
+
+			ids, err := tt.query(ctx, fx)
+			switch tt.want {
+			case findsNothing:
+				if assert.NoError(t, err) {
+					assert.Empty(t, ids)
+				}
+			case keepsItem:
+				if assert.NoError(t, err) {
+					assert.Contains(t, ids, tt.wantID(fx))
+				}
+			case refused:
+				assert.ErrorContains(t, err, `invalid id "abc"`)
+			}
+		})
 	}
 }
 

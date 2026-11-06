@@ -436,6 +436,22 @@ func idValuesInRange(values []string) ([]string, bool) {
 // adds nothing more. Other modifiers are left for the caller to handle or
 // refuse.
 func criterionIDsInRange(f *filterBuilder, modifier models.CriterionModifier, value, excludes *[]string) bool {
+	// "is null" and "not null" don't use the ids
+	if modifier == models.CriterionModifierIsNull || modifier == models.CriterionModifierNotNull {
+		return true
+	}
+
+	// every id is checked first, so that one that isn't a number is refused
+	// even when an out-of-range id means the filter matches nothing (#2245)
+	for _, list := range [][]string{*value, *excludes} {
+		for _, v := range list {
+			if _, err := strconv.ParseInt(v, 10, 64); err != nil && !errors.Is(err, strconv.ErrRange) {
+				f.setError(fmt.Errorf("invalid id %q: must be a number", v))
+				return false
+			}
+		}
+	}
+
 	kept, dropped := idValuesInRange(*value)
 	switch modifier {
 	case models.CriterionModifierIncludes:
