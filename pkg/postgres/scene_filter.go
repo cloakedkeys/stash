@@ -58,7 +58,7 @@ func (qb *sceneFilterHandler) handle(ctx context.Context, f *filterBuilder) {
 func (qb *sceneFilterHandler) criterionHandler() criterionHandler {
 	sceneFilter := qb.sceneFilter
 	return compoundHandler{
-		intCriterionHandler(sceneFilter.ID, "scenes.id", nil),
+		idCriterionHandler(sceneFilter.ID, "scenes.id"),
 		pathCriterionHandler(sceneFilter.Path, "folders.path", "files.basename", qb.addFoldersTable),
 		qb.fileCountCriterionHandler(sceneFilter.FileCount),
 		stringCriterionHandler(sceneFilter.Title, "scenes.title"),

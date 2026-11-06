@@ -746,7 +746,7 @@ func getHierarchicalValues(ctx context.Context, values []string, table, relation
 		// Building VALUES() from the ids saves a query when depth is 0.
 		var valuesClauses []string
 		for _, id := range ids {
-			valuesClauses = append(valuesClauses, fmt.Sprintf("(%d,%d)", id, id))
+			valuesClauses = append(valuesClauses, fmt.Sprintf("(%s,%s)", id, id))
 		}
 		return "VALUES" + strings.Join(valuesClauses, ","), nil
 	}
@@ -811,7 +811,7 @@ WHERE id in {inBinding}
 	if !valuesClause.Valid {
 		var valuesClauses []string
 		for _, id := range ids {
-			valuesClauses = append(valuesClauses, fmt.Sprintf("(%d, %d)", id, id))
+			valuesClauses = append(valuesClauses, fmt.Sprintf("(%s, %s)", id, id))
 		}
 		valuesClause.String = "VALUES" + strings.Join(valuesClauses, ",")
 	}

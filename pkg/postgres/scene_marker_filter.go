@@ -138,8 +138,9 @@ func (qb *sceneMarkerFilterHandler) tagsCriterionHandler(criterion *models.Hiera
 				}
 			}
 
-			// out-of-range ids may have left the list empty
-			if len(criterion.Excludes) > 0 && len(tags.Excludes) > 0 {
+			// the combined list, which also holds the tags of the "excludes"
+			// modifier, as in the scene Tags filter (#2248)
+			if len(tags.Excludes) > 0 {
 				valuesClause, err := getHierarchicalValues(ctx, tags.Excludes, tagTable, "tags_relations", "parent_id", "child_id", tags.Depth, true)
 				if err != nil {
 					f.setError(err)

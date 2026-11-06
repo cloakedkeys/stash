@@ -66,6 +66,48 @@ func TestFilterIDsNotInQueryText(t *testing.T) {
 			refusedOrEmpty(t, n, err)
 		}
 	})
+
+	// #2248: a number too long for 64 bits followed by other text. The
+	// number parser stops at the overflow, so the text after it must still
+	// be checked. Each query has its own transaction, as a refused query may
+	// end a PostgreSQL transaction.
+	const huge = "99999999999999999999"
+	longPrefixed := []string{
+		huge + ",0)UNION SELECT 0,(SELECT MAX(id) FROM tags)UNION SELECT 0,0 WHERE 0 IN (0",
+		"+" + huge + ",0)UNION SELECT 0,(SELECT MAX(id) FROM tags)UNION SELECT 0,0 WHERE 0 IN (0",
+		huge + " OR 1=1",
+	}
+	for i, value := range longPrefixed {
+		for _, depth := range []int{0, -1} {
+			d := depth
+			v := value
+			runWithRollbackTxn(t, fmt.Sprintf("scenes by tags, long number then text %d, depth %d", i, d), func(t *testing.T, ctx context.Context) {
+				tg := models.Tag{Name: "long number tag"}
+				require.NoError(t, db.Tag().Create(ctx, &models.CreateTagInput{Tag: &tg}))
+				s := models.Scene{Title: "long number scene", TagIDs: models.NewRelatedIDs([]int{tg.ID})}
+				require.NoError(t, db.Scene().Create(ctx, &s, nil))
+
+				res, err := db.Scene().Query(ctx, models.SceneQueryOptions{
+					QueryOptions: models.QueryOptions{FindFilter: perPageAll()},
+					SceneFilter: &models.SceneFilterType{Tags: &models.HierarchicalMultiCriterionInput{
+						Value: []string{v}, Modifier: models.CriterionModifierIncludes, Depth: &d,
+					}},
+				})
+				n := 0
+				if res != nil {
+					n = len(res.IDs)
+				}
+				refusedOrEmpty(t, n, err)
+			})
+		}
+		v := value
+		runWithRollbackTxn(t, fmt.Sprintf("performers they appear with, long number then text %d", i), func(t *testing.T, ctx context.Context) {
+			performers, _, err := db.Performer().Query(ctx, &models.PerformerFilterType{Performers: &models.MultiCriterionInput{
+				Value: []string{v}, Modifier: models.CriterionModifierIncludes,
+			}}, perPageAll())
+			refusedOrEmpty(t, len(performers), err)
+		})
+	}
 }
 
 // #2235: the performer Groups filter skipped itself on PostgreSQL when an id
