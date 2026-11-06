@@ -26,21 +26,25 @@ func TestPerformerGroupsIncludesAll(t *testing.T) {
 	}
 	setup := func(t *testing.T, ctx context.Context) data {
 		d := data{group: map[string]int{}, performer: map[string]int{}}
-		for _, n := range []string{"G1", "G2", "G2 sub", "G3"} {
+		for _, n := range []string{"G1", "G2", "G2 sub", "G2 sub sub", "G3"} {
 			g := models.Group{Name: "includes all group " + n}
 			require.NoError(t, db.Group().Create(ctx, &g))
 			d.group[n] = g.ID
 		}
-		_, _, err := db.ExecSQL(ctx, fmt.Sprintf("INSERT INTO groups_relations (containing_id, sub_id, order_index) VALUES (%d, %d, 0)", d.group["G2"], d.group["G2 sub"]), nil)
-		require.NoError(t, err)
+		// G2 -> G2 sub -> G2 sub sub
+		for i, r := range [][2]string{{"G2", "G2 sub"}, {"G2 sub", "G2 sub sub"}} {
+			_, _, err := db.ExecSQL(ctx, fmt.Sprintf("INSERT INTO groups_relations (containing_id, sub_id, order_index) VALUES (%d, %d, %d)", d.group[r[0]], d.group[r[1]], i), nil)
+			require.NoError(t, err)
+		}
 
 		// each performer's scenes, one group per scene
 		scenes := map[string][]string{
-			"in G1 and G2":     {"G1", "G2"},
-			"in G1 and G2 sub": {"G1", "G2 sub"},
-			"in G1 only":       {"G1"},
-			"in G2 only":       {"G2"},
-			"in G3":            {"G3"},
+			"in G1 and G2":         {"G1", "G2"},
+			"in G1 and G2 sub":     {"G1", "G2 sub"},
+			"in G1 and G2 sub sub": {"G1", "G2 sub sub"},
+			"in G1 only":           {"G1"},
+			"in G2 only":           {"G2"},
+			"in G3":                {"G3"},
 		}
 		for n, groups := range scenes {
 			p := models.Performer{Name: "includes all performer " + n}
@@ -58,7 +62,9 @@ func TestPerformerGroupsIncludesAll(t *testing.T) {
 		return d
 	}
 
-	names := func(d data, performers []*models.Performer) []string {
+	// the names of this test's performers in the result; with all set, any
+	// other performer in the result is listed too
+	names := func(d data, performers []*models.Performer, all bool) []string {
 		ret := []string{}
 		for _, p := range performers {
 			found := false
@@ -68,7 +74,7 @@ func TestPerformerGroupsIncludesAll(t *testing.T) {
 					found = true
 				}
 			}
-			if !found {
+			if !found && all {
 				ret = append(ret, "other performer "+strconv.Itoa(p.ID))
 			}
 		}
@@ -82,17 +88,22 @@ func TestPerformerGroupsIncludesAll(t *testing.T) {
 		modifier models.CriterionModifier
 		groups   []string
 		depth    *int
+		// excludes returns other performers too, so only this test's are compared
+		onlyOurs bool
 		want     []string
 	}{
-		{"includes all, no sub-groups", models.CriterionModifierIncludesAll, []string{"G1", "G2"}, &none, []string{"in G1 and G2"}},
-		{"includes all, no depth given", models.CriterionModifierIncludesAll, []string{"G1", "G2"}, nil, []string{"in G1 and G2"}},
-		{"includes all, all sub-groups", models.CriterionModifierIncludesAll, []string{"G1", "G2"}, &all, []string{"in G1 and G2", "in G1 and G2 sub"}},
-		{"includes all, one level of sub-groups", models.CriterionModifierIncludesAll, []string{"G1", "G2"}, &one, []string{"in G1 and G2", "in G1 and G2 sub"}},
-		{"includes all, one group", models.CriterionModifierIncludesAll, []string{"G2"}, &all, []string{"in G1 and G2", "in G1 and G2 sub", "in G2 only"}},
-		// unchanged
-		{"includes, all sub-groups", models.CriterionModifierIncludes, []string{"G1", "G2"}, &all, []string{"in G1 and G2", "in G1 and G2 sub", "in G1 only", "in G2 only"}},
-		{"includes, no sub-groups", models.CriterionModifierIncludes, []string{"G2"}, &none, []string{"in G1 and G2", "in G2 only"}},
-		{"includes, two groups, no sub-groups", models.CriterionModifierIncludes, []string{"G1", "G2"}, &none, []string{"in G1 and G2", "in G1 and G2 sub", "in G1 only", "in G2 only"}},
+		{"includes all, no sub-groups", models.CriterionModifierIncludesAll, []string{"G1", "G2"}, &none, false, []string{"in G1 and G2"}},
+		{"includes all, no depth given", models.CriterionModifierIncludesAll, []string{"G1", "G2"}, nil, false, []string{"in G1 and G2"}},
+		{"includes all, all sub-groups", models.CriterionModifierIncludesAll, []string{"G1", "G2"}, &all, false, []string{"in G1 and G2", "in G1 and G2 sub", "in G1 and G2 sub sub"}},
+		// G2 sub sub is two levels down, so one level leaves it out
+		{"includes all, one level of sub-groups", models.CriterionModifierIncludesAll, []string{"G1", "G2"}, &one, false, []string{"in G1 and G2", "in G1 and G2 sub"}},
+		{"includes all, one group", models.CriterionModifierIncludesAll, []string{"G2"}, &all, false, []string{"in G1 and G2", "in G1 and G2 sub", "in G1 and G2 sub sub", "in G2 only"}},
+		// unchanged on SQLite; on PostgreSQL only the first of several groups
+		// was used when sub-groups were off
+		{"includes, all sub-groups", models.CriterionModifierIncludes, []string{"G1", "G2"}, &all, false, []string{"in G1 and G2", "in G1 and G2 sub", "in G1 and G2 sub sub", "in G1 only", "in G2 only"}},
+		{"includes, no sub-groups", models.CriterionModifierIncludes, []string{"G2"}, &none, false, []string{"in G1 and G2", "in G2 only"}},
+		{"includes, two groups, no sub-groups", models.CriterionModifierIncludes, []string{"G1", "G2"}, &none, false, []string{"in G1 and G2", "in G1 and G2 sub", "in G1 and G2 sub sub", "in G1 only", "in G2 only"}},
+		{"excludes, two groups, no sub-groups", models.CriterionModifierExcludes, []string{"G1", "G2"}, &none, true, []string{"in G3"}},
 	}
 
 	for _, tt := range tests {
@@ -105,7 +116,7 @@ func TestPerformerGroupsIncludesAll(t *testing.T) {
 			f := &models.PerformerFilterType{Groups: &models.HierarchicalMultiCriterionInput{Value: values, Modifier: tt.modifier, Depth: tt.depth}}
 			performers, _, err := db.Performer().Query(ctx, f, perPageAll())
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, names(d, performers))
+			assert.Equal(t, tt.want, names(d, performers, !tt.onlyOurs))
 		})
 	}
 }
