@@ -69,6 +69,8 @@ ANALYZE;`)
 	}{
 		{"scenes", &models.TagFilterType{SceneCount: &models.HierarchicalCountInput{Modifier: models.CriterionModifierGreaterThan, Value: 10, Depth: &all}}, "scenes_tags"},
 		{"markers", &models.TagFilterType{MarkerCount: &models.HierarchicalCountInput{Modifier: models.CriterionModifierGreaterThan, Value: 10, Depth: &all}}, "scene_markers_tags"},
+		// #2207: without sub-tags too
+		{"markers without sub-tags", &models.TagFilterType{MarkerCount: &models.HierarchicalCountInput{Modifier: models.CriterionModifierGreaterThan, Value: 10}}, "scene_markers_tags"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			q := tagCountTestQuery(ctx, t, tt.filter)
@@ -124,6 +126,9 @@ INSERT INTO scene_markers_tags VALUES (1,2),(3,4);`)
 		{"markers primary only", &models.TagFilterType{MarkerCount: count(models.CriterionModifierEquals, 1, &all)}, []int{5}},
 		// one level down: A 3, B 2, C 2, D 3, E 1
 		{"markers depth one", &models.TagFilterType{MarkerCount: count(models.CriterionModifierEquals, 3, &one)}, []int{1, 4}},
+		// without sub-tags, by primary or other tag: A 1, B 1, C 2, D 1, E 1
+		{"markers without sub-tags equals", &models.TagFilterType{MarkerCount: count(models.CriterionModifierEquals, 1, nil)}, []int{1, 2, 4, 5}},
+		{"markers without sub-tags greater", &models.TagFilterType{MarkerCount: count(models.CriterionModifierGreaterThan, 1, nil)}, []int{3}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

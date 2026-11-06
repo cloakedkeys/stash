@@ -352,16 +352,23 @@ func (qb *tagFilterHandler) markerCountCriterionHandler(markerCount *models.Hier
 			Modifier: markerCount.Modifier,
 		}
 
+		// a marker has its primary tag and its other tags
+		items := "SELECT tag_id, scene_marker_id AS item_id FROM scene_markers_tags UNION ALL SELECT primary_tag_id, id FROM scene_markers"
 		if markerCount.Depth != nil {
-			// a marker has its primary tag and its other tags
-			items := "SELECT tag_id, scene_marker_id AS item_id FROM scene_markers_tags UNION ALL SELECT primary_tag_id, id FROM scene_markers"
 			qb.addHierarchicalCount(f, "scene_markers", *markerCount.Depth, items, intInput)
 			return
 		}
 
-		f.addLeftJoin("scene_markers_tags", "", "scene_markers_tags.tag_id = tags.id")
-		f.addLeftJoin("scene_markers", "", "scene_markers_tags.scene_marker_id = scene_markers.id OR scene_markers.primary_tag_id = tags.id")
-		clause, args := getIntCriterionWhereClause("count(distinct scene_markers.id)", intInput)
-		f.addHaving(clause, args...)
+		// The markers of every tag are counted in one table, joined on the tag.
+		// Joining the markers that have the tag as either tag with OR was slow
+		// on large libraries (#2207).
+		const countAlias = "scene_markers_tag_count"
+		f.addLeftJoin(fmt.Sprintf(`(SELECT items.tag_id, COUNT(DISTINCT items.item_id) AS item_count
+		FROM (%s) AS items
+		GROUP BY items.tag_id)`, items), countAlias, countAlias+".tag_id = tags.id")
+
+		// tags without markers aren't in the joined table
+		clause, args := getIntCriterionWhereClause("COALESCE("+countAlias+".item_count, 0)", intInput)
+		f.addWhere(clause, args...)
 	}
 }
