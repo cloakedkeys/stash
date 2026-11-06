@@ -1272,11 +1272,12 @@ func (qb *TagStore) UpdateChildTags(ctx context.Context, tagID int, childIDs []i
 func (qb *TagStore) FindAllAncestors(ctx context.Context, tagID int, excludeIDs []int) ([]*models.TagPath, error) {
 	inBinding := getInBinding(len(excludeIDs) + 1)
 
+	// seen holds the ids on the path, so a loop of parents ends (#2208)
 	query := `WITH RECURSIVE
 parents AS (
-	SELECT t.id AS parent_id, t.id AS child_id, t.name as path FROM tags t WHERE t.id = ?
+	SELECT t.id AS parent_id, t.id AS child_id, t.name as path, ',' || t.id || ',' AS seen FROM tags t WHERE t.id = ?
 	UNION
-	SELECT tr.parent_id, tr.child_id, t.name || '->' || p.path as path FROM tags_relations tr INNER JOIN parents p ON p.parent_id = tr.child_id JOIN tags t ON t.id = tr.parent_id WHERE tr.parent_id NOT IN` + inBinding + `
+	SELECT tr.parent_id, tr.child_id, t.name || '->' || p.path as path, p.seen || tr.parent_id || ',' AS seen FROM tags_relations tr INNER JOIN parents p ON p.parent_id = tr.child_id JOIN tags t ON t.id = tr.parent_id WHERE tr.parent_id NOT IN` + inBinding + ` AND p.seen NOT LIKE ('%,' || tr.parent_id || ',%')
 )
 SELECT t.*, p.path FROM tags t INNER JOIN parents p ON t.id = p.parent_id
 `
@@ -1296,11 +1297,12 @@ SELECT t.*, p.path FROM tags t INNER JOIN parents p ON t.id = p.parent_id
 func (qb *TagStore) FindAllDescendants(ctx context.Context, tagID int, excludeIDs []int) ([]*models.TagPath, error) {
 	inBinding := getInBinding(len(excludeIDs) + 1)
 
+	// seen holds the ids on the path, so a loop of parents ends (#2208)
 	query := `WITH RECURSIVE
 children AS (
-	SELECT t.id AS parent_id, t.id AS child_id, t.name as path FROM tags t WHERE t.id = ?
+	SELECT t.id AS parent_id, t.id AS child_id, t.name as path, ',' || t.id || ',' AS seen FROM tags t WHERE t.id = ?
 	UNION
-	SELECT tr.parent_id, tr.child_id, c.path || '->' || t.name as path FROM tags_relations tr INNER JOIN children c ON c.child_id = tr.parent_id JOIN tags t ON t.id = tr.child_id WHERE tr.child_id NOT IN` + inBinding + `
+	SELECT tr.parent_id, tr.child_id, c.path || '->' || t.name as path, c.seen || tr.child_id || ',' AS seen FROM tags_relations tr INNER JOIN children c ON c.child_id = tr.parent_id JOIN tags t ON t.id = tr.child_id WHERE tr.child_id NOT IN` + inBinding + ` AND c.seen NOT LIKE ('%,' || tr.child_id || ',%')
 )
 SELECT t.*, c.path FROM tags t INNER JOIN children c ON t.id = c.child_id
 `

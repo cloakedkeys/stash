@@ -706,8 +706,12 @@ func getHierarchicalValues(ctx context.Context, values []string, table, relation
 	inCount := len(args)
 
 	var depthCondition string
+	// With no depth limit the depth stays the same, so UNION drops a row it
+	// has already found and a loop of parents ends (#2208).
+	nextDepth := "depth"
 	if depthVal != -1 {
 		depthCondition = fmt.Sprintf("WHERE depth < %d", depthVal)
+		nextDepth = "depth + 1"
 	}
 
 	withClauseMap := utils.StrFormatMap{
@@ -718,15 +722,16 @@ func getHierarchicalValues(ctx context.Context, values []string, table, relation
 		"parentFK":        parentFK,
 		"childFK":         childFK,
 		"depthCondition":  depthCondition,
+		"nextDepth":       nextDepth,
 		"unionClause":     "",
 	}
 
 	if relationsTable != "" {
-		withClauseMap["recursiveSelect"] = utils.StrFormat(`SELECT p.root_id, c.{childFK}, depth + 1 FROM {relationsTable} AS c
+		withClauseMap["recursiveSelect"] = utils.StrFormat(`SELECT p.root_id, c.{childFK}, {nextDepth} FROM {relationsTable} AS c
 INNER JOIN items as p ON c.{parentFK} = p.item_id
 `, withClauseMap)
 	} else {
-		withClauseMap["recursiveSelect"] = utils.StrFormat(`SELECT p.root_id, c.id, depth + 1 FROM {table} as c
+		withClauseMap["recursiveSelect"] = utils.StrFormat(`SELECT p.root_id, c.id, {nextDepth} FROM {table} as c
 INNER JOIN items as p ON c.{parentFK} = p.item_id
 `, withClauseMap)
 	}
