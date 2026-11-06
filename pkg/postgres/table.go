@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
@@ -73,8 +74,30 @@ func (t *table) byIDInts(ids ...int) exp.Expression {
 	return t.idColumn.In(ii...)
 }
 
+// idOutOfRange reports whether id is outside the range of the 32-bit id columns. No row has
+// such an id, and it can't be sent as an integer parameter, so lookups by it find nothing
+// without asking the database.
+func idOutOfRange(id int) bool {
+	return id < math.MinInt32 || id > math.MaxInt32
+}
+
+// idsInRange returns the ids that are inside the range of the id columns.
+func idsInRange(ids []int) []int {
+	ret := ids[:0:0]
+	for _, id := range ids {
+		if !idOutOfRange(id) {
+			ret = append(ret, id)
+		}
+	}
+	return ret
+}
+
 func (t *table) idExists(ctx context.Context, id interface{}) (bool, error) {
-	q := dialect.Select(goqu.COUNT("*")).From(t.table).Where(t.byID(id))
+	if i, ok := id.(int); ok && idOutOfRange(i) {
+		return false, nil
+	}
+
+	q := dialect.Select(goqu.COUNT("*")).From(t.table).Prepared(true).Where(t.byID(id))
 
 	var count int
 	if err := querySimple(ctx, q, &count); err != nil {
@@ -116,7 +139,13 @@ func (t *table) destroyExisting(ctx context.Context, ids []int) error {
 }
 
 func (t *table) destroy(ctx context.Context, ids []int) error {
-	q := dialect.Delete(t.table).Where(t.idColumn.In(ids))
+	// callers always give at least one id, and an id out of range has no row to delete
+	ids = idsInRange(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+
+	q := dialect.Delete(t.table).Prepared(true).Where(t.idColumn.In(ids))
 
 	if _, err := exec(ctx, q); err != nil {
 		return fmt.Errorf("destroying %s: %w", t.table.GetTable(), err)
@@ -185,7 +214,11 @@ func (t *joinTable) invert() *joinTable {
 }
 
 func (t *joinTable) get(ctx context.Context, id int) ([]int, error) {
-	q := dialect.Select(t.fkColumn).From(t.table.table).Where(t.idColumn.Eq(id))
+	if idOutOfRange(id) {
+		return nil, nil
+	}
+
+	q := dialect.Select(t.fkColumn).From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id))
 
 	if t.orderBy != nil {
 		if t.foreignTable != nil {
@@ -213,21 +246,15 @@ func (t *joinTable) get(ctx context.Context, id int) ([]int, error) {
 }
 
 func (t *joinTable) insertJoins(ctx context.Context, id int, foreignIDs []int) error {
-	// manually create SQL so that we can prepare once
-	// ignore duplicates
+	// ignore duplicates. The driver keeps this statement prepared on the connection, so
+	// preparing it here would cost two more round trips on every call.
 	q := fmt.Sprintf("INSERT INTO %s (%s, %s) VALUES (?, ?) ON CONFLICT (%[2]s, %s) DO NOTHING", t.table.table.GetTable(), t.idColumn.GetCol(), t.fkColumn.GetCol())
-
-	stmt, err := dbWrapper.Prepare(ctx, q)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
 
 	// eliminate duplicates
 	foreignIDs = sliceutil.AppendUniques(nil, foreignIDs)
 
 	for _, fk := range foreignIDs {
-		if _, err := dbWrapper.ExecStmt(ctx, stmt, id, fk); err != nil {
+		if _, err := dbWrapper.Exec(ctx, q, id, fk); err != nil {
 			// the database's own error names its command; say what wasn't found
 			if isForeignKeyError(err) {
 				return foreignKeyNotFoundError(t.fkColumn.GetCol(), fk)
@@ -260,16 +287,24 @@ func (t *joinTable) addJoins(ctx context.Context, id int, foreignIDs []int) erro
 }
 
 func (t *joinTable) destroyJoins(ctx context.Context, id int, foreignIDs []int) error {
-	q := dialect.Delete(t.table.table).Where(
-		t.idColumn.Eq(id),
-		t.fkColumn.In(foreignIDs),
-	)
-
-	if _, err := exec(ctx, q); err != nil {
-		return fmt.Errorf("destroying %s: %w", t.table.table.GetTable(), err)
+	// ids out of range have no links to remove
+	if idOutOfRange(id) {
+		return nil
 	}
 
-	return nil
+	// each id is its own parameter, and a statement can only have 65535 of them
+	return batchExec(idsInRange(foreignIDs), defaultBatchSize, func(batch []int) error {
+		q := dialect.Delete(t.table.table).Prepared(true).Where(
+			t.idColumn.Eq(id),
+			t.fkColumn.In(batch),
+		)
+
+		if _, err := exec(ctx, q); err != nil {
+			return fmt.Errorf("destroying %s: %w", t.table.table.GetTable(), err)
+		}
+
+		return nil
+	})
 }
 
 func (t *joinTable) modifyJoins(ctx context.Context, id int, foreignIDs []int, mode models.RelationshipUpdateMode) error {
@@ -304,7 +339,11 @@ func (r *stashIDRow) resolve() models.StashID {
 }
 
 func (t *stashIDTable) get(ctx context.Context, id int) ([]models.StashID, error) {
-	q := dialect.Select("endpoint", "stash_id", "updated_at").From(t.table.table).Where(t.idColumn.Eq(id))
+	if idOutOfRange(id) {
+		return nil, nil
+	}
+
+	q := dialect.Select("endpoint", "stash_id", "updated_at").From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id))
 
 	const single = false
 	var ret []models.StashID
@@ -418,7 +457,11 @@ type stringTable struct {
 }
 
 func (t *stringTable) get(ctx context.Context, id int) ([]string, error) {
-	q := dialect.Select(t.stringColumn).From(t.table.table).Where(t.idColumn.Eq(id))
+	if idOutOfRange(id) {
+		return nil, nil
+	}
+
+	q := dialect.Select(t.stringColumn).From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id))
 
 	const single = false
 	var ret []string
@@ -541,7 +584,11 @@ func (t *orderedValueTable[T]) positionColumn() exp.IdentifierExpression {
 }
 
 func (t *orderedValueTable[T]) get(ctx context.Context, id int) ([]T, error) {
-	q := dialect.Select(t.valueColumn).From(t.table.table).Where(t.idColumn.Eq(id)).Order(t.positionColumn().Asc())
+	if idOutOfRange(id) {
+		return nil, nil
+	}
+
+	q := dialect.Select(t.valueColumn).From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id)).Order(t.positionColumn().Asc())
 
 	const single = false
 	var ret []T
@@ -655,7 +702,11 @@ func (r groupsScenesRow) resolve(sceneID int) models.GroupsScenes {
 }
 
 func (t *scenesGroupsTable) get(ctx context.Context, id int) ([]models.GroupsScenes, error) {
-	q := dialect.Select("group_id", "scene_index").From(t.table.table).Where(t.idColumn.Eq(id))
+	if idOutOfRange(id) {
+		return nil, nil
+	}
+
+	q := dialect.Select("group_id", "scene_index").From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id))
 
 	const single = false
 	var ret []models.GroupsScenes
@@ -784,7 +835,11 @@ func (r groupsAudiosRow) resolve(audioID int) models.GroupsAudios {
 }
 
 func (t *audiosGroupsTable) get(ctx context.Context, id int) ([]models.GroupsAudios, error) {
-	q := dialect.Select("group_id", "audio_index").From(t.table.table).Where(t.idColumn.Eq(id))
+	if idOutOfRange(id) {
+		return nil, nil
+	}
+
+	q := dialect.Select("group_id", "audio_index").From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id))
 
 	const single = false
 	var ret []models.GroupsAudios
@@ -947,7 +1002,11 @@ type relatedFilesTable struct {
 // get returns the file IDs related to the provided scene ID
 // the primary file is returned first
 func (t *relatedFilesTable) get(ctx context.Context, id int) ([]models.FileID, error) {
-	q := dialect.Select("file_id").From(t.table.table).Where(t.idColumn.Eq(id)).Order(t.table.table.Col("primary").Desc())
+	if idOutOfRange(id) {
+		return nil, nil
+	}
+
+	q := dialect.Select("file_id").From(t.table.table).Prepared(true).Where(t.idColumn.Eq(id)).Order(t.table.table.Col("primary").Desc())
 
 	const single = false
 	var ret []models.FileID

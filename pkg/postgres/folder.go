@@ -267,7 +267,7 @@ func (qb *FolderStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*m
 }
 
 func (qb *FolderStore) Find(ctx context.Context, id models.FolderID) (*models.Folder, error) {
-	q := qb.selectDataset().Where(qb.tableMgr.byID(id))
+	q := qb.selectDataset().Prepared(true).Where(qb.tableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)
 	if err != nil {
