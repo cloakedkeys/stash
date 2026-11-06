@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/utils"
 )
 
 func selectAll(tableName string) string {
@@ -401,8 +402,9 @@ func idValues(values []string) ([]string, error) {
 		switch {
 		case err == nil:
 			ret[i] = strconv.FormatInt(id, 10)
-		case errors.Is(err, strconv.ErrRange):
-			// ParseInt only reports a range error for a sign and digits
+		case errors.Is(err, strconv.ErrRange) && utils.IsIntegerText(v):
+			// ParseInt stops reading at the overflow, so the whole value is
+			// checked to be a sign and digits before it goes in the query text
 			ret[i] = v
 		default:
 			return nil, fmt.Errorf("invalid id %q: must be a number", v)

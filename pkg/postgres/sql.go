@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/utils"
 )
 
 func selectAll(tableName string) string {
@@ -408,7 +409,9 @@ func idValues(values []string) ([]int, error) {
 func idOutOfRangeValue(v string) bool {
 	id, err := strconv.ParseInt(v, 10, 64)
 	if err != nil {
-		return errors.Is(err, strconv.ErrRange)
+		// ParseInt stops reading at the overflow, so the whole value must
+		// be a sign and digits (#2248)
+		return errors.Is(err, strconv.ErrRange) && utils.IsIntegerText(v)
 	}
 	return id < math.MinInt32 || id > math.MaxInt32
 }
@@ -445,7 +448,8 @@ func criterionIDsInRange(f *filterBuilder, modifier models.CriterionModifier, va
 	// even when an out-of-range id means the filter matches nothing (#2245)
 	for _, list := range [][]string{*value, *excludes} {
 		for _, v := range list {
-			if _, err := strconv.ParseInt(v, 10, 64); err != nil && !errors.Is(err, strconv.ErrRange) {
+			// a sign and digits, however long (#2248)
+			if !utils.IsIntegerText(v) {
 				f.setError(fmt.Errorf("invalid id %q: must be a number", v))
 				return false
 			}
