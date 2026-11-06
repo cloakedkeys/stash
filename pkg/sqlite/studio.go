@@ -766,11 +766,12 @@ func (qb *StudioStore) sortByLatestScene(direction string) string {
 	return " ORDER BY (" + selectStudioLatestSceneSQL + ") " + direction
 }
 
+// UNION drops a studio already found, so a loop of parent studios ends (#2217)
 func (qb *StudioStore) sortByScenesCountAll(direction string) string {
 	return fmt.Sprintf(` ORDER BY (
 		WITH RECURSIVE sub_studios AS (
 			SELECT s.id FROM %[1]s s WHERE s.id = %[1]s.id
-			UNION ALL
+			UNION
 			SELECT s.id FROM %[1]s s
 			INNER JOIN sub_studios ss ON s.parent_id = ss.id
 		)
@@ -785,11 +786,12 @@ func (qb *StudioStore) sortByPerformerCount(direction string) string {
 	return " ORDER BY (" + selectStudioPerformerCountSQL + ") " + getSortDirection(direction)
 }
 
+// UNION drops a studio already found, so a loop of parent studios ends (#2217)
 func (qb *StudioStore) sortByPerformerCountAll(direction string) string {
 	return fmt.Sprintf(` ORDER BY (
 		WITH RECURSIVE sub_studios AS (
 			SELECT s.id FROM %[1]s s WHERE s.id = %[1]s.id
-			UNION ALL
+			UNION
 			SELECT s.id FROM %[1]s s
 			INNER JOIN sub_studios ss ON s.parent_id = ss.id
 		)
@@ -835,11 +837,12 @@ func (qb *StudioStore) sortByOCounter(ctx context.Context, direction string) str
 	) %[6]s`, studioTable, studioIDColumn, sceneTable, scenesODatesTable, imageTable, getSortDirection(direction), currentUserID(ctx), imagesUserDataTable, galleryTable, galleriesUserDataTable, audioTable, audiosODatesTable)
 }
 
+// UNION drops a studio already found, so a loop of parent studios ends (#2217)
 func (qb *StudioStore) sortByOCounterAll(ctx context.Context, direction string) string {
 	return fmt.Sprintf(` ORDER BY (
 		WITH RECURSIVE sub_studios AS (
 			SELECT s.id FROM %[1]s s WHERE s.id = %[1]s.id
-			UNION ALL
+			UNION
 			SELECT ch.id FROM %[1]s ch
 			INNER JOIN sub_studios ss ON ch.parent_id = ss.id
 		)

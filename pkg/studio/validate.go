@@ -151,23 +151,31 @@ func ValidateModify(ctx context.Context, s models.StudioPartial, qb ValidateModi
 }
 
 func validateParent(ctx context.Context, studioID int, newParentID int, qb models.StudioGetter) error {
-	if newParentID == studioID {
-		return ErrStudioOwnAncestor
-	}
+	// ensure there is no cyclic dependency. A loop of parents that is already
+	// saved above the new parent ends the walk at a studio already seen; it
+	// doesn't pass through this studio, so it isn't made by this change (#2217).
+	seen := map[int]bool{}
+	for id := newParentID; ; {
+		if id == studioID {
+			return ErrStudioOwnAncestor
+		}
+		if seen[id] {
+			return nil
+		}
+		seen[id] = true
 
-	// ensure there is no cyclic dependency
-	parentStudio, err := qb.Find(ctx, newParentID)
-	if err != nil {
-		return fmt.Errorf("error finding parent studio: %v", err)
-	}
+		parentStudio, err := qb.Find(ctx, id)
+		if err != nil {
+			return fmt.Errorf("error finding parent studio: %v", err)
+		}
 
-	if parentStudio == nil {
-		return fmt.Errorf("studio with id %d not found", newParentID)
-	}
+		if parentStudio == nil {
+			return fmt.Errorf("studio with id %d not found", id)
+		}
 
-	if parentStudio.ParentID != nil {
-		return validateParent(ctx, studioID, *parentStudio.ParentID, qb)
+		if parentStudio.ParentID == nil {
+			return nil
+		}
+		id = *parentStudio.ParentID
 	}
-
-	return nil
 }
