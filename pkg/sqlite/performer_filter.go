@@ -863,17 +863,21 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 				f.addWith(fmt.Sprintf("%s AS (%s)", derivedPerformerGroupTable, strings.Join(unions, " UNION ")))
 			} else {
 				// Complex case: with hierarchy
+				// With no depth limit the depth stays the same, so UNION drops a
+				// row it has already found and a loop of sub-groups ends (#2217).
 				var depthCondition string
+				nextDepth := "depth"
 				if depthVal != -1 {
 					depthCondition = fmt.Sprintf("WHERE depth < %d", depthVal)
+					nextDepth = "depth + 1"
 				}
 
 				// Build recursive CTE for group hierarchy
 				hierarchyQuery := fmt.Sprintf(`group_hierarchy AS (
 SELECT id AS root_id, id AS item_id, 0 AS depth FROM groups WHERE id IN%s
 UNION
-SELECT root_id, sub_id, depth + 1 FROM groups_relations INNER JOIN group_hierarchy ON item_id = containing_id %s
-)`, getInBinding(len(groups.Value)), depthCondition)
+SELECT root_id, sub_id, %s FROM groups_relations INNER JOIN group_hierarchy ON item_id = containing_id %s
+)`, getInBinding(len(groups.Value)), nextDepth, depthCondition)
 
 				f.addRecursiveWith(hierarchyQuery, args...)
 

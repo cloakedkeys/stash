@@ -841,11 +841,13 @@ func (qb *ImageStore) OCount(ctx context.Context) (int, error) {
 }
 
 func (qb *ImageStore) oCountByStudioIDRecursive(ctx context.Context, studioID int, depth int) (int, error) {
+	// With no depth limit the level stays 0, so UNION drops a studio it has
+	// already found and a loop of parent studios ends (#2217).
 	q := `
 	WITH RECURSIVE sub_studios AS (
 		SELECT id, 0 AS level FROM studios WHERE id = ?
-		UNION ALL
-		SELECT s.id, ss.level + 1 FROM studios s
+		UNION
+		SELECT s.id, CASE WHEN ? < 0 THEN 0 ELSE ss.level + 1 END FROM studios s
 		INNER JOIN sub_studios ss ON s.parent_id = ss.id
 		WHERE ss.level < ? OR ? < 0
 	)
@@ -853,7 +855,7 @@ func (qb *ImageStore) oCountByStudioIDRecursive(ctx context.Context, studioID in
 	INNER JOIN images_user_data ON images_user_data.image_id = images.id AND images_user_data.user_id = ?
 	WHERE images.studio_id IN (SELECT id FROM sub_studios)`
 
-	rows, err := dbWrapper.QueryxContext(ctx, q, studioID, depth, depth, currentUserID(ctx))
+	rows, err := dbWrapper.QueryxContext(ctx, q, studioID, depth, depth, depth, currentUserID(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("querying image o_count by studio: %w", err)
 	}
