@@ -15,6 +15,96 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// appVersionMigration is the schema version that creates app_version. The
+// tests here make it fail, so they don't depend on which migration is last.
+const appVersionMigration uint = 27
+
+// migrateTo runs the migrations up to and including version.
+func migrateTo(t *testing.T, m *Migrator, version uint) {
+	t.Helper()
+	for v := uint(1); v <= version; v++ {
+		require.NoErrorf(t, m.RunMigration(context.Background(), v), "schema %d", v)
+	}
+}
+
+// When only golang-migrate's own "finished" write fails after a migration's
+// SQL has committed, the migration still counts as done, its post migrations
+// run, and the next start doesn't run it again (#2202). Before, the version
+// was left unfinished with the changes kept, and every retry failed because
+// what it creates already existed.
+func TestCleanMarkCommitsWithMigration(t *testing.T) {
+	ctx := context.Background()
+	dsn := migrationFixture(t)
+	config.InitializeEmpty()
+
+	db := NewDatabase()
+	db.dbPath = dsn
+	m, err := NewMigrator(db)
+	require.NoError(t, err)
+	target := appVersionMigration
+	migrateTo(t, m, target-1)
+
+	// golang-migrate records a finished version with an INSERT; the clean mark
+	// in the migration's SQL is an UPDATE, so only golang-migrate's write fails
+	_, err = m.conn.Exec(`CREATE FUNCTION refuse_finished() RETURNS trigger AS $$
+BEGIN
+  IF NOT NEW.dirty THEN
+    RAISE EXCEPTION 'refusing to record version % as finished', NEW.version;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER refuse_finished BEFORE INSERT ON schema_migrations FOR EACH ROW EXECUTE FUNCTION refuse_finished();`)
+	require.NoError(t, err)
+
+	saved := postMigrations[target]
+	t.Cleanup(func() { postMigrations[target] = saved })
+	ran := false
+	postMigrations[target] = append(append([]customMigrationFunc{}, saved...), func(ctx context.Context, conn *sqlx.DB) error {
+		ran = true
+		return nil
+	})
+
+	require.NoError(t, m.RunMigration(ctx, target))
+	assert.True(t, ran, "the post migration ran")
+	assert.Equal(t, target, db.schemaVersion)
+	version, dirty := readMigrationVersion(t, dsn)
+	assert.Equal(t, int(target), version)
+	assert.False(t, dirty)
+
+	_, err = m.conn.Exec("DROP TRIGGER refuse_finished ON schema_migrations; DROP FUNCTION refuse_finished()")
+	require.NoError(t, err)
+	m.Close()
+
+	m, err = NewMigrator(db)
+	require.NoError(t, err)
+	defer m.Close()
+	assert.Equal(t, target, m.CurrentSchemaVersion())
+}
+
+// A migration that fails keeps its version marked unfinished: the clean mark
+// added to its SQL rolls back with the rest of it.
+func TestCleanMarkRollsBackWithMigration(t *testing.T) {
+	ctx := context.Background()
+	dsn := migrationFixture(t)
+	config.InitializeEmpty()
+
+	db := NewDatabase()
+	db.dbPath = dsn
+	m, err := NewMigrator(db)
+	require.NoError(t, err)
+	defer m.Close()
+	target := appVersionMigration
+	migrateTo(t, m, target-1)
+	_, err = m.conn.Exec("CREATE TABLE app_version (blocker INTEGER)")
+	require.NoError(t, err)
+
+	require.Error(t, m.RunMigration(ctx, target))
+	version, dirty := readMigrationVersion(t, dsn)
+	assert.Equal(t, int(target), version)
+	assert.True(t, dirty)
+}
+
 func readMigrationVersion(t *testing.T, dsn string) (version int, dirty bool) {
 	t.Helper()
 	conn, err := sqlx.Open("pgx", dsn)
@@ -35,13 +125,12 @@ func TestFailedMigrationRunsAgain(t *testing.T) {
 	db.dbPath = dsn
 	m, err := NewMigrator(db)
 	require.NoError(t, err)
-	last := appSchemaVersion
+	last := appVersionMigration
 	for version := uint(1); version < last; version++ {
 		require.NoErrorf(t, m.RunMigration(ctx, version), "schema %d", version)
 	}
 
-	// the last migration creates app_version, so a table already by that name
-	// makes it fail
+	// a table already called app_version makes the migration that creates it fail
 	_, err = m.conn.Exec("CREATE TABLE app_version (blocker INTEGER)")
 	require.NoError(t, err)
 	require.Error(t, m.RunMigration(ctx, last))
@@ -87,7 +176,7 @@ func TestFailedMigrationNewMigrator(t *testing.T) {
 	db.dbPath = dsn
 	m, err := NewMigrator(db)
 	require.NoError(t, err)
-	last := appSchemaVersion
+	last := appVersionMigration
 	for version := uint(1); version < last; version++ {
 		require.NoErrorf(t, m.RunMigration(ctx, version), "schema %d", version)
 	}
