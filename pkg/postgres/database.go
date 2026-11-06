@@ -455,9 +455,13 @@ func (db *Database) Optimise(ctx context.Context) error {
 	return nil
 }
 
-// Vacuum runs a VACUUM on the database, rebuilding the database file into a minimal amount of disk space.
+// Vacuum runs a VACUUM on stash's tables, rebuilding them into a minimal amount of disk space.
 func (db *Database) Vacuum(ctx context.Context) error {
-	_, err := db.writeDB.ExecContext(ctx, "VACUUM (FULL, ANALYZE, VERBOSE)")
+	tables, err := ownTables(ctx, db.writeDB)
+	if err != nil || tables == "" {
+		return err
+	}
+	_, err = db.writeDB.ExecContext(ctx, "VACUUM (FULL, ANALYZE, VERBOSE) "+tables)
 	return err
 }
 
@@ -472,9 +476,31 @@ func (db *Database) RefreshStatistics(ctx context.Context) error {
 	return nil
 }
 
-// analyze runs an ANALYZE on the database to improve query performance.
+// ownTablesQuery lists stash's own tables, the ones in its schema, ready to
+// follow ANALYZE or VACUUM. It is empty if there are none.
+//
+// #2203: a plain ANALYZE or VACUUM covers the whole database, including the
+// catalogs that every database on the server shares, such as pg_authid. A
+// lock that a session in another database holds on one of those makes it
+// wait, so stash's startup could stall behind someone else's work.
+const ownTablesQuery = `SELECT COALESCE(string_agg(format('%I.%I', schemaname, tablename), ', ' ORDER BY tablename), '')
+FROM pg_tables WHERE schemaname = current_schema()`
+
+func ownTables(ctx context.Context, db *sqlx.DB) (string, error) {
+	var tables string
+	if err := db.GetContext(ctx, &tables, ownTablesQuery); err != nil {
+		return "", fmt.Errorf("listing tables: %w", err)
+	}
+	return tables, nil
+}
+
+// analyze runs an ANALYZE on stash's tables to improve query performance.
 func analyze(ctx context.Context, db *sqlx.DB) error {
-	_, err := db.ExecContext(ctx, "ANALYZE")
+	tables, err := ownTables(ctx, db)
+	if err != nil || tables == "" {
+		return err
+	}
+	_, err = db.ExecContext(ctx, "ANALYZE "+tables)
 	return err
 }
 
