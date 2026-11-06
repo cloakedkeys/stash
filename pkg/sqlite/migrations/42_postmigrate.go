@@ -355,14 +355,48 @@ SELECT disambiguation FROM performers WHERE name = ? ORDER BY CAST(disambiguatio
 		newDisambiguation = numericDis + 1
 	}
 
+	// A performer called "<name> (<number>)" gets that number when the names
+	// are split below, so the number isn't free (#2239).
+	taken, err := m.numbersInNames(tx, name)
+	if err != nil {
+		return err
+	}
+	for taken[newDisambiguation] {
+		newDisambiguation++
+	}
+
 	logger.Infof("Adding disambiguation '%d' for performer %q", newDisambiguation, name)
 
-	_, err := tx.Exec("UPDATE performers SET disambiguation = ? WHERE id = ?", strconv.Itoa(newDisambiguation), performerID)
+	_, err = tx.Exec("UPDATE performers SET disambiguation = ? WHERE id = ?", strconv.Itoa(newDisambiguation), performerID)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// numbersInNames returns the numbers that performers called
+// "<name> (<number>)" will get as their disambiguation when
+// massagePerformerName splits their names.
+func (m *schema42Migrator) numbersInNames(tx *sqlx.Tx, name string) (map[int]bool, error) {
+	prefix := name + " ("
+	var names []string
+	if err := tx.Select(&names, "SELECT name FROM performers WHERE substr(name, 1, length(?)) = ? AND name LIKE '%)'", prefix, prefix); err != nil {
+		return nil, err
+	}
+	taken := make(map[int]bool)
+	for _, n := range names {
+		r := performerDisRE.FindStringSubmatch(n)
+		if len(r) != 3 || strings.TrimSuffix(r[1], " ") != name {
+			// not split, or split into another name
+			continue
+		}
+		// only the same text clashes: "01" isn't "1"
+		if number, err := strconv.Atoi(r[2]); err == nil && strconv.Itoa(number) == r[2] {
+			taken[number] = true
+		}
+	}
+	return taken, nil
 }
 
 func (m *schema42Migrator) executeSchemaChanges() error {
