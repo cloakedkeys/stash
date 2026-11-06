@@ -35,6 +35,12 @@ INSERT INTO performers(id,name,checksum,created_at,updated_at) VALUES
   (3,'Ann','c3',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
   (4,'Bob','c4',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
   (5,'Bob','c5',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);`,
+	// the same name with a number in it, twice (#2241)
+	"same bracketed name": `
+INSERT INTO performers(id,name,checksum,created_at,updated_at) VALUES
+  (1,'Kim (1)','c1',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (2,'Kim (1)','c2',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (3,'Kim','c3',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);`,
 }
 
 // schema41Database returns a database built the normal way to schema 41,
@@ -207,5 +213,28 @@ INSERT INTO performers(id,name,checksum,created_at,updated_at) VALUES
 		`5 "Lee" "01"`,
 		`6 "Lee" ""`,
 		`7 "Lee" "1"`,
+	}, schema42Names(t, raw))
+}
+
+// Two performers with the same name that ends in a number in brackets don't
+// both become that name and number: the first is split, the second keeps its
+// name with the number it was given as a clash (#2241).
+func TestPost42SameBracketedNames(t *testing.T) {
+	raw := schema41Database(t, `
+INSERT INTO performers(id,name,checksum,created_at,updated_at) VALUES
+  (1,'Kim (1)','c1',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (2,'Kim (1)','c2',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (3,'Ann (Smith)','c3',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (4,'Ann (Smith)','c4',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (5,'Ann (Smith)','c5',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);`)
+	applySchema42SQL(t, raw)
+	require.NoError(t, post42(context.Background(), raw))
+
+	require.Equal(t, []string{
+		`1 "Kim" "1"`,
+		`2 "Kim (1)" "1"`,
+		`3 "Ann" "Smith"`,
+		`4 "Ann (Smith)" "1"`,
+		`5 "Ann (Smith)" "2"`,
 	}, schema42Names(t, raw))
 }
