@@ -90,6 +90,9 @@ func TestImporterPostImport(t *testing.T) {
 	db.Tag.On("UpdateParentTags", testCtx, errParentsID, []int{100}).Return(updateTagParentsErr).Once()
 
 	db.Tag.On("FindByName", testCtx, "Parent", false).Return(&models.Tag{ID: 100}, nil)
+	// no loops: the parent check finds nothing above or below
+	db.Tag.On("FindAllAncestors", testCtx, mock.Anything, mock.Anything).Return(nil, nil)
+	db.Tag.On("FindAllDescendants", testCtx, mock.Anything, mock.Anything).Return(nil, nil)
 
 	err := i.PostImport(testCtx, tagID)
 	assert.Nil(t, err)
@@ -133,6 +136,10 @@ func TestImporterPostImportParentMissing(t *testing.T) {
 	findError := errors.New("failed finding parent")
 
 	var emptyParents []int
+
+	// no loops: the parent check finds nothing above or below
+	db.Tag.On("FindAllAncestors", testCtx, mock.Anything, mock.Anything).Return(nil, nil)
+	db.Tag.On("FindAllDescendants", testCtx, mock.Anything, mock.Anything).Return(nil, nil)
 
 	db.Tag.On("UpdateImage", testCtx, mock.Anything, mock.Anything).Return(nil)
 	db.Tag.On("UpdateAliases", testCtx, mock.Anything, mock.Anything).Return(nil)
