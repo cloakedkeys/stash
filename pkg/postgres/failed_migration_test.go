@@ -15,6 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// appVersionMigration is the schema version that creates app_version. The
+// tests here make it fail, so they don't depend on which migration is last.
+const appVersionMigration uint = 27
+
 func readMigrationVersion(t *testing.T, dsn string) (version int, dirty bool) {
 	t.Helper()
 	conn, err := sqlx.Open("pgx", dsn)
@@ -35,13 +39,12 @@ func TestFailedMigrationRunsAgain(t *testing.T) {
 	db.dbPath = dsn
 	m, err := NewMigrator(db)
 	require.NoError(t, err)
-	last := appSchemaVersion
+	last := appVersionMigration
 	for version := uint(1); version < last; version++ {
 		require.NoErrorf(t, m.RunMigration(ctx, version), "schema %d", version)
 	}
 
-	// the last migration creates app_version, so a table already by that name
-	// makes it fail
+	// a table already called app_version makes the migration that creates it fail
 	_, err = m.conn.Exec("CREATE TABLE app_version (blocker INTEGER)")
 	require.NoError(t, err)
 	require.Error(t, m.RunMigration(ctx, last))
@@ -87,7 +90,7 @@ func TestFailedMigrationNewMigrator(t *testing.T) {
 	db.dbPath = dsn
 	m, err := NewMigrator(db)
 	require.NoError(t, err)
-	last := appSchemaVersion
+	last := appVersionMigration
 	for version := uint(1); version < last; version++ {
 		require.NoErrorf(t, m.RunMigration(ctx, version), "schema %d", version)
 	}
