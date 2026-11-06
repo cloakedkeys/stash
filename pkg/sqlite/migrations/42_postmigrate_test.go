@@ -181,3 +181,31 @@ func TestPost42NumbersManyClashes(t *testing.T) {
 		})
 	}
 }
+
+// A performer whose name already ends in a number in brackets gets that
+// number when the names are split, so the clashing plain names are given
+// other numbers, and the unique index can be made (#2239).
+func TestPost42SkipsNumbersInNames(t *testing.T) {
+	raw := schema41Database(t, `
+INSERT INTO performers(id,name,checksum,created_at,updated_at) VALUES
+  (1,'Kim (1)','c1',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (2,'Kim','c2',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (3,'Kim','c3',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (4,'Kim','c4',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (5,'Lee (01)','c5',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (6,'Lee','c6',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+  (7,'Lee','c7',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);`)
+	applySchema42SQL(t, raw)
+	require.NoError(t, post42(context.Background(), raw))
+
+	require.Equal(t, []string{
+		`1 "Kim" "1"`,
+		`2 "Kim" ""`,
+		`3 "Kim" "2"`,
+		`4 "Kim" "3"`,
+		// "01" isn't the same as "1", so 1 is free
+		`5 "Lee" "01"`,
+		`6 "Lee" ""`,
+		`7 "Lee" "1"`,
+	}, schema42Names(t, raw))
+}
