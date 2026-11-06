@@ -430,6 +430,15 @@ func (m *joinedMultiCriterionHandlerBuilder) handler(c *models.MultiCriterionInp
 				return
 			}
 
+			if !supportedModifier(f, m.joinTable, criterion.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll, models.CriterionModifierExcludes, models.CriterionModifierEquals, models.CriterionModifierNotEquals) {
+				return
+			}
+
+			var ok bool
+			if criterion, ok = multiCriterionIDsInRange(f, criterion); !ok {
+				return
+			}
+
 			if len(criterion.Value) == 0 && len(criterion.Excludes) == 0 {
 				return
 			}
@@ -509,9 +518,10 @@ type multiCriterionHandlerBuilder struct {
 	addJoinsFunc func(f *filterBuilder, joinType joinType)
 }
 
-func (m *multiCriterionHandlerBuilder) handler(criterion *models.MultiCriterionInput) criterionHandlerFunc {
+func (m *multiCriterionHandlerBuilder) handler(c *models.MultiCriterionInput) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
-		if criterion != nil {
+		if c != nil {
+			criterion := c
 			if criterion.Modifier == models.CriterionModifierIsNull || criterion.Modifier == models.CriterionModifierNotNull {
 				var notClause string
 				if criterion.Modifier == models.CriterionModifierNotNull {
@@ -526,6 +536,28 @@ func (m *multiCriterionHandlerBuilder) handler(criterion *models.MultiCriterionI
 
 				f.addWhere(fmt.Sprintf("%s.%s IS %s NULL", table, m.foreignFK, notClause))
 				return
+			}
+
+			if !supportedModifier(f, m.foreignTable, criterion.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll, models.CriterionModifierExcludes) {
+				return
+			}
+
+			inRange, ok := multiCriterionIDsInRange(f, *criterion)
+			if !ok {
+				return
+			}
+			criterion = &inRange
+
+			// the excludes list leaves out objects linked to any of those, the
+			// same check as the excludes modifier, as in the Tags filter (#2235)
+			if len(criterion.Excludes) > 0 {
+				excludes := models.MultiCriterionInput{Value: criterion.Excludes, Modifier: models.CriterionModifierExcludes}
+				var args []interface{}
+				for _, id := range excludes.Value {
+					args = append(args, id)
+				}
+				whereClause, _ := getMultiCriterionClause(m.primaryTable, m.foreignTable, m.joinTable, m.primaryFK, m.foreignFK, &excludes)
+				f.addWhere(whereClause, args...)
 			}
 
 			if len(criterion.Value) == 0 {
@@ -676,32 +708,27 @@ func getHierarchicalValues(ctx context.Context, values []string, table, relation
 		depthVal = *depth
 	}
 
-	if depthVal == 0 {
-		valid := true
-		var valuesClauses []string
-		for _, value := range values {
-			id, err := strconv.Atoi(value)
-			// In case of invalid value just run the query.
-			// Building VALUES() based on provided values just saves a query when depth is 0.
-			if err != nil {
-				valid = false
-				break
-			}
-
-			valuesClauses = append(valuesClauses, fmt.Sprintf("(%d,%d)", id, id))
-		}
-
-		if valid {
-			values := "VALUES" + strings.Join(valuesClauses, ",")
-			if parenthesis {
-				values = "(" + values + ") AS v(column1, column2)"
-			}
-			return values, nil
-		}
+	// The ids end up in the query text, so each must be a number (#2235).
+	ids, err := idValues(values)
+	if err != nil {
+		return "", err
 	}
 
-	for _, value := range values {
-		args = append(args, value)
+	if depthVal == 0 {
+		// Building VALUES() from the ids saves a query when depth is 0.
+		var valuesClauses []string
+		for _, id := range ids {
+			valuesClauses = append(valuesClauses, fmt.Sprintf("(%d,%d)", id, id))
+		}
+		values := "VALUES" + strings.Join(valuesClauses, ",")
+		if parenthesis {
+			values = "(" + values + ") AS v(column1, column2)"
+		}
+		return values, nil
+	}
+
+	for _, id := range ids {
+		args = append(args, id)
 	}
 	inCount := len(args)
 
@@ -751,17 +778,18 @@ WHERE id in {inBinding}
 	query := fmt.Sprintf("WITH RECURSIVE %s SELECT 'VALUES' || STRING_AGG('(' || root_id || ', ' || item_id || ')'::TEXT, ',') AS val FROM items", withClause)
 
 	var valuesClause sql.NullString
-	err := dbWrapper.Get(ctx, &valuesClause, query, args...)
+	err = dbWrapper.Get(ctx, &valuesClause, query, args...)
 	if err != nil {
 		return "", fmt.Errorf("failed to get hierarchical values: %w", err)
 	}
 
 	// if no values are found, just return a values string with the values only
 	if !valuesClause.Valid {
-		for i, value := range values {
-			values[i] = fmt.Sprintf("(%s, %s)", value, value)
+		var valuesClauses []string
+		for _, id := range ids {
+			valuesClauses = append(valuesClauses, fmt.Sprintf("(%d, %d)", id, id))
 		}
-		valuesClause.String = "VALUES" + strings.Join(values, ",")
+		valuesClause.String = "VALUES" + strings.Join(valuesClauses, ",")
 	}
 
 	if parenthesis {
@@ -780,6 +808,9 @@ func addHierarchicalConditionClauses(f *filterBuilder, criterion models.Hierarch
 		f.addHaving(fmt.Sprintf("count(distinct %s.%s) = %d", table, idColumn, len(criterion.Value)))
 	case models.CriterionModifierExcludes:
 		f.addWhere(fmt.Sprintf("%s.%s IS NULL", table, idColumn))
+	default:
+		// refused rather than ignored, as the gallery parent folder filter does (#2235)
+		f.setError(fmt.Errorf("invalid modifier for %s criterion: %s", table, criterion.Modifier))
 	}
 }
 
@@ -806,6 +837,15 @@ func (m *hierarchicalMultiCriterionHandlerBuilder) handler(c *models.Hierarchica
 					"column": m.foreignFK,
 					"not":    notClause,
 				}))
+				return
+			}
+
+			if !supportedModifier(f, m.foreignTable, criterion.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll, models.CriterionModifierExcludes) {
+				return
+			}
+
+			var ok bool
+			if criterion, ok = hierarchicalCriterionIDsInRange(f, criterion); !ok {
 				return
 			}
 
@@ -920,6 +960,11 @@ func (m *joinedHierarchicalMultiCriterionHandlerBuilder) handler(c *models.Hiera
 				return
 			}
 
+			var ok bool
+			if criterion, ok = hierarchicalCriterionIDsInRange(f, criterion); !ok {
+				return
+			}
+
 			// combine excludes if excludes modifier is selected
 			if criterion.Modifier == models.CriterionModifierExcludes {
 				criterion.Modifier = models.CriterionModifierIncludesAll
@@ -999,6 +1044,11 @@ func (h *joinedPerformerTagsHandler) handle(ctx context.Context, f *filterBuilde
 			// valid
 		default:
 			f.setError(fmt.Errorf("invalid modifier %s for performer tags", criterion.Modifier))
+		}
+
+		var ok bool
+		if criterion, ok = hierarchicalCriterionIDsInRange(f, criterion); !ok {
+			return
 		}
 
 		strFormatMap := utils.StrFormatMap{

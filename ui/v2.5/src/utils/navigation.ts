@@ -1,5 +1,8 @@
 import * as GQL from "src/core/generated-graphql";
-import { PerformersCriterion } from "src/models/list-filter/criteria/performers";
+import {
+  GroupPerformersCriterionOption,
+  PerformersCriterion,
+} from "src/models/list-filter/criteria/performers";
 import { CountryCriterion } from "src/models/list-filter/criteria/country";
 import {
   StudiosCriterion,
@@ -137,7 +140,7 @@ const makePerformerGroupsUrl = (
 ) => {
   if (!performer.id) return "#";
   const filter = new ListFilterModel(GQL.FilterMode.Groups, undefined);
-  const criterion = new PerformersCriterion();
+  const criterion = new PerformersCriterion(GroupPerformersCriterionOption);
   criterion.value.items = [
     { id: performer.id, label: performer.name || `Performer ${performer.id}` },
   ];

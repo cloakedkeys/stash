@@ -142,6 +142,26 @@ func (qb *fileFilterHandler) zipFileCriterionHandler(criterion *models.MultiCrit
 				return
 			}
 
+			if !supportedModifier(f, "zip file", criterion.Modifier, models.CriterionModifierIncludes, models.CriterionModifierExcludes) {
+				return
+			}
+
+			inRange, ok := multiCriterionIDsInRange(f, *criterion)
+			if !ok {
+				return
+			}
+			criterion := &inRange
+
+			// the excludes list leaves out items in any of those zip files, and keeps
+			// items that aren't in a zip file, as in the Tags filter (#2235)
+			if len(criterion.Excludes) > 0 {
+				var args []interface{}
+				for _, id := range criterion.Excludes {
+					args = append(args, id)
+				}
+				f.addWhere("(files.zip_file_id IS NULL OR files.zip_file_id NOT IN "+getInBinding(len(criterion.Excludes))+")", args...)
+			}
+
 			if len(criterion.Value) == 0 {
 				return
 			}
@@ -157,7 +177,9 @@ func (qb *fileFilterHandler) zipFileCriterionHandler(criterion *models.MultiCrit
 			case models.CriterionModifierIncludes:
 				whereClause = "files.zip_file_id IN " + getInBinding(len(criterion.Value))
 			case models.CriterionModifierExcludes:
-				whereClause = "files.zip_file_id NOT IN " + getInBinding(len(criterion.Value))
+				// keep files that aren't in a zip file, as the Tags filter's excludes
+				// keeps scenes with no tags (#2235)
+				whereClause = "(files.zip_file_id IS NULL OR files.zip_file_id NOT IN " + getInBinding(len(criterion.Value)) + ")"
 			}
 
 			f.addWhere(whereClause, args...)

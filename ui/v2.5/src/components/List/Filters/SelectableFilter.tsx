@@ -150,6 +150,8 @@ interface ISelectableFilter {
   onSetModifier: (modifier: CriterionModifier) => void;
   // true if the filter is for a single value
   singleValue?: boolean;
+  // false if the filter doesn't handle "only" (equals)
+  canIncludeOnly?: boolean;
 }
 
 type SpecialValue = "any" | "none" | "any_of" | "only";
@@ -181,6 +183,7 @@ const SelectableFilter: React.FC<ISelectableFilter> = ({
   onUnselect,
   onSetModifier,
   singleValue,
+  canIncludeOnly = true,
 }) => {
   const intl = useIntl();
   const objects = useMemo(() => {
@@ -232,11 +235,19 @@ const SelectableFilter: React.FC<ISelectableFilter> = ({
         !singleValue && modifier === defaultModifier && selected.length > 1,
       only:
         !singleValue &&
+        canIncludeOnly &&
         modifier === defaultModifier &&
         selected.length > 0 &&
         excluded.length === 0,
     };
-  }, [singleValue, defaultModifier, modifier, selected, excluded]);
+  }, [
+    singleValue,
+    canIncludeOnly,
+    defaultModifier,
+    modifier,
+    selected,
+    excluded,
+  ]);
 
   function onModifierValueSelect(key: SpecialValue) {
     const m = modifierValueToModifier(key);
@@ -332,6 +343,7 @@ interface IObjectsFilter<T extends ModifierCriterion<ILabeledValueListValue>> {
   setCriterion: (criterion: T) => void;
   useResults: (query: string) => { results: ILabeledId[]; loading: boolean };
   singleValue?: boolean;
+  canIncludeOnly?: boolean;
 }
 
 export const ObjectsFilter = <
@@ -341,6 +353,7 @@ export const ObjectsFilter = <
   setCriterion,
   useResults,
   singleValue,
+  canIncludeOnly,
 }: IObjectsFilter<T>) => {
   const [query, setQuery] = useState("");
   const [displayQuery, setDisplayQuery] = useState(query);
@@ -457,6 +470,7 @@ export const ObjectsFilter = <
       excluded={sortedExcluded}
       onSetModifier={onSetModifier}
       singleValue={singleValue}
+      canIncludeOnly={canIncludeOnly}
     />
   );
 };

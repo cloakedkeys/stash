@@ -202,6 +202,28 @@ func (qb *groupFilterHandler) performersCriterionHandler(performers *models.Mult
 				return
 			}
 
+			if !supportedModifier(f, "performers", performers.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll, models.CriterionModifierExcludes) {
+				return
+			}
+
+			inRange, ok := multiCriterionIDsInRange(f, *performers)
+			if !ok {
+				return
+			}
+			performers := &inRange
+
+			// the excludes list leaves out groups with a scene with any of those
+			// performers, as in the Tags filter (#2235)
+			if len(performers.Excludes) > 0 {
+				var args []interface{}
+				for _, arg := range performers.Excludes {
+					args = append(args, arg)
+				}
+				f.addWhere(`groups.id NOT IN (SELECT groups_scenes.group_id FROM groups_scenes
+	INNER JOIN performers_scenes ON groups_scenes.scene_id = performers_scenes.scene_id
+	WHERE performers_scenes.performer_id IN `+getInBinding(len(performers.Excludes))+`)`, args...)
+			}
+
 			if len(performers.Value) == 0 {
 				return
 			}

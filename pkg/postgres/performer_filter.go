@@ -722,6 +722,16 @@ func (qb *performerFilterHandler) studiosCriterionHandler(studios *models.Hierar
 				return
 			}
 
+			if !supportedModifier(f, "studios", studios.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll, models.CriterionModifierExcludes) {
+				return
+			}
+
+			inRange, ok := hierarchicalCriterionIDsInRange(f, *studios)
+			if !ok {
+				return
+			}
+			studios := &inRange
+
 			if len(studios.Value) == 0 && len(studios.Excludes) == 0 {
 				return
 			}
@@ -731,6 +741,9 @@ func (qb *performerFilterHandler) studiosCriterionHandler(studios *models.Hierar
 			switch studios.Modifier {
 			case models.CriterionModifierIncludes:
 				// return performers who appear in scenes/images/galleries with any of the given studios
+				clauseCondition = "NOT"
+			case models.CriterionModifierIncludesAll:
+				// return performers who appear in scenes/images/galleries with each of the given studios
 				clauseCondition = "NOT"
 			case models.CriterionModifierExcludes:
 				// exclude performers who appear in scenes/images/galleries with any of the given studios
@@ -752,12 +765,28 @@ func (qb *performerFilterHandler) studiosCriterionHandler(studios *models.Hierar
 		INNER JOIN {joinTable} ON {primaryTable}.id = {joinTable}.{primaryFK}
 		WHERE {primaryTable}.studio_id IN (SELECT item_id FROM studio)`
 
+				// For "includes all" each row also gives the chosen studio it
+				// matched, and a performer must match every chosen studio. With
+				// sub-studios, a sub-studio counts as the chosen studio above it,
+				// as in the other "includes all" filters (#2234).
+				includesAll := studios.Modifier == models.CriterionModifierIncludesAll
+				if includesAll {
+					templStr = `SELECT performer_id, studio.root_id AS root_id FROM {primaryTable}
+		INNER JOIN {joinTable} ON {primaryTable}.id = {joinTable}.{primaryFK}
+		INNER JOIN studio ON {primaryTable}.studio_id = studio.item_id`
+				}
+
 				var unions []string
 				for _, c := range formatMaps {
 					unions = append(unions, utils.StrFormat(templStr, c))
 				}
 
-				f.addWith(fmt.Sprintf("%s AS (%s)", derivedPerformerStudioTable, strings.Join(unions, " UNION ")))
+				performerQuery := strings.Join(unions, " UNION ")
+				if includesAll {
+					performerQuery = fmt.Sprintf("SELECT performer_id FROM (%s) AS performer_studio_roots GROUP BY performer_id HAVING COUNT(DISTINCT root_id) = %d", performerQuery, len(studios.Value))
+				}
+
+				f.addWith(fmt.Sprintf("%s AS (%s)", derivedPerformerStudioTable, performerQuery))
 
 				f.addLeftJoin(derivedPerformerStudioTable, "", fmt.Sprintf("performers.id = %s.performer_id", derivedPerformerStudioTable))
 				f.addWhere(fmt.Sprintf("%s.performer_id IS %s NULL", derivedPerformerStudioTable, clauseCondition))
@@ -807,6 +836,30 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 				return
 			}
 
+			if !supportedModifier(f, "groups", groups.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll, models.CriterionModifierExcludes) {
+				return
+			}
+
+			inRange, ok := hierarchicalCriterionIDsInRange(f, *groups)
+			if !ok {
+				return
+			}
+			groups := &inRange
+
+			// the excludes list leaves out performers in scenes with any of those
+			// groups, with sub-groups to the same depth, as in the Tags filter (#2235)
+			if len(groups.Excludes) > 0 {
+				excludeValuesClause, err := getHierarchicalValues(ctx, groups.Excludes, groupTable, groupRelationsTable, "containing_id", "sub_id", groups.Depth, false)
+				if err != nil {
+					f.setError(err)
+					return
+				}
+				f.addWith("exclude_group(root_id, item_id) AS (" + excludeValuesClause + ")")
+				f.addWhere(`performers.id NOT IN (SELECT performers_scenes.performer_id FROM performers_scenes
+	INNER JOIN groups_scenes ON performers_scenes.scene_id = groups_scenes.scene_id
+	WHERE groups_scenes.group_id IN (SELECT item_id FROM exclude_group))`)
+			}
+
 			if len(groups.Value) == 0 {
 				return
 			}
@@ -849,13 +902,15 @@ func (qb *performerFilterHandler) groupsCriterionHandler(groups *models.Hierarch
 			}
 
 			// Simplified approach: direct group-scene-performer relationship without hierarchy
+			// an id that isn't a number is refused, rather than skipping the
+			// filter (#2235)
+			ids, err := idValues(groups.Value)
+			if err != nil {
+				f.setError(err)
+				return
+			}
 			var valuesClauses []string
-			for _, value := range groups.Value {
-				id, err := strconv.Atoi(value)
-				if err != nil {
-					return
-				}
-
+			for _, id := range ids {
 				valuesClauses = append(valuesClauses, fmt.Sprintf("%d", id))
 			}
 			valuesClause := strings.Join(valuesClauses, ",")
@@ -961,15 +1016,62 @@ func (qb *performerFilterHandler) appearsWithCriterionHandler(performers *models
 				},
 			}
 
-			if len(performers.Value) == '0' {
+			// "equals", "excludes", "is null" and "not null" have no meaning
+			// defined here yet, so they are refused rather than ignored, as the
+			// gallery parent folder filter refuses "includes all" (#2235)
+			if !supportedModifier(f, "performers", performers.Modifier, models.CriterionModifierIncludes, models.CriterionModifierIncludesAll) {
+				return
+			}
+
+			inRange, ok := multiCriterionIDsInRange(f, *performers)
+			if !ok {
+				return
+			}
+			performers := &inRange
+
+			// the ids are passed as values, not written into the query text,
+			// and an id that isn't a number is refused (#2235)
+			includeIDs, err := idValues(performers.Value)
+			if err != nil {
+				f.setError(err)
+				return
+			}
+			excludeIDs, err := idValues(performers.Excludes)
+			if err != nil {
+				f.setError(err)
+				return
+			}
+
+			// the excludes list leaves out performers who appear with any of
+			// those performers, as in the Tags filter (#2235)
+			if len(excludeIDs) > 0 {
+				var args []interface{}
+				var unions []string
+				for _, c := range formatMaps {
+					c["inBinding"] = getInBinding(len(excludeIDs))
+					unions = append(unions, utils.StrFormat(`SELECT {primaryTable}2.performer_id FROM {primaryTable}
+			INNER JOIN {primaryTable} AS {primaryTable}2 ON {primaryTable}.{primaryFK} = {primaryTable}2.{primaryFK}
+			WHERE {primaryTable}.performer_id IN {inBinding} AND {primaryTable}2.performer_id != {primaryTable}.performer_id`, c))
+					for _, id := range excludeIDs {
+						args = append(args, id)
+					}
+				}
+				f.addWhere("performers.id NOT IN ("+strings.Join(unions, " UNION ")+")", args...)
+			}
+
+			// with no performers chosen there's nothing more to match
+			if len(includeIDs) == 0 {
 				return
 			}
 
 			const derivedPerformerPerformersTable = "performer_performers"
 
-			valuesClause := strings.Join(performers.Value, "),(")
-
-			f.addWith("performer(id) AS (VALUES(" + valuesClause + "))")
+			var args []interface{}
+			for _, id := range includeIDs {
+				args = append(args, id)
+			}
+			// PostgreSQL reads a bare VALUES value as text, so the type is given
+			f.addWith("performer(id) AS (VALUES "+strings.Repeat("(CAST(? AS INTEGER)),", len(includeIDs)-1)+"(CAST(? AS INTEGER)))", args...)
 
 			templStr := `SELECT {primaryTable}2.performer_id FROM {primaryTable}
 			INNER JOIN {primaryTable} AS {primaryTable}2 ON {primaryTable}.{primaryFK} = {primaryTable}2.{primaryFK}

@@ -9,7 +9,7 @@ import {
 } from "./criteria/criterion";
 import { GroupIsMissingCriterionOption } from "./criteria/is-missing";
 import { StudiosCriterionOption } from "./criteria/studios";
-import { PerformersCriterionOption } from "./criteria/performers";
+import { GroupPerformersCriterionOption } from "./criteria/performers";
 import { ListFilterOptions } from "./filter-options";
 import { DisplayMode } from "./types";
 import { RatingCriterionOption } from "./criteria/rating";
@@ -62,7 +62,7 @@ const criterionOptions = [
   createStringCriterionOption("synopsis"),
   createDurationCriterionOption("duration"),
   RatingCriterionOption,
-  PerformersCriterionOption,
+  GroupPerformersCriterionOption,
   createMandatoryNumberCriterionOption("performer_count"),
   createDateCriterionOption("date"),
   createMandatoryNumberCriterionOption("o_counter", "o_count", {

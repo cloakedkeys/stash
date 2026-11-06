@@ -62,6 +62,12 @@ func (qb *sceneMarkerFilterHandler) criterionHandler() criterionHandler {
 func (qb *sceneMarkerFilterHandler) tagIDCriterionHandler(tagID *string) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if tagID != nil {
+			// an id outside the range of the id columns matches nothing (#2197)
+			if idOutOfRangeValue(*tagID) {
+				f.addWhere("FALSE")
+				return
+			}
+
 			f.addLeftJoin("scene_markers_tags", "", "scene_markers_tags.scene_marker_id = scene_markers.id")
 
 			f.addWhere("(scene_markers.primary_tag_id = ? OR scene_markers_tags.tag_id = ?)", *tagID, *tagID)
@@ -88,6 +94,11 @@ func (qb *sceneMarkerFilterHandler) tagsCriterionHandler(criterion *models.Hiera
 
 			if tags.Modifier == models.CriterionModifierEquals && tags.Depth != nil && *tags.Depth != 0 {
 				f.setError(fmt.Errorf("depth is not supported for equals modifier for marker tag filtering"))
+				return
+			}
+
+			var ok bool
+			if tags, ok = hierarchicalCriterionIDsInRange(f, tags); !ok {
 				return
 			}
 
@@ -127,7 +138,8 @@ func (qb *sceneMarkerFilterHandler) tagsCriterionHandler(criterion *models.Hiera
 				}
 			}
 
-			if len(criterion.Excludes) > 0 {
+			// out-of-range ids may have left the list empty
+			if len(criterion.Excludes) > 0 && len(tags.Excludes) > 0 {
 				valuesClause, err := getHierarchicalValues(ctx, tags.Excludes, tagTable, "tags_relations", "parent_id", "child_id", tags.Depth, true)
 				if err != nil {
 					f.setError(err)

@@ -312,6 +312,11 @@ func (qb *galleryFilterHandler) parentFolderCriterionHandler(folder *models.Hier
 			f.setError(fmt.Errorf("invalid modifier for parent folder criterion: %s", criterion.Modifier))
 		}
 
+		var ok bool
+		if criterion, ok = hierarchicalCriterionIDsInRange(f, criterion); !ok {
+			return
+		}
+
 		if len(criterion.Value) == 0 && len(criterion.Excludes) == 0 {
 			return
 		}

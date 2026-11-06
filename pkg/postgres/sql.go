@@ -1,7 +1,9 @@
 package postgres
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"regexp"
 	"strconv"
@@ -370,6 +372,118 @@ func getMultiCriterionClause(primaryTable, foreignTable, joinTable, primaryFK, f
 	}
 
 	return whereClause, havingClause
+}
+
+// supportedModifier refuses a modifier that a filter doesn't handle, with
+// an error, instead of ignoring it and returning everything. It uses the
+// same error as the gallery parent folder filter (#2235).
+func supportedModifier(f *filterBuilder, name string, m models.CriterionModifier, supported ...models.CriterionModifier) bool {
+	for _, s := range supported {
+		if m == s {
+			return true
+		}
+	}
+	f.setError(fmt.Errorf("invalid modifier for %s criterion: %s", name, m))
+	return false
+}
+
+// idValues converts criterion ids to numbers, so that an id that isn't a
+// number is refused instead of reaching the query text (#2235).
+func idValues(values []string) ([]int, error) {
+	ret := make([]int, len(values))
+	for i, v := range values {
+		id, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid id %q: must be a number", v)
+		}
+		ret[i] = id
+	}
+	return ret, nil
+}
+
+// idOutOfRangeValue reports whether v is a number outside the range of the
+// id columns. No row has such an id (#2197), and it can't be sent as an
+// integer parameter. A value that isn't a number gives false, so that it is
+// still refused.
+func idOutOfRangeValue(v string) bool {
+	id, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return errors.Is(err, strconv.ErrRange)
+	}
+	return id < math.MinInt32 || id > math.MaxInt32
+}
+
+// idValuesInRange leaves out the ids that are outside the range of the id
+// columns, and reports whether it left any out.
+func idValuesInRange(values []string) ([]string, bool) {
+	var ret []string
+	dropped := false
+	for _, v := range values {
+		if idOutOfRangeValue(v) {
+			dropped = true
+			continue
+		}
+		ret = append(ret, v)
+	}
+	return ret, dropped
+}
+
+// criterionIDsInRange makes ids outside the range of the id columns match
+// nothing, as lookups by such an id find nothing (#2197). It leaves them out
+// of value and excludes. When the criterion then can't match anything (an
+// "includes" list of only such ids, or "includes all" or "equals" with one of
+// them) it makes the filter match nothing and returns false, and the caller
+// adds nothing more. Other modifiers are left for the caller to handle or
+// refuse.
+func criterionIDsInRange(f *filterBuilder, modifier models.CriterionModifier, value, excludes *[]string) bool {
+	// "is null" and "not null" don't use the ids
+	if modifier == models.CriterionModifierIsNull || modifier == models.CriterionModifierNotNull {
+		return true
+	}
+
+	// every id is checked first, so that one that isn't a number is refused
+	// even when an out-of-range id means the filter matches nothing (#2245)
+	for _, list := range [][]string{*value, *excludes} {
+		for _, v := range list {
+			if _, err := strconv.ParseInt(v, 10, 64); err != nil && !errors.Is(err, strconv.ErrRange) {
+				f.setError(fmt.Errorf("invalid id %q: must be a number", v))
+				return false
+			}
+		}
+	}
+
+	kept, dropped := idValuesInRange(*value)
+	switch modifier {
+	case models.CriterionModifierIncludes:
+		if dropped && len(kept) == 0 {
+			f.addWhere("FALSE")
+			return false
+		}
+	case models.CriterionModifierIncludesAll, models.CriterionModifierEquals:
+		if dropped {
+			f.addWhere("FALSE")
+			return false
+		}
+	case models.CriterionModifierExcludes:
+	default:
+		return true
+	}
+
+	*value = kept
+	*excludes, _ = idValuesInRange(*excludes)
+	return true
+}
+
+// multiCriterionIDsInRange is criterionIDsInRange for a copy of c.
+func multiCriterionIDsInRange(f *filterBuilder, c models.MultiCriterionInput) (models.MultiCriterionInput, bool) {
+	ok := criterionIDsInRange(f, c.Modifier, &c.Value, &c.Excludes)
+	return c, ok
+}
+
+// hierarchicalCriterionIDsInRange is criterionIDsInRange for a copy of c.
+func hierarchicalCriterionIDsInRange(f *filterBuilder, c models.HierarchicalMultiCriterionInput) (models.HierarchicalMultiCriterionInput, bool) {
+	ok := criterionIDsInRange(f, c.Modifier, &c.Value, &c.Excludes)
+	return c, ok
 }
 
 func getCountCriterionClause(primaryTable, joinTable, primaryFK string, criterion models.IntCriterionInput) (string, []interface{}) {

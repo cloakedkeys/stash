@@ -99,11 +99,18 @@ const PerformersFilter: React.FC<IPerformersFilter> = ({
   criterion,
   setCriterion,
 }) => {
+  // "only" isn't offered where the filter refuses it, as in the groups
+  // list (#2235)
+  const canIncludeOnly = criterion
+    .modifierCriterionOption()
+    .modifierOptions.includes(CriterionModifier.Equals);
+
   return (
     <ObjectsFilter
       criterion={criterion}
       setCriterion={setCriterion}
       useResults={usePerformerQuery}
+      canIncludeOnly={canIncludeOnly}
     />
   );
 };

@@ -375,6 +375,33 @@ func getMultiCriterionClause(primaryTable, foreignTable, joinTable, primaryFK, f
 	return whereClause, havingClause
 }
 
+// supportedModifier refuses a modifier that a filter doesn't handle, with
+// an error, instead of ignoring it and returning everything. It uses the
+// same error as the gallery parent folder filter (#2235).
+func supportedModifier(f *filterBuilder, name string, m models.CriterionModifier, supported ...models.CriterionModifier) bool {
+	for _, s := range supported {
+		if m == s {
+			return true
+		}
+	}
+	f.setError(fmt.Errorf("invalid modifier for %s criterion: %s", name, m))
+	return false
+}
+
+// idValues converts criterion ids to numbers, so that an id that isn't a
+// number is refused instead of reaching the query text (#2235).
+func idValues(values []string) ([]int, error) {
+	ret := make([]int, len(values))
+	for i, v := range values {
+		id, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid id %q: must be a number", v)
+		}
+		ret[i] = id
+	}
+	return ret, nil
+}
+
 func getCountCriterionClause(primaryTable, joinTable, primaryFK string, criterion models.IntCriterionInput) (string, []interface{}) {
 	lhs := fmt.Sprintf("(SELECT COUNT(*) FROM %s s WHERE s.%s = %s.id)", joinTable, primaryFK, primaryTable)
 	return getIntCriterionWhereClause(lhs, criterion)
