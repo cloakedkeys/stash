@@ -214,6 +214,20 @@ func checkSQLiteVersion(source *sqlx.Tx) error {
 	case version > want:
 		return fmt.Errorf("the SQLite database is at version %d, which is newer than this build's %d. Use a build of Stash at least as new as the one that last opened it", version, want)
 	}
+
+	// a follow-up step that didn't finish runs when Stash next opens it (#2221)
+	var pending int
+	if err := source.Get(&pending, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?", pendingPostMigrationsTable); err != nil {
+		return fmt.Errorf("can't read this as a Stash SQLite database: %w", err)
+	}
+	if pending > 0 {
+		if err := source.Get(&pending, "SELECT count(*) FROM "+pendingPostMigrationsTable); err != nil {
+			return fmt.Errorf("can't read this as a Stash SQLite database: %w", err)
+		}
+	}
+	if pending > 0 {
+		return errors.New("an upgrade of the SQLite database didn't finish. Start this build of Stash on the SQLite database once to finish it, stop Stash, then run this again")
+	}
 	return nil
 }
 
@@ -337,7 +351,7 @@ func loadTargetColumns(ctx context.Context, conn *pgx.Conn) (map[string][]copyCo
 
 func loadSQLiteColumns(source *sqlx.Tx) (map[string]map[string]bool, error) {
 	var tables []string
-	if err := source.Select(&tables, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT IN (?, ?)", sqliteMigrationsTable, database.AppVersionTable); err != nil {
+	if err := source.Select(&tables, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT IN (?, ?, ?)", sqliteMigrationsTable, database.AppVersionTable, pendingPostMigrationsTable); err != nil {
 		return nil, fmt.Errorf("reading SQLite tables: %w", err)
 	}
 
