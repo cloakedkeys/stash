@@ -180,8 +180,12 @@ func (m *schema42Migrator) migratePerformersDisam(ctx context.Context) error {
 		gotSome := false
 
 		if err := m.withTxn(ctx, func(tx *sqlx.Tx) error {
+			// A performer the pass above gave a number shares its name with
+			// an earlier one, so splitting it would give it the same name and
+			// disambiguation as the earlier one; it keeps its name as it is
+			// (#2241).
 			query := `
-SELECT id, name FROM performers WHERE performers.name like '% (%)'`
+SELECT id, name FROM performers WHERE performers.name like '% (%)' AND performers.disambiguation IS NULL`
 
 			if lastID != 0 {
 				query += fmt.Sprintf(" AND `id` > %d ", lastID)
