@@ -1050,7 +1050,8 @@ func (qb *performerFilterHandler) appearsWithCriterionHandler(performers *models
 			for _, id := range includeIDs {
 				args = append(args, id)
 			}
-			f.addWith("performer(id) AS (VALUES "+strings.Repeat("(?),", len(includeIDs)-1)+"(?))", args...)
+			// PostgreSQL reads a bare VALUES value as text, so the type is given
+			f.addWith("performer(id) AS (VALUES "+strings.Repeat("(CAST(? AS INTEGER)),", len(includeIDs)-1)+"(CAST(? AS INTEGER)))", args...)
 
 			templStr := `SELECT {primaryTable}2.performer_id FROM {primaryTable}
 			INNER JOIN {primaryTable} AS {primaryTable}2 ON {primaryTable}.{primaryFK} = {primaryTable}2.{primaryFK}
