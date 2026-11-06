@@ -353,6 +353,17 @@ func (r *joinRepository) insertOrIgnore(ctx context.Context, id int, foreignIDs 
 }
 
 func (r *joinRepository) destroyJoins(ctx context.Context, id int, foreignIDs ...int) error {
+	// ids out of range have no links to remove, and can't be sent as parameters
+	if idOutOfRange(id) {
+		return nil
+	}
+	foreignIDs = idsInRange(foreignIDs)
+
+	// removing nothing does nothing; IN () isn't valid SQL
+	if len(foreignIDs) == 0 {
+		return nil
+	}
+
 	stmt := fmt.Sprintf("DELETE FROM %s WHERE %s = ? AND %s IN %s", r.tableName, r.idColumn, r.fkColumn, getInBinding(len(foreignIDs)))
 
 	args := make([]interface{}, len(foreignIDs)+1)

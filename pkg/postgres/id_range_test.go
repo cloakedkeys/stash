@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -126,6 +127,26 @@ func TestIDOutOfRangeIsNotFound(t *testing.T) {
 			v29, err := db.SceneMarker().GetTagIDs(ctx, id)
 			add("marker tag ids", v29, err)
 			add("group destroy", nil, db.Group().Destroy(ctx, id))
+
+			// removing images: from a gallery that can't exist, and an image that can't
+			// exist from a real gallery, which keeps its image
+			add("gallery remove images", nil, db.Gallery().RemoveImages(ctx, id, id))
+			var galleryID, imageID int
+			if err := dbWrapper.Get(ctx, &galleryID, "INSERT INTO galleries (title, created_at, updated_at) VALUES ('gallery', NOW(), NOW()) RETURNING id"); err != nil {
+				return err
+			}
+			if err := dbWrapper.Get(ctx, &imageID, "INSERT INTO images (title, created_at, updated_at) VALUES ('image', NOW(), NOW()) RETURNING id"); err != nil {
+				return err
+			}
+			if err := db.Gallery().AddImages(ctx, galleryID, imageID); err != nil {
+				return err
+			}
+			add("remove image from gallery", nil, db.Gallery().RemoveImages(ctx, galleryID, id))
+			kept, err := db.Gallery().GetImageIDs(ctx, galleryID)
+			if err == nil && len(kept) != 1 {
+				err = fmt.Errorf("gallery has images %v, want only %d", kept, imageID)
+			}
+			add("gallery keeps its image", nil, err)
 
 			// the transaction can still be used
 			var one int
