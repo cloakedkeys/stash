@@ -110,6 +110,13 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 
 	err = s.runMigrations(ctx, progress)
 
+	if errors.Is(err, database.ErrUpgradeUnfinishedElsewhere) {
+		// this one changed nothing, and its backup may be older than what the
+		// other Stash did, so it isn't put back (#2213)
+		s.removeBackup(backupPath, backedUp)
+		return fmt.Errorf("error performing migration: %w", err)
+	}
+
 	if err != nil {
 		errStr := fmt.Sprintf("error performing migration: %s", err)
 
@@ -121,12 +128,7 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 		return errors.New(restoreMessage(db.RestoreFromBackup(backupPath), errStr))
 	}
 
-	// if no backup path was provided, then delete the created backup
-	if s.BackupPath == "" && backedUp {
-		if err := os.Remove(backupPath); err != nil {
-			logger.Warnf("error removing unwanted database backup (%s): %s", backupPath, err.Error())
-		}
-	}
+	s.removeBackup(backupPath, backedUp)
 
 	// reinitialise the database
 	if err := db.ReInitialise(); err != nil {
@@ -152,6 +154,16 @@ func restoreMessage(restoreErr error, errStr string) string {
 		return fmt.Sprintf("ERROR: the database was restored from the backup after the migration failed, but it couldn't be opened again. Restart Stash: %s\n%s", restoreErr.Error(), errStr)
 	default:
 		return fmt.Sprintf("ERROR: unable to restore database from backup after migration failure: %s\n%s", restoreErr.Error(), errStr)
+	}
+}
+
+// removeBackup deletes the backup made before the upgrade, unless the backup
+// path was chosen.
+func (s *MigrateJob) removeBackup(backupPath string, backedUp bool) {
+	if s.BackupPath == "" && backedUp {
+		if err := os.Remove(backupPath); err != nil {
+			logger.Warnf("error removing unwanted database backup (%s): %s", backupPath, err.Error())
+		}
 	}
 }
 
@@ -199,7 +211,7 @@ func (s *MigrateJob) runMigrations(ctx context.Context, progress *job.Progress) 
 		})
 
 		if err != nil {
-			return fmt.Errorf("error running migration for schema %d: %s", currentSchemaVersion+1, err)
+			return fmt.Errorf("error running migration for schema %d: %w", currentSchemaVersion+1, err)
 		}
 
 		progress.Increment()
