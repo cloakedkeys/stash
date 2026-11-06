@@ -18,7 +18,7 @@ import (
 // items have more than one tag under the same tag: each item still counts
 // once.
 func TestTagQueryHierarchicalCounts(t *testing.T) {
-	withRollbackTxn(func(ctx context.Context) error {
+	runRollbackTxn(t, func(ctx context.Context) error {
 		tqb := db.Tag()
 		names := []string{"A", "B", "C", "D", "E", "F", "G"}
 		tag := map[string]int{}

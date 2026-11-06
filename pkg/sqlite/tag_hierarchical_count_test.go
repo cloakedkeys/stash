@@ -18,7 +18,7 @@ func tagCountTestContext(t *testing.T) context.Context {
 	// The tables and indexes match the real schema.
 	_, err = db.Exec(`CREATE TABLE tags (id INTEGER PRIMARY KEY);
 CREATE TABLE tags_relations (parent_id INTEGER, child_id INTEGER, PRIMARY KEY(parent_id, child_id));
-CREATE INDEX index_tags_relations_on_child_id ON tags_relations (child_id);
+CREATE INDEX index_tags_relations_on_child_id ON tags_relations (child_id, parent_id);
 CREATE TABLE scenes_tags (scene_id INTEGER, tag_id INTEGER, PRIMARY KEY(scene_id, tag_id));
 CREATE INDEX index_scenes_tags_on_tag_id ON scenes_tags (tag_id);
 CREATE TABLE scene_markers (id INTEGER PRIMARY KEY, primary_tag_id INTEGER);
