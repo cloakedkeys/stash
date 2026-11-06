@@ -22,6 +22,11 @@ type repository struct {
 }
 
 func (r *repository) getAll(ctx context.Context, id int, f func(rows *sqlx.Rows) error) error {
+	// no row has an id out of range, and it can't be sent as a parameter
+	if idOutOfRange(id) {
+		return nil
+	}
+
 	stmt := fmt.Sprintf("SELECT * FROM %s WHERE %s = ?", r.tableName, r.idColumn)
 	return r.queryFunc(ctx, stmt, []interface{}{id}, false, f)
 }
@@ -43,6 +48,10 @@ func (r *repository) destroyExisting(ctx context.Context, ids []int) error {
 
 func (r *repository) destroy(ctx context.Context, ids []int) error {
 	for _, id := range ids {
+		// no row has an id out of range
+		if idOutOfRange(id) {
+			continue
+		}
 		stmt := fmt.Sprintf("DELETE FROM %s WHERE %s = ?", r.tableName, r.idColumn)
 		if _, err := dbWrapper.Exec(ctx, stmt, id); err != nil {
 			return err
@@ -53,6 +62,10 @@ func (r *repository) destroy(ctx context.Context, ids []int) error {
 }
 
 func (r *repository) exists(ctx context.Context, id int) (bool, error) {
+	if idOutOfRange(id) {
+		return false, nil
+	}
+
 	stmt := fmt.Sprintf("SELECT %s FROM %s WHERE %s = ? LIMIT 1", r.idColumn, r.tableName, r.idColumn)
 	stmt = r.buildCountQuery(stmt)
 
@@ -298,6 +311,10 @@ type joinRepository struct {
 }
 
 func (r *joinRepository) getIDs(ctx context.Context, id int) ([]int, error) {
+	if idOutOfRange(id) {
+		return nil, nil
+	}
+
 	var joinStr string
 	if r.foreignTable != "" {
 		joinStr = fmt.Sprintf(" INNER JOIN %s ON %[1]s.id = %s.%s", r.foreignTable, r.tableName, r.fkColumn)
@@ -417,6 +434,10 @@ type stringRepository struct {
 }
 
 func (r *stringRepository) get(ctx context.Context, id int) ([]string, error) {
+	if idOutOfRange(id) {
+		return nil, nil
+	}
+
 	query := fmt.Sprintf("SELECT %s from %s WHERE %s = ?", r.stringColumn, r.tableName, r.idColumn)
 	var ret []string
 	err := r.queryFunc(ctx, query, []interface{}{id}, false, func(rows *sqlx.Rows) error {
@@ -482,6 +503,10 @@ func (s *stashIDs) New() interface{} {
 }
 
 func (r *stashIDRepository) get(ctx context.Context, id int) ([]models.StashID, error) {
+	if idOutOfRange(id) {
+		return nil, nil
+	}
+
 	query := fmt.Sprintf("SELECT stash_id, endpoint, updated_at from %s WHERE %s = ?", r.tableName, r.idColumn)
 	var ret stashIDs
 	err := r.queryFunc(ctx, query, []interface{}{id}, false, func(rows *sqlx.Rows) error {
@@ -524,26 +549,31 @@ func (r *filesRepository) getMany(ctx context.Context, ids []int, primaryOnly bo
 		primaryClause = ` AND "primary" = true`
 	}
 
-	query := fmt.Sprintf(`SELECT %s as id, file_id, "primary" from %s WHERE %[1]s IN %[3]s%s`, r.idColumn, r.tableName, getInBinding(len(ids)), primaryClause)
-
-	idi := make([]interface{}, len(ids))
-	for i, id := range ids {
-		idi[i] = id
-	}
+	// ids out of range have no files, and can't be sent as parameters
+	inRange := idsInRange(ids)
 
 	var fileRows []relatedFileRow
-	if err := r.queryFunc(ctx, query, idi, false, func(rows *sqlx.Rows) error {
-		var f relatedFileRow
+	if len(inRange) > 0 {
+		query := fmt.Sprintf(`SELECT %s as id, file_id, "primary" from %s WHERE %[1]s IN %[3]s%s`, r.idColumn, r.tableName, getInBinding(len(inRange)), primaryClause)
 
-		if err := rows.StructScan(&f); err != nil {
-			return err
+		idi := make([]interface{}, len(inRange))
+		for i, id := range inRange {
+			idi[i] = id
 		}
 
-		fileRows = append(fileRows, f)
+		if err := r.queryFunc(ctx, query, idi, false, func(rows *sqlx.Rows) error {
+			var f relatedFileRow
 
-		return nil
-	}); err != nil {
-		return nil, err
+			if err := rows.StructScan(&f); err != nil {
+				return err
+			}
+
+			fileRows = append(fileRows, f)
+
+			return nil
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	ret := make([][]models.FileID, len(ids))
@@ -567,6 +597,10 @@ func (r *filesRepository) getMany(ctx context.Context, ids []int, primaryOnly bo
 }
 
 func (r *filesRepository) get(ctx context.Context, id int) ([]models.FileID, error) {
+	if idOutOfRange(id) {
+		return nil, nil
+	}
+
 	query := fmt.Sprintf(`SELECT file_id, "primary" from %s WHERE %s = ?`, r.tableName, r.idColumn)
 
 	type relatedFile struct {
