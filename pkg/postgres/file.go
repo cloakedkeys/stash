@@ -865,7 +865,7 @@ func (qb *FileStore) Find(ctx context.Context, ids ...models.FileID) ([]models.F
 }
 
 func (qb *FileStore) find(ctx context.Context, id models.FileID) (models.File, error) {
-	q := qb.selectDataset().Where(qb.tableMgr.byID(id))
+	q := qb.selectDataset().Prepared(true).Where(qb.tableMgr.byID(id))
 
 	ret, err := qb.get(ctx, q)
 	if errors.Is(err, sql.ErrNoRows) {

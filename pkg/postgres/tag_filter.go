@@ -278,17 +278,36 @@ func (qb *tagFilterHandler) hierarchicalCountHandlerOnCol(input *models.Hierarch
 		}
 
 		if input.Depth != nil {
-			cteAlias := joinTable + "_desc"
-			qb.addHierarchicalCountCTE(f, cteAlias, *input.Depth)
-			f.addLeftJoin(cteAlias, "", fmt.Sprintf("%s.root_id = tags.id", cteAlias))
-			f.addLeftJoin(joinTable, "", fmt.Sprintf("%[1]s.%[2]s = %[3]s.descendant_id", joinTable, tagCol, cteAlias))
-		} else {
-			f.addLeftJoin(joinTable, "", fmt.Sprintf("%s.%s = tags.id", joinTable, tagCol))
+			items := fmt.Sprintf("SELECT %s AS tag_id, %s AS item_id FROM %s", tagCol, entityIDCol, joinTable)
+			qb.addHierarchicalCount(f, joinTable, *input.Depth, items, intInput)
+			return
 		}
 
+		f.addLeftJoin(joinTable, "", fmt.Sprintf("%s.%s = tags.id", joinTable, tagCol))
 		clause, args := getIntCriterionWhereClause(fmt.Sprintf("count(distinct %s.%s)", joinTable, entityIDCol), intInput)
 		f.addHaving(clause, args...)
 	}
+}
+
+// addHierarchicalCount filters on the number of items that have a tag or one
+// of its sub-tags down to depth. items selects the tag_id and item_id pairs.
+//
+// The items of all tags are counted in one table, joined on the tag. An item
+// with several tags under the same tag, or a tag reached on two paths, counts
+// once. Joining the tag's sub-tags and their items into the tag query instead
+// looked up the items of a tag once for each of its parents (#2180).
+func (qb *tagFilterHandler) addHierarchicalCount(f *filterBuilder, name string, depth int, items string, intInput models.IntCriterionInput) {
+	cteAlias := name + "_desc"
+	countAlias := name + "_count"
+	qb.addHierarchicalCountCTE(f, cteAlias, depth)
+	f.addLeftJoin(fmt.Sprintf(`(SELECT %[1]s.root_id, COUNT(DISTINCT items.item_id) AS item_count
+		FROM (%[2]s) AS items
+		INNER JOIN %[1]s ON %[1]s.descendant_id = items.tag_id
+		GROUP BY %[1]s.root_id)`, cteAlias, items), countAlias, countAlias+".root_id = tags.id")
+
+	// tags without items aren't in the joined table
+	clause, args := getIntCriterionWhereClause(fmt.Sprintf("COALESCE(%s.item_count, 0)", countAlias), intInput)
+	f.addWhere(clause, args...)
 }
 
 func (qb *tagFilterHandler) sceneCountCriterionHandler(sceneCount *models.HierarchicalCountInput) criterionHandlerFunc {
@@ -332,16 +351,14 @@ func (qb *tagFilterHandler) markerCountCriterionHandler(markerCount *models.Hier
 		}
 
 		if markerCount.Depth != nil {
-			cteAlias := "scene_markers_desc"
-			qb.addHierarchicalCountCTE(f, cteAlias, *markerCount.Depth)
-			f.addLeftJoin(cteAlias, "", fmt.Sprintf("%s.root_id = tags.id", cteAlias))
-			f.addLeftJoin("scene_markers_tags", "", fmt.Sprintf("scene_markers_tags.tag_id = %s.descendant_id", cteAlias))
-			f.addLeftJoin("scene_markers", "", "scene_markers_tags.scene_marker_id = scene_markers.id OR scene_markers.primary_tag_id = "+cteAlias+".descendant_id")
-		} else {
-			f.addLeftJoin("scene_markers_tags", "", "scene_markers_tags.tag_id = tags.id")
-			f.addLeftJoin("scene_markers", "", "scene_markers_tags.scene_marker_id = scene_markers.id OR scene_markers.primary_tag_id = tags.id")
+			// a marker has its primary tag and its other tags
+			items := "SELECT tag_id, scene_marker_id AS item_id FROM scene_markers_tags UNION ALL SELECT primary_tag_id, id FROM scene_markers"
+			qb.addHierarchicalCount(f, "scene_markers", *markerCount.Depth, items, intInput)
+			return
 		}
 
+		f.addLeftJoin("scene_markers_tags", "", "scene_markers_tags.tag_id = tags.id")
+		f.addLeftJoin("scene_markers", "", "scene_markers_tags.scene_marker_id = scene_markers.id OR scene_markers.primary_tag_id = tags.id")
 		clause, args := getIntCriterionWhereClause("count(distinct scene_markers.id)", intInput)
 		f.addHaving(clause, args...)
 	}
