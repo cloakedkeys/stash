@@ -64,3 +64,39 @@ func TestMigrateJobKeepsLockUntilRestored(t *testing.T) {
 		t.Error("the upgrade lock should be released once the job has finished")
 	}
 }
+
+// panicTestMigrator panics while upgrading.
+type panicTestMigrator struct{ lockTestMigrator }
+
+func (m *panicTestMigrator) RunMigration(context.Context, uint) error {
+	panic("the migration panicked")
+}
+
+type panicTestDatabase struct{ lockTestDatabase }
+
+func (d *panicTestDatabase) NewMigrator() (database.MigrateStore, error) {
+	d.locked = true
+	return &panicTestMigrator{lockTestMigrator{guardTestMigrator: guardTestMigrator{db: &d.guardTestDatabase}, db: &d.lockTestDatabase}}, nil
+}
+
+// The job manager recovers a panic in a job and Stash carries on, so a panic
+// during the upgrade must release the upgrade lock, or every other Stash on
+// the database, and a retry of the upgrade, would wait for it for good
+// (review of #2232).
+func TestMigrateJobPanicReleasesLock(t *testing.T) {
+	dir := t.TempDir()
+	db := &panicTestDatabase{lockTestDatabase{guardTestDatabase: guardTestDatabase{dir: dir}}}
+	j := MigrateJob{Config: guardTestConfig{dir: dir}, Database: db}
+
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("the upgrade should panic, as the test migration does")
+			}
+		}()
+		_ = j.Execute(context.Background(), nil)
+	}()
+	if db.locked {
+		t.Error("the upgrade lock is still held after the panic")
+	}
+}

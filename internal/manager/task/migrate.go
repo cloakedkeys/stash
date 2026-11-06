@@ -199,24 +199,28 @@ type upgradeLockKeeper interface {
 
 // runMigrations upgrades the database. The returned function releases the
 // migrator's upgrade lock, which it keeps after closing; it can be called
-// more than once.
+// more than once. If the upgrade panics, the lock isn't kept: Close releases
+// it, so no other Stash, and no retry, waits for it for good (review of
+// #2232).
 func (s *MigrateJob) runMigrations(ctx context.Context, progress *job.Progress) (releaseLock func(), err error) {
 	releaseLock = func() {}
 	m, err := s.Database.NewMigrator()
 	if err != nil {
 		return releaseLock, err
 	}
-
 	defer m.Close()
-	if k, ok := m.(upgradeLockKeeper); ok {
-		// runs before Close
-		defer func() {
-			var once sync.Once
-			release := k.KeepUpgradeLock()
-			releaseLock = func() { once.Do(release) }
-		}()
-	}
 
+	err = s.migrate(ctx, progress, m)
+
+	if k, ok := m.(upgradeLockKeeper); ok {
+		var once sync.Once
+		release := k.KeepUpgradeLock()
+		releaseLock = func() { once.Do(release) }
+	}
+	return releaseLock, err
+}
+
+func (s *MigrateJob) migrate(ctx context.Context, progress *job.Progress, m database.MigrateStore) (err error) {
 	logger.Info("Running migrations")
 
 	for {
@@ -233,7 +237,7 @@ func (s *MigrateJob) runMigrations(ctx context.Context, progress *job.Progress) 
 		})
 
 		if err != nil {
-			return releaseLock, fmt.Errorf("error running migration for schema %d: %w", currentSchemaVersion+1, err)
+			return fmt.Errorf("error running migration for schema %d: %w", currentSchemaVersion+1, err)
 		}
 
 		progress.Increment()
@@ -246,8 +250,8 @@ func (s *MigrateJob) runMigrations(ctx context.Context, progress *job.Progress) 
 	})
 
 	if err != nil {
-		return releaseLock, fmt.Errorf("error optimising database: %s", err)
+		return fmt.Errorf("error optimising database: %s", err)
 	}
 
-	return releaseLock, nil
+	return nil
 }
