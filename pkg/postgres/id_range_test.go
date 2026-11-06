@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -95,6 +96,58 @@ func TestIDOutOfRangeIsNotFound(t *testing.T) {
 			add("aliases", v18, err)
 			add("destroy", nil, db.Scene().Destroy(ctx, id))
 
+			// lookups through the older repository code (#2206)
+			v19, err := db.Scene().GetTagIDs(ctx, id)
+			add("scene tag ids", v19, err)
+			v20, err := db.Scene().GetPerformerIDs(ctx, id)
+			add("scene performer ids", v20, err)
+			v21, err := db.Scene().GetGalleryIDs(ctx, id)
+			add("scene gallery ids", v21, err)
+			v22, err := db.Scene().GetStashIDs(ctx, id)
+			add("scene stash ids", v22, err)
+			v23, err := db.Scene().GetGroups(ctx, id)
+			add("scene groups", v23, err)
+			v24, err := db.Scene().GetFiles(ctx, id)
+			add("scene files", v24, err)
+			v25, err := db.Scene().GetManyFileIDs(ctx, []int{id})
+			if err == nil && len(v25) != 1 {
+				err = errors.New("want one result for the one id")
+			}
+			if err == nil {
+				add("scene many file ids", v25[0], err)
+			} else {
+				add("scene many file ids", nil, err)
+			}
+			v26, err := db.Image().GetTagIDs(ctx, id)
+			add("image tag ids", v26, err)
+			v27, err := db.Gallery().GetImageIDs(ctx, id)
+			add("gallery image ids", v27, err)
+			v28, err := db.Tag().GetAliases(ctx, id)
+			add("tag aliases", v28, err)
+			v29, err := db.SceneMarker().GetTagIDs(ctx, id)
+			add("marker tag ids", v29, err)
+			add("group destroy", nil, db.Group().Destroy(ctx, id))
+
+			// removing images: from a gallery that can't exist, and an image that can't
+			// exist from a real gallery, which keeps its image
+			add("gallery remove images", nil, db.Gallery().RemoveImages(ctx, id, id))
+			var galleryID, imageID int
+			if err := dbWrapper.Get(ctx, &galleryID, "INSERT INTO galleries (title, created_at, updated_at) VALUES ('gallery', NOW(), NOW()) RETURNING id"); err != nil {
+				return err
+			}
+			if err := dbWrapper.Get(ctx, &imageID, "INSERT INTO images (title, created_at, updated_at) VALUES ('image', NOW(), NOW()) RETURNING id"); err != nil {
+				return err
+			}
+			if err := db.Gallery().AddImages(ctx, galleryID, imageID); err != nil {
+				return err
+			}
+			add("remove image from gallery", nil, db.Gallery().RemoveImages(ctx, galleryID, id))
+			kept, err := db.Gallery().GetImageIDs(ctx, galleryID)
+			if err == nil && len(kept) != 1 {
+				err = fmt.Errorf("gallery has images %v, want only %d", kept, imageID)
+			}
+			add("gallery keeps its image", nil, err)
+
 			// the transaction can still be used
 			var one int
 			after = dbWrapper.Get(ctx, &one, "SELECT 1")
@@ -105,6 +158,10 @@ func TestIDOutOfRangeIsNotFound(t *testing.T) {
 			if r.name == "destroy" {
 				var notFound *NotFoundError
 				assert.True(t, errors.As(r.err, &notFound), "%d: destroy: %v", id, r.err)
+				continue
+			}
+			if r.name == "group destroy" {
+				assert.ErrorContains(t, r.err, "does not exist", "%d: group destroy", id)
 				continue
 			}
 			assert.NoError(t, r.err, "%d: %s", id, r.name)
