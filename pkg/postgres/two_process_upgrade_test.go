@@ -26,7 +26,7 @@ func upgradeAsJob(ctx context.Context, m *Migrator) error {
 
 // startSecondUpgrade starts a second Stash's upgrade of dsn, which has read
 // the database's version already, and checks that it waits for the first.
-func startSecondUpgrade(t *testing.T, ctx context.Context, dsn string) (*Migrator, chan error) {
+func startSecondUpgrade(ctx context.Context, t *testing.T, dsn string) (*Migrator, chan error) {
 	t.Helper()
 	second := NewDatabase()
 	second.dbPath = dsn
@@ -69,7 +69,7 @@ func TestSecondUpgradeWaitsForFirst(t *testing.T) {
 	defer m.Close()
 	require.NoError(t, m.RunMigration(ctx, 1))
 
-	second, done := startSecondUpgrade(t, ctx, dsn)
+	second, done := startSecondUpgrade(ctx, t, dsn)
 
 	require.NoError(t, upgradeAsJob(ctx, m))
 	m.Close()
@@ -96,7 +96,7 @@ func TestSecondUpgradeStopsWhenFirstStopsPartWay(t *testing.T) {
 	defer m.Close()
 	require.NoError(t, m.RunMigration(ctx, 1))
 
-	_, done := startSecondUpgrade(t, ctx, dsn)
+	_, done := startSecondUpgrade(ctx, t, dsn)
 
 	const stoppedAt = 5
 	for v := uint(2); v <= stoppedAt; v++ {
