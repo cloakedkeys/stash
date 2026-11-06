@@ -238,11 +238,12 @@ func (qb *tagFilterHandler) isMissingCriterionHandler(isMissing *string) criteri
 // depth >= 0 limits the recursion to that many levels from the root tag.
 func (qb *tagFilterHandler) addHierarchicalCountCTE(f *filterBuilder, cteAlias string, depth int) {
 	if depth < 0 {
-		// unlimited recursion — no depth tracking needed
+		// unlimited recursion — no depth tracking needed. UNION drops a pair
+		// that was already found, so a loop of parents ends (#2208).
 		f.addRecursiveWith(fmt.Sprintf(
 			`%[1]s(root_id, descendant_id) AS (
 				SELECT id, id FROM tags
-				UNION ALL
+				UNION
 				SELECT td.root_id, tr.child_id
 				FROM tags_relations tr
 				INNER JOIN %[1]s td ON td.descendant_id = tr.parent_id

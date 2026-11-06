@@ -58,14 +58,18 @@ func (h hierarchicalRelationshipHandler) childrenAlias() string {
 
 func (h hierarchicalRelationshipHandler) valueQuery(value []string, depth int, alias string, isParents bool) string {
 	var depthCondition string
+	// With no depth limit the depth stays the same, so UNION drops a row it
+	// has already found and a loop of parents ends (#2208).
+	nextDepth := "depth"
 	if depth != -1 {
 		depthCondition = fmt.Sprintf("WHERE depth < %d", depth)
+		nextDepth = "depth + 1"
 	}
 
 	queryTempl := `{alias} AS (
 SELECT {root_id_col} AS root_id, {item_id_col} AS item_id, 0 AS depth FROM {relation_table} WHERE {root_id_col} IN` + getInBinding(len(value)) + `
 UNION
-SELECT root_id, {item_id_col}, depth + 1 FROM {relation_table} INNER JOIN {alias} ON item_id = {root_id_col} ` + depthCondition + `
+SELECT root_id, {item_id_col}, ` + nextDepth + ` FROM {relation_table} INNER JOIN {alias} ON item_id = {root_id_col} ` + depthCondition + `
 )`
 
 	var queryMap utils.StrFormatMap
