@@ -22,6 +22,8 @@ type Anonymiser struct {
 
 func NewAnonymiser(db *Database, outPath string) (*sqlite.Anonymiser, error) {
 	newDB := &Anonymiser{Database: sqlite.NewDatabase(), sourceDB: db}
+	// a new file of its own, so building it leaves no upgrade lock file (#2213)
+	newDB.SetPrivateFile()
 	if err := newDB.Open(context.Background(), outPath); err != nil {
 		return nil, fmt.Errorf("opening %s: %w", outPath, err)
 	}
@@ -34,12 +36,29 @@ func (db *Anonymiser) GetSqliteDatabase() *sqlite.Database {
 }
 
 func (db *Anonymiser) FetchAll(ctx context.Context) error {
-	var sqlite_dialect = goqu.Dialect("sqlite3")
-
 	ctx, err := db.Begin(ctx, true)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
+
+	if err := db.fetchAll(ctx); err != nil {
+		// left open, the transaction would keep the new file open, so it
+		// couldn't be removed (review of #2247)
+		_ = db.Rollback(ctx)
+		return err
+	}
+
+	if err := db.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	return nil
+}
+
+// fetchAll copies every table into the new database, in the transaction
+// FetchAll began.
+func (db *Anonymiser) fetchAll(ctx context.Context) error {
+	var sqlite_dialect = goqu.Dialect("sqlite3")
 
 	for _, table := range []exp.IdentifierExpression{
 		goqu.I(audioFileTable),
@@ -195,10 +214,6 @@ func (db *Anonymiser) FetchAll(ctx context.Context) error {
 			// Move to the next batch
 			offset += batchSize
 		}
-	}
-
-	if err := db.Commit(ctx); err != nil {
-		return fmt.Errorf("commit: %w", err)
 	}
 
 	return nil

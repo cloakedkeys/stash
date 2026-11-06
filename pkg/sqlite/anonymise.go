@@ -56,6 +56,9 @@ func PassAnonymiser(sourceDB ForeignAnonymiser) (*Anonymiser, error) {
 	db.writeDB.SetConnMaxIdleTime(dbConnTimeout)
 
 	if err := sourceDB.FetchAll(context.Background()); err != nil {
+		// as Anonymise does when it fails, so no half-made export is left,
+		// still open (review of #2247)
+		_ = db.Remove()
 		return nil, fmt.Errorf("fetching postgres: %w", err)
 	}
 
