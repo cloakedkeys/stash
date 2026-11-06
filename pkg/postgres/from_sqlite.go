@@ -307,15 +307,15 @@ func isCustomFieldType(table, column string) bool {
 	return column == "type" && strings.HasSuffix(table, customFieldsSuffix)
 }
 
-// loadTargetColumns leaves out the migrations table and the version stamp, which
-// belong to each database rather than to the library.
+// loadTargetColumns leaves out the migrations tables and the version stamp,
+// which belong to each database rather than to the library.
 func loadTargetColumns(ctx context.Context, conn *pgx.Conn) (map[string][]copyColumn, error) {
 	rows, err := conn.Query(ctx, `SELECT c.table_name, c.column_name, c.data_type, COALESCE(c.character_maximum_length, 0), c.is_nullable = 'YES',
 		c.is_identity = 'YES' OR COALESCE(c.column_default, '') LIKE 'nextval(%'
 		FROM information_schema.columns c
 		JOIN pg_tables t ON t.schemaname = c.table_schema AND t.tablename = c.table_name
-		WHERE c.table_schema = current_schema() AND c.table_name NOT IN ($1, $2) AND c.is_generated = 'NEVER'
-		ORDER BY c.table_name, c.ordinal_position`, sqliteMigrationsTable, database.AppVersionTable)
+		WHERE c.table_schema = current_schema() AND c.table_name NOT IN ($1, $2, $3) AND c.is_generated = 'NEVER'
+		ORDER BY c.table_name, c.ordinal_position`, sqliteMigrationsTable, database.AppVersionTable, pendingPostMigrationsTable)
 	if err != nil {
 		return nil, fmt.Errorf("reading PostgreSQL tables: %w", err)
 	}
