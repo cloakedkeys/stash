@@ -223,7 +223,22 @@ func (qb queryBuilder) executeFind(ctx context.Context) ([]int, int, error) {
 	}
 
 	pagination := getPaginationSQL(qb.pagination)
-	return qb.repository.executeFindQuery(ctx, body, qb.allArgs(), pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
+	ids, count, err := qb.repository.executeFindQuery(ctx, body, qb.allArgs(), pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// The total comes back on each row of the page, so a page past the last
+	// result has none. Count separately then, so the total matches SQLite's.
+	// An empty first page really does mean no results.
+	if len(ids) == 0 && qb.pagination != nil && qb.pagination.perPage > 0 && qb.pagination.page > 1 {
+		count, err = qb.executeCount(ctx)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+
+	return ids, count, nil
 }
 
 func (qb queryBuilder) executeCount(ctx context.Context) (int, error) {
