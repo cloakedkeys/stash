@@ -2,8 +2,10 @@ package tag
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/jsonschema"
 	"github.com/stashapp/stash/pkg/utils"
@@ -12,6 +14,7 @@ import (
 type ImporterReaderWriter interface {
 	models.TagCreatorUpdater
 	FindByName(ctx context.Context, name string, nocase bool) (*models.Tag, error)
+	RelationshipFinder
 }
 
 type ParentTagNotExistError struct {
@@ -77,6 +80,11 @@ func (i *Importer) PostImport(ctx context.Context, id int) error {
 	}
 
 	parents, err := i.getParents(ctx)
+	if err != nil {
+		return err
+	}
+
+	parents, err = i.leaveOutLoops(ctx, id, parents)
 	if err != nil {
 		return err
 	}
@@ -174,6 +182,28 @@ func (i *Importer) getParents(ctx context.Context) ([]int, error) {
 	}
 
 	return parents, nil
+}
+
+// leaveOutLoops returns the parents without those that would make a loop,
+// where the tag ends up as its own ancestor. Tag edits refuse such a parent;
+// an import keeps the tag and its other parents, and leaves out only that
+// link, with a warning (#2218).
+func (i *Importer) leaveOutLoops(ctx context.Context, id int, parents []int) ([]int, error) {
+	t := &models.Tag{ID: id, Name: i.Input.Name}
+	var ret []int
+	for _, parentID := range parents {
+		err := ValidateHierarchyExisting(ctx, t, []int{parentID}, nil, i.ReaderWriter)
+		var loopErr *InvalidTagHierarchyError
+		switch {
+		case errors.As(err, &loopErr):
+			logger.Warnf("[tags] <%s>: leaving out parent tag <%s>, because <%s> is already under <%s> (%s), so it would make a loop", i.Input.Name, loopErr.InvalidTag, loopErr.InvalidTag, i.Input.Name, loopErr.TagPath)
+		case err != nil:
+			return nil, fmt.Errorf("error checking parent tags: %w", err)
+		default:
+			ret = append(ret, parentID)
+		}
+	}
+	return ret, nil
 }
 
 func (i *Importer) createParent(ctx context.Context, name string) (int, error) {
