@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"io"
@@ -150,22 +151,100 @@ func (m *Migrator) runPostMigrations(ctx context.Context, version uint) error {
 	return err
 }
 
-// runPendingPostMigrations runs again the post migrations that failed last
-// time, oldest first (#2200). Until they have finished, the upgrade isn't
-// done: the database isn't used, and no later migration runs. Each post
-// migration changes nothing when run again after it has finished, so a
-// record left by a failure to remove it is harmless.
-func (m *Migrator) runPendingPostMigrations(ctx context.Context) error {
+// lockPostMigrations takes the lock that is held from before a migration's
+// SQL until its post migrations have finished, and while post migrations
+// that failed run again. A record in pending_post_migrations is written when
+// the SQL commits, which also releases golang-migrate's own lock, so without
+// this a second Stash process could run the same post migration while the
+// first is still running it (review of #2220). It is a session lock on one
+// connection of its own, with a key of its own. The returned function
+// releases it.
+func (m *Migrator) lockPostMigrations(ctx context.Context) (func(), error) {
+	conn, err := m.conn.Connx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var dbName, schema string
+	if err := conn.QueryRowxContext(ctx, "SELECT current_database(), current_schema()").Scan(&dbName, &schema); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	id, err := migratedb.GenerateAdvisoryLockId(dbName, schema, pendingPostMigrationsTable)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	var got bool
+	if err := conn.GetContext(ctx, &got, "SELECT pg_try_advisory_lock($1)", id); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	if !got {
+		logger.Info("Waiting until no other Stash is upgrading this database.")
+		if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", id); err != nil {
+			// the lock may have been granted as the wait was cut off, so don't
+			// hand this connection back to the pool
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+			_ = conn.Close()
+			return nil, err
+		}
+	}
+	return func() {
+		var released bool
+		if err := conn.GetContext(context.Background(), &released, "SELECT pg_advisory_unlock($1)", id); err != nil || !released {
+			// closing the session releases the lock
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
+		_ = conn.Close()
+	}, nil
+}
+
+// pendingPostMigrations lists the versions whose post migrations failed last
+// time, oldest first. A newer build's own are left for it.
+func (m *Migrator) pendingPostMigrations(ctx context.Context) ([]uint, error) {
 	var exists bool
 	if err := m.conn.GetContext(ctx, &exists, "SELECT to_regclass($1) IS NOT NULL", pendingPostMigrationsTable); err != nil {
-		return err
+		return nil, err
 	}
 	if !exists {
-		return nil
+		return nil, nil
 	}
-	// a newer build's own are left for it
 	var versions []uint
 	if err := m.conn.SelectContext(ctx, &versions, "SELECT version FROM "+pendingPostMigrationsTable+" WHERE version <= $1 ORDER BY version", appSchemaVersion); err != nil {
+		return nil, err
+	}
+	return versions, nil
+}
+
+// runPendingPostMigrations runs again the post migrations that failed last
+// time, oldest first (#2200). Until they have finished, the upgrade isn't
+// done: the database isn't used, and no later migration runs. A database
+// with none takes no lock.
+func (m *Migrator) runPendingPostMigrations(ctx context.Context) error {
+	versions, err := m.pendingPostMigrations(ctx)
+	if err != nil || len(versions) == 0 {
+		return err
+	}
+	unlock, err := m.lockPostMigrations(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return m.runPendingPostMigrationsLocked(ctx)
+}
+
+// runPendingPostMigrationsLocked is runPendingPostMigrations with the lock
+// held. It reads the records again, as another Stash that held the lock may
+// have finished them.
+//
+// Each post migration changes nothing when run again after it has finished,
+// so a record left by a failure to remove it is harmless. A record also
+// waits through a downgrade: if an older build is used in between, running
+// the post migration of version 26 then rewrites the filters saved meanwhile
+// too.
+func (m *Migrator) runPendingPostMigrationsLocked(ctx context.Context) error {
+	versions, err := m.pendingPostMigrations(ctx)
+	if err != nil {
 		return err
 	}
 	for _, version := range versions {
@@ -235,6 +314,14 @@ func (m *Migrator) resetFailedMigration() error {
 }
 
 func (m *Migrator) RunMigration(ctx context.Context, newVersion uint) error {
+	// held until this version's post migrations have finished; the version is
+	// read after taking it, so a migration another Stash ran meanwhile shows
+	unlock, err := m.lockPostMigrations(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	databaseSchemaVersion, _, _ := m.m.Version()
 
 	if newVersion != databaseSchemaVersion+1 {
@@ -242,7 +329,7 @@ func (m *Migrator) RunMigration(ctx context.Context, newVersion uint) error {
 	}
 
 	// a post migration that failed last time comes before the next migration
-	if err := m.runPendingPostMigrations(ctx); err != nil {
+	if err := m.runPendingPostMigrationsLocked(ctx); err != nil {
 		return err
 	}
 

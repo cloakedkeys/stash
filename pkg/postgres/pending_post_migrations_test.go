@@ -5,10 +5,13 @@ package postgres
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -180,6 +183,108 @@ func TestPendingPostMigrationsTable(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, m.RunMigration(ctx, 30))
 	assert.Empty(t, pendingPostMigrations(t, dsn))
+}
+
+// While one Stash is still running a migration's follow-up step, a second
+// Stash that opens the database or runs the next migration waits for it and
+// then finds nothing left to do, rather than running the same step at the
+// same time (review of #2220).
+func TestPostMigrationNotRunTwiceAtOnce(t *testing.T) {
+	for name, second := range map[string]func(ctx context.Context, dsn string) error{
+		"open": func(ctx context.Context, dsn string) error {
+			db := NewDatabase()
+			if err := db.Open(ctx, dsn); err != nil {
+				return err
+			}
+			return db.Close()
+		},
+		"next migration": func(ctx context.Context, dsn string) error {
+			db := NewDatabase()
+			db.dbPath = dsn
+			m, err := NewMigrator(db)
+			if err != nil {
+				return err
+			}
+			defer m.Close()
+			return m.RunMigration(ctx, appVersionMigration+1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			dsn := migrationFixture(t)
+			config.InitializeEmpty()
+			target := appVersionMigration
+
+			saved, had := postMigrations[target]
+			t.Cleanup(func() {
+				if had {
+					postMigrations[target] = saved
+				} else {
+					delete(postMigrations, target)
+				}
+			})
+			var calls atomic.Int32
+			started := make(chan struct{}, 2)
+			release := make(chan struct{})
+			postMigrations[target] = []customMigrationFunc{func(ctx context.Context, conn *sqlx.DB) error {
+				calls.Add(1)
+				started <- struct{}{}
+				<-release
+				return nil
+			}}
+
+			first := NewDatabase()
+			first.dbPath = dsn
+			m, err := NewMigrator(first)
+			require.NoError(t, err)
+			defer m.Close()
+			migrateTo(t, m, target-1)
+			firstDone := make(chan error, 1)
+			go func() { firstDone <- m.RunMigration(ctx, target) }()
+			<-started
+
+			// the first one's SQL has committed and its follow-up step is running
+			assert.Equal(t, []uint{target}, pendingPostMigrations(t, dsn))
+			secondDone := make(chan error, 1)
+			go func() { secondDone <- second(ctx, dsn) }()
+			select {
+			case err := <-secondDone:
+				t.Fatalf("the second Stash didn't wait: %v", err)
+			case <-time.After(time.Second):
+			}
+			assert.Equal(t, int32(1), calls.Load(), "the follow-up step ran twice at once")
+
+			close(release)
+			require.NoError(t, <-firstDone)
+			require.NoError(t, <-secondDone)
+			assert.Equal(t, int32(1), calls.Load(), "the second Stash ran the follow-up step again")
+			assert.Empty(t, pendingPostMigrations(t, dsn))
+		})
+	}
+}
+
+// post15 on a new database, in setup, removes the reserved admin. Run again,
+// with it already gone, it changes nothing rather than failing.
+func TestPost15SetupRunAgain(t *testing.T) {
+	ctx := models.WithSetupContext(context.Background())
+	dsn := migrationFixture(t)
+	config.InitializeEmpty()
+
+	db := NewDatabase()
+	db.dbPath = dsn
+	m, err := NewMigrator(db)
+	require.NoError(t, err)
+	defer m.Close()
+	for v := uint(1); v <= 15; v++ {
+		require.NoErrorf(t, m.RunMigration(ctx, v), "schema %d", v)
+	}
+	var users int
+	require.NoError(t, m.conn.Get(&users, "SELECT count(*) FROM users"))
+	require.Equal(t, 0, users)
+
+	require.NoError(t, post15(ctx, m.conn))
+	require.NoError(t, m.conn.Get(&users, "SELECT count(*) FROM users"))
+	assert.Equal(t, 0, users)
 }
 
 // post15 runs again when its record wasn't removed, so running it after it
