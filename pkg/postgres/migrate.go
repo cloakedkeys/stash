@@ -2,10 +2,14 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 
 	"github.com/golang-migrate/migrate/v4"
+	migratedb "github.com/golang-migrate/migrate/v4/database"
 	postgresmig "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jmoiron/sqlx"
 	"github.com/stashapp/stash/pkg/database/migrationguard"
@@ -17,9 +21,11 @@ func (db *Database) needsMigration() bool {
 }
 
 type Migrator struct {
-	db   *Database
-	conn *sqlx.DB
-	m    *migrate.Migrate
+	db     *Database
+	conn   *sqlx.DB
+	m      *migrate.Migrate
+	source source.Driver
+	driver migratedb.Driver
 }
 
 func NewMigrator(db *Database) (*Migrator, error) {
@@ -39,6 +45,9 @@ func NewMigrator(db *Database) (*Migrator, error) {
 	m.conn.SetConnMaxIdleTime(dbConnTimeout)
 
 	m.m, err = m.getMigrate()
+	if err == nil {
+		err = m.resetFailedMigration()
+	}
 
 	// if error encountered, close the connection
 	if err != nil {
@@ -78,6 +87,8 @@ func (m *Migrator) getMigrate() (*migrate.Migrate, error) {
 	if err != nil {
 		return nil, err
 	}
+	m.source = migrations
+	m.driver = driver
 
 	// use sqlite3Driver so that migration has access to durationToTinyInt
 	return migrate.NewWithInstance(
@@ -86,6 +97,48 @@ func (m *Migrator) getMigrate() (*migrate.Migrate, error) {
 		"postgres",
 		driver,
 	)
+}
+
+// resetFailedMigration sets the schema version back to the last finished one
+// when a migration failed part way (#2195).
+//
+// golang-migrate marks the new version "dirty" before running a migration's
+// SQL and clears the mark once the SQL succeeds, so a dirty version is one
+// whose SQL failed or was cut off. The driver sends each migration file as a
+// single query, and PostgreSQL runs a query of several statements as one
+// transaction (none of the files has its own BEGIN or COMMIT), so a failed
+// migration leaves none of its changes behind: the database is still at the
+// previous version. Setting the version back lets the migration run again,
+// rather than counting it as done.
+func (m *Migrator) resetFailedMigration() error {
+	if _, dirty, err := m.driver.Version(); err != nil || !dirty {
+		return err
+	}
+
+	// a migration that is running holds this lock until it has finished, and
+	// its version is dirty until then, so wait for it and look again
+	if err := m.driver.Lock(); err != nil {
+		return err
+	}
+	version, dirty, err := m.driver.Version()
+	if err == nil && dirty {
+		previous := migratedb.NilVersion
+		prev, prevErr := m.source.Prev(uint(version))
+		switch {
+		case prevErr == nil:
+			previous = int(prev)
+		case !errors.Is(prevErr, fs.ErrNotExist):
+			err = fmt.Errorf("finding the schema version before %d: %w", version, prevErr)
+		}
+		if err == nil {
+			logger.Warnf("The upgrade of the database to schema version %d didn't finish, and none of its changes were kept. Setting the schema version back to %d so that the upgrade runs again.", version, max(previous, 0))
+			err = m.driver.SetVersion(previous, false)
+		}
+	}
+	if unlockErr := m.driver.Unlock(); err == nil {
+		err = unlockErr
+	}
+	return err
 }
 
 func (m *Migrator) RunMigration(ctx context.Context, newVersion uint) error {
