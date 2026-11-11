@@ -102,6 +102,7 @@ const (
 	LiveTranscodeInputArgs  = "ffmpeg.live_transcode.input_args"
 	LiveTranscodeOutputArgs = "ffmpeg.live_transcode.output_args"
 
+	GenerationThreads    = "generation_threads"
 	ParallelTasks        = "parallel_tasks"
 	parallelTasksDefault = 1
 
@@ -1162,6 +1163,11 @@ func (i *Config) GetPreviewSegmentDuration() float64 {
 	return i.getFloat64(PreviewSegmentDuration)
 }
 
+// GetGenerationThreads returns ffmpeg encoder threads; zero or less lets ffmpeg choose.
+func (i *Config) GetGenerationThreads() int {
+	return max(0, i.getInt(GenerationThreads))
+}
+
 // GetParallelTasks returns the number of parallel tasks that should be started
 // by scan or generate task.
 func (i *Config) GetParallelTasks() int {
@@ -2138,6 +2144,7 @@ func (i *Config) setDefaultValues() {
 	i.setDefault(Host, hostDefault)
 	i.setDefault(Port, portDefault)
 
+	i.setDefault(GenerationThreads, 4)
 	i.setDefault(ParallelTasks, parallelTasksDefault)
 	i.setDefault(SequentialScanning, SequentialScanningDefault)
 	i.setDefault(PreviewSegmentDuration, previewSegmentDurationDefault)

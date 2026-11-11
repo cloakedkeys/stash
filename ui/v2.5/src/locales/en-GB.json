@@ -499,6 +499,8 @@
       "generated_file_naming_hash_head": "Generated file naming hash",
       "generated_files_location": "Directory location for the generated files (scene markers, scene previews, sprites, etc).",
       "generated_path_head": "Generated path",
+      "generation_threads_desc": "Number of ffmpeg threads for transcodes, previews and marker previews. Defaults to 4. 0 or less lets ffmpeg choose. Transcode output args can override this value where supported.",
+      "generation_threads_head": "Generation threads",
       "hashing": "Hashing",
       "heatmap_generation": "Funscript Heatmap Generation",
       "image_ext_desc": "Comma-delimited list of file extensions that will be identified as images.",

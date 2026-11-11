@@ -20,6 +20,7 @@ fragment ConfigGeneralData on ConfigGeneralResult {
   ffprobePath
   calculateMD5
   videoFileNamingAlgorithm
+  generationThreads
   parallelTasks
   previewAudio
   previewSegments

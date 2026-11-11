@@ -46,6 +46,7 @@ func (t *GenerateImageThumbnailTask) Start(ctx context.Context) {
 	c := mgr.Config
 
 	clipPreviewOptions := image.ClipPreviewOptions{
+		Threads:    c.GetGenerationThreads(),
 		InputArgs:  c.GetTranscodeInputArgs(),
 		OutputArgs: c.GetTranscodeOutputArgs(),
 		Preset:     c.GetPreviewPreset().String(),
