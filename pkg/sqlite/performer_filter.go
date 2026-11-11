@@ -184,6 +184,7 @@ func (qb *performerFilterHandler) criterionHandler() criterionHandler {
 
 		performerUserData.boolCriterionHandler(filter.FilterFavorites, performerUserData.columnOrDefault("favorite", "0")),
 		boolCriterionHandler(filter.IgnoreAutoTag, tableName+".ignore_auto_tag", nil),
+		boolCriterionHandler(filter.Organized, tableName+".organized", nil),
 
 		yearFilterCriterionHandler(filter.BirthYear, tableName+".birthdate"),
 		yearFilterCriterionHandler(filter.DeathYear, tableName+".death_date"),

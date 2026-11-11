@@ -127,6 +127,7 @@ describe("tag list scene counts", () => {
               name: "Parent",
               aliases: [],
               ignore_auto_tag: false,
+              organized: false,
               favorite: false,
               stash_ids: [],
               image_path: "",

@@ -62,6 +62,7 @@ func (r *mutationResolver) PerformerCreate(ctx context.Context, input models.Per
 	newPerformer.Height = input.HeightCm
 	newPerformer.Weight = input.Weight
 	newPerformer.IgnoreAutoTag = translator.bool(input.IgnoreAutoTag)
+	newPerformer.Organized = translator.bool(input.Organized)
 	newPerformer.StashIDs = models.NewRelatedStashIDs(models.StashIDInputs(input.StashIds).ToStashIDs())
 
 	newPerformer.URLs = models.NewRelatedStrings([]string{})
@@ -317,6 +318,7 @@ func performerPartialFromInput(input models.PerformerUpdateInput, translator cha
 	updatedPerformer.HairColor = translator.optionalString(input.HairColor, "hair_color")
 	updatedPerformer.Weight = translator.optionalInt(input.Weight, "weight")
 	updatedPerformer.IgnoreAutoTag = translator.optionalBool(input.IgnoreAutoTag, "ignore_auto_tag")
+	updatedPerformer.Organized = translator.optionalBool(input.Organized, "organized")
 	updatedPerformer.StashIDs = translator.updateStashIDs(input.StashIds, "stash_ids")
 
 	var err error
@@ -503,6 +505,7 @@ func (r *mutationResolver) BulkPerformerUpdate(ctx context.Context, input BulkPe
 	updatedPerformer.HairColor = translator.optionalString(input.HairColor, "hair_color")
 	updatedPerformer.Weight = translator.optionalInt(input.Weight, "weight")
 	updatedPerformer.IgnoreAutoTag = translator.optionalBool(input.IgnoreAutoTag, "ignore_auto_tag")
+	updatedPerformer.Organized = translator.optionalBool(input.Organized, "organized")
 
 	if translator.hasField("urls") {
 		// ensure url/twitter/instagram are not included in the input

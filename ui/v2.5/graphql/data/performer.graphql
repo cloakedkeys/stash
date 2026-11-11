@@ -19,6 +19,7 @@ fragment PerformerDetails on Performer {
   piercings
   alias_list
   favorite
+  organized
   ignore_auto_tag
   image_path
   performer_count

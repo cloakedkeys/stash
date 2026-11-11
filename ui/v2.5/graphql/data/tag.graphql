@@ -4,6 +4,7 @@ fragment TagData on Tag {
   sort_name
   description
   aliases
+  organized
   ignore_auto_tag
   favorite
   rating100
@@ -71,6 +72,7 @@ fragment TagListData on Tag {
   sort_name
   description
   aliases
+  organized
   ignore_auto_tag
   favorite
   rating100

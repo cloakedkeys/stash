@@ -225,6 +225,8 @@ input PerformerFilterType {
   performers: MultiCriterionInput
   "Filter by autotag ignore value"
   ignore_auto_tag: Boolean
+  "Filter by organized"
+  organized: Boolean
   "Filter by birthdate"
   birthdate: DateCriterionInput
   "Filter by death date"
@@ -752,6 +754,8 @@ input TagFilterType {
 
   "Filter by autotag ignore value"
   ignore_auto_tag: Boolean
+  "Filter by organized"
+  organized: Boolean
 
   "Filter by StashID"
   stash_id_endpoint: StashIDCriterionInput

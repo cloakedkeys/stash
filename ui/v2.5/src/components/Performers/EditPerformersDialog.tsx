@@ -59,6 +59,7 @@ const performerFields = [
   "tattoos",
   "piercings",
   "ignore_auto_tag",
+  "organized",
 ];
 
 export const EditPerformersDialog: React.FC<IListOperationProps> = (
@@ -159,9 +160,10 @@ export const EditPerformersDialog: React.FC<IListOperationProps> = (
         penis_length === null ? null : parseFloat(penis_length);
     }
 
-    // ignore_auto_tag may only be changed by administrators
+    // organized and ignore_auto_tag may only be changed by administrators
     if (!isAdmin) {
       performerInput.ignore_auto_tag = undefined;
+      performerInput.organized = undefined;
     }
 
     return performerInput;
@@ -492,6 +494,16 @@ export const EditPerformersDialog: React.FC<IListOperationProps> = (
                   setUpdateField({ ignore_auto_tag: checked })
                 }
                 checked={updateInput.ignore_auto_tag ?? undefined}
+              />
+            </Form.Group>
+          )}
+
+          {isAdmin && (
+            <Form.Group controlId="organized">
+              <IndeterminateCheckbox
+                label={intl.formatMessage({ id: "organized" })}
+                setChecked={(checked) => setUpdateField({ organized: checked })}
+                checked={updateInput.organized ?? undefined}
               />
             </Form.Group>
           )}

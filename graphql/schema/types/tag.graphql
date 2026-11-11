@@ -6,6 +6,7 @@ type Tag {
   description: String
   aliases: [String!]!
   ignore_auto_tag: Boolean!
+  organized: Boolean!
   # rating expressed as 1-100
   rating100: Int
   created_at: Time!
@@ -38,6 +39,7 @@ input TagCreateInput {
   "Duplicate aliases and those equal to name will be ignored (case-insensitive)"
   aliases: [String!]
   ignore_auto_tag: Boolean @hasRole(role: ADMIN)
+  organized: Boolean @hasRole(role: ADMIN)
   favorite: Boolean
   # rating expressed as 1-100
   rating100: Int
@@ -60,6 +62,7 @@ input TagUpdateInput {
   "Duplicate aliases and those equal to name will be ignored (case-insensitive)"
   aliases: [String!]
   ignore_auto_tag: Boolean @hasRole(role: ADMIN)
+  organized: Boolean @hasRole(role: ADMIN)
   favorite: Boolean
   # rating expressed as 1-100
   rating100: Int
@@ -95,6 +98,7 @@ input BulkTagUpdateInput {
   "Duplicate aliases and those equal to name will result in an error (case-insensitive)"
   aliases: BulkUpdateStrings
   ignore_auto_tag: Boolean @hasRole(role: ADMIN)
+  organized: Boolean @hasRole(role: ADMIN)
   favorite: Boolean
   # rating expressed as 1-100
   rating100: Int

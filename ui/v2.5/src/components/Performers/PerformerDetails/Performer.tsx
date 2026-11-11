@@ -50,6 +50,7 @@ import {
 } from "src/components/Shared/DetailsPage/Tabs";
 import { DetailTitle } from "src/components/Shared/DetailsPage/DetailTitle";
 import { ExpandCollapseButton } from "src/components/Shared/CollapseButton";
+import { OrganizedButton } from "src/components/Scenes/SceneDetails/OrganizedButton";
 import { FavoriteIcon } from "src/components/Shared/FavoriteIcon";
 import { AliasList } from "src/components/Shared/DetailsPage/AliasList";
 import { HeaderImage } from "src/components/Shared/DetailsPage/HeaderImage";
@@ -354,6 +355,28 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
       setRating
     );
 
+    const [organizedLoading, setOrganizedLoading] = useState(false);
+
+    async function onOrganizedClick() {
+      if (!performer.id) return;
+
+      setOrganizedLoading(true);
+      try {
+        await updatePerformer({
+          variables: {
+            input: {
+              id: performer.id,
+              organized: !performer.organized,
+            },
+          },
+        });
+      } catch (e) {
+        Toast.error(e);
+      } finally {
+        setOrganizedLoading(false);
+      }
+    }
+
     const canModify = useCanModify();
 
     const pageListShortcuts = usePageListShortcuts({
@@ -485,6 +508,11 @@ const PerformerPage: React.FC<IProps> = PatchComponent(
                     <FavoriteIcon
                       favorite={performer.favorite}
                       onToggleFavorite={(v) => setFavorite(v)}
+                    />
+                    <OrganizedButton
+                      loading={organizedLoading}
+                      organized={performer.organized}
+                      onClick={onOrganizedClick}
                     />
                     <ExternalLinkButtons urls={performer.urls ?? undefined} />
                   </span>

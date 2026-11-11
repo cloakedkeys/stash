@@ -117,6 +117,7 @@ const criterionOptions = [
     sfwMessageID: "o_count_sfw",
   }),
   createBooleanCriterionOption("ignore_auto_tag"),
+  createBooleanCriterionOption("organized"),
   CountryCriterionOption,
   createNumberCriterionOption("height_cm", "height"),
   ...numberCriteria.map((c) => createNumberCriterionOption(c)),
