@@ -60,7 +60,7 @@ interface IListOperationProps {
   onClose: (applied: boolean) => void;
 }
 
-const tagFields = ["favorite", "description", "ignore_auto_tag"];
+const tagFields = ["favorite", "description", "ignore_auto_tag", "organized"];
 
 export const EditTagsDialog: React.FC<IListOperationProps> = (
   props: IListOperationProps
@@ -108,9 +108,10 @@ export const EditTagsDialog: React.FC<IListOperationProps> = (
       child_ids: childTagIDs,
     };
 
-    // ignore_auto_tag may only be changed by administrators
+    // organized and ignore_auto_tag may only be changed by administrators
     if (!isAdmin) {
       tagInput.ignore_auto_tag = undefined;
+      tagInput.organized = undefined;
     }
 
     return tagInput;
@@ -232,6 +233,16 @@ export const EditTagsDialog: React.FC<IListOperationProps> = (
                 setUpdateField({ ignore_auto_tag: checked })
               }
               checked={updateInput.ignore_auto_tag ?? undefined}
+            />
+          </Form.Group>
+        )}
+
+        {isAdmin && (
+          <Form.Group controlId="organized">
+            <IndeterminateCheckbox
+              label={intl.formatMessage({ id: "organized" })}
+              setChecked={(checked) => setUpdateField({ organized: checked })}
+              checked={updateInput.organized ?? undefined}
             />
           </Form.Group>
         )}

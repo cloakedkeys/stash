@@ -33,6 +33,7 @@ type Performer struct {
 	HairColor     string `json:"hair_color"`
 	Weight        *int   `json:"weight"`
 	IgnoreAutoTag bool   `json:"ignore_auto_tag"`
+	Organized     bool   `json:"organized"`
 
 	Aliases  RelatedStrings  `json:"aliases"`
 	URLs     RelatedStrings  `json:"urls"`
@@ -90,6 +91,7 @@ type PerformerPartial struct {
 	HairColor     OptionalString
 	Weight        OptionalInt
 	IgnoreAutoTag OptionalBool
+	Organized     OptionalBool
 
 	Aliases  *UpdateStrings
 	TagIDs   *UpdateIDs

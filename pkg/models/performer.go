@@ -201,6 +201,7 @@ type PerformerFilterType struct {
 	Performers *MultiCriterionInput `json:"performers"`
 	// Filter by autotag ignore value
 	IgnoreAutoTag *bool `json:"ignore_auto_tag"`
+	Organized     *bool `json:"organized"`
 	// Filter by birthdate
 	Birthdate *DateCriterionInput `json:"birth_date"`
 	// Filter by death date
@@ -263,6 +264,7 @@ type PerformerCreateInput struct {
 	HairColor     *string        `json:"hair_color"`
 	Weight        *int           `json:"weight"`
 	IgnoreAutoTag *bool          `json:"ignore_auto_tag"`
+	Organized     *bool          `json:"organized"`
 
 	CustomFields map[string]interface{} `json:"custom_fields"`
 }
@@ -305,6 +307,7 @@ type PerformerUpdateInput struct {
 	HairColor     *string        `json:"hair_color"`
 	Weight        *int           `json:"weight"`
 	IgnoreAutoTag *bool          `json:"ignore_auto_tag"`
+	Organized     *bool          `json:"organized"`
 
 	CustomFields CustomFieldsInput `json:"custom_fields"`
 }

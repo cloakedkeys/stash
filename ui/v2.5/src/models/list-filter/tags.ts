@@ -80,6 +80,7 @@ const criterionOptions = [
   createStringCriterionOption("aliases"),
   createStringCriterionOption("description"),
   createBooleanCriterionOption("ignore_auto_tag"),
+  createBooleanCriterionOption("organized"),
   StashIDCriterionOption,
   createMandatoryNumberCriterionOption("scene_count"),
   createMandatoryNumberCriterionOption("image_count"),

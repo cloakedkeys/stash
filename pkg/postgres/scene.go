@@ -101,6 +101,8 @@ type sceneUserDataRow struct {
 	Rating       null.Int `db:"rating"`
 	ResumeTime   float64  `db:"resume_time"`
 	PlayDuration float64  `db:"play_duration"`
+	// Reserved by DF-6; scanned only until watch-later support is delivered.
+	WatchLaterAt NullTimestamp `db:"watch_later_at"`
 }
 
 func (r sceneUserDataRow) apply(s *models.Scene) {

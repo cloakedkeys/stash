@@ -49,6 +49,7 @@ func createTag(id int) models.Tag {
 		Favorite:      true,
 		Description:   description,
 		IgnoreAutoTag: autoTagIgnored,
+		Organized:     true,
 		CreatedAt:     createTime,
 		UpdatedAt:     updateTime,
 	}
@@ -62,6 +63,7 @@ func createJSONTag(aliases []string, image string, parents []string, withCustomF
 		Description:   description,
 		Aliases:       aliases,
 		IgnoreAutoTag: autoTagIgnored,
+		Organized:     true,
 		CreatedAt: json.JSONTime{
 			Time: createTime,
 		},

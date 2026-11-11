@@ -111,6 +111,7 @@ func createFullPerformer(id int, name string) *models.Performer {
 		HairColor:      hairColor,
 		Weight:         &weight,
 		IgnoreAutoTag:  autoTagIgnored,
+		Organized:      true,
 		TagIDs:         models.NewRelatedIDs([]int{}),
 		StashIDs:       models.NewRelatedStashIDs(stashIDs),
 	}
@@ -164,6 +165,7 @@ func createFullJSONPerformer(name string, image string, withCustomFields bool) *
 		Weight:          weight,
 		StashIDs:        stashIDs,
 		IgnoreAutoTag:   autoTagIgnored,
+		Organized:       true,
 		CustomFields:    emptyCustomFields,
 	}
 

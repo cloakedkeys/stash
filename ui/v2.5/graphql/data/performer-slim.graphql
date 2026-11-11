@@ -6,6 +6,7 @@ fragment SlimPerformerData on Performer {
   urls
   image_path
   favorite
+  organized
   ignore_auto_tag
   country
   birthdate

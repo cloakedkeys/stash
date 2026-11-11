@@ -45,7 +45,7 @@ const (
 	stampBusyTimeout = time.Second
 )
 
-var appSchemaVersion uint = 110
+var appSchemaVersion uint = 111
 
 //go:embed migrations/*.sql
 var migrationsBox embed.FS

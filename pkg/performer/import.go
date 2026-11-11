@@ -251,6 +251,7 @@ func performerJSONToPerformer(performerJSON jsonschema.Performer) (models.Perfor
 		HairColor:      performerJSON.HairColor,
 		Favorite:       performerJSON.Favorite,
 		IgnoreAutoTag:  performerJSON.IgnoreAutoTag,
+		Organized:      performerJSON.Organized,
 		CreatedAt:      performerJSON.CreatedAt.GetTime(),
 		UpdatedAt:      performerJSON.UpdatedAt.GetTime(),
 

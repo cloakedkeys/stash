@@ -45,6 +45,7 @@ type tagRow struct {
 	SortName      zero.String `db:"sort_name"`
 	Description   zero.String `db:"description"`
 	IgnoreAutoTag bool        `db:"ignore_auto_tag"`
+	Organized     bool        `db:"organized"`
 	Rating        null.Int    `db:"rating"`
 	CreatedAt     Timestamp   `db:"created_at"`
 	UpdatedAt     Timestamp   `db:"updated_at"`
@@ -59,6 +60,7 @@ func (r *tagRow) fromTag(o models.Tag) {
 	r.SortName = zero.StringFrom((o.SortName))
 	r.Description = zero.StringFrom(o.Description)
 	r.IgnoreAutoTag = o.IgnoreAutoTag
+	r.Organized = o.Organized
 	r.Rating = intFromPtr(o.Rating)
 	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
 	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
@@ -71,6 +73,7 @@ func (r *tagRow) resolve() *models.Tag {
 		SortName:      r.SortName.String,
 		Description:   r.Description.String,
 		IgnoreAutoTag: r.IgnoreAutoTag,
+		Organized:     r.Organized,
 		Rating:        nullIntPtr(r.Rating),
 		CreatedAt:     r.CreatedAt.Timestamp,
 		UpdatedAt:     r.UpdatedAt.Timestamp,
@@ -127,6 +130,7 @@ func (r *tagRowRecord) fromPartial(o models.TagPartial) {
 	r.setNullString("sort_name", o.SortName)
 	r.setNullString("description", o.Description)
 	r.setBool("ignore_auto_tag", o.IgnoreAutoTag)
+	r.setBool("organized", o.Organized)
 	r.setNullInt("rating", o.Rating)
 	r.setTimestamp("created_at", o.CreatedAt)
 	r.setTimestamp("updated_at", o.UpdatedAt)

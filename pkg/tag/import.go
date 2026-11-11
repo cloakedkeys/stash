@@ -46,6 +46,7 @@ func (i *Importer) PreImport(ctx context.Context) error {
 		Description:   i.Input.Description,
 		Favorite:      i.Input.Favorite,
 		IgnoreAutoTag: i.Input.IgnoreAutoTag,
+		Organized:     i.Input.Organized,
 		StashIDs:      models.NewRelatedStashIDs(i.Input.StashIDs),
 		CreatedAt:     i.Input.CreatedAt.GetTime(),
 		UpdatedAt:     i.Input.UpdatedAt.GetTime(),
