@@ -36,7 +36,7 @@ import {
 import cloneDeep from "lodash-es/cloneDeep";
 
 interface IGroupEditPanel {
-  group: Partial<GQL.GroupDataFragment>;
+  group: Partial<GQL.GroupDataFragment> & { front_image?: string };
   onSubmit: (group: GQL.GroupCreateInput, andNew?: boolean) => Promise<void>;
   onCancel: () => void;
   onDelete: () => void;
@@ -95,6 +95,7 @@ export const GroupEditPanel: React.FC<IGroupEditPanel> = ({
   });
 
   const initialValues = {
+    front_image: group.front_image,
     name: group?.name ?? "",
     alias_list: group?.alias_list ?? [],
     duration: group?.duration ?? null,

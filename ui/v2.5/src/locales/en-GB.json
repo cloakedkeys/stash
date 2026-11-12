@@ -109,6 +109,7 @@
     "loop_off": "Loop: off",
     "loop_queue": "Loop: queue",
     "loop_scene": "Loop: scene",
+    "make_group_from_scene": "Make a group from this scene\u2026",
     "make_primary": "Make Primary",
     "merge": "Merge",
     "merge_metadata": "Merge metadata",
