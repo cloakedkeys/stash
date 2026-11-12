@@ -31,7 +31,10 @@ import { View } from "../List/views";
 import { FileSize } from "../Shared/FileSize";
 import { LoadedContent } from "../List/PagedList";
 import { useCloseEditDelete, useFilterOperations } from "../List/util";
-import { ListOperations } from "../List/ListOperationButtons";
+import {
+  IListFilterOperation,
+  ListOperations,
+} from "../List/ListOperationButtons";
 import { useFilteredItemList } from "../List/ItemList";
 import {
   Sidebar,
@@ -61,7 +64,10 @@ import { Pagination, PaginationIndex } from "../List/Pagination";
 import { Button } from "react-bootstrap";
 import useFocus from "src/utils/focus";
 import { useZoomKeybinds } from "../List/ZoomSlider";
-import { FilteredListToolbar } from "../List/FilteredListToolbar";
+import {
+  FilteredListToolbar,
+  IItemListOperation,
+} from "../List/FilteredListToolbar";
 import { FilterTags } from "../List/FilterTags";
 import { SidebarFolderFilter } from "../List/Filters/FolderFilter";
 
@@ -374,6 +380,7 @@ const SidebarContent: React.FC<{
 };
 
 interface IFilteredScenes {
+  extraOperations?: IItemListOperation<GQL.FindScenesQueryResult>[];
   filterHook?: (filter: ListFilterModel) => ListFilterModel;
   defaultSort?: string;
   view?: View;
@@ -390,7 +397,14 @@ export const FilteredSceneList = PatchComponent(
 
     const searchFocus = useFocus();
 
-    const { filterHook, defaultSort, view, alterQuery, fromGroupId } = props;
+    const {
+      filterHook,
+      defaultSort,
+      view,
+      alterQuery,
+      fromGroupId,
+      extraOperations = [],
+    } = props;
 
     // States
     const {
@@ -567,7 +581,19 @@ export const FilteredSceneList = PatchComponent(
       );
     }
 
+    const convertedExtraOperations: IListFilterOperation[] =
+      extraOperations.map((o) => ({
+        ...o,
+        isDisplayed: o.isDisplayed
+          ? () => o.isDisplayed!(result, filter, selectedIds)
+          : undefined,
+        onClick: () => {
+          o.onClick(result, filter, selectedIds);
+        },
+      }));
+
     const otherOperations = [
+      ...convertedExtraOperations,
       {
         text: intl.formatMessage({ id: "actions.play" }),
         onClick: () => onPlay(),
