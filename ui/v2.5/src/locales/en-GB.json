@@ -139,6 +139,7 @@
     "remove_date": "Remove date",
     "remove_from_containing_group": "Remove from Group",
     "remove_from_gallery": "Remove from Gallery",
+    "remove_from_group": "Remove from group",
     "rename": "Rename",
     "rename_gen_files": "Rename generated files",
     "reveal_in_file_manager": "Reveal in File Manager",
@@ -1241,6 +1242,7 @@
       "story_removed": "This story has no title, so it's removed once its file moves.",
       "text_replaced": "The story you choose will show this file's text. Any text stored with it is removed."
     },
+    "remove_scenes_from_group": "Remove {count} {count, plural, one {scene} other {scenes}} from this group? The {count, plural, one {scene is} other {scenes are}} kept.",
     "scene_gen": {
       "clip_previews": "Image clip previews",
       "covers": "Scene covers",

@@ -7,6 +7,14 @@ import {
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { FilteredSceneList } from "src/components/Scenes/SceneList";
 import { View } from "src/components/List/views";
+import { useBulkSceneUpdate } from "src/core/StashService";
+import { IItemListOperation } from "src/components/List/FilteredListToolbar";
+import { showWhenSelected } from "src/components/List/ItemList";
+import { AlertModal } from "src/components/Shared/Alert";
+import { faMinus } from "@fortawesome/free-solid-svg-icons";
+import { useIntl } from "react-intl";
+import { useToast } from "src/hooks/Toast";
+import { useModal } from "src/hooks/modal";
 
 interface IGroupScenesPanel {
   active: boolean;
@@ -60,17 +68,77 @@ export const GroupScenesPanel: React.FC<IGroupScenesPanel> = ({
   group,
   showSubGroupContent,
 }) => {
+  const intl = useIntl();
+  const Toast = useToast();
+  const { modal, showModal, closeModal } = useModal();
+  const [updateScenes] = useBulkSceneUpdate();
   const filterHook = useFilterHook(group, showSubGroupContent);
+
+  const extraOperations: IItemListOperation<GQL.FindScenesQueryResult>[] = [
+    {
+      requiredRole: GQL.RoleEnum.Modify,
+      text: intl.formatMessage({ id: "actions.remove_from_group" }),
+      isDisplayed: showWhenSelected,
+      icon: faMinus,
+      buttonVariant: "danger",
+      onClick: async (result, _filter, selectedIds) => {
+        const ids = Array.from(selectedIds);
+        showModal(
+          <AlertModal
+            show
+            text={intl.formatMessage(
+              { id: "dialogs.remove_scenes_from_group" },
+              { count: ids.length }
+            )}
+            onCancel={closeModal}
+            onConfirm={async () => {
+              closeModal();
+              try {
+                await updateScenes({
+                  variables: {
+                    input: {
+                      ids,
+                      group_ids: {
+                        ids: [group.id],
+                        mode: GQL.BulkUpdateIdMode.Remove,
+                      },
+                    },
+                  },
+                });
+                Toast.success(
+                  intl.formatMessage(
+                    { id: "toast.removed_entity" },
+                    {
+                      count: ids.length,
+                      singularEntity: intl.formatMessage({ id: "scene" }),
+                      pluralEntity: intl.formatMessage({ id: "scenes" }),
+                    }
+                  )
+                );
+                await result.refetch();
+              } catch (e) {
+                Toast.error(e);
+              }
+            }}
+          />
+        );
+      },
+    },
+  ];
 
   if (group?.id) {
     return (
-      <FilteredSceneList
-        filterHook={filterHook}
-        defaultSort="group_scene_number"
-        alterQuery={active}
-        view={View.GroupScenes}
-        fromGroupId={group.id}
-      />
+      <>
+        {modal}
+        <FilteredSceneList
+          filterHook={filterHook}
+          defaultSort="group_scene_number"
+          alterQuery={active}
+          view={View.GroupScenes}
+          fromGroupId={group.id}
+          extraOperations={extraOperations}
+        />
+      </>
     );
   }
   return null;
