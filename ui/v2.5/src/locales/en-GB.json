@@ -1245,6 +1245,7 @@
       "text_replaced": "The story you choose will show this file's text. Any text stored with it is removed."
     },
     "remove_scenes_from_group": "Remove {count} {count, plural, one {scene} other {scenes}} from this group? The {count, plural, one {scene is} other {scenes are}} kept.",
+    "renumber_group_scenes": "Moving this scene renumbers all {count} scenes in this group from 1 to {count}. Scenes without a number get one, and gaps and repeated numbers are removed.",
     "scene_gen": {
       "clip_previews": "Image clip previews",
       "covers": "Scene covers",

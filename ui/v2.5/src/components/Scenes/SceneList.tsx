@@ -1,5 +1,6 @@
 import { Criterion } from "src/models/list-filter/criteria/criterion";
 import { useListOperationShortcuts } from "../List/keyboardShortcuts";
+import { useToast } from "src/hooks/Toast";
 import { useCanModify } from "src/hooks/CurrentUser";
 import React, { useCallback, useEffect, useMemo } from "react";
 import cloneDeep from "lodash-es/cloneDeep";
@@ -203,9 +204,18 @@ const SceneList: React.FC<{
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
   fromGroupId?: string;
   onSort?: (value: string) => void;
+  onMove?: (srcIds: string[], targetId: string, after: boolean) => void;
 }> = PatchComponent(
   "SceneList",
-  ({ scenes, filter, selectedIds, onSelectChange, fromGroupId, onSort }) => {
+  ({
+    scenes,
+    filter,
+    selectedIds,
+    onSelectChange,
+    fromGroupId,
+    onSort,
+    onMove,
+  }) => {
     const canModify = useCanModify();
     const activeSortColumn = sortFieldToColumn(
       sceneSortColumnMap,
@@ -230,6 +240,7 @@ const SceneList: React.FC<{
           selectedIds={selectedIds}
           onSelectChange={onSelectChange}
           fromGroupId={fromGroupId}
+          onMove={canModify ? onMove : undefined}
         />
       );
     }
@@ -380,6 +391,13 @@ const SidebarContent: React.FC<{
 };
 
 interface IFilteredScenes {
+  manualSortBy?: string;
+  onMove?: (
+    srcIds: string[],
+    targetId: string,
+    after: boolean,
+    direction: GQL.SortDirectionEnum
+  ) => Promise<void>;
   extraOperations?: IItemListOperation<GQL.FindScenesQueryResult>[];
   filterHook?: (filter: ListFilterModel) => ListFilterModel;
   defaultSort?: string;
@@ -392,6 +410,8 @@ export const FilteredSceneList = PatchComponent(
   "FilteredSceneList",
   (props: IFilteredScenes) => {
     const intl = useIntl();
+    const Toast = useToast();
+    const canModify = useCanModify();
     const history = useHistory();
     const location = useLocation();
 
@@ -404,6 +424,8 @@ export const FilteredSceneList = PatchComponent(
       alterQuery,
       fromGroupId,
       extraOperations = [],
+      manualSortBy,
+      onMove,
     } = props;
 
     // States
@@ -449,6 +471,20 @@ export const FilteredSceneList = PatchComponent(
 
     const { effectiveFilter, result, cachedResult, items, totalCount } =
       queryResult;
+    const canMove = canModify && manualSortBy && filter.sortBy === manualSortBy;
+    async function moveScenes(
+      srcIds: string[],
+      targetId: string,
+      after: boolean
+    ) {
+      if (!canMove || !onMove) return;
+      try {
+        await onMove(srcIds, targetId, after, filter.sortDirection);
+        await result.refetch();
+      } catch (e) {
+        Toast.error(e);
+      }
+    }
 
     const {
       selectedIds,
@@ -756,6 +792,7 @@ export const FilteredSceneList = PatchComponent(
                   key={`${fromGroupId}-${filter.currentPage}`}
                   scenes={items}
                   groupId={fromGroupId}
+                  onSaved={() => result.refetch()}
                 >
                   <LoadedContent loading={result.loading} error={result.error}>
                     <SceneList
@@ -765,6 +802,7 @@ export const FilteredSceneList = PatchComponent(
                       onSelectChange={onSelectChange}
                       fromGroupId={fromGroupId}
                       onSort={onSort}
+                      onMove={canMove && onMove ? moveScenes : undefined}
                     />
                   </LoadedContent>
                 </GroupSceneNumbers>

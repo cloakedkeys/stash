@@ -154,6 +154,7 @@ interface ISceneCardProps {
   zoomIndex?: number;
   onSelectedChanged?: (selected: boolean, shiftKey: boolean) => void;
   fromGroupId?: string;
+  onMove?: (srcIds: string[], targetId: string, after: boolean) => void;
 }
 
 const Description: React.FC<{
@@ -548,6 +549,8 @@ export const SceneCard = React.memo(
     return (
       <GridCard
         className={`scene-card ${zoomIndex()} ${filelessClass()}`}
+        objectId={props.scene.id}
+        onMove={props.onMove}
         url={sceneLink}
         title={objectTitle(props.scene)}
         width={props.width}

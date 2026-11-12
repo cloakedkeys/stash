@@ -70,6 +70,7 @@ vi.mock("src/components/Shared/Modal", () => ({
 }));
 vi.mock("src/core/StashService", () => ({
   useBulkSceneUpdate: () => [page.update],
+  useScenesUpdate: () => [vi.fn()],
   useSceneUpdate: () => [page.updateScene],
   queryFindScenesByID: (...args: unknown[]) => page.query(...args),
   useFindScenes: vi.fn(),

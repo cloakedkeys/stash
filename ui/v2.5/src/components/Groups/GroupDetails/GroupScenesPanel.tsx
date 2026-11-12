@@ -7,7 +7,11 @@ import {
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { FilteredSceneList } from "src/components/Scenes/SceneList";
 import { View } from "src/components/List/views";
-import { useBulkSceneUpdate } from "src/core/StashService";
+import {
+  queryFindScenes,
+  useBulkSceneUpdate,
+  useScenesUpdate,
+} from "src/core/StashService";
 import { IItemListOperation } from "src/components/List/FilteredListToolbar";
 import {
   showWhenNoneSelected,
@@ -76,6 +80,84 @@ export const GroupScenesPanel: React.FC<IGroupScenesPanel> = ({
   const Toast = useToast();
   const { modal, showModal, closeModal } = useModal();
   const [updateScenes] = useBulkSceneUpdate();
+  const [renumberScenes] = useScenesUpdate([]);
+  const directGroupFilter = useFilterHook(group);
+
+  async function onMove(
+    srcIds: string[],
+    targetId: string,
+    after: boolean,
+    direction: GQL.SortDirectionEnum
+  ) {
+    if (!srcIds.some((id) => id !== "") || srcIds.includes(targetId)) return;
+    // Read the whole direct group, regardless of the visible page or filters.
+    // Each update replaces groups, so retain all of the other memberships.
+    const filter = directGroupFilter(
+      new ListFilterModel(GQL.FilterMode.Scenes)
+    );
+    filter.itemsPerPage = -1;
+    filter.sortBy = "group_scene_number";
+    filter.sortDirection = direction;
+    const { data } = await queryFindScenes(filter);
+    const scenes = data.findScenes.scenes;
+    const byId = new Map(scenes.map((scene) => [scene.id, scene]));
+    if (!byId.has(targetId) || srcIds.some((id) => !byId.has(id))) {
+      throw new Error(
+        intl.formatMessage({ id: "group_add_scenes.missing_scene" })
+      );
+    }
+    const sequential = scenes.every(
+      (scene, index) =>
+        scene.groups.find((g) => g.group.id === group.id)?.scene_index ===
+        (direction === GQL.SortDirectionEnum.Desc
+          ? scenes.length - index
+          : index + 1)
+    );
+    if (!sequential) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        showModal(
+          <AlertModal
+            show
+            text={intl.formatMessage(
+              { id: "dialogs.renumber_group_scenes" },
+              { count: scenes.length }
+            )}
+            confirmButtonText={intl.formatMessage({ id: "actions.continue" })}
+            onCancel={() => {
+              closeModal();
+              resolve(false);
+            }}
+            onConfirm={() => {
+              closeModal();
+              resolve(true);
+            }}
+          />
+        );
+      });
+      if (!confirmed) return;
+    }
+    const movingIds = new Set(srcIds);
+    const reordered = scenes.filter((scene) => !movingIds.has(scene.id));
+    const at = reordered.findIndex((scene) => scene.id === targetId);
+    reordered.splice(
+      at + (after ? 1 : 0),
+      0,
+      ...srcIds.map((id) => byId.get(id)!)
+    );
+    const input = reordered.map((scene, index) => ({
+      id: scene.id,
+      groups: scene.groups.map((g) => ({
+        group_id: g.group.id,
+        scene_index:
+          g.group.id === group.id
+            ? direction === GQL.SortDirectionEnum.Desc
+              ? scenes.length - index
+              : index + 1
+            : g.scene_index,
+      })),
+    }));
+    await renumberScenes({ variables: { input } });
+  }
   const filterHook = useFilterHook(group, showSubGroupContent);
 
   const extraOperations: IItemListOperation<GQL.FindScenesQueryResult>[] = [
@@ -157,6 +239,8 @@ export const GroupScenesPanel: React.FC<IGroupScenesPanel> = ({
         <FilteredSceneList
           filterHook={filterHook}
           defaultSort="group_scene_number"
+          manualSortBy="group_scene_number"
+          onMove={onMove}
           alterQuery={active}
           view={View.GroupScenes}
           fromGroupId={group.id}
