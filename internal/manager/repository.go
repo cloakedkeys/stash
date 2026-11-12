@@ -13,6 +13,7 @@ import (
 )
 
 type SceneService interface {
+	InvalidateChangedGeneratedKey(ctx context.Context, old, updated *models.Scene) error
 	Create(ctx context.Context, input models.CreateSceneInput) (*models.Scene, error)
 	AssignFile(ctx context.Context, sceneID int, fileID models.FileID) error
 	ValidateRangeUpdate(ctx context.Context, scene *models.Scene, start, end *float64) (*float64, *float64, error)

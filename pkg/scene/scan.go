@@ -143,15 +143,17 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 			// primary somewhere, so editing a secondary file (or one
 			// sharing a hash with the real primary) can't destroy
 			// content that's still valid.
-			isPrimary := false
 			oldKeys := make(map[string]struct{})
 			for _, s := range existing {
 				if s.PrimaryFileID != nil && *s.PrimaryFileID == videoFile.ID {
-					isPrimary = true
 					// Keep the scene's range while selecting its old file hash.
 					oldScene := *s
 					oldScene.OSHash = GetHash(oldFile, models.HashAlgorithmOshash)
 					oldScene.Checksum = GetHash(oldFile, models.HashAlgorithmMd5)
+					if oldVideo, ok := oldFile.(*models.VideoFile); ok {
+						oldScene.PrimaryFileDuration = oldVideo.Duration
+						oldScene.Files = models.NewRelatedVideoFiles([]*models.VideoFile{oldVideo})
+					}
 					oldKeys[GeneratedKey(&oldScene, h.FileNamingAlgorithm)] = struct{}{}
 					if s.CoverGenerated {
 						if err := h.CreatorUpdater.UpdateCover(ctx, s.ID, nil); err != nil {
@@ -162,28 +164,15 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 				}
 			}
 
-			// #2043: copies of a file in other scenes share its generated
-			// files, so they're kept while one of those still has the old hash
-			invalidate := isPrimary
-			if invalidate {
-				stillUsed, err := h.hashStillUsed(ctx, oldHash)
+			// Copies keep only media with the same file and range key.
+			for key := range oldKeys {
+				stillUsed, err := h.hashStillUsed(ctx, oldHash, key)
 				if err != nil {
 					return err
 				}
-				invalidate = !stillUsed
-			}
-
-			if invalidate {
-				// delete, don't rename - stale content shouldn't pass as
-				// valid under the new hash. Deferred to a post-commit
-				// hook since disk deletes can't roll back with the
-				// transaction; registered before the ScanGenerator hook
-				// below so deletion still runs first.
-				txn.AddPostCommitHook(ctx, func(ctx context.Context) {
-					for key := range oldKeys {
-						InvalidateGeneratedFiles(h.Paths, key)
-					}
-				})
+				if !stillUsed {
+					txn.AddPostCommitHook(ctx, func(context.Context) { InvalidateGeneratedFiles(h.Paths, key) })
+				}
 			}
 		}
 	}
@@ -244,17 +233,22 @@ func (h *ScanHandler) associateExisting(ctx context.Context, existing []*models.
 // hashStillUsed reports whether a scene still has a file with hash, under the
 // file naming algorithm. The changed file's new fingerprints are already
 // saved, so it isn't counted.
-func (h *ScanHandler) hashStillUsed(ctx context.Context, hash string) (bool, error) {
+func (h *ScanHandler) hashStillUsed(ctx context.Context, hash, key string) (bool, error) {
 	fpType := models.FingerprintTypeOshash
 	if h.FileNamingAlgorithm == models.HashAlgorithmMd5 {
 		fpType = models.FingerprintTypeMD5
 	}
 
-	scenes, err := h.CreatorUpdater.FindByFingerprints(ctx, []models.Fingerprint{{Type: fpType, Fingerprint: hash}})
+	scenes, err := h.CreatorUpdater.FindByFingerprints(allScenes(ctx), []models.Fingerprint{{Type: fpType, Fingerprint: hash}})
 	if err != nil {
 		return false, fmt.Errorf("finding scenes with hash %s: %w", hash, err)
 	}
-	return len(scenes) > 0, nil
+	for _, s := range scenes {
+		if GeneratedKey(s, h.FileNamingAlgorithm) == key {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (h *ScanHandler) associateGallery(ctx context.Context, existing []*models.Scene, f models.File) error {

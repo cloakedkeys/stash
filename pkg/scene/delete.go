@@ -76,8 +76,8 @@ func (d *FileDeleter) MarkMarkerFiles(scene *models.Scene, seconds int) error {
 // Destroy deletes a scene and its associated relationships from the
 // database.
 func (s *Service) Destroy(ctx context.Context, scene *models.Scene, fileDeleter *FileDeleter, deleteGenerated, deleteFile, destroyFileEntry bool) error {
-	// generated files are named after the file, so they stay while another scene uses it
-	shared, err := s.sharesPrimaryFile(ctx, scene)
+	// Keep generated media while another scene uses the exact file-and-range key.
+	shared, err := s.sharesGeneratedKey(ctx, scene, fileDeleter.FileNamingAlgo)
 	if err != nil {
 		return err
 	}
@@ -203,7 +203,7 @@ func (s *Service) DestroyMarker(ctx context.Context, scene *models.Scene, sceneM
 // it was at on the scene, unless another marker uses them.
 func (s *Service) MarkMarkerFiles(ctx context.Context, scene *models.Scene, sceneMarker *models.SceneMarker, fileDeleter *FileDeleter) error {
 	seconds := int(sceneMarker.Seconds)
-	inUse, err := s.markerFilesInUse(ctx, scene, seconds, sceneMarker.ID)
+	inUse, err := s.markerFilesInUse(ctx, scene, seconds, sceneMarker.ID, fileDeleter.FileNamingAlgo)
 	if err != nil {
 		return err
 	}

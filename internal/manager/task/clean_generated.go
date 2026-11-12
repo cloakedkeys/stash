@@ -15,6 +15,7 @@ import (
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/paths"
+	"github.com/stashapp/stash/pkg/scene"
 )
 
 type CleanGeneratedOptions struct {
@@ -375,7 +376,7 @@ func (j *CleanGeneratedJob) removeEmptyDirs(root string) {
 
 func (j *CleanGeneratedJob) getScenesWithHash(ctx context.Context, hash string) ([]*models.Scene, error) {
 	fp := models.Fingerprint{
-		Fingerprint: hash,
+		Fingerprint: strings.SplitN(hash, "_", 2)[0],
 	}
 
 	if j.VideoFileNamingAlgorithm == models.HashAlgorithmMd5 {
@@ -384,7 +385,17 @@ func (j *CleanGeneratedJob) getScenesWithHash(ctx context.Context, hash string) 
 		fp.Type = models.FingerprintTypeOshash
 	}
 
-	return j.Repository.Scene.FindByFingerprints(ctx, []models.Fingerprint{fp})
+	scenes, err := j.Repository.Scene.FindByFingerprints(ctx, []models.Fingerprint{fp})
+	if err != nil {
+		return nil, err
+	}
+	var ret []*models.Scene
+	for _, s := range scenes {
+		if scene.GeneratedKey(s, j.VideoFileNamingAlgorithm) == hash {
+			ret = append(ret, s)
+		}
+	}
+	return ret, nil
 }
 
 const (
@@ -392,32 +403,25 @@ const (
 	oshashLength = 16
 )
 
-func (j *CleanGeneratedJob) hashPatternPrefix() string {
+func (j *CleanGeneratedJob) generatedFileKey(key string) (string, error) {
+	hash, valid := scene.GeneratedKeyHash(key)
 	hashLen := oshashLength
 	if j.VideoFileNamingAlgorithm == models.HashAlgorithmMd5 {
 		hashLen = md5Length
 	}
-
-	return fmt.Sprintf("%%%dx", hashLen)
+	if !valid || len(hash) != hashLen {
+		return "", fmt.Errorf("invalid generated key: %s", key)
+	}
+	return key, nil
 }
 
 func (j *CleanGeneratedJob) getSpriteFileHash(basename string) (string, error) {
-	patternPrefix := j.hashPatternPrefix()
-	spritePattern := patternPrefix + "_sprite.jpg"
-
-	var hash string
-	_, err := fmt.Sscanf(basename, spritePattern, &hash)
-	if err != nil {
-		// also try thumbs
-		thumbPattern := patternPrefix + "_thumbs.vtt"
-		_, err = fmt.Sscanf(basename, thumbPattern, &hash)
-
-		if err != nil {
-			return "", err
+	for _, suffix := range []string{"_sprite.jpg", "_thumbs.vtt"} {
+		if strings.HasSuffix(basename, suffix) {
+			return j.generatedFileKey(strings.TrimSuffix(basename, suffix))
 		}
 	}
-
-	return fmt.Sprintf("%x", hash), nil
+	return "", fmt.Errorf("unknown sprite file: %s", basename)
 }
 
 func (j *CleanGeneratedJob) cleanSpriteFiles(ctx context.Context, progress *job.Progress) error {
@@ -528,15 +532,11 @@ func (j *CleanGeneratedJob) cleanSceneFiles(ctx context.Context, path string, ty
 }
 
 func (j *CleanGeneratedJob) getScreenshotFileHash(basename string) (string, error) {
-	var hash string
-	var ext string
-	// include the extension - which could be mp4/jpg/webp
-	_, err := fmt.Sscanf(basename, j.hashPatternPrefix()+".%s", &hash, &ext)
-	if err != nil {
-		return "", err
+	ext := filepath.Ext(basename)
+	if ext == "" {
+		return "", fmt.Errorf("missing extension: %s", basename)
 	}
-
-	return fmt.Sprintf("%x", hash), nil
+	return j.generatedFileKey(strings.TrimSuffix(basename, ext))
 }
 
 func (j *CleanGeneratedJob) cleanScreenshotFiles(ctx context.Context, progress *job.Progress) error {
@@ -544,13 +544,10 @@ func (j *CleanGeneratedJob) cleanScreenshotFiles(ctx context.Context, progress *
 }
 
 func (j *CleanGeneratedJob) getTranscodeFileHash(basename string) (string, error) {
-	var hash string
-	_, err := fmt.Sscanf(basename, j.hashPatternPrefix()+".mp4", &hash)
-	if err != nil {
-		return "", err
+	if !strings.HasSuffix(basename, ".mp4") {
+		return "", fmt.Errorf("unknown transcode file: %s", basename)
 	}
-
-	return fmt.Sprintf("%x", hash), nil
+	return j.generatedFileKey(strings.TrimSuffix(basename, ".mp4"))
 }
 
 func (j *CleanGeneratedJob) cleanTranscodeFiles(ctx context.Context, progress *job.Progress) error {
@@ -558,13 +555,7 @@ func (j *CleanGeneratedJob) cleanTranscodeFiles(ctx context.Context, progress *j
 }
 
 func (j *CleanGeneratedJob) getMarkerSceneFileHash(basename string) (string, error) {
-	var hash string
-	_, err := fmt.Sscanf(basename, j.hashPatternPrefix(), &hash)
-	if err != nil {
-		return "", err
-	}
-
-	return fmt.Sprintf("%x", hash), nil
+	return j.generatedFileKey(basename)
 }
 
 func (j *CleanGeneratedJob) getMarkerFileSeconds(basename string) (int, error) {

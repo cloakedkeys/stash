@@ -745,6 +745,7 @@ func (t *ImportTask) ImportScenes(ctx context.Context) {
 
 		if err := r.WithTxn(ctx, func(ctx context.Context) error {
 			sceneImporter := &scene.Importer{
+				Paths:            instance.Paths,
 				VoiceActorWriter: r.VoiceActor,
 				ReaderWriter:     r.Scene,
 				Input:            *sceneJSON,

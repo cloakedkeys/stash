@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// PR 1 deliberately preserves file-hash names even for parts.
+// Whole-file names stay compatible under both naming algorithms.
 func TestGeneratedKey(t *testing.T) {
 	start, end := 1.234, 9.876
 	for _, r := range []struct {
@@ -26,6 +26,16 @@ func TestGeneratedKey(t *testing.T) {
 				if algo == models.HashAlgorithmMd5 {
 					want = s.Checksum
 				}
+				if r.name != "whole" {
+					suffix := "_1234-9876"
+					if r.name == "start only" {
+						suffix = "_1234-end"
+					}
+					if r.name == "end only" {
+						suffix = "_0-9876"
+					}
+					want += suffix
+				}
 				require.Equal(t, want, GeneratedKey(s, algo))
 				// Keys depend on the file, not the scene's database identity.
 				s.ID = 123
@@ -36,7 +46,7 @@ func TestGeneratedKey(t *testing.T) {
 	}
 }
 
-// This refactor changes no paths. Pin both layouts through the new entry point.
+// Pin both layouts through the generated key.
 func TestGeneratedKeyPaths(t *testing.T) {
 	start, end := 1.234, 9.876
 	for _, part := range []bool{false, true} {
@@ -48,6 +58,9 @@ func TestGeneratedKeyPaths(t *testing.T) {
 			hash := s.OSHash
 			if algo == models.HashAlgorithmMd5 {
 				hash = s.Checksum
+			}
+			if part {
+				hash += "_1234-9876"
 			}
 			p := paths.NewPaths(t.TempDir(), "")
 			key := GeneratedKey(s, algo)
@@ -71,4 +84,17 @@ func TestGeneratedKeyPaths(t *testing.T) {
 			require.Equal(t, filepath.Join(p.Generated.Screenshots, hash+".jpg"), p.Scene.GetLegacyScreenshotPath(key))
 		}
 	}
+}
+
+func TestGeneratedKeyOpenEndAndRounding(t *testing.T) {
+	start, end := 1.2345, 9.8765
+	s := &models.Scene{OSHash: "0123456789abcdef", StartTime: &start, EndTime: &end}
+	require.Equal(t, "0123456789abcdef_1235-9877", GeneratedKey(s, models.HashAlgorithmOshash))
+	s.EndTime = nil
+	s.PrimaryFileDuration = 42.0005
+	require.Equal(t, "0123456789abcdef_1235-42001", GeneratedKey(s, models.HashAlgorithmOshash))
+	s.PrimaryFileDuration = 0
+	require.Equal(t, "0123456789abcdef_1235-end", GeneratedKey(s, models.HashAlgorithmOshash))
+	s.Files.SetPrimary(&models.VideoFile{Duration: 50})
+	require.Equal(t, "0123456789abcdef_1235-50000", GeneratedKey(s, models.HashAlgorithmOshash))
 }

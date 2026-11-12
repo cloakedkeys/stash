@@ -35,6 +35,8 @@ type Scene struct {
 	OSHash string
 	// transient - checksum of primary file - empty if no files
 	Checksum string
+	// transient - duration of the primary file, for stable generated-media keys
+	PrimaryFileDuration float64 `json:"-"`
 
 	// Where the scene starts and ends in its primary file, in seconds. Nil is the start
 	// or end of the file. Kept with the scene's link to the file, so that several scenes

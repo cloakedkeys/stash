@@ -139,6 +139,7 @@ type sceneQueryRow struct {
 	PrimaryFileChecksum   zero.String `db:"primary_file_checksum"`
 	PrimaryFileStartTime  null.Float  `db:"primary_file_start_time"`
 	PrimaryFileEndTime    null.Float  `db:"primary_file_end_time"`
+	PrimaryFileDuration   null.Float  `db:"primary_file_duration"`
 }
 
 func (r *sceneQueryRow) resolve() *models.Scene {
@@ -154,11 +155,12 @@ func (r *sceneQueryRow) resolve() *models.Scene {
 		CoverGenerated: r.CoverGenerated,
 		StudioID:       nullIntPtr(r.StudioID),
 
-		PrimaryFileID: nullIntFileIDPtr(r.PrimaryFileID),
-		OSHash:        r.PrimaryFileOshash.String,
-		Checksum:      r.PrimaryFileChecksum.String,
-		StartTime:     r.PrimaryFileStartTime.Ptr(),
-		EndTime:       r.PrimaryFileEndTime.Ptr(),
+		PrimaryFileID:       nullIntFileIDPtr(r.PrimaryFileID),
+		OSHash:              r.PrimaryFileOshash.String,
+		Checksum:            r.PrimaryFileChecksum.String,
+		StartTime:           r.PrimaryFileStartTime.Ptr(),
+		EndTime:             r.PrimaryFileEndTime.Ptr(),
+		PrimaryFileDuration: r.PrimaryFileDuration.Float64,
 
 		CreatedAt: r.CreatedAt.Timestamp.UTC(),
 		UpdatedAt: r.UpdatedAt.Timestamp.UTC(),
@@ -322,6 +324,7 @@ func (qb *SceneStore) selectDataset() *goqu.SelectDataset {
 		oshash.Col("fingerprint").As("primary_file_oshash"),
 		scenesFilesJoinTable.Col("start_time").As("primary_file_start_time"),
 		scenesFilesJoinTable.Col("end_time").As("primary_file_end_time"),
+		dialect.From(videoFileTableMgr.table).Select("duration").Where(videoFileTableMgr.table.Col("file_id").Eq(scenesFilesJoinTable.Col(fileIDColumn))).As("primary_file_duration"),
 	)
 }
 

@@ -100,11 +100,18 @@ func (s *Service) Merge(ctx context.Context, sourceIDs []int, destinationID int,
 
 	// delete old scenes
 	for _, src := range sources {
-		const deleteGenerated = true
+		const deleteGenerated = false
 		const deleteFile = false
 		const destroyFileEntry = false
 		if err := s.Destroy(ctx, src, fileDeleter, deleteGenerated, deleteFile, destroyFileEntry); err != nil {
 			return fmt.Errorf("deleting scene %d: %w", src.ID, err)
+		}
+		// Marker migration above runs after commit; keep the old files until then.
+		if err := fileDeleter.markSceneGeneratedFiles(src); err != nil {
+			return err
+		}
+		if err := InvalidateChangedGeneratedKey(ctx, s.Repository, s.Paths, s.Config.GetVideoFileNamingAlgorithm(), src, updated); err != nil {
+			return err
 		}
 	}
 
@@ -144,9 +151,7 @@ func (s *Service) mergeSceneMarkers(ctx context.Context, destinationID int, src 
 // moveMarkerFiles moves the generated files of the moved markers to destHash,
 // after the commit.
 //
-// This relies on Destroy not deleting the sources' generated files: by then
-// their files have been assigned to the destination, so the generated files
-// are shared.
+// Merge defers deletion of obsolete source keys until after these moves.
 func (s *Service) moveMarkerFiles(ctx context.Context, markers []movedMarker, destHash string) {
 	type rename struct {
 		src  string
