@@ -186,6 +186,7 @@ export type CriterionType =
   | "url"
   | "interactive"
   | "interactive_speed"
+  | "is_clip"
   | "captions"
   | "resume_time"
   | "play_count"

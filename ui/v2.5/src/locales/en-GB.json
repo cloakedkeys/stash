@@ -1473,6 +1473,7 @@
   "interactive": "Interactive",
   "interactive_speed": "Interactive Speed",
   "isMissing": "Is Missing",
+  "is_clip": "Is clip",
   "language": "Language",
   "last_o_at": "Last O At",
   "last_o_at_sfw": "Last Like At",
