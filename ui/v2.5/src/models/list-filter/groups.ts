@@ -4,7 +4,7 @@ import {
   createBooleanCriterionOption,
   createDateCriterionOption,
   createMandatoryTimestampCriterionOption,
-  createDurationCriterionOption,
+  createNullDurationCriterionOption,
   createMandatoryNumberCriterionOption,
 } from "./criteria/criterion";
 import { GroupIsMissingCriterionOption } from "./criteria/is-missing";
@@ -60,7 +60,7 @@ const criterionOptions = [
   createStringCriterionOption("aliases"),
   createStringCriterionOption("director"),
   createStringCriterionOption("synopsis"),
-  createDurationCriterionOption("duration"),
+  createNullDurationCriterionOption("duration"),
   RatingCriterionOption,
   GroupPerformersCriterionOption,
   createMandatoryNumberCriterionOption("performer_count"),
