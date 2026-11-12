@@ -33,6 +33,7 @@
     "add_sub_groups": "Add Sub-Groups",
     "add_o": "Add O",
     "add_play": "Add play",
+    "add_scenes": "Add scenes…",
     "add_stash_id": "Add Stash ID",
     "add_to_entity": "Add to {entityType}",
     "add_to_gallery": "Add to gallery…",
@@ -1432,6 +1433,12 @@
     "TRANSGENDER_MALE": "Transgender Male"
   },
   "group": "Group",
+  "group_add_scenes": {
+    "invalid_number": "Enter a whole number.",
+    "missing_scene": "A selected scene could not be loaded. Please select the scenes again.",
+    "number_help": "Optional. New scenes are numbered in the order you pick them. Leave empty to add without scene numbers. Scenes already in the group keep their numbers.",
+    "starting_number": "Starting scene number"
+  },
   "group_count": "Group Count",
   "group_audio_number": "Audio Number",
   "group_scene_number": "Scene Number",
@@ -2028,6 +2035,7 @@
     "rescanning_entity": "Rescanning {count, plural, one {{singularEntity}} other {{pluralEntity}}}…",
     "saved_entity": "Saved {entity}",
     "scene_markers_copy_failed": "{count, plural, one {# marker could not be copied} other {# markers could not be copied}}. The new scene was created.",
+    "scenes_added_to_group": "{existing, plural, =0 {Added {added, plural, one {# scene} other {# scenes}} to the group} other {{added, plural, =0 {{existing, plural, one {# scene was} other {# scenes were}} already in the group; nothing added.} other {# added, {existing, plural, one {# was} other {# were}} already in the group}}}}",
     "started_auto_tagging": "Started auto tagging",
     "started_generating": "Started generating",
     "started_importing": "Started importing",

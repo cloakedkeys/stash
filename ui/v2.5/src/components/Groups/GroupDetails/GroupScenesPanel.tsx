@@ -9,12 +9,16 @@ import { FilteredSceneList } from "src/components/Scenes/SceneList";
 import { View } from "src/components/List/views";
 import { useBulkSceneUpdate } from "src/core/StashService";
 import { IItemListOperation } from "src/components/List/FilteredListToolbar";
-import { showWhenSelected } from "src/components/List/ItemList";
+import {
+  showWhenNoneSelected,
+  showWhenSelected,
+} from "src/components/List/ItemList";
 import { AlertModal } from "src/components/Shared/Alert";
-import { faMinus } from "@fortawesome/free-solid-svg-icons";
+import { faMinus, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { useIntl } from "react-intl";
 import { useToast } from "src/hooks/Toast";
 import { useModal } from "src/hooks/modal";
+import { AddScenesDialog } from "./AddScenesDialog";
 
 interface IGroupScenesPanel {
   active: boolean;
@@ -75,6 +79,26 @@ export const GroupScenesPanel: React.FC<IGroupScenesPanel> = ({
   const filterHook = useFilterHook(group, showSubGroupContent);
 
   const extraOperations: IItemListOperation<GQL.FindScenesQueryResult>[] = [
+    {
+      requiredRole: GQL.RoleEnum.Modify,
+      text: intl.formatMessage({ id: "actions.add_scenes" }),
+      isDisplayed: showWhenNoneSelected,
+      icon: faPlus,
+      buttonVariant: "secondary",
+      onClick: async (result) => {
+        showModal(
+          <AddScenesDialog
+            group={group}
+            onClose={(applied) => {
+              closeModal();
+              if (applied) {
+                void result.refetch().catch((e) => Toast.error(e));
+              }
+            }}
+          />
+        );
+      },
+    },
     {
       requiredRole: GQL.RoleEnum.Modify,
       text: intl.formatMessage({ id: "actions.remove_from_group" }),
