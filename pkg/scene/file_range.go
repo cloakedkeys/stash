@@ -229,37 +229,33 @@ func (s *Service) checkMergeable(ctx context.Context, dest *models.Scene, source
 	return nil
 }
 
-// sharesPrimaryFile reports whether another scene uses the scene's primary file. Its
-// generated files, such as previews and sprites, are named after the file, so they
-// belong to all of those scenes.
-func (s *Service) sharesPrimaryFile(ctx context.Context, scene *models.Scene) (bool, error) {
-	if scene.PrimaryFileID == nil {
+// sharesGeneratedKey reports whether another scene uses the same generated media.
+func (s *Service) sharesGeneratedKey(ctx context.Context, scene *models.Scene, algo models.HashAlgorithm) (bool, error) {
+	if scene.GetHash(algo) == "" {
 		return false, nil
 	}
-
-	others, err := s.otherScenes(ctx, scene.ID, *scene.PrimaryFileID)
+	scenes, err := scenesWithGeneratedKey(allScenes(ctx), s.Repository, scene.GetHash(algo), GeneratedKey(scene, algo), algo)
 	if err != nil {
 		return false, err
 	}
-
-	return len(others) > 0, nil
+	for _, other := range scenes {
+		if other.ID != scene.ID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // markerFilesInUse reports whether a marker other than markerID uses the generated files
-// of a marker at the second given on the scene. They are named after the scene's primary
-// file and the second, so the scenes sharing that file share them.
-func (s *Service) markerFilesInUse(ctx context.Context, scene *models.Scene, seconds int, markerID int) (bool, error) {
+// of a marker at the second given on the scene. Only equal generated keys share them.
+func (s *Service) markerFilesInUse(ctx context.Context, scene *models.Scene, seconds int, markerID int, algo models.HashAlgorithm) (bool, error) {
 	scenes := []*models.Scene{scene}
-	if scene.PrimaryFileID != nil {
-		others, err := s.otherScenes(ctx, scene.ID, *scene.PrimaryFileID)
+	if scene.GetHash(algo) != "" {
+		others, err := scenesWithGeneratedKey(allScenes(ctx), s.Repository, scene.GetHash(algo), GeneratedKey(scene, algo), algo)
 		if err != nil {
 			return false, err
 		}
-		for _, o := range others {
-			if o.PrimaryFileID != nil && *o.PrimaryFileID == *scene.PrimaryFileID {
-				scenes = append(scenes, o)
-			}
-		}
+		scenes = others
 	}
 
 	for _, sc := range scenes {

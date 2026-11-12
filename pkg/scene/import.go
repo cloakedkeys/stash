@@ -11,12 +11,14 @@ import (
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/json"
 	"github.com/stashapp/stash/pkg/models/jsonschema"
+	"github.com/stashapp/stash/pkg/models/paths"
 	"github.com/stashapp/stash/pkg/sliceutil"
 	"github.com/stashapp/stash/pkg/utils"
 )
 
 type ImporterReaderWriter interface {
 	models.SceneCreatorUpdater
+	models.SceneFinder
 	models.ViewHistoryWriter
 	models.OHistoryWriter
 	models.CustomFieldsWriter
@@ -25,6 +27,7 @@ type ImporterReaderWriter interface {
 
 type Importer struct {
 	ReaderWriter        ImporterReaderWriter
+	Paths               *paths.Paths
 	FileFinder          models.FileFinder
 	StudioWriter        models.StudioFinderCreator
 	GalleryFinder       models.GalleryFinder
@@ -561,6 +564,14 @@ func (i *Importer) Create(ctx context.Context) (*int, error) {
 }
 
 func (i *Importer) Update(ctx context.Context, id int) error {
+	var old *models.Scene
+	if i.Paths != nil {
+		var err error
+		old, err = i.ReaderWriter.Find(ctx, id)
+		if err != nil {
+			return err
+		}
+	}
 	scene := i.scene
 	scene.ID = id
 	i.ID = id
@@ -568,6 +579,15 @@ func (i *Importer) Update(ctx context.Context, id int) error {
 		return fmt.Errorf("error updating existing scene: %v", err)
 	}
 
+	if i.Paths != nil {
+		updated, err := i.ReaderWriter.Find(ctx, id)
+		if err != nil {
+			return err
+		}
+		if err := InvalidateChangedGeneratedKey(ctx, i.ReaderWriter, i.Paths, i.FileNamingAlgorithm, old, updated); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

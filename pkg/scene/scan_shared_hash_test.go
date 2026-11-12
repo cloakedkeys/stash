@@ -61,7 +61,7 @@ func testCopyInAnotherScene(t *testing.T, algo models.HashAlgorithm) {
 	db.Scene.On("UpdatePartial", mock.Anything, testSceneID, mock.Anything).Return(&models.Scene{ID: testSceneID}, nil)
 	db.Scene.On("UpdateCover", mock.Anything, testSceneID, []byte(nil)).Return(nil).Once()
 	db.Scene.On("FindByFingerprints", mock.Anything, []models.Fingerprint{{Type: fpType, Fingerprint: oldHash}}).
-		Return([]*models.Scene{{ID: otherSceneID}}, nil)
+		Return([]*models.Scene{{ID: otherSceneID, OSHash: oldHash, Checksum: oldHash}}, nil)
 	db.Gallery.On("FindByPath", mock.Anything, mock.Anything).Return(nil, nil)
 
 	h := newTestScanHandler(db, &p)
@@ -74,4 +74,51 @@ func testCopyInAnotherScene(t *testing.T, algo models.HashAlgorithm) {
 	assert.FileExists(t, sharedSprite, "the other scene still uses it")
 	assert.True(t, scene.RefreshCover)
 	db.Scene.AssertCalled(t, "UpdateCover", mock.Anything, testSceneID, []byte(nil))
+}
+
+func TestScanInvalidatesEachPartKey(t *testing.T) {
+	for _, keepEqualRange := range []bool{false, true} {
+		t.Run(boolName(keepEqualRange), func(t *testing.T) {
+			const hash = "0123456789abcdef"
+			makeFile := func(h string, d float64) *models.VideoFile {
+				return &models.VideoFile{BaseFile: &models.BaseFile{ID: 100, Path: "test.mp4", Fingerprints: models.Fingerprints{{Type: models.FingerprintTypeOshash, Fingerprint: h}}}, Duration: d}
+			}
+			oldFile, newFile := makeFile(hash, 60), makeFile("fedcba9876543210", 90)
+			start, end := 10.0, 20.0
+			bounded := &models.Scene{ID: 1, PrimaryFileID: &oldFile.ID, OSHash: hash, StartTime: &start, EndTime: &end, Files: models.NewRelatedVideoFiles([]*models.VideoFile{newFile})}
+			open := *bounded
+			open.ID = 2
+			open.EndTime = nil
+			whole := *bounded
+			whole.ID = 3
+			whole.StartTime, whole.EndTime = nil, nil
+			p := paths.NewPaths(t.TempDir(), "")
+			boundedPath := p.Scene.SpriteImage(hash + "_10000-20000").Path
+			openPath := p.Scene.SpriteImage(hash + "_10000-60000").Path
+			wholePath := p.Scene.SpriteImage(hash).Path
+			for _, path := range []string{boundedPath, openPath, wholePath} {
+				seedStaleFile(t, path)
+			}
+			db := mocks.NewDatabase()
+			db.File.On("GetCaptions", mock.Anything, mock.Anything).Return(nil, nil)
+			db.Scene.On("FindByFileID", mock.Anything, models.FileID(100)).Return([]*models.Scene{bounded, &open, &whole}, nil)
+			db.Scene.On("UpdatePartial", mock.Anything, mock.Anything, mock.Anything).Return(&models.Scene{}, nil)
+			dup := &models.Scene{ID: 4, OSHash: hash}
+			if keepEqualRange {
+				dup.StartTime, dup.EndTime = &start, &end
+			}
+			db.Scene.On("FindByFingerprints", mock.Anything, mock.Anything).Return([]*models.Scene{dup}, nil)
+			db.Gallery.On("FindByPath", mock.Anything, mock.Anything).Return(nil, nil)
+			h := newTestScanHandler(db, &p)
+			withCommittedTxn(t, db, func(ctx context.Context) error { return h.Handle(ctx, newFile, oldFile) })
+			if keepEqualRange {
+				assert.FileExists(t, boundedPath)
+				assert.NoFileExists(t, wholePath)
+			} else {
+				assert.NoFileExists(t, boundedPath)
+				assert.FileExists(t, wholePath)
+			}
+			assert.NoFileExists(t, openPath, "the old duration names the obsolete open-ended key")
+		})
+	}
 }

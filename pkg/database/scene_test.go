@@ -61,6 +61,10 @@ func loadSceneRelationships(ctx context.Context, expected models.Scene, actual *
 		}
 	}
 
+	// Clear transient file metadata not specified by the expected scene.
+	if expected.PrimaryFileDuration == 0 {
+		actual.PrimaryFileDuration = 0
+	}
 	// clear Path, Checksum, PrimaryFileID
 	if expected.Path == "" {
 		actual.Path = ""

@@ -198,18 +198,17 @@ func TestSceneHashNeedsAVisibleScene(t *testing.T) {
 		return req.WithContext(models.WithLibraryLimit(req.Context(), limit))
 	}
 
-	// without a limit nothing is looked up, as the mock would fail on an unexpected call
-	require.True(t, rs.hashAllowed(request(nil), "hash"))
-
+	const hidden = "0000000000000000"
+	const visible = "1111111111111111"
+	const md5 = "22222222222222222222222222222222"
 	limit := &models.LibraryLimit{TagIDs: []int{1}}
-	db.Scene.On("FindByOSHash", mock.Anything, "hidden").Return([]*models.Scene{}, nil)
-	db.Scene.On("FindByChecksum", mock.Anything, "hidden").Return([]*models.Scene{}, nil)
-	require.False(t, rs.hashAllowed(request(limit), "hidden"))
-
-	db.Scene.On("FindByOSHash", mock.Anything, "visible").Return([]*models.Scene{{ID: 1}}, nil)
-	require.True(t, rs.hashAllowed(request(limit), "visible"))
-
-	db.Scene.On("FindByOSHash", mock.Anything, "md5").Return([]*models.Scene{}, nil)
-	db.Scene.On("FindByChecksum", mock.Anything, "md5").Return([]*models.Scene{{ID: 1}}, nil)
-	require.True(t, rs.hashAllowed(request(limit), "md5"))
+	db.Scene.On("FindByOSHash", mock.Anything, hidden).Return([]*models.Scene{}, nil)
+	db.Scene.On("FindByChecksum", mock.Anything, hidden).Return([]*models.Scene{}, nil)
+	require.False(t, rs.hashAllowed(request(nil), hidden))
+	require.False(t, rs.hashAllowed(request(limit), hidden))
+	db.Scene.On("FindByOSHash", mock.Anything, visible).Return([]*models.Scene{{ID: 1, OSHash: visible}}, nil)
+	require.True(t, rs.hashAllowed(request(limit), visible))
+	db.Scene.On("FindByOSHash", mock.Anything, md5).Return([]*models.Scene{}, nil)
+	db.Scene.On("FindByChecksum", mock.Anything, md5).Return([]*models.Scene{{ID: 1, Checksum: md5}}, nil)
+	require.True(t, rs.hashAllowed(request(limit), md5))
 }

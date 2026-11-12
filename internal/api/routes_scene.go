@@ -91,6 +91,9 @@ func (rs sceneRoutes) Routes() chi.Router {
 	})
 	r.Get("/{sceneHash}_thumbs.vtt", rs.VttThumbs)
 	r.Get("/{sceneHash}_sprite.jpg", rs.VttSprite)
+	// Chi stops parameters at the first underscore, so ranges need their own parameter.
+	r.Get("/{sceneHash}_{sceneRange}_thumbs.vtt", rs.VttThumbs)
+	r.Get("/{sceneHash}_{sceneRange}_sprite.jpg", rs.VttSprite)
 
 	return r
 }
@@ -380,24 +383,38 @@ func (rs sceneRoutes) VttChapter(w http.ResponseWriter, r *http.Request) {
 // hashAllowed reports whether generated files can be served for a hash given in the
 // URL. These are found without loading a scene, so an account with a library limit
 // has to be able to see a scene with that hash.
+func generatedKeyParam(r *http.Request) string {
+	key := chi.URLParam(r, "sceneHash")
+	if sceneRange := chi.URLParam(r, "sceneRange"); sceneRange != "" {
+		key += "_" + sceneRange
+	}
+	return key
+}
+
 func (rs sceneRoutes) hashAllowed(r *http.Request, hash string) bool {
-	if models.LibraryLimitFromContext(r.Context()) == nil {
-		return true
+	baseHash, valid := scenePkg.GeneratedKeyHash(hash)
+	if !valid {
+		return false
 	}
 
 	allowed := false
 	if err := rs.withReadTxn(r, func(ctx context.Context) error {
-		scenes, err := rs.sceneFinder.FindByOSHash(ctx, hash)
+		scenes, err := rs.sceneFinder.FindByOSHash(ctx, baseHash)
 		if err != nil {
 			return err
 		}
 		if len(scenes) == 0 {
-			scenes, err = rs.sceneFinder.FindByChecksum(ctx, hash)
+			scenes, err = rs.sceneFinder.FindByChecksum(ctx, baseHash)
 			if err != nil {
 				return err
 			}
 		}
-		allowed = len(scenes) > 0
+		for _, s := range scenes {
+			if scenePkg.GeneratedKey(s, models.HashAlgorithmOshash) == hash || scenePkg.GeneratedKey(s, models.HashAlgorithmMd5) == hash {
+				allowed = true
+				break
+			}
+		}
 		return nil
 	}); err != nil {
 		logger.Warnf("read transaction error checking scene hash: %v", err)
@@ -413,7 +430,7 @@ func (rs sceneRoutes) VttThumbs(w http.ResponseWriter, r *http.Request) {
 	if ok && scene != nil {
 		sceneHash = scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 	} else {
-		sceneHash = chi.URLParam(r, "sceneHash")
+		sceneHash = generatedKeyParam(r)
 		if !rs.hashAllowed(r, sceneHash) {
 			http.NotFound(w, r)
 			return
@@ -431,7 +448,7 @@ func (rs sceneRoutes) VttSprite(w http.ResponseWriter, r *http.Request) {
 	if ok && scene != nil {
 		sceneHash = scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 	} else {
-		sceneHash = chi.URLParam(r, "sceneHash")
+		sceneHash = generatedKeyParam(r)
 		if !rs.hashAllowed(r, sceneHash) {
 			http.NotFound(w, r)
 			return

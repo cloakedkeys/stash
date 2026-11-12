@@ -2,7 +2,6 @@ package task
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"os"
@@ -45,21 +44,19 @@ func (j *CleanGeneratedJob) cleansVideoKind(kind string) bool {
 // parseVideoFileName splits a generated video file's name into the hash of the
 // current naming algorithm and its kind.
 func (j *CleanGeneratedJob) parseVideoFileName(name string) (hash, kind string, ok bool) {
-	hashLen := oshashLength
-	if j.VideoFileNamingAlgorithm == models.HashAlgorithmMd5 {
-		hashLen = md5Length
-	}
-
-	if len(name) <= hashLen+1 || name[hashLen] != '_' {
+	hash, kind, ok = strings.Cut(name, "_")
+	if !ok {
 		return "", "", false
 	}
-
-	hash = name[:hashLen]
-	if _, err := hex.DecodeString(hash); err != nil {
+	if first, rest, hasRange := strings.Cut(kind, "_"); hasRange && strings.Contains(first, "-") {
+		hash += "_" + first
+		kind = rest
+	}
+	key, err := j.generatedFileKey(hash)
+	if err != nil || kind == "" {
 		return "", "", false
 	}
-
-	return strings.ToLower(hash), name[hashLen+1:], true
+	return key, kind, true
 }
 
 // markerKindSeconds returns the seconds of a marker file's kind, marker_<seconds>.<ext>.

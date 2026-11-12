@@ -376,9 +376,15 @@ func (r *mutationResolver) sceneUpdate(ctx context.Context, input models.SceneUp
 		customFields = &cf
 	}
 
-	scene, err := qb.UpdatePartial(ctx, sceneID, *updatedScene)
+	updated, err := qb.UpdatePartial(ctx, sceneID, *updatedScene)
 	if err != nil {
 		return nil, err
+	}
+
+	if updatedScene.StartTime.Set || updatedScene.EndTime.Set {
+		if err := r.sceneService.InvalidateChangedGeneratedKey(ctx, originalScene, updated); err != nil {
+			return nil, err
+		}
 	}
 
 	if translator.hasField("voice_actor_ids") {
@@ -386,24 +392,24 @@ func (r *mutationResolver) sceneUpdate(ctx context.Context, input models.SceneUp
 		if err != nil {
 			return nil, err
 		}
-		if err := r.repository.VoiceActor.SetScene(ctx, scene.ID, ids); err != nil {
+		if err := r.repository.VoiceActor.SetScene(ctx, updated.ID, ids); err != nil {
 			return nil, err
 		}
 	}
 
 	if coverImageIncluded {
-		if err := r.sceneUpdateCoverImage(ctx, scene, coverImageData); err != nil {
+		if err := r.sceneUpdateCoverImage(ctx, updated, coverImageData); err != nil {
 			return nil, err
 		}
 	}
 
 	if customFields != nil {
-		if err := qb.SetCustomFields(ctx, scene.ID, *customFields); err != nil {
+		if err := qb.SetCustomFields(ctx, updated.ID, *customFields); err != nil {
 			return nil, err
 		}
 	}
 
-	return scene, nil
+	return updated, nil
 }
 
 func (r *mutationResolver) sceneUpdateCoverImage(ctx context.Context, s *models.Scene, coverImageData []byte) error {

@@ -3,14 +3,19 @@ package api
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/mocks"
-
+	"github.com/stashapp/stash/pkg/models/paths"
+	"github.com/stashapp/stash/pkg/scene"
+	"github.com/stashapp/stash/pkg/txn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 var errRangeRefused = errors.New("range refused")
@@ -71,6 +76,47 @@ func TestSceneUpdateChecksResultingRange(t *testing.T) {
 			assert.Equal(t, c.start, svc.start)
 			assert.Equal(t, c.end, svc.end)
 			db.AssertExpectations(t)
+		})
+	}
+}
+
+type keyNaming struct{}
+
+func (keyNaming) GetVideoFileNamingAlgorithm() models.HashAlgorithm {
+	return models.HashAlgorithmOshash
+}
+
+func TestSceneUpdateInvalidatesChangedRangeKey(t *testing.T) {
+	ptr := func(v float64) *float64 { return &v }
+	for _, tc := range []struct {
+		name          string
+		before, after *float64
+	}{
+		{"range edit", ptr(10), ptr(20)}, {"part to whole", ptr(10), nil}, {"whole to part", nil, ptr(10)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := paths.NewPaths(t.TempDir(), "")
+			f := &models.VideoFile{BaseFile: &models.BaseFile{ID: 100}, Duration: 60}
+			old := &models.Scene{ID: 1, OSHash: "0123456789abcdef", PrimaryFileID: &f.ID, PrimaryFileDuration: 60, StartTime: tc.before, Files: models.NewRelatedVideoFiles([]*models.VideoFile{f})}
+			updated := *old
+			updated.StartTime = tc.after
+			path := p.Scene.SpriteImage(scene.GeneratedKey(old, models.HashAlgorithmOshash)).Path
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+			require.NoError(t, os.WriteFile(path, []byte("generated"), 0600))
+			db := mocks.NewDatabase()
+			db.Scene.On("Find", mock.Anything, 1).Return(old, nil)
+			db.Scene.On("FindByFileID", mock.Anything, f.ID).Return([]*models.Scene{old}, nil).Maybe()
+			db.Scene.On("UpdatePartial", mock.Anything, 1, mock.Anything).Return(&updated, nil)
+			db.Scene.On("FindByFingerprints", mock.Anything, mock.Anything).Return([]*models.Scene{&updated}, nil)
+			r := newResolver(db)
+			r.sceneService = &scene.Service{Repository: db.Scene, File: db.File, Paths: &p, Config: keyNaming{}}
+			err := txn.WithTxn(context.Background(), db, func(ctx context.Context) error {
+				_, err := r.Mutation().(*mutationResolver).sceneUpdate(ctx, models.SceneUpdateInput{ID: "1", StartTime: tc.after}, changesetTranslator{inputMap: map[string]interface{}{"start_time": tc.after}})
+				require.FileExists(t, path, "cleanup waits for commit")
+				return err
+			})
+			require.NoError(t, err)
+			require.NoFileExists(t, path)
 		})
 	}
 }
