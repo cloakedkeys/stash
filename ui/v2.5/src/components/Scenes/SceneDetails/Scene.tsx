@@ -503,6 +503,13 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
         <Icon icon={faEllipsisV} />
       </Dropdown.Toggle>
       <Dropdown.Menu className="bg-secondary text-white">
+        <Dropdown.Item
+          key="make-group"
+          className="bg-secondary text-white"
+          onClick={() => history.push(`/groups/new?from_scene_id=${scene.id}`)}
+        >
+          <FormattedMessage id="actions.make_group_from_scene" />
+        </Dropdown.Item>
         {canAdminister && !!scene.files.length && (
           <Dropdown.Item
             key="rescan"

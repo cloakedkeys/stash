@@ -1,10 +1,16 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as GQL from "src/core/generated-graphql";
-import { useGroupCreate } from "src/core/StashService";
+import { objectTitle } from "src/core/files";
+import {
+  useFindScene,
+  useGroupCreate,
+  useSceneUpdate,
+} from "src/core/StashService";
 import { useHistory, useLocation } from "react-router-dom";
 import { useIntl } from "react-intl";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { useToast } from "src/hooks/Toast";
+import ImageUtils from "src/utils/image";
 import { GroupEditPanel } from "./GroupEditPanel";
 
 const GroupCreate: React.FC = () => {
@@ -14,9 +20,49 @@ const GroupCreate: React.FC = () => {
 
   const location = useLocation();
   const query = useMemo(() => new URLSearchParams(location.search), [location]);
-  const group = {
-    name: query.get("q") ?? undefined,
-  };
+  const sourceSceneID = query.get("from_scene_id");
+  const { data, loading } = useFindScene(sourceSceneID ?? "new");
+  const scene = sourceSceneID ? data?.findScene : undefined;
+  const [sourceImage, setSourceImage] = useState<string>();
+  const [loadingImage, setLoadingImage] = useState(false);
+  // A failed scene update can be retried without creating another group.
+  const createdGroupID = useRef<string>();
+
+  useEffect(() => {
+    let cancelled = false;
+    setSourceImage(undefined);
+    const screenshot = scene?.paths.screenshot;
+    setLoadingImage(!!screenshot);
+    if (!screenshot) return;
+    ImageUtils.imageToDataURL(screenshot)
+      .then((image) => {
+        if (!cancelled) setSourceImage(image);
+      })
+      .catch((error) => Toast.error(error))
+      .finally(() => {
+        if (!cancelled) setLoadingImage(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scene?.paths.screenshot, Toast]);
+
+  const group = useMemo(
+    () =>
+      scene
+        ? {
+            name: objectTitle(scene),
+            date: scene.date,
+            studio: scene.studio,
+            director: scene.director,
+            urls: scene.urls,
+            front_image: sourceImage,
+          }
+        : {
+            name: query.get("q") ?? undefined,
+          },
+    [scene, sourceImage, query]
+  );
 
   // Editing group state
   const [frontImage, setFrontImage] = useState<string | null>();
@@ -24,14 +70,39 @@ const GroupCreate: React.FC = () => {
   const [encodingImage, setEncodingImage] = useState<boolean>(false);
 
   const [createGroup] = useGroupCreate();
+  const [updateScene] = useSceneUpdate();
 
   async function onSave(input: GQL.GroupCreateInput, andNew?: boolean) {
-    const result = await createGroup({
-      variables: { input },
-    });
-    if (result.data?.groupCreate?.id) {
+    const groupID =
+      createdGroupID.current ??
+      (
+        await createGroup({
+          variables: { input },
+        })
+      ).data?.groupCreate?.id;
+    if (groupID) {
+      createdGroupID.current = groupID;
+      if (scene) {
+        await updateScene({
+          variables: {
+            input: {
+              id: scene.id,
+              groups: [
+                ...scene.groups.map((entry) => ({
+                  group_id: entry.group.id,
+                  scene_index: entry.scene_index,
+                })),
+                { group_id: groupID, scene_index: 1 },
+              ],
+            },
+          },
+        });
+      }
+      createdGroupID.current = undefined;
       if (!andNew) {
-        history.push(`/groups/${result.data.groupCreate.id}`);
+        history.push(`/groups/${groupID}`);
+      } else if (sourceSceneID) {
+        history.replace("/groups/new");
       }
       Toast.success(
         intl.formatMessage(
@@ -61,6 +132,8 @@ const GroupCreate: React.FC = () => {
       );
     }
   }
+
+  if (loading || loadingImage) return <LoadingIndicator />;
 
   // TODO: CSS class
   return (
