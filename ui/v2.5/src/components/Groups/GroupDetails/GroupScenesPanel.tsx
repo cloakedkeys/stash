@@ -67,6 +67,8 @@ function useFilterHook(
       filter.criteria.push(groupCriterion);
     }
 
+    groupCriterion.value.depth = showSubGroupContent ? -1 : 0;
+
     return filter;
   };
 }
@@ -184,7 +186,7 @@ export const GroupScenesPanel: React.FC<IGroupScenesPanel> = ({
     {
       requiredRole: GQL.RoleEnum.Modify,
       text: intl.formatMessage({ id: "actions.remove_from_group" }),
-      isDisplayed: showWhenSelected,
+      isDisplayed: showSubGroupContent ? () => false : showWhenSelected,
       icon: faMinus,
       buttonVariant: "danger",
       onClick: async (result, _filter, selectedIds) => {
@@ -240,7 +242,7 @@ export const GroupScenesPanel: React.FC<IGroupScenesPanel> = ({
           filterHook={filterHook}
           defaultSort="group_scene_number"
           manualSortBy="group_scene_number"
-          onMove={onMove}
+          onMove={showSubGroupContent ? undefined : onMove}
           alterQuery={active}
           view={View.GroupScenes}
           fromGroupId={group.id}

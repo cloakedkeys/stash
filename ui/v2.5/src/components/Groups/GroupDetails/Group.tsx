@@ -47,7 +47,7 @@ import {
   TabTitleCounter,
   useTabKey,
 } from "src/components/Shared/DetailsPage/Tabs";
-import { Button, Tab, Tabs } from "react-bootstrap";
+import { Button, Form, Tab, Tabs } from "react-bootstrap";
 import { GroupSubGroupsPanel } from "./GroupSubGroupsPanel";
 import { GroupPerformersPanel } from "./GroupPerformersPanel";
 import { Icon } from "src/components/Shared/Icon";
@@ -73,6 +73,11 @@ const GroupTabs: React.FC<{
   group: GQL.GroupDataFragment;
   abbreviateCounter: boolean;
 }> = ({ tabKey, group, abbreviateCounter }) => {
+  const { configuration } = useConfigurationContext();
+  const [showSubGroupContent, setShowSubGroupContent] = useState<boolean>(
+    (configuration?.ui.showChildGroupContent ?? false) &&
+      group.sub_group_count > 0
+  );
   const {
     scene_count: sceneCount,
     audio_count: audioCount,
@@ -119,7 +124,22 @@ const GroupTabs: React.FC<{
           />
         }
       >
-        <GroupScenesPanel active={activeTabKey === "scenes"} group={group} />
+        {group.sub_group_count > 0 && (
+          <div className="item-list-header">
+            <Form.Check
+              id="showSubContent"
+              checked={showSubGroupContent}
+              onChange={() => setShowSubGroupContent(!showSubGroupContent)}
+              type="switch"
+              label={<FormattedMessage id="include_sub_group_content" />}
+            />
+          </div>
+        )}
+        <GroupScenesPanel
+          active={activeTabKey === "scenes"}
+          group={group}
+          showSubGroupContent={showSubGroupContent}
+        />
       </Tab>
       <Tab
         eventKey="audios"

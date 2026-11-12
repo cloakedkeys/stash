@@ -6,6 +6,15 @@ import * as GQL from "src/core/generated-graphql";
 import type { FilteredSceneList } from "src/components/Scenes/SceneList";
 import type { IAlertModalProps } from "src/components/Shared/Alert";
 import messages from "src/locales/en-GB.json";
+import {
+  GroupsCriterion,
+  GroupsCriterionOption,
+} from "src/models/list-filter/criteria/groups";
+import { ListFilterModel } from "src/models/list-filter/filter";
+import {
+  showWhenSelected,
+  showWhenNoneSelected,
+} from "src/components/List/ItemList";
 import { GroupScenesPanel } from "./GroupScenesPanel";
 
 const page = vi.hoisted(() => ({
@@ -52,6 +61,18 @@ function scenes(count: number) {
     ],
   }));
 }
+function renderPanel(showSubGroupContent = false) {
+  renderToStaticMarkup(
+    <IntlProvider locale="en-GB" onError={() => {}}>
+      <GroupScenesPanel
+        active
+        showSubGroupContent={showSubGroupContent}
+        group={{ id: "10", name: "Group" } as GQL.GroupDataFragment}
+      />
+    </IntlProvider>
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   page.modal = undefined;
@@ -70,7 +91,6 @@ beforeEach(() => {
     >
       <GroupScenesPanel
         active
-        showSubGroupContent
         group={{ id: "10", name: "Group" } as GQL.GroupDataFragment}
       />
     </IntlProvider>
@@ -209,4 +229,47 @@ it.each([
   await page.list!.onMove!(["3"], "1", false, direction);
   expect(page.reorder).toHaveBeenCalledOnce();
   expect(page.modal).toBeUndefined();
+});
+
+it("disables drag while sub-group scenes are included", () => {
+  renderPanel(true);
+  expect(page.list!.onMove).toBeUndefined();
+  renderPanel(false);
+  expect(page.list!.onMove).toBeTypeOf("function");
+});
+
+it("hides removal while sub-group scenes are included and keeps Add scenes", () => {
+  renderPanel(true);
+  const operations = page.list!.extraOperations!;
+  expect(
+    operations[1].isDisplayed!(
+      {} as GQL.FindScenesQueryResult,
+      new ListFilterModel(GQL.FilterMode.Scenes),
+      new Set(["1"])
+    )
+  ).toBe(false);
+  renderPanel(false);
+  expect(page.list!.extraOperations![1].isDisplayed).toBe(showWhenSelected);
+  expect(page.list!.extraOperations![0].onClick).toBeTypeOf("function");
+  expect(operations[0].isDisplayed).toBe(showWhenNoneSelected);
+});
+
+it.each([
+  true,
+  false,
+])("applies the switch to an existing group criterion (%s)", (enabled) => {
+  renderPanel(enabled);
+  const filter = new ListFilterModel(GQL.FilterMode.Scenes);
+  const criterion = new GroupsCriterion(GroupsCriterionOption);
+  criterion.modifier = GQL.CriterionModifier.Includes;
+  criterion.value = {
+    items: [{ id: "10", label: "Group" }],
+    depth: enabled ? 0 : -1,
+    excluded: [],
+  };
+  filter.criteria.push(criterion);
+  expect(page.list!.filterHook!(filter).makeFilter().groups).toMatchObject({
+    value: ["10"],
+    depth: enabled ? -1 : 0,
+  });
 });
