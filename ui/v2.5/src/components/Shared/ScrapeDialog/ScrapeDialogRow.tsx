@@ -45,7 +45,8 @@ interface IScrapedRowProps<T> extends IScrapedFieldProps<T> {
 }
 
 export const ScrapeDialogRow = <T,>(props: IScrapedRowProps<T>) => {
-  const { existingLabel, scrapedLabel } = useContext(ScrapeDialogContext);
+  const { existingLabel, scrapedLabel, reverseColumns } =
+    useContext(ScrapeDialogContext);
 
   function handleSelectClick(isNew: boolean) {
     const ret = clone(props.result);
@@ -56,6 +57,45 @@ export const ScrapeDialogRow = <T,>(props: IScrapedRowProps<T>) => {
   if (!props.result.scraped && !props.newValues && !props.alwaysShow) {
     return null;
   }
+
+  const existingField = (
+    <React.Fragment key="existing">
+      <Form.Label column className="d-lg-none column-label">
+        {existingLabel}
+      </Form.Label>
+      <Col lg="6">
+        <InputGroup>
+          <InputGroup.Prepend className="bg-secondary text-white border-secondary">
+            <Button
+              variant="secondary"
+              onClick={() => handleSelectClick(false)}
+            >
+              {renderButtonIcon(!props.result.useNewValue)}
+            </Button>
+          </InputGroup.Prepend>
+          {props.originalField}
+        </InputGroup>
+      </Col>
+    </React.Fragment>
+  );
+  const scrapedField = (
+    <React.Fragment key="scraped">
+      <Form.Label column className="d-lg-none column-label">
+        {scrapedLabel}
+      </Form.Label>
+      <Col lg="6">
+        <InputGroup>
+          <InputGroup.Prepend>
+            <Button variant="secondary" onClick={() => handleSelectClick(true)}>
+              {renderButtonIcon(props.result.useNewValue)}
+            </Button>
+          </InputGroup.Prepend>
+          {props.newField}
+        </InputGroup>
+        {props.newValues}
+      </Col>
+    </React.Fragment>
+  );
 
   return (
     <Row
@@ -68,40 +108,9 @@ export const ScrapeDialogRow = <T,>(props: IScrapedRowProps<T>) => {
 
       <Col lg="9">
         <Row>
-          <Form.Label column className="d-lg-none column-label">
-            {existingLabel}
-          </Form.Label>
-          <Col lg="6">
-            <InputGroup>
-              <InputGroup.Prepend className="bg-secondary text-white border-secondary">
-                <Button
-                  variant="secondary"
-                  onClick={() => handleSelectClick(false)}
-                >
-                  {renderButtonIcon(!props.result.useNewValue)}
-                </Button>
-              </InputGroup.Prepend>
-              {props.originalField}
-            </InputGroup>
-          </Col>
-
-          <Form.Label column className="d-lg-none column-label">
-            {scrapedLabel}
-          </Form.Label>
-          <Col lg="6">
-            <InputGroup>
-              <InputGroup.Prepend>
-                <Button
-                  variant="secondary"
-                  onClick={() => handleSelectClick(true)}
-                >
-                  {renderButtonIcon(props.result.useNewValue)}
-                </Button>
-              </InputGroup.Prepend>
-              {props.newField}
-            </InputGroup>
-            {props.newValues}
-          </Col>
+          {reverseColumns
+            ? [scrapedField, existingField]
+            : [existingField, scrapedField]}
         </Row>
       </Col>
     </Row>

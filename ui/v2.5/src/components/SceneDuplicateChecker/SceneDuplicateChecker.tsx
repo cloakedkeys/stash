@@ -1139,7 +1139,7 @@ export const SceneDuplicateChecker: React.FC = () => {
                           data-action="merge"
                           onClick={() => onMergeClicked(group, scene)}
                         >
-                          <FormattedMessage id="actions.merge" />
+                          <FormattedMessage id="actions.merge_metadata_into_this" />
                         </Button>
                       </td>
                     </tr>
