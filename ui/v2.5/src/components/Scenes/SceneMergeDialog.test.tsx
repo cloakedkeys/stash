@@ -45,6 +45,7 @@ vi.mock("src/core/StashService", () => ({
   queryFindFullScenesByID: page.query,
   mutateSceneMerge: page.merge,
   mutateDeleteFiles: page.deleteFiles,
+  useConfigureUISetting: () => [vi.fn()],
 }));
 vi.mock("src/hooks/Toast", () => ({
   useToast: () => ({ error: page.error, success: vi.fn() }),

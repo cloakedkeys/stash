@@ -1282,6 +1282,8 @@
     "tags_found": "{count} tags found",
     "scrape_entity_query": "{entity_type} Scrape Query",
     "scrape_entity_title": "{entity_type} Scrape Results",
+    "scrape_merge_default": "Merge by default",
+    "scrape_merge_description": "Keep current values and add scraped values without duplicates",
     "scrape_results_existing": "Existing",
     "scrape_results_missing": "Missing",
     "scrape_results_scraped": "Scraped",

@@ -10,6 +10,8 @@ export class ScrapeResult<T> {
   public originalValue?: T;
   public scraped: boolean = false;
   public useNewValue: boolean = false;
+  public useMergedValue: boolean = false;
+  private mergeValues?: (original?: T, scraped?: T) => T;
   private isEqual: (
     v1: T | undefined | null,
     v2: T | undefined | null
@@ -56,6 +58,9 @@ export class ScrapeResult<T> {
   }
 
   public getNewValue() {
+    if (this.useMergedValue && this.mergeValues) {
+      return this.mergeValues(this.originalValue, this.newValue);
+    }
     if (this.useNewValue) {
       return this.newValue;
     }
@@ -64,8 +69,38 @@ export class ScrapeResult<T> {
   // the value the dialog is currently showing for this field - the scraped
   // value if it is selected, otherwise the value the object already had
   public currentValue() {
-    return this.useNewValue ? this.newValue : this.originalValue;
+    return this.useNewValue || this.useMergedValue
+      ? this.getNewValue()
+      : this.originalValue;
   }
+
+  public cloneWithSelection(useNewValue: boolean) {
+    const ret = clone(this);
+    ret.useNewValue = useNewValue;
+    ret.useMergedValue = false;
+    return ret;
+  }
+
+  public cloneWithMerge(mergeValues: (original?: T, scraped?: T) => T) {
+    const ret = clone(this);
+    ret.mergeValues = mergeValues;
+    ret.useMergedValue = true;
+    return ret;
+  }
+}
+
+export function mergeLists<T>(
+  original: T[] = [],
+  scraped: T[] = [],
+  key: (value: T) => unknown = (value) => value
+): T[] {
+  const seen = new Set<unknown>();
+  return [...original, ...scraped].filter((value) => {
+    const id = key(value);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }
 
 // for types where !!value is a valid value (boolean and number)

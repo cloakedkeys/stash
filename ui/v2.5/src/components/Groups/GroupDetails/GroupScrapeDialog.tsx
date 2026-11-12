@@ -161,6 +161,7 @@ export const GroupScrapeDialog: React.FC<IGroupScrapeDialogProps> = ({
         />
         <ScrapedStringListRow
           field="aliases"
+          mergeable={false}
           title={intl.formatMessage({ id: "aliases" })}
           result={aliases}
           onChange={(value) => setAliases(value)}
@@ -229,6 +230,7 @@ export const GroupScrapeDialog: React.FC<IGroupScrapeDialogProps> = ({
 
   return (
     <ScrapeDialog
+      scrapeType="group"
       title={intl.formatMessage(
         { id: "dialogs.scrape_entity_title" },
         { entity_type: intl.formatMessage({ id: "group" }) }
