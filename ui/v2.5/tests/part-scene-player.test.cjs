@@ -211,10 +211,7 @@ for (const [name, start, end, duration] of [
     activity.sendActivity();
     assert.equal(activity.count ?? 0, duration === 40 ? 1 : 0);
     assert.deepEqual(activity.saved, { resume: 0, played: 20 });
-    assert.equal(
-      state.thumbnail,
-      s.paths.vtt
-    );
+    assert.equal(state.thumbnail, s.paths.vtt);
   });
 }
 test("changing saved bounds reloads the same scene and rejects an old out-of-range timestamp", () => {
@@ -330,7 +327,14 @@ test("scrubber shows part sprites on the scene timeline and keeps the heatmap of
       ...React,
       useRef: () => ({ current: null }),
       useState: (initial) => [
-        typeof initial === "number" ? 300 : [{ style: { backgroundImage: "url(part-sprite.jpg)" }, time: "0 - 40" }],
+        typeof initial === "number"
+          ? 300
+          : [
+              {
+                style: { backgroundImage: "url(part-sprite.jpg)" },
+                time: "0 - 40",
+              },
+            ],
         () => {},
       ],
       useCallback: (fn) => fn,
