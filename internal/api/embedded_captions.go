@@ -9,6 +9,7 @@ import (
 
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/scene/embedded"
 	"github.com/stashapp/stash/pkg/utils"
 )
@@ -26,6 +27,9 @@ func embeddedCache(sceneID int, f *models.VideoFile) embedded.Cache {
 }
 
 func (r *sceneResolver) EmbeddedCaptions(ctx context.Context, obj *models.Scene) ([]*embedded.Track, error) {
+	if scene.HasRange(obj) {
+		return nil, nil
+	}
 	f, err := r.getPrimaryFile(ctx, obj)
 	if err != nil || f == nil {
 		return nil, err
@@ -44,12 +48,16 @@ func (r *sceneResolver) EmbeddedCaptions(ctx context.Context, obj *models.Scene)
 // EmbeddedCaption is reached through the same SceneCtx and authentication
 // middleware as external captions. SceneCtx has already closed its transaction.
 func (rs sceneRoutes) EmbeddedCaption(w http.ResponseWriter, r *http.Request, rawIndex string) {
+	s := r.Context().Value(sceneKey).(*models.Scene)
+	if scene.HasRange(s) {
+		http.NotFound(w, r)
+		return
+	}
 	index, err := strconv.Atoi(rawIndex)
 	if err != nil || index < 0 {
 		http.Error(w, "invalid stream index", http.StatusBadRequest)
 		return
 	}
-	s := r.Context().Value(sceneKey).(*models.Scene)
 	f := s.Files.Primary()
 	if f == nil {
 		http.NotFound(w, r)

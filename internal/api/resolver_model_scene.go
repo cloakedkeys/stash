@@ -9,6 +9,7 @@ import (
 	"github.com/stashapp/stash/internal/api/urlbuilders"
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/signedurl"
 )
 
@@ -143,7 +144,7 @@ func (r *sceneResolver) Paths(ctx context.Context, obj *models.Scene) (*ScenePat
 	interactiveCSV := interactiveCsvPath.String()
 	interactiveHeatmap := builder.GetInteractiveHeatmapURL()
 
-	return &ScenePathsType{
+	ret := &ScenePathsType{
 		Screenshot:         &screenshotPath,
 		Preview:            &previewPath,
 		Stream:             &streamPath,
@@ -154,7 +155,14 @@ func (r *sceneResolver) Paths(ctx context.Context, obj *models.Scene) (*ScenePat
 		InteractiveCSV:     &interactiveCSV,
 		InteractiveHeatmap: &interactiveHeatmap,
 		Caption:            &captionBasePath,
-	}, nil
+	}
+	if scene.HasRange(obj) {
+		ret.Caption = nil
+		ret.Funscript = nil
+		ret.InteractiveCSV = nil
+		ret.InteractiveHeatmap = nil
+	}
+	return ret, nil
 }
 
 func (r *sceneResolver) SceneMarkers(ctx context.Context, obj *models.Scene) (ret []*models.SceneMarker, err error) {
@@ -169,6 +177,9 @@ func (r *sceneResolver) SceneMarkers(ctx context.Context, obj *models.Scene) (re
 }
 
 func (r *sceneResolver) Captions(ctx context.Context, obj *models.Scene) (ret []*models.VideoCaption, err error) {
+	if scene.HasRange(obj) {
+		return nil, nil
+	}
 	primaryFile, err := r.getPrimaryFile(ctx, obj)
 	if err != nil {
 		return nil, err
@@ -328,6 +339,9 @@ func (r *sceneResolver) SceneStreams(ctx context.Context, obj *models.Scene) ([]
 }
 
 func (r *sceneResolver) Interactive(ctx context.Context, obj *models.Scene) (bool, error) {
+	if scene.HasRange(obj) {
+		return false, nil
+	}
 	primaryFile, err := r.getPrimaryFile(ctx, obj)
 	if err != nil {
 		return false, err
@@ -340,6 +354,9 @@ func (r *sceneResolver) Interactive(ctx context.Context, obj *models.Scene) (boo
 }
 
 func (r *sceneResolver) InteractiveSpeed(ctx context.Context, obj *models.Scene) (*int, error) {
+	if scene.HasRange(obj) {
+		return nil, nil
+	}
 	primaryFile, err := r.getPrimaryFile(ctx, obj)
 	if err != nil {
 		return nil, err

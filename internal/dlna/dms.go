@@ -48,6 +48,7 @@ import (
 	"github.com/anacrolix/dms/upnp"
 
 	"github.com/stashapp/stash/internal/ip"
+	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 )
@@ -673,7 +674,7 @@ func (me *Server) initMux(mux *http.ServeMux) {
 					logger.Debugf("failed to load primary file for scene %d: %v", sceneIdInt, err)
 				}
 				if f := scene.Files.Primary(); f != nil {
-					videoDuration = f.Duration
+					videoDuration = (ffmpeg.StreamRange{Start: scene.StartTime, End: scene.EndTime}).Duration(f.Duration)
 				}
 			}
 			return nil
@@ -688,6 +689,9 @@ func (me *Server) initMux(mux *http.ServeMux) {
 
 		w.Header().Set("transferMode.dlna.org", "Streaming")
 		w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01500000000000000000000000000000")
+		if scene.StartTime != nil || scene.EndTime != nil {
+			w.Header().Set("contentFeatures.dlna.org", "DLNA.ORG_OP=00;DLNA.ORG_CI=1;DLNA.ORG_FLAGS=01500000000000000000000000000000")
+		}
 
 		// Track activity - uses time-based tracking, updated on each request
 		if me.activityTracker != nil {

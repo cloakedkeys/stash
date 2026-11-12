@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -69,6 +70,9 @@ var (
 					"-ac", "2",
 				)
 			}
+			if codec != VideoCodecCopy {
+				args = args.VideoFilter(videoFilter)
+			}
 			args = args.Format(FormatMatroska)
 			return
 		},
@@ -80,6 +84,7 @@ type TranscodeOptions struct {
 	VideoFile  *models.VideoFile
 	Resolution string
 	StartTime  float64
+	Range      StreamRange
 }
 
 func (o TranscodeOptions) FileGetCodec(sm *StreamManager, maxTranscodeSize int) (codec VideoCodec) {
@@ -95,7 +100,7 @@ func (o TranscodeOptions) FileGetCodec(sm *StreamManager, maxTranscodeSize int) 
 
 	switch o.StreamType.MimeType {
 	case MimeMp4Video:
-		if !needsResize && o.VideoFile.VideoCodec == H264 {
+		if !o.Range.IsPart() && !needsResize && o.VideoFile.VideoCodec == H264 {
 			return VideoCodecCopy
 		}
 		codec = VideoCodecLibX264
@@ -103,7 +108,7 @@ func (o TranscodeOptions) FileGetCodec(sm *StreamManager, maxTranscodeSize int) 
 			codec = sm.encoder.HWCodecMP4Compatible(VideoCodecLibX264)
 		}
 	case MimeWebmVideo:
-		if !needsResize && (o.VideoFile.VideoCodec == Vp8 || o.VideoFile.VideoCodec == Vp9) {
+		if !o.Range.IsPart() && !needsResize && (o.VideoFile.VideoCodec == Vp8 || o.VideoFile.VideoCodec == Vp9) {
 			return VideoCodecCopy
 		}
 		codec = VideoCodecVP9
@@ -112,6 +117,9 @@ func (o TranscodeOptions) FileGetCodec(sm *StreamManager, maxTranscodeSize int) 
 		}
 	case MimeMkvVideo:
 		codec = VideoCodecCopy
+		if o.Range.IsPart() {
+			codec = VideoCodecLibX264
+		}
 	}
 
 	return codec
@@ -134,15 +142,26 @@ func (o TranscodeOptions) makeStreamArgs(sm *StreamManager) Args {
 	args = sm.encoder.HWDeviceInit(args, codec, fullhw)
 	args = append(args, extraInputArgs...)
 
-	if o.StartTime != 0 {
+	seek := o.StartTime
+	if o.Range.IsPart() {
+		seek += o.Range.start()
+	}
+	if seek != 0 {
 		if codec == VideoCodecCopy {
 			// #7103 - keep audio aligned with copied video, which can only start at a keyframe
 			args = args.NoAccurateSeek()
 		}
-		args = args.Seek(o.StartTime)
+		args = args.Seek(seek)
 	}
 
 	args = args.Input(o.VideoFile.Path)
+	if o.Range.IsPart() {
+		if length := o.Range.Duration(o.VideoFile.Duration); length > 0 {
+			args = args.Duration(length - o.StartTime)
+		}
+		// Captions use the file timeline and are disabled for part scenes.
+		args = append(args, "-sn")
+	}
 
 	videoOnly := ProbeAudioCodec(o.VideoFile.AudioCodec) == MissingUnsupported
 
@@ -158,6 +177,18 @@ func (o TranscodeOptions) makeStreamArgs(sm *StreamManager) Args {
 }
 
 func (sm *StreamManager) ServeTranscode(w http.ResponseWriter, r *http.Request, options TranscodeOptions) {
+	if options.Range.IsPart() {
+		length := options.Range.Duration(options.VideoFile.Duration)
+		if math.IsNaN(options.StartTime) || math.IsInf(options.StartTime, 0) || options.StartTime < 0 || (length > 0 && options.StartTime >= length) {
+			http.Error(w, "invalid scene seek", http.StatusBadRequest)
+			return
+		}
+		if r.Method == http.MethodHead {
+			w.Header().Set("Content-Type", options.StreamType.MimeType)
+			w.Header().Set("Cache-Control", "no-store")
+			return
+		}
+	}
 	streamRequestCtx := NewStreamRequestContext(w, r)
 	lockCtx := sm.lockManager.ReadLock(streamRequestCtx, options.VideoFile.Path)
 

@@ -77,12 +77,12 @@ type Scene {
   play_count: Int
   """
   Where the scene starts in its file, in seconds. Null is the start of the file.
-  Playback doesn't use it yet.
+  Streams begin here and present a scene-relative timeline.
   """
   start_time: Float
   """
   Where the scene ends in its file, in seconds. Null is the end of the file.
-  Playback doesn't use it yet.
+  Streams stop here.
   """
   end_time: Float
 
