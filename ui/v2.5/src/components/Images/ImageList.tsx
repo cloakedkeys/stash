@@ -22,6 +22,7 @@ import { useLightbox } from "src/hooks/Lightbox/hooks";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { DisplayMode } from "src/models/list-filter/types";
 import { ImageWallItem } from "./ImageWallItem";
+import { AddToGalleryDialog } from "./AddToGalleryDialog";
 import { EditImagesDialog } from "./EditImagesDialog";
 import { DeleteImagesDialog } from "./DeleteImagesDialog";
 import "flexbin/flexbin.css";
@@ -655,6 +656,18 @@ export const FilteredImageList = PatchComponent(
 
     const otherOperations: IListFilterOperation[] = [
       ...convertedExtraOperations,
+      {
+        text: intl.formatMessage({ id: "actions.add_to_gallery" }),
+        requiredRole: GQL.RoleEnum.Modify,
+        isDisplayed: () => hasSelection,
+        onClick: () =>
+          showModal(
+            <AddToGalleryDialog
+              imageIds={Array.from(selectedIds.values())}
+              onClose={onCloseEditDelete}
+            />
+          ),
+      },
       {
         text: intl.formatMessage({ id: "actions.select_all" }),
         onClick: () => onSelectAll(),
