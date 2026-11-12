@@ -107,6 +107,8 @@
     "loop_scene": "Loop: scene",
     "make_primary": "Make Primary",
     "merge": "Merge",
+    "merge_metadata": "Merge metadata",
+    "merge_metadata_into_this": "Merge metadata into this",
     "migrate_blobs": "Migrate blobs",
     "migrate_scene_screenshots": "Migrate scene screenshots",
     "migrate_screenshots": "Migrate Screenshots",
@@ -1213,8 +1215,10 @@
     "merge": {
       "combined": "Combined",
       "destination": "Destination",
+      "destination_help": "Target scene where source will be merged into",
       "empty_results": "Destination field values will be unchanged.",
-      "source": "Source"
+      "source": "Source",
+      "source_help": "Scene to merge"
     },
     "overwrite_filter_warning": "Saved filter \"{entityName}\" will be overwritten.",
     "performers_found": "{count} performers found",

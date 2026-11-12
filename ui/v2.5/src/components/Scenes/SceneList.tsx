@@ -629,7 +629,7 @@ export const FilteredSceneList = PatchComponent(
         isDisplayed: () => hasSelection,
       },
       {
-        text: `${intl.formatMessage({ id: "actions.merge" })}…`,
+        text: `${intl.formatMessage({ id: "actions.merge_metadata" })}…`,
         requiredRole: GQL.RoleEnum.Modify,
         onClick: () => onMerge(),
         isDisplayed: () => hasSelection,

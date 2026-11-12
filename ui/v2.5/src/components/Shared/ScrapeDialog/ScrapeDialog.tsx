@@ -6,6 +6,7 @@ import { faPencilAlt } from "@fortawesome/free-solid-svg-icons";
 import { useConfigurationContext } from "src/hooks/Config";
 
 export interface IScrapeDialogContextState {
+  reverseColumns?: boolean;
   existingLabel?: React.ReactNode;
   scrapedLabel?: React.ReactNode;
 }
@@ -16,6 +17,7 @@ export const ScrapeDialogContext =
 interface IScrapeDialogProps {
   className?: string;
   title: string;
+  reverseColumns?: boolean;
   existingLabel?: React.ReactNode;
   scrapedLabel?: React.ReactNode;
   onClose: (apply?: boolean) => void;
@@ -45,10 +47,11 @@ export const ScrapeDialog: React.FC<
 
   const contextState = useMemo(
     () => ({
+      reverseColumns: props.reverseColumns,
       existingLabel: existingLabel,
       scrapedLabel: scrapedLabel,
     }),
-    [existingLabel, scrapedLabel]
+    [existingLabel, scrapedLabel, props.reverseColumns]
   );
 
   return (
@@ -80,20 +83,19 @@ export const ScrapeDialog: React.FC<
             <Row className="px-3 pt-3">
               <Col lg={{ span: 9, offset: 3 }}>
                 <Row>
-                  <Form.Label
-                    column
-                    lg="6"
-                    className="d-lg-block d-none column-label"
-                  >
-                    {existingLabel}
-                  </Form.Label>
-                  <Form.Label
-                    column
-                    lg="6"
-                    className="d-lg-block d-none column-label"
-                  >
-                    {scrapedLabel}
-                  </Form.Label>
+                  {(props.reverseColumns
+                    ? [scrapedLabel, existingLabel]
+                    : [existingLabel, scrapedLabel]
+                  ).map((label, index) => (
+                    <Form.Label
+                      key={index}
+                      column
+                      lg="6"
+                      className="d-lg-block d-none column-label"
+                    >
+                      {label}
+                    </Form.Label>
+                  ))}
                 </Row>
               </Col>
             </Row>
