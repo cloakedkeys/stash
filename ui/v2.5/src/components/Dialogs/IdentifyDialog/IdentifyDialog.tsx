@@ -1,3 +1,4 @@
+import { sortPinnedScrapers } from "src/hooks/pinnedScrapers";
 import React, { useState, useEffect, useMemo } from "react";
 import { Button, Form } from "react-bootstrap";
 import {
@@ -139,7 +140,10 @@ export const IdentifyDialog: React.FC<IIdentifyDialogProps> = ({
     );
 
     ret.push(
-      ...fragmentScrapers.map((s) => {
+      ...sortPinnedScrapers(
+        fragmentScrapers,
+        configData.configuration.ui.pinnedScrapers
+      ).map((s) => {
         return {
           id: `${SCRAPER_PREFIX}${s.id}`,
           displayName: s.name,

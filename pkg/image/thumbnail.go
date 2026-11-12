@@ -44,6 +44,7 @@ type ThumbnailEncoder struct {
 }
 
 type ClipPreviewOptions struct {
+	Threads    int
 	InputArgs  []string
 	OutputArgs []string
 	Preset     string
@@ -254,7 +255,7 @@ func (e *ThumbnailEncoder) getClipPreview(inPath string, outPath string, maxSize
 
 	o := e.ClipPreviewOptions
 
-	thumbArgs := codec.ExtraArgsHQ(o.Preset, clipPreviewCRF)
+	thumbArgs := codec.ExtraArgsHQ(o.Preset, clipPreviewCRF, o.Threads)
 	thumbArgs = thumbArgs.VideoFilter(thumbFilter)
 
 	thumbArgs = append(thumbArgs,

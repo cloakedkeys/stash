@@ -664,13 +664,13 @@ func (_m *SceneReaderWriter) FindByPrimaryFileID(ctx context.Context, fileID mod
 	return r0, r1
 }
 
-// FindDuplicates provides a mock function with given fields: ctx, distance, durationDiff, filter
-func (_m *SceneReaderWriter) FindDuplicates(ctx context.Context, distance int, durationDiff float64, filter *models.SceneFilterType) ([][]*models.Scene, error) {
-	ret := _m.Called(ctx, distance, durationDiff, filter)
+// FindDuplicates provides a mock function with given fields: ctx, distance, durationDiff, filter, stashID
+func (_m *SceneReaderWriter) FindDuplicates(ctx context.Context, distance int, durationDiff float64, filter *models.SceneFilterType, stashID bool) ([][]*models.Scene, error) {
+	ret := _m.Called(ctx, distance, durationDiff, filter, stashID)
 
 	var r0 [][]*models.Scene
-	if rf, ok := ret.Get(0).(func(context.Context, int, float64, *models.SceneFilterType) [][]*models.Scene); ok {
-		r0 = rf(ctx, distance, durationDiff, filter)
+	if rf, ok := ret.Get(0).(func(context.Context, int, float64, *models.SceneFilterType, bool) [][]*models.Scene); ok {
+		r0 = rf(ctx, distance, durationDiff, filter, stashID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([][]*models.Scene)
@@ -678,8 +678,8 @@ func (_m *SceneReaderWriter) FindDuplicates(ctx context.Context, distance int, d
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, int, float64, *models.SceneFilterType) error); ok {
-		r1 = rf(ctx, distance, durationDiff, filter)
+	if rf, ok := ret.Get(1).(func(context.Context, int, float64, *models.SceneFilterType, bool) error); ok {
+		r1 = rf(ctx, distance, durationDiff, filter, stashID)
 	} else {
 		r1 = ret.Error(1)
 	}

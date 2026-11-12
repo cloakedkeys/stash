@@ -1,3 +1,8 @@
+import {
+  sortPinnedScrapers,
+  usePinnedScrapers,
+} from "src/hooks/pinnedScrapers";
+import { ScraperMenuItem } from "src/components/Shared/ScraperMenuItem";
 import React, { useEffect, useState } from "react";
 import { Button, Form, Dropdown, SplitButton } from "react-bootstrap";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -422,6 +427,8 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
     setQueryableScrapers(newQueryableScrapers);
   }, [Scrapers]);
 
+  const { pinnedScrapers, togglePin, saving } = usePinnedScrapers();
+
   if (isLoading) return <LoadingIndicator />;
 
   async function onReloadScrapers() {
@@ -536,15 +543,15 @@ export const PerformerEditPanel: React.FC<IPerformerDetails> = ({
           </Dropdown.Item>
         ))}
         {queryableScrapers
-          ? queryableScrapers.map((s) => (
-              <Dropdown.Item
-                as={Button}
-                key={s.name}
-                className="minimal"
-                onClick={() => onScraperSelected(s)}
-              >
-                {s.name}
-              </Dropdown.Item>
+          ? sortPinnedScrapers(queryableScrapers, pinnedScrapers).map((s) => (
+              <ScraperMenuItem
+                key={s.id}
+                scraper={s}
+                pinned={pinnedScrapers.includes(s.id)}
+                saving={saving}
+                togglePin={togglePin}
+                onSelect={() => onScraperSelected(s)}
+              />
             ))
           : ""}
         <Dropdown.Item

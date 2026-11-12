@@ -1,6 +1,7 @@
 import { Form, Col, Row, Button, FormControl } from "react-bootstrap";
 import React, { useEffect, useMemo, useState } from "react";
 import * as GQL from "src/core/generated-graphql";
+import { objectTitle } from "src/core/files";
 import { Icon } from "../Shared/Icon";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
 import { GallerySelect } from "../Shared/Select";
@@ -49,6 +50,27 @@ import {
 import { Scene, SceneSelect } from "src/components/Scenes/SceneSelect";
 import { StashIDsField } from "../Shared/StashID";
 import { PatchComponent } from "src/patch";
+
+const SceneMergeIdentity: React.FC<{ scene: GQL.SceneDataFragment }> = ({
+  scene,
+}) => {
+  const title = objectTitle(scene);
+  const titleIsFileName = scene.files.some(
+    (file) => TextUtils.fileNameFromPath(file.path) === title
+  );
+
+  return (
+    <div>
+      {title && !titleIsFileName && <div>{title}</div>}
+      {scene.files.map((file) => (
+        <div key={file.id}>
+          {TextUtils.fileNameFromPath(file.path)} (
+          {TextUtils.resolution(file.width, file.height)})
+        </div>
+      ))}
+    </div>
+  );
+};
 
 type MergeOptions = {
   values: GQL.SceneUpdateInput;
@@ -696,7 +718,7 @@ const SceneMergeDetails: React.FC<ISceneMergeDetailsProps> = ({
   }
 
   const dialogTitle = intl.formatMessage({
-    id: "actions.merge",
+    id: "actions.merge_metadata",
   });
 
   const destinationLabel = !hasValues
@@ -709,6 +731,7 @@ const SceneMergeDetails: React.FC<ISceneMergeDetailsProps> = ({
   return (
     <ScrapeDialog
       title={dialogTitle}
+      reverseColumns
       existingLabel={destinationLabel}
       scrapedLabel={sourceLabel}
       onClose={(apply) => {
@@ -719,6 +742,22 @@ const SceneMergeDetails: React.FC<ISceneMergeDetailsProps> = ({
         }
       }}
     >
+      <Row className="px-3">
+        <Col lg={6}>
+          <strong>
+            <FormattedMessage id="dialogs.merge.source" />
+          </strong>
+          {sources.map((scene) => (
+            <SceneMergeIdentity key={scene.id} scene={scene} />
+          ))}
+        </Col>
+        <Col lg={6}>
+          <strong>
+            <FormattedMessage id="dialogs.merge.destination" />
+          </strong>
+          <SceneMergeIdentity scene={dest} />
+        </Col>
+      </Row>
       {renderScrapeRows()}
     </ScrapeDialog>
   );
@@ -747,6 +786,10 @@ export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
     );
     const [loadedDest, setLoadedDest] = useState<GQL.SceneDataFragment>();
 
+    const [previewScenes, setPreviewScenes] = useState<GQL.SceneDataFragment[]>(
+      []
+    );
+
     const [running, setRunning] = useState(false);
     const [secondStep, setSecondStep] = useState(false);
 
@@ -754,7 +797,7 @@ export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
     const Toast = useToast();
 
     const title = intl.formatMessage({
-      id: "actions.merge",
+      id: "actions.merge_metadata",
     });
 
     const srcIDs = useMemo(() => sourceScenes.map((s) => s.id), [sourceScenes]);
@@ -762,6 +805,33 @@ export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
       () => (destScene[0] ? [destScene[0].id] : []),
       [destScene]
     );
+
+    useEffect(() => {
+      let active = true;
+      setPreviewScenes([]);
+      const ids = [...srcIDs, ...destID];
+      if (show && ids.length) {
+        queryFindFullScenesByID(ids.map(Number))
+          .then((query) => {
+            if (active) setPreviewScenes(query.data.findScenes.scenes);
+          })
+          .catch((error) => {
+            if (active) Toast.error(error);
+          });
+      }
+      return () => {
+        active = false;
+      };
+    }, [srcIDs, destID, show, Toast]);
+
+    function renderSceneIdentities(selected: Scene[]) {
+      return selected.map((scene) => {
+        const loaded = previewScenes.find((s) => s.id === scene.id);
+        return loaded ? (
+          <SceneMergeIdentity key={scene.id} scene={loaded} />
+        ) : null;
+      });
+    }
 
     async function loadScenes() {
       const sceneIDs = sourceScenes.map((s) => parseInt(s.id, 10));
@@ -860,6 +930,10 @@ export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
                   menuPortalTarget={document.body}
                   excludeIds={destID}
                 />
+                <Form.Text>
+                  <FormattedMessage id="dialogs.merge.source_help" />
+                </Form.Text>
+                {renderSceneIdentities(sourceScenes)}
               </Col>
             </Form.Group>
             <Form.Group
@@ -894,6 +968,10 @@ export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
                   menuPortalTarget={document.body}
                   excludeIds={srcIDs}
                 />
+                <Form.Text>
+                  <FormattedMessage id="dialogs.merge.destination_help" />
+                </Form.Text>
+                {renderSceneIdentities(destScene)}
               </Col>
             </Form.Group>
           </div>

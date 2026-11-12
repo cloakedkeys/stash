@@ -88,7 +88,7 @@ func (g Generator) transcodeVideoArgs(codec ffmpeg.VideoCodec, fullhw bool, widt
 		videoFilter = g.Encoder.HWMaxResFilter(codec, width, height, transcodeTargetHeight(width, height, options), fullhw)
 	}
 
-	videoArgs = codec.ExtraArgsHQ("superfast", transcodeCRF)
+	videoArgs = codec.ExtraArgsHQ("superfast", transcodeCRF, g.FFMpegConfig.GetGenerationThreads())
 	videoArgs = videoArgs.VideoFilter(videoFilter)
 	videoArgs = videoArgs.MovieTimescale(g.Encoder.Version())
 
