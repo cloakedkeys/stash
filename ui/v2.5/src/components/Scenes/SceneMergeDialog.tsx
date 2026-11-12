@@ -10,6 +10,7 @@ import ImageUtils from "src/utils/image";
 import TextUtils from "src/utils/text";
 import { sceneAgeFromDate } from "src/utils/scene";
 import {
+  mutateDeleteFiles,
   mutateSceneMerge,
   queryFindFullScenesByID,
 } from "src/core/StashService";
@@ -26,9 +27,10 @@ import {
   ScrapedTextAreaRow,
 } from "../Shared/ScrapeDialog/ScrapeDialogRow";
 import { ScrapeDialog } from "../Shared/ScrapeDialog/ScrapeDialog";
-import { clone, uniq } from "lodash-es";
+import { clone, uniq, uniqBy } from "lodash-es";
 import { RatingSystem } from "src/components/Shared/Rating/RatingSystem";
 import { ModalComponent } from "../Shared/Modal";
+import { DeleteFilesWarning } from "../Shared/DeleteFilesDialog";
 import {
   idToStoredID,
   sortStoredIdObjects,
@@ -792,6 +794,8 @@ export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
 
     const [running, setRunning] = useState(false);
     const [secondStep, setSecondStep] = useState(false);
+    const [deleteSourceFiles, setDeleteSourceFiles] = useState(false);
+    const [pendingMerge, setPendingMerge] = useState<MergeOptions>();
 
     const intl = useIntl();
     const Toast = useToast();
@@ -844,6 +848,13 @@ export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
       setSecondStep(true);
     }
 
+    // Capture source files before merging changes scene ownership.
+    const destFileIDs = new Set(loadedDest?.files.map((file) => file.id));
+    const sourceFiles = uniqBy(
+      loadedSources.flatMap((scene) => scene.files),
+      "id"
+    ).filter((file) => !destFileIDs.has(file.id));
+
     async function onMerge(options: MergeOptions) {
       const { values, includeViewHistory, includeOHistory } = options;
       try {
@@ -857,12 +868,20 @@ export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
         );
         if (result.data?.sceneMerge) {
           Toast.success(intl.formatMessage({ id: "toast.merged_scenes" }));
+          try {
+            if (deleteSourceFiles && sourceFiles.length) {
+              await mutateDeleteFiles(sourceFiles.map((file) => file.id));
+            }
+          } catch (e) {
+            Toast.error(e);
+          }
           onClose(destScene[0].id);
         }
       } catch (e) {
         Toast.error(e);
       } finally {
         setRunning(false);
+        setPendingMerge(undefined);
       }
     }
 
@@ -878,15 +897,51 @@ export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
       }
     }
 
+    if (pendingMerge) {
+      const entities = {
+        count: sourceFiles.length,
+        singularEntity: intl.formatMessage({ id: "file" }),
+        pluralEntity: intl.formatMessage({ id: "files" }),
+      };
+      return (
+        <ModalComponent
+          show
+          header={intl.formatMessage(
+            { id: "dialogs.delete_entity_title" },
+            entities
+          )}
+          accept={{
+            variant: "danger",
+            text: intl.formatMessage({ id: "actions.merge_metadata" }),
+            onClick: () => onMerge(pendingMerge),
+          }}
+          cancel={{ onClick: () => setPendingMerge(undefined) }}
+          isRunning={running}
+        >
+          <p>
+            {intl.formatMessage(
+              { id: "dialogs.delete_entity_simple_desc" },
+              entities
+            )}
+          </p>
+          <DeleteFilesWarning selected={sourceFiles} />
+        </ModalComponent>
+      );
+    }
+
     if (secondStep && destScene.length > 0) {
       return (
         <SceneMergeDetails
           sources={loadedSources}
           dest={loadedDest!}
           onClose={(values) => {
-            setSecondStep(false);
             if (values) {
-              onMerge(values);
+              if (deleteSourceFiles && sourceFiles.length) {
+                setPendingMerge(values);
+              } else {
+                setSecondStep(false);
+                onMerge(values);
+              }
             } else {
               onClose();
             }
@@ -974,6 +1029,14 @@ export const SceneMergeModal: React.FC<ISceneMergeModalProps> = PatchComponent(
                 {renderSceneIdentities(destScene)}
               </Col>
             </Form.Group>
+            <Form.Check
+              id="delete-source-files"
+              label={intl.formatMessage({
+                id: "dialogs.merge.delete_source_files",
+              })}
+              checked={deleteSourceFiles}
+              onChange={(event) => setDeleteSourceFiles(event.target.checked)}
+            />
           </div>
         </div>
       </ModalComponent>

@@ -41,9 +41,6 @@ export const DeleteFilesDialog: React.FC<IDeleteSceneDialogProps> = (
   // Network state
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const context = React.useContext(ConfigurationContext);
-  const config = context?.configuration;
-
   async function onDelete() {
     setIsDeleting(true);
     try {
@@ -55,45 +52,6 @@ export const DeleteFilesDialog: React.FC<IDeleteSceneDialogProps> = (
       props.onClose(false);
     }
     setIsDeleting(false);
-  }
-
-  function renderDeleteFileAlert() {
-    const deletedFiles = props.selected.map((f) => f.path);
-
-    const deleteTrashPath = config?.general.deleteTrashPath;
-    const deleteAlertId = deleteTrashPath
-      ? "dialogs.delete_alert_to_trash"
-      : "dialogs.delete_alert";
-
-    return (
-      <div className="delete-dialog alert alert-danger text-break">
-        <p className="font-weight-bold">
-          <FormattedMessage
-            values={{
-              count: props.selected.length,
-              singularEntity: intl.formatMessage({ id: "file" }),
-              pluralEntity: intl.formatMessage({ id: "files" }),
-            }}
-            id={deleteAlertId}
-          />
-        </p>
-        <ul>
-          {deletedFiles.slice(0, 5).map((s) => (
-            <li key={s}>{s}</li>
-          ))}
-          {deletedFiles.length > 5 && (
-            <FormattedMessage
-              values={{
-                count: deletedFiles.length - 5,
-                singularEntity: intl.formatMessage({ id: "file" }),
-                pluralEntity: intl.formatMessage({ id: "files" }),
-              }}
-              id="dialogs.delete_object_overflow"
-            />
-          )}
-        </ul>
-      </div>
-    );
   }
 
   return (
@@ -114,7 +72,49 @@ export const DeleteFilesDialog: React.FC<IDeleteSceneDialogProps> = (
       isRunning={isDeleting}
     >
       <p>{message}</p>
-      {renderDeleteFileAlert()}
+      <DeleteFilesWarning selected={props.selected} />
     </ModalComponent>
+  );
+};
+
+export const DeleteFilesWarning: React.FC<{ selected: IFile[] }> = (props) => {
+  const intl = useIntl();
+  const context = React.useContext(ConfigurationContext);
+  const config = context?.configuration;
+  const deletedFiles = props.selected.map((f) => f.path);
+
+  const deleteTrashPath = config?.general.deleteTrashPath;
+  const deleteAlertId = deleteTrashPath
+    ? "dialogs.delete_alert_to_trash"
+    : "dialogs.delete_alert";
+
+  return (
+    <div className="delete-dialog alert alert-danger text-break">
+      <p className="font-weight-bold">
+        <FormattedMessage
+          values={{
+            count: props.selected.length,
+            singularEntity: intl.formatMessage({ id: "file" }),
+            pluralEntity: intl.formatMessage({ id: "files" }),
+          }}
+          id={deleteAlertId}
+        />
+      </p>
+      <ul>
+        {deletedFiles.slice(0, 5).map((s) => (
+          <li key={s}>{s}</li>
+        ))}
+        {deletedFiles.length > 5 && (
+          <FormattedMessage
+            values={{
+              count: deletedFiles.length - 5,
+              singularEntity: intl.formatMessage({ id: "file" }),
+              pluralEntity: intl.formatMessage({ id: "files" }),
+            }}
+            id="dialogs.delete_object_overflow"
+          />
+        )}
+      </ul>
+    </div>
   );
 };
