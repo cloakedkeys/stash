@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import * as GQL from "src/core/generated-graphql";
 import { ScrapeDialogRow } from "src/components/Shared/ScrapeDialog/ScrapeDialogRow";
 import { PerformerSelect } from "src/components/Performers/PerformerSelect";
@@ -21,12 +21,14 @@ import { IHasStoredID } from "src/utils/data";
 interface INewScrapedObjects<T> {
   newValues: T[];
   onCreateNew: (value: T) => void;
+  onCreateAll?: () => Promise<void> | void;
   onLinkExisting?: (value: T) => void;
   getName: (value: T) => string;
 }
 
 export const NewScrapedObjects = <T,>(props: INewScrapedObjects<T>) => {
   const intl = useIntl();
+  const [creatingAll, setCreatingAll] = useState(false);
 
   if (props.newValues.length === 0) {
     return null;
@@ -34,6 +36,23 @@ export const NewScrapedObjects = <T,>(props: INewScrapedObjects<T>) => {
 
   const ret = (
     <>
+      {props.onCreateAll && (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={creatingAll}
+          onClick={async () => {
+            setCreatingAll(true);
+            try {
+              await props.onCreateAll?.();
+            } finally {
+              setCreatingAll(false);
+            }
+          }}
+        >
+          {intl.formatMessage({ id: "actions.create_all" })}
+        </Button>
+      )}
       {props.newValues.map((t) => (
         <Badge
           className="tag-item"
@@ -170,7 +189,7 @@ interface IScrapedObjectsRow<T extends IHasStoredID> {
   result: ScrapeResult<T[]>;
   onChange: (value: ScrapeResult<T[]>) => void;
   newObjects?: T[];
-  onCreateNew?: (value: T) => void;
+  onCreateNew?: (value: T | T[]) => Promise<void> | void;
   onLinkExisting?: (value: T) => void;
   renderObjects: (
     result: ScrapeResult<T[]>,
@@ -214,6 +233,7 @@ export const ScrapedObjectsRow = <T extends IHasStoredID>(
           <NewScrapedObjects
             newValues={newObjects ?? []}
             onCreateNew={onCreateNew}
+            onCreateAll={() => onCreateNew(newObjects)}
             onLinkExisting={onLinkExisting}
             getName={getName}
           />
