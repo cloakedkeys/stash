@@ -143,7 +143,7 @@ func nameToRegexp(name string, useUnicode bool) *regexp.Regexp {
 	}
 
 	reStr := strings.ReplaceAll(name, " ", separator+"*")
-	reStr = `(?:^|_|` + notWord + `)` + reStr + `(?:$|_|` + notWord + `)`
+	reStr = `(?:^|_|` + notWord + `)(` + reStr + `)(?:$|_|` + notWord + `)`
 
 	re := regexp.MustCompile(reStr)
 	return re
@@ -193,37 +193,14 @@ func PathToPerformers(ctx context.Context, path string, reader models.PerformerA
 		}
 	}
 
-	pm := newPathMatcher(path, cache)
 	var ret []*models.Performer
-	for _, p := range performers {
-		matches := false
-		if pm.match(p.Name) != -1 {
-			matches = true
-		}
-
-		// TODO - disabled alias matching until we can get finer
-		// control over the matching. To re-enable:
-		//   - uncomment this block (fallback path)
-		//   - have Cache.PreloadPerformers load aliases (e.g. via
-		//     loadAllAliases, as PreloadStudios/PreloadTags do) and
-		//     iterate them here in the preloaded path too
-		// if !matches {
-		// 	if err := p.LoadAliases(ctx, reader); err != nil {
-		// 		return nil, err
-		// 	}
-		// 	for _, alias := range p.Aliases.List() {
-		// 		if pm.match(alias) != -1 {
-		// 			matches = true
-		// 			break
-		// 		}
-		// 	}
-		// }
-
-		if matches {
-			ret = append(ret, p)
+	seen := make(map[int]bool)
+	for _, m := range PerformersForPath(path, performers, cache) {
+		if !seen[m.Performer.ID] {
+			seen[m.Performer.ID] = true
+			ret = append(ret, m.Performer)
 		}
 	}
-
 	return ret, nil
 }
 
@@ -367,6 +344,18 @@ func PathToTags(ctx context.Context, path string, reader models.TagAutoTagQuerye
 }
 
 func PathToScenesFn(ctx context.Context, name string, paths []string, sceneReader models.SceneQueryer, fn func(ctx context.Context, scene *models.Scene) error) error {
+	// Keep the existing post-filter for studios and tags.
+	r := nameToRegexp(name, true)
+	return PathToScenesCandidatesFn(ctx, name, paths, sceneReader, func(ctx context.Context, p *models.Scene) error {
+		if regexpMatchesPath(r, p.Path) != -1 {
+			return fn(ctx, p)
+		}
+		return nil
+	})
+}
+
+// PathToScenesCandidatesFn visits SQL candidates without deciding whether their paths match.
+func PathToScenesCandidatesFn(ctx context.Context, name string, paths []string, sceneReader models.SceneQueryer, fn func(ctx context.Context, scene *models.Scene) error) error {
 	regex := getPathQueryRegex(name)
 	organized := false
 	filter := models.SceneFilterType{
@@ -403,15 +392,9 @@ func PathToScenesFn(ctx context.Context, name string, paths []string, sceneReade
 			return fmt.Errorf("error querying scenes with regex '%s': %s", regex, err.Error())
 		}
 
-		// paths may have unicode characters
-		const useUnicode = true
-
-		r := nameToRegexp(name, useUnicode)
 		for _, p := range scenes {
-			if regexpMatchesPath(r, p.Path) != -1 {
-				if err := fn(ctx, p); err != nil {
-					return fmt.Errorf("processing scene %s: %w", p.GetTitle(), err)
-				}
+			if err := fn(ctx, p); err != nil {
+				return fmt.Errorf("processing scene %s: %w", p.GetTitle(), err)
 			}
 		}
 
@@ -426,6 +409,18 @@ func PathToScenesFn(ctx context.Context, name string, paths []string, sceneReade
 }
 
 func PathToAudiosFn(ctx context.Context, name string, paths []string, audioReader models.AudioQueryer, fn func(ctx context.Context, audio *models.Audio) error) error {
+	// Keep the existing post-filter for studios and tags.
+	r := nameToRegexp(name, true)
+	return PathToAudiosCandidatesFn(ctx, name, paths, audioReader, func(ctx context.Context, p *models.Audio) error {
+		if regexpMatchesPath(r, p.Path) != -1 {
+			return fn(ctx, p)
+		}
+		return nil
+	})
+}
+
+// PathToAudiosCandidatesFn visits SQL candidates without deciding whether their paths match.
+func PathToAudiosCandidatesFn(ctx context.Context, name string, paths []string, audioReader models.AudioQueryer, fn func(ctx context.Context, audio *models.Audio) error) error {
 	regex := getPathQueryRegex(name)
 	organized := false
 	filter := models.AudioFilterType{
@@ -462,15 +457,9 @@ func PathToAudiosFn(ctx context.Context, name string, paths []string, audioReade
 			return fmt.Errorf("error querying audios with regex '%s': %s", regex, err.Error())
 		}
 
-		// paths may have unicode characters
-		const useUnicode = true
-
-		r := nameToRegexp(name, useUnicode)
 		for _, p := range audios {
-			if regexpMatchesPath(r, p.Path) != -1 {
-				if err := fn(ctx, p); err != nil {
-					return fmt.Errorf("processing audio %s: %w", p.GetTitle(), err)
-				}
+			if err := fn(ctx, p); err != nil {
+				return fmt.Errorf("processing audio %s: %w", p.GetTitle(), err)
 			}
 		}
 
@@ -485,6 +474,18 @@ func PathToAudiosFn(ctx context.Context, name string, paths []string, audioReade
 }
 
 func PathToImagesFn(ctx context.Context, name string, paths []string, imageReader models.ImageQueryer, fn func(ctx context.Context, scene *models.Image) error) error {
+	// Keep the existing post-filter for studios and tags.
+	r := nameToRegexp(name, true)
+	return PathToImagesCandidatesFn(ctx, name, paths, imageReader, func(ctx context.Context, p *models.Image) error {
+		if regexpMatchesPath(r, p.Path) != -1 {
+			return fn(ctx, p)
+		}
+		return nil
+	})
+}
+
+// PathToImagesCandidatesFn visits SQL candidates without deciding whether their paths match.
+func PathToImagesCandidatesFn(ctx context.Context, name string, paths []string, imageReader models.ImageQueryer, fn func(ctx context.Context, scene *models.Image) error) error {
 	regex := getPathQueryRegex(name)
 	organized := false
 	filter := models.ImageFilterType{
@@ -521,15 +522,9 @@ func PathToImagesFn(ctx context.Context, name string, paths []string, imageReade
 			return fmt.Errorf("error querying images with regex '%s': %s", regex, err.Error())
 		}
 
-		// paths may have unicode characters
-		const useUnicode = true
-
-		r := nameToRegexp(name, useUnicode)
 		for _, p := range images {
-			if regexpMatchesPath(r, p.Path) != -1 {
-				if err := fn(ctx, p); err != nil {
-					return fmt.Errorf("processing image %s: %w", p.GetTitle(), err)
-				}
+			if err := fn(ctx, p); err != nil {
+				return fmt.Errorf("processing image %s: %w", p.GetTitle(), err)
 			}
 		}
 
@@ -544,6 +539,18 @@ func PathToImagesFn(ctx context.Context, name string, paths []string, imageReade
 }
 
 func PathToGalleriesFn(ctx context.Context, name string, paths []string, galleryReader models.GalleryQueryer, fn func(ctx context.Context, scene *models.Gallery) error) error {
+	// Keep the existing post-filter for studios and tags.
+	r := nameToRegexp(name, true)
+	return PathToGalleriesCandidatesFn(ctx, name, paths, galleryReader, func(ctx context.Context, p *models.Gallery) error {
+		if p.Path != "" && regexpMatchesPath(r, p.Path) != -1 {
+			return fn(ctx, p)
+		}
+		return nil
+	})
+}
+
+// PathToGalleriesCandidatesFn visits SQL candidates without deciding whether their paths match.
+func PathToGalleriesCandidatesFn(ctx context.Context, name string, paths []string, galleryReader models.GalleryQueryer, fn func(ctx context.Context, scene *models.Gallery) error) error {
 	regex := getPathQueryRegex(name)
 	organized := false
 	filter := models.GalleryFilterType{
@@ -580,16 +587,9 @@ func PathToGalleriesFn(ctx context.Context, name string, paths []string, gallery
 			return fmt.Errorf("error querying galleries with regex '%s': %s", regex, err.Error())
 		}
 
-		// paths may have unicode characters
-		const useUnicode = true
-
-		r := nameToRegexp(name, useUnicode)
 		for _, p := range galleries {
-			path := p.Path
-			if path != "" && regexpMatchesPath(r, path) != -1 {
-				if err := fn(ctx, p); err != nil {
-					return fmt.Errorf("processing gallery %s: %w", p.GetTitle(), err)
-				}
+			if err := fn(ctx, p); err != nil {
+				return fmt.Errorf("processing gallery %s: %w", p.GetTitle(), err)
 			}
 		}
 

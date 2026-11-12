@@ -116,7 +116,14 @@ func (t *tagger) tagTags(ctx context.Context, tagReader models.TagAutoTagQueryer
 }
 
 func (t *tagger) tagScenes(ctx context.Context, paths []string, sceneReader models.SceneQueryer, addFunc addSceneLinkFunc) error {
-	return match.PathToScenesFn(ctx, t.Name, paths, sceneReader, func(ctx context.Context, p *models.Scene) error {
+	find := match.PathToScenesFn
+	if t.Type == "performer" {
+		find = match.PathToScenesCandidatesFn
+	}
+	return find(ctx, t.Name, paths, sceneReader, func(ctx context.Context, p *models.Scene) error {
+		if t.Type == "performer" && !t.performerMatchesPath(p.Path) {
+			return nil
+		}
 		added, err := addFunc(p)
 
 		if err != nil {
@@ -132,7 +139,14 @@ func (t *tagger) tagScenes(ctx context.Context, paths []string, sceneReader mode
 }
 
 func (t *tagger) tagAudios(ctx context.Context, paths []string, audioReader models.AudioQueryer, addFunc addAudioLinkFunc) error {
-	return match.PathToAudiosFn(ctx, t.Name, paths, audioReader, func(ctx context.Context, p *models.Audio) error {
+	find := match.PathToAudiosFn
+	if t.Type == "performer" {
+		find = match.PathToAudiosCandidatesFn
+	}
+	return find(ctx, t.Name, paths, audioReader, func(ctx context.Context, p *models.Audio) error {
+		if t.Type == "performer" && !t.performerMatchesPath(p.Path) {
+			return nil
+		}
 		added, err := addFunc(p)
 
 		if err != nil {
@@ -148,7 +162,14 @@ func (t *tagger) tagAudios(ctx context.Context, paths []string, audioReader mode
 }
 
 func (t *tagger) tagImages(ctx context.Context, paths []string, imageReader models.ImageQueryer, addFunc addImageLinkFunc) error {
-	return match.PathToImagesFn(ctx, t.Name, paths, imageReader, func(ctx context.Context, p *models.Image) error {
+	find := match.PathToImagesFn
+	if t.Type == "performer" {
+		find = match.PathToImagesCandidatesFn
+	}
+	return find(ctx, t.Name, paths, imageReader, func(ctx context.Context, p *models.Image) error {
+		if t.Type == "performer" && !t.performerMatchesPath(p.Path) {
+			return nil
+		}
 		added, err := addFunc(p)
 
 		if err != nil {
@@ -164,7 +185,14 @@ func (t *tagger) tagImages(ctx context.Context, paths []string, imageReader mode
 }
 
 func (t *tagger) tagGalleries(ctx context.Context, paths []string, galleryReader models.GalleryQueryer, addFunc addGalleryLinkFunc) error {
-	return match.PathToGalleriesFn(ctx, t.Name, paths, galleryReader, func(ctx context.Context, p *models.Gallery) error {
+	find := match.PathToGalleriesFn
+	if t.Type == "performer" {
+		find = match.PathToGalleriesCandidatesFn
+	}
+	return find(ctx, t.Name, paths, galleryReader, func(ctx context.Context, p *models.Gallery) error {
+		if t.Type == "performer" && !t.performerMatchesPath(p.Path) {
+			return nil
+		}
 		added, err := addFunc(p)
 
 		if err != nil {
@@ -177,4 +205,15 @@ func (t *tagger) tagGalleries(ctx context.Context, paths []string, galleryReader
 
 		return nil
 	})
+}
+
+// performerMatchesPath delegates the final decision to the same matcher as file-based tagging.
+func (t *tagger) performerMatchesPath(path string) bool {
+	performers := []*models.Performer{{ID: t.ID, Name: t.Name}}
+	for _, m := range match.PerformersForPath(path, performers, t.cache) {
+		if m.Performer.ID == t.ID {
+			return true
+		}
+	}
+	return false
 }
