@@ -744,6 +744,16 @@ export const SettingsInterfacePanel: React.FC = PatchComponent(
           />
         </SettingSection>
 
+        <SettingSection headingID="config.ui.group_panel.heading">
+          <BooleanSetting
+            id="show-child-group-content"
+            headingID="config.ui.group_panel.options.show_child_group_content.heading"
+            subHeadingID="config.ui.group_panel.options.show_child_group_content.description"
+            checked={ui.showChildGroupContent ?? false}
+            onChange={(v) => saveUI({ showChildGroupContent: v })}
+          />
+        </SettingSection>
+
         <SettingSection headingID="config.ui.studio_panel.heading">
           <BooleanSetting
             id="show-child-studio-content"

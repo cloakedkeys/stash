@@ -904,6 +904,15 @@
         "description": "Time offset in milliseconds for interactive scripts playback.",
         "heading": "Funscript offset (ms)"
       },
+      "group_panel": {
+        "heading": "Group View",
+        "options": {
+          "show_child_group_content": {
+            "description": "In the group Scenes tab, display scenes from sub-groups as well.",
+            "heading": "Show sub-group content by default"
+          }
+        }
+      },
       "handy_connection": {
         "connect": "Connect",
         "server_offset": {
