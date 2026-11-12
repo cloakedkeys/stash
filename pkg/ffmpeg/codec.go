@@ -120,7 +120,7 @@ func (c VideoCodec) ExtraArgs() (args Args) {
 	return args
 }
 
-func (c VideoCodec) ExtraArgsHQ(preset string, crf int) (args Args) {
+func (c VideoCodec) ExtraArgsHQ(preset string, crf int, threads int) (args Args) {
 	switch c {
 	// CPU Codecs
 	case VideoCodecLibX264:
@@ -131,7 +131,7 @@ func (c VideoCodec) ExtraArgsHQ(preset string, crf int) (args Args) {
 			"-preset", preset,
 			"-crf", strconv.Itoa(crf),
 			"-sc_threshold", "0",
-			"-threads", "4",
+			"-threads", strconv.Itoa(threads),
 			"-sws_flags", "lanczos",
 		)
 	case VideoCodecVP9:
@@ -142,7 +142,7 @@ func (c VideoCodec) ExtraArgsHQ(preset string, crf int) (args Args) {
 			"-row-mt", "1",
 			"-crf", strconv.Itoa(crf),
 			"-b:v", "0",
-			"-threads", "4",
+			"-threads", strconv.Itoa(threads),
 		)
 	// HW Codecs - fixed HQ quality.
 	case VideoCodecN264:

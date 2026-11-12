@@ -1670,7 +1670,11 @@ func (qb *SceneStore) GetStashIDs(ctx context.Context, sceneID int) ([]models.St
 	return sceneRepository.stashIDs.get(ctx, sceneID)
 }
 
-func (qb *SceneStore) FindDuplicates(ctx context.Context, distance int, durationDiff float64, filter *models.SceneFilterType) ([][]*models.Scene, error) {
+func (qb *SceneStore) FindDuplicates(ctx context.Context, distance int, durationDiff float64, filter *models.SceneFilterType, stashID bool) ([][]*models.Scene, error) {
+	if stashID {
+		return qb.findDuplicatesByStashID(ctx, filter)
+	}
+
 	var dupeIds [][]int
 
 	query, err := qb.makeQuery(ctx, filter, nil)
@@ -1784,6 +1788,44 @@ ORDER BY SUM(file_size) DESC;
 
 	sortByPath(duplicates)
 
+	return duplicates, nil
+}
+
+// findDuplicatesByStashID groups filtered scenes by endpoint and ID, including
+// scenes without files or generated phashes.
+func (qb *SceneStore) findDuplicatesByStashID(ctx context.Context, filter *models.SceneFilterType) ([][]*models.Scene, error) {
+	query, err := qb.makeQuery(ctx, filter, nil)
+	if err != nil {
+		return nil, err
+	}
+	query.columns = []string{"scenes.id"}
+	sqlStr := `SELECT GROUP_CONCAT(DISTINCT scene_id) AS ids
+FROM scene_stash_ids
+WHERE scene_id IN (` + query.toSQL(false) + `)
+GROUP BY endpoint, stash_id
+HAVING COUNT(DISTINCT scene_id) > 1
+ORDER BY endpoint, stash_id`
+	var groups []string
+	if err := dbWrapper.Select(ctx, &groups, sqlStr, query.allArgs()...); err != nil {
+		return nil, err
+	}
+	var duplicates [][]*models.Scene
+	for _, group := range groups {
+		var ids []int
+		for _, id := range strings.Split(group, ",") {
+			parsed, err := strconv.Atoi(id)
+			if err != nil {
+				return nil, err
+			}
+			ids = append(ids, parsed)
+		}
+		scenes, err := qb.FindMany(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		duplicates = append(duplicates, scenes)
+	}
+	sortByPath(duplicates)
 	return duplicates, nil
 }
 

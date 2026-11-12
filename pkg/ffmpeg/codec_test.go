@@ -30,7 +30,7 @@ func checkStreamSpecified(t *testing.T, name string, args Args) {
 func TestCodecArgsUseStreamSpecifiers(t *testing.T) {
 	for _, codec := range allVideoCodecs {
 		checkStreamSpecified(t, codec.Name+" ExtraArgs", codec.ExtraArgs())
-		checkStreamSpecified(t, codec.Name+" ExtraArgsHQ", codec.ExtraArgsHQ("slow", 21))
+		checkStreamSpecified(t, codec.Name+" ExtraArgsHQ", codec.ExtraArgsHQ("slow", 21, 4))
 
 		for _, format := range []StreamFormat{StreamTypeMP4, StreamTypeWEBM, StreamTypeMKV} {
 			checkStreamSpecified(t, codec.Name+" "+format.MimeType, format.Args(codec, "", false))
@@ -53,20 +53,20 @@ func TestCodecArgsUnchangedApartFromSpecifier(t *testing.T) {
 			"-surfaces", "64", "-spatial-aq", "1", "-aq-strength", "15", "-cq", "15",
 			"-coder", "cabac", "-b_ref_mode", "middle",
 		}},
-		{"N264H HQ", VideoCodecN264H.ExtraArgsHQ("slow", 21), Args{
+		{"N264H HQ", VideoCodecN264H.ExtraArgsHQ("slow", 21, 4), Args{
 			"-tune", "hq", "-profile:v", "high", "-rc", "vbr", "-rc-lookahead", "60",
 			"-surfaces", "64", "-spatial-aq", "1", "-aq-strength", "15", "-cq", "10",
 			"-coder", "cabac", "-b_ref_mode", "middle",
 		}},
 		{"I264", VideoCodecI264.ExtraArgs(), Args{"-global_quality:v", "20", "-preset", "faster"}},
-		{"IVP9 HQ", VideoCodecIVP9.ExtraArgsHQ("slow", 21), Args{"-global_quality:v", "15", "-preset", "slow"}},
+		{"IVP9 HQ", VideoCodecIVP9.ExtraArgsHQ("slow", 21, 4), Args{"-global_quality:v", "15", "-preset", "slow"}},
 		{"I264C", VideoCodecI264C.ExtraArgs(), Args{"-q:v", "20", "-preset", "faster"}},
-		{"I264C HQ", VideoCodecI264C.ExtraArgsHQ("slow", 21), Args{"-q:v", "15", "-preset", "slow"}},
+		{"I264C HQ", VideoCodecI264C.ExtraArgsHQ("slow", 21, 4), Args{"-q:v", "15", "-preset", "slow"}},
 		{"V264", VideoCodecV264.ExtraArgs(), Args{"-qp", "20"}},
 		{"x264", VideoCodecLibX264.ExtraArgs(), Args{
 			"-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "25", "-sc_threshold", "0",
 		}},
-		{"x264 HQ", VideoCodecLibX264.ExtraArgsHQ("slow", 21), Args{
+		{"x264 HQ", VideoCodecLibX264.ExtraArgsHQ("slow", 21, 4), Args{
 			"-pix_fmt", "yuv420p", "-profile:v", "high", "-level:v", "4.2", "-preset", "slow",
 			"-crf", "21", "-sc_threshold", "0", "-threads", "4", "-sws_flags", "lanczos",
 		}},

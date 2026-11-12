@@ -8,6 +8,7 @@ import { useConfigureUISetting } from "src/core/StashService";
 import { useToast } from "src/hooks/Toast";
 
 export interface IScrapeDialogContextState {
+  reverseColumns?: boolean;
   existingLabel?: React.ReactNode;
   scrapedLabel?: React.ReactNode;
   mergeDefaults?: Record<string, boolean>;
@@ -21,6 +22,7 @@ interface IScrapeDialogProps {
   scrapeType?: string;
   className?: string;
   title: string;
+  reverseColumns?: boolean;
   existingLabel?: React.ReactNode;
   scrapedLabel?: React.ReactNode;
   onClose: (apply?: boolean) => void;
@@ -52,10 +54,11 @@ export const ScrapeDialog: React.FC<
 
   const contextState = useMemo(
     () => ({
+      reverseColumns: props.reverseColumns,
       existingLabel: existingLabel,
       scrapedLabel: scrapedLabel,
       mergeDefaults: props.scrapeType
-        ? (configuration.ui.scrapeMergeDefaults?.[props.scrapeType] ?? {})
+        ? (configuration.ui?.scrapeMergeDefaults?.[props.scrapeType] ?? {})
         : undefined,
       setMergeDefault: props.scrapeType
         ? (field: string, enabled: boolean) => {
@@ -63,9 +66,9 @@ export const ScrapeDialog: React.FC<
               variables: {
                 key: "scrapeMergeDefaults",
                 value: {
-                  ...configuration.ui.scrapeMergeDefaults,
+                  ...configuration.ui?.scrapeMergeDefaults,
                   [props.scrapeType!]: {
-                    ...configuration.ui.scrapeMergeDefaults?.[
+                    ...configuration.ui?.scrapeMergeDefaults?.[
                       props.scrapeType!
                     ],
                     [field]: enabled,
@@ -79,8 +82,9 @@ export const ScrapeDialog: React.FC<
     [
       existingLabel,
       scrapedLabel,
+      props.reverseColumns,
       props.scrapeType,
-      configuration.ui.scrapeMergeDefaults,
+      configuration.ui?.scrapeMergeDefaults,
       saveUISetting,
       Toast,
     ]
@@ -115,20 +119,19 @@ export const ScrapeDialog: React.FC<
             <Row className="px-3 pt-3">
               <Col lg={{ span: 9, offset: 3 }}>
                 <Row>
-                  <Form.Label
-                    column
-                    lg="6"
-                    className="d-lg-block d-none column-label"
-                  >
-                    {existingLabel}
-                  </Form.Label>
-                  <Form.Label
-                    column
-                    lg="6"
-                    className="d-lg-block d-none column-label"
-                  >
-                    {scrapedLabel}
-                  </Form.Label>
+                  {(props.reverseColumns
+                    ? [scrapedLabel, existingLabel]
+                    : [existingLabel, scrapedLabel]
+                  ).map((label, index) => (
+                    <Form.Label
+                      key={index}
+                      column
+                      lg="6"
+                      className="d-lg-block d-none column-label"
+                    >
+                      {label}
+                    </Form.Label>
+                  ))}
                 </Row>
               </Col>
             </Row>
