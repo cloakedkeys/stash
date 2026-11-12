@@ -1,3 +1,4 @@
+import { sceneTimeToFileTime } from "src/utils/scenePlayback";
 import { FavoriteIcon } from "src/components/Shared/FavoriteIcon";
 import { Tab, Nav, Dropdown, Button } from "react-bootstrap";
 import React, {
@@ -431,7 +432,7 @@ const ScenePage: React.FC<IProps> = PatchComponent("ScenePage", (props) => {
       const result = await generateScreenshot({
         variables: {
           id: scene.id,
-          at,
+          at: at === undefined ? undefined : sceneTimeToFileTime(scene, at),
         },
       });
       const jobID = result.data?.sceneGenerateScreenshot;

@@ -13,6 +13,7 @@ import {
   faChevronRight,
   faChevronLeft,
 } from "@fortawesome/free-solid-svg-icons";
+import { isPartScene, scenePlaybackDuration } from "src/utils/scenePlayback";
 import { useSpriteInfo } from "src/hooks/sprite";
 
 interface IScenePlayerScrubberProps {
@@ -39,6 +40,8 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
   onSeek,
   onScroll,
 }) => {
+  const isPart = isPartScene(scene);
+  const duration = scenePlaybackDuration(scene, file.duration);
   const contentEl = useRef<HTMLDivElement>(null);
   const indicatorEl = useRef<HTMLDivElement>(null);
   const sliderEl = useRef<HTMLDivElement>(null);
@@ -80,16 +83,23 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
       position.current = newPosition;
 
       if (seek) {
-        onSeek(percentage * (file.duration || 0));
+        onSeek(percentage * (duration || 0));
       }
     },
-    [onSeek, file.duration, scrubWidth]
+    [onSeek, duration, scrubWidth]
   );
 
-  const spriteInfo = useSpriteInfo(scene.paths.vtt ?? undefined);
+  const spriteInfo = useSpriteInfo(
+    isPart ? undefined : (scene.paths.vtt ?? undefined)
+  );
   const [spriteItems, setSpriteItems] = useState<ISceneSpriteItem[]>();
 
   useEffect(() => {
+    if (isPart) {
+      setSpriteItems(undefined);
+      setScrubWidth(width);
+      return;
+    }
     if (!spriteInfo || spriteInfo.length === 0) return;
     let totalWidth = 0;
 
@@ -131,7 +141,7 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
     });
     setScrubWidth(totalWidth);
     setSpriteItems(newSprites);
-  }, [spriteInfo]);
+  }, [spriteInfo, isPart, width]);
 
   useEffect(() => {
     const onResize = (entries: ResizeObserverEntry[]) => {
@@ -172,7 +182,6 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
 
     if (!scrubWidth || !width) return;
 
-    const duration = Number(file.duration);
     const percentage = time / duration;
     const newPosition = width / 2 - percentage * scrubWidth;
 
@@ -193,7 +202,7 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
 
     setPosition(newPosition, false);
   }, [
-    file.duration,
+    duration,
     setPosition,
     time,
     width,
@@ -306,10 +315,9 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
   }
 
   function renderTags() {
-    if (!spriteItems) return;
+    if (!isPart && !spriteItems) return;
 
     return scene.scene_markers.map((marker, index) => {
-      const { duration } = file;
       const left = (scrubWidth * marker.seconds) / duration;
       const style = { left: `${left}px` };
 
@@ -327,7 +335,7 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
   }
 
   function renderSprites() {
-    if (!scene.paths.vtt) return;
+    if (isPart || !scene.paths.vtt) return;
 
     return spriteItems?.map((sprite, index) => {
       return (
@@ -358,7 +366,9 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
           className="scrubber-heatmap"
           style={{
             backgroundImage:
-              scene.interactive_speed && scene.paths.interactive_heatmap
+              !isPart &&
+              scene.interactive_speed &&
+              scene.paths.interactive_heatmap
                 ? `url(${scene.paths.interactive_heatmap})`
                 : undefined,
           }}

@@ -992,6 +992,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
             {renderInputField("title")}
             {scene.files?.length === 1 && (
               <SceneFileRangeFields
+                playerStartTime={scene.start_time}
                 startTime={formik.values.start_time}
                 endTime={formik.values.end_time}
                 onStartTimeChange={(v) => formik.setFieldValue("start_time", v)}

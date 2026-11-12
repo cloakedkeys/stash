@@ -1,3 +1,4 @@
+import { isPartScene } from "src/utils/scenePlayback";
 import React, { useMemo, useState } from "react";
 import { Accordion, Button, Card } from "react-bootstrap";
 import {
@@ -28,6 +29,7 @@ import { VRMetadataEditor } from "./VRMetadataEditor";
 
 interface IFileInfoPanelProps {
   sceneID: string;
+  playerStartTime?: number | null;
   sceneTitle: string;
   file: GQL.VideoFileDataFragment;
   primary?: boolean;
@@ -161,6 +163,7 @@ const FileInfoPanel: React.FC<IFileInfoPanelProps> = (
       )}
       {creatingPart && (
         <SceneCreateFromPartDialog
+          playerStartTime={props.playerStartTime}
           fileID={props.file.id}
           fileDuration={props.file.duration}
           sceneTitle={props.sceneTitle}
@@ -239,7 +242,7 @@ const _SceneFileInfoPanel: React.FC<ISceneFileInfoPanelProps> = (
   }
 
   function renderFunscript() {
-    if (props.scene.interactive) {
+    if (!isPartScene(props.scene) && props.scene.interactive) {
       return (
         <URLField
           name="Funscript"
@@ -252,7 +255,7 @@ const _SceneFileInfoPanel: React.FC<ISceneFileInfoPanelProps> = (
   }
 
   function renderInteractiveSpeed() {
-    if (props.scene.interactive_speed) {
+    if (!isPartScene(props.scene) && props.scene.interactive_speed) {
       return (
         <TextField id="media_info.interactive_speed">
           <FormattedNumber value={props.scene.interactive_speed} />
@@ -310,6 +313,7 @@ const _SceneFileInfoPanel: React.FC<ISceneFileInfoPanelProps> = (
               <Card.Body>
                 <FileInfoPanel
                   sceneID={props.scene.id}
+                  playerStartTime={props.scene.start_time}
                   sceneTitle={objectTitle(props.scene)}
                   file={file}
                   primary={index === 0}
