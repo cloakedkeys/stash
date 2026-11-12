@@ -1,3 +1,4 @@
+import { GroupPartLabel } from "./GroupPartLabel";
 import { FavoriteIcon } from "../Shared/FavoriteIcon";
 import { useGroupUserDataUpdate } from "src/core/StashService";
 import React, { useMemo } from "react";
@@ -17,16 +18,17 @@ import { OCounterButton } from "../Shared/CountButton";
 
 const Description: React.FC<{
   sceneNumber?: number;
+  group: GQL.ListGroupDataFragment;
   description?: string;
-}> = ({ sceneNumber, description }) => {
-  if (!sceneNumber && !description) return null;
+}> = ({ sceneNumber, group, description }) => {
+  if (sceneNumber === undefined && !description) return null;
 
   return (
     <>
       <hr />
       {sceneNumber !== undefined && (
         <span className="group-scene-number">
-          <FormattedMessage id="scene" /> #{sceneNumber}
+          <GroupPartLabel group={group} sceneNumber={sceneNumber} />
         </span>
       )}
       {description !== undefined && (
@@ -143,7 +145,7 @@ export const GroupCard: React.FC<IProps> = PatchComponent(
 
     function maybeRenderPopoverButtonGroup() {
       if (
-        sceneNumber ||
+        sceneNumber !== undefined ||
         groupDescription ||
         group.scenes.length > 0 ||
         group.tags.length > 0 ||
@@ -154,6 +156,7 @@ export const GroupCard: React.FC<IProps> = PatchComponent(
         return (
           <>
             <Description
+              group={group}
               sceneNumber={sceneNumber}
               description={groupDescription}
             />

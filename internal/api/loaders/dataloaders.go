@@ -82,6 +82,7 @@ type Loaders struct {
 	TagByID         *TagLoader
 	TagCustomFields *CustomFieldsLoader
 
+	GroupSceneCount   *RelatedCountLoader
 	GroupByID         *GroupLoader
 	GroupCustomFields *CustomFieldsLoader
 
@@ -191,6 +192,7 @@ func (m Middleware) Middleware(next http.Handler) http.Handler {
 				maxBatch: maxBatch,
 				fetch:    m.fetchTagCustomFields(ctx),
 			},
+			GroupSceneCount: &RelatedCountLoader{wait: wait, maxBatch: maxBatch, fetch: m.fetchGroupSceneCount(ctx)},
 			GroupByID: &GroupLoader{
 				wait:     wait,
 				maxBatch: maxBatch,
@@ -652,6 +654,17 @@ func (m Middleware) fetchGalleriesFileIDs(ctx context.Context) func(keys []int) 
 		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
 			var err error
 			ret, err = m.Repository.Gallery.GetManyFileIDs(ctx, keys)
+			return err
+		})
+		return ret, toErrorSlice(err)
+	}
+}
+
+func (m Middleware) fetchGroupSceneCount(ctx context.Context) func(keys []int) ([]int, []error) {
+	return func(keys []int) (ret []int, errs []error) {
+		err := m.Repository.WithDB(ctx, func(ctx context.Context) error {
+			var err error
+			ret, err = m.Repository.Scene.GetManyGroupSceneCount(ctx, keys)
 			return err
 		})
 		return ret, toErrorSlice(err)
