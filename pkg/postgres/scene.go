@@ -902,6 +902,36 @@ func (qb *SceneStore) FindByGalleryID(ctx context.Context, galleryID int) ([]*mo
 	return ret, nil
 }
 
+// GetManyGroupSceneCount counts direct scenes for each group, in input order.
+func (qb *SceneStore) GetManyGroupSceneCount(ctx context.Context, groupIDs []int) ([]int, error) {
+	ret := make([]int, len(groupIDs))
+	if len(groupIDs) == 0 {
+		return ret, nil
+	}
+	joinTable := scenesGroupsJoinTable
+	q := dialect.From(joinTable).InnerJoin(goqu.T(sceneTable), goqu.On(
+		goqu.T(sceneTable).Col(idColumn).Eq(joinTable.Col(sceneIDColumn)),
+	)).Select(joinTable.Col(groupIDColumn), goqu.COUNT("*").As("count")).
+		Where(joinTable.Col(groupIDColumn).In(groupIDs)).GroupBy(joinTable.Col(groupIDColumn))
+	q = librarylimit.Apply(ctx, q, librarylimit.Scenes)
+	counts := make(map[int]int, len(groupIDs))
+	const single = false
+	if err := queryFunc(ctx, q, single, func(rows *sqlx.Rows) error {
+		var id, count int
+		if err := rows.Scan(&id, &count); err != nil {
+			return err
+		}
+		counts[id] = count
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	for i, id := range groupIDs {
+		ret[i] = counts[id]
+	}
+	return ret, nil
+}
+
 func (qb *SceneStore) CountByPerformerID(ctx context.Context, performerID int) (int, error) {
 	joinTable := scenesPerformersJoinTable
 

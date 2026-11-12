@@ -1693,6 +1693,8 @@
   "scene_o_counter_sfw": "Scene Likes",
   "scene_organized": "Scene Organised",
   "scene_orientation": "Scene Orientation",
+  "scene_part": "Part {number}",
+  "scene_part_of": "{count, plural, one {Part {number} of #} other {Part {number} of #}}",
   "scene_path": "Scene Path",
   "scene_performer_age": "Scene Performer Age",
   "scene_performer_count": "Scene Performer Count",

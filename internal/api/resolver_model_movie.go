@@ -180,6 +180,9 @@ func (r *groupResolver) BackImagePath(ctx context.Context, obj *models.Group) (*
 }
 
 func (r *groupResolver) SceneCount(ctx context.Context, obj *models.Group, depth *int) (ret int, err error) {
+	if depth == nil || *depth == 0 {
+		return loaders.From(ctx).GroupSceneCount.Load(obj.ID)
+	}
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
 		ret, err = scene.CountByGroupID(ctx, r.repository.Scene, obj.ID, depth)
 		return err

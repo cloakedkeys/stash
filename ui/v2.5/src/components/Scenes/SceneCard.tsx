@@ -1,3 +1,4 @@
+import { GroupPartLabel } from "../Groups/GroupPartLabel";
 import ImageUtils from "src/utils/image";
 import { FavoriteIcon } from "../Shared/FavoriteIcon";
 import { useSceneUserDataUpdate } from "src/core/StashService";
@@ -225,6 +226,10 @@ const SceneCardPopovers = React.memo(
     function maybeRenderGroupPopoverButton() {
       if (props.scene.groups.length <= 0) return;
 
+      const numberedGroups = props.scene.groups.filter(
+        (g) => g.scene_index != null
+      );
+      const part = numberedGroups.length === 1 ? numberedGroups[0] : undefined;
       const popoverContent = props.scene.groups.map((sceneGroup) => (
         <GroupTag key={sceneGroup.group.id} group={sceneGroup.group} />
       ));
@@ -239,6 +244,14 @@ const SceneCardPopovers = React.memo(
             <Icon icon={faFilm} />
             <span>{props.scene.groups.length}</span>
           </Button>
+          {part && (
+            <span className="ml-2">
+              <GroupPartLabel
+                group={part.group}
+                sceneNumber={part.scene_index!}
+              />
+            </span>
+          )}
         </HoverPopover>
       );
     }

@@ -1224,6 +1224,12 @@ func (_m *SceneReaderWriter) MergeUserData(ctx context.Context, destinationID in
 	return r0
 }
 
+// GetManyGroupSceneCount provides a mock function with given fields: ctx, groupIDs
+func (_m *SceneReaderWriter) GetManyGroupSceneCount(ctx context.Context, groupIDs []int) ([]int, error) {
+	ret := _m.Called(ctx, groupIDs)
+	return ret.Get(0).([]int), ret.Error(1)
+}
+
 // OCountByGroupID provides a mock function with given fields: ctx, groupID
 func (_m *SceneReaderWriter) OCountByGroupID(ctx context.Context, groupID int) (int, error) {
 	ret := _m.Called(ctx, groupID)
