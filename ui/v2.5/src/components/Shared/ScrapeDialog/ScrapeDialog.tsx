@@ -58,7 +58,7 @@ export const ScrapeDialog: React.FC<
       existingLabel: existingLabel,
       scrapedLabel: scrapedLabel,
       mergeDefaults: props.scrapeType
-        ? (configuration.ui.scrapeMergeDefaults?.[props.scrapeType] ?? {})
+        ? (configuration.ui?.scrapeMergeDefaults?.[props.scrapeType] ?? {})
         : undefined,
       setMergeDefault: props.scrapeType
         ? (field: string, enabled: boolean) => {
@@ -66,9 +66,9 @@ export const ScrapeDialog: React.FC<
               variables: {
                 key: "scrapeMergeDefaults",
                 value: {
-                  ...configuration.ui.scrapeMergeDefaults,
+                  ...configuration.ui?.scrapeMergeDefaults,
                   [props.scrapeType!]: {
-                    ...configuration.ui.scrapeMergeDefaults?.[
+                    ...configuration.ui?.scrapeMergeDefaults?.[
                       props.scrapeType!
                     ],
                     [field]: enabled,
@@ -84,7 +84,7 @@ export const ScrapeDialog: React.FC<
       scrapedLabel,
       props.reverseColumns,
       props.scrapeType,
-      configuration.ui.scrapeMergeDefaults,
+      configuration.ui?.scrapeMergeDefaults,
       saveUISetting,
       Toast,
     ]
