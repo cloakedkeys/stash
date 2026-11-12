@@ -66,6 +66,7 @@ fragment SlimSceneData on Scene {
       id
       name
       front_image_path
+      scene_count
     }
     scene_index
   }

@@ -39,6 +39,7 @@ type SceneQueryer interface {
 
 // SceneCounter provides methods to count scenes.
 type SceneCounter interface {
+	GetManyGroupSceneCount(ctx context.Context, groupIDs []int) ([]int, error)
 	Count(ctx context.Context) (int, error)
 	CountByPerformerID(ctx context.Context, performerID int) (int, error)
 	CountByFileID(ctx context.Context, fileID FileID) (int, error)
