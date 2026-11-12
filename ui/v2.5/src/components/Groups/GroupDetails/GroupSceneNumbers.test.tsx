@@ -12,6 +12,7 @@ const page = vi.hoisted(() => ({
   buttons: [] as { onClick: () => Promise<void> | void; children: ReactNode }[],
   fields: [] as ComponentProps<typeof NumberField>[],
   update: vi.fn(),
+  refetch: vi.fn(),
   error: vi.fn(),
   canModify: true,
 }));
@@ -79,7 +80,11 @@ function render(groupId: string | undefined = "10") {
   page.fields = [];
   return renderToStaticMarkup(
     <IntlProvider locale="en-GB" onError={() => {}}>
-      <GroupSceneNumbers scenes={scenes} groupId={groupId}>
+      <GroupSceneNumbers
+        scenes={scenes}
+        groupId={groupId}
+        onSaved={page.refetch}
+      >
         Normal list
       </GroupSceneNumbers>
     </IntlProvider>
@@ -180,4 +185,36 @@ it("hides the toggle outside a group or without modify access", () => {
   page.canModify = false;
   expect(render()).toContain("Normal list");
   expect(page.buttons).toHaveLength(0);
+});
+
+// #1575: saving must refresh the sorted list after the mutation completes.
+it("saves a single edited number once, then refreshes the list", async () => {
+  edit();
+  expect(page.fields[0].value).toBe("1");
+  change(0, "2"); // A duplicate of scene 2 is allowed.
+  await page.buttons[0].onClick();
+  expect(page.update).toHaveBeenCalledExactlyOnceWith({
+    variables: {
+      input: {
+        id: "1",
+        groups: [
+          { group_id: "10", scene_index: 2 },
+          { group_id: "20", scene_index: 9 },
+        ],
+      },
+    },
+  });
+  expect(page.refetch).toHaveBeenCalledOnce();
+  expect(page.update.mock.invocationCallOrder[0]).toBeLessThan(
+    page.refetch.mock.invocationCallOrder[0]
+  );
+});
+it.each([
+  "2147483648",
+  "-2147483649",
+])("rejects numbers outside GraphQL Int: %s", async (value) => {
+  edit();
+  change(0, value);
+  await page.buttons[0].onClick();
+  expect(page.update).not.toHaveBeenCalled();
 });

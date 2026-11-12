@@ -15,13 +15,22 @@ interface ISceneCardGrid {
   zoomIndex: number;
   onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void;
   fromGroupId?: string;
+  onMove?: (srcIds: string[], targetId: string, after: boolean) => void;
 }
 
 const zoomWidths = [280, 340, 480, 640];
 
 export const SceneCardGrid: React.FC<ISceneCardGrid> = PatchComponent(
   "SceneCardGrid",
-  ({ scenes, queue, selectedIds, zoomIndex, onSelectChange, fromGroupId }) => {
+  ({
+    scenes,
+    queue,
+    selectedIds,
+    zoomIndex,
+    onSelectChange,
+    fromGroupId,
+    onMove,
+  }) => {
     const [componentRef, { width: containerWidth }] = useContainerDimensions();
 
     const cardWidth = useCardWidth(containerWidth, zoomIndex, zoomWidths);
@@ -42,6 +51,11 @@ export const SceneCardGrid: React.FC<ISceneCardGrid> = PatchComponent(
               onSelectChange(scene.id, selected, shiftKey)
             }
             fromGroupId={fromGroupId}
+            onMove={
+              scene.groups.some((g) => g.group.id === fromGroupId)
+                ? onMove
+                : undefined
+            }
           />
         ))}
       </div>

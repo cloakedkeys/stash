@@ -16,6 +16,7 @@ vi.mock("src/components/Tagger/scenes/SceneTagger", () => ({
 vi.mock("../Groups/GroupDetails/GroupSceneNumbers", () => ({
   GroupSceneNumbers: (props: { children: ReactNode }) => props.children,
 }));
+vi.mock("src/hooks/Toast", () => ({ useToast: () => ({ error: vi.fn() }) }));
 vi.mock("src/core/createClient", () => ({ createClient: () => ({}) }));
 vi.mock("react-router-dom", () => ({
   useHistory: () => ({ push: vi.fn() }),

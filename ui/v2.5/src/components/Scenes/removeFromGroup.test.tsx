@@ -21,6 +21,7 @@ const page = vi.hoisted(() => ({
 }));
 vi.mock("src/core/StashService", () => ({
   useBulkSceneUpdate: () => [page.update],
+  useScenesUpdate: () => [vi.fn()],
   useFindScenes: vi.fn(),
   queryFindScenes: vi.fn(),
 }));

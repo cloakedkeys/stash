@@ -18,8 +18,9 @@ export const GroupSceneNumbers: React.FC<
   React.PropsWithChildren<{
     scenes: GQL.SlimSceneDataFragment[];
     groupId?: string;
+    onSaved?: () => Promise<unknown>;
   }>
-> = ({ children, scenes, groupId }) => {
+> = ({ children, scenes, groupId, onSaved }) => {
   const intl = useIntl();
   const canModify = useCanModify();
   const Toast = useToast();
@@ -64,6 +65,7 @@ export const GroupSceneNumbers: React.FC<
           },
         });
       }
+      await onSaved?.();
       setDrafts(null);
     } catch (e) {
       Toast.error(e);
@@ -128,6 +130,8 @@ export const GroupSceneNumbers: React.FC<
                   }
                   value={draft.value}
                   step={1}
+                  min={-2147483648}
+                  max={2147483647}
                   disabled={saving}
                   isInvalid={draft.invalid}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -136,7 +140,9 @@ export const GroupSceneNumbers: React.FC<
                       e.currentTarget.validity.badInput ||
                       (value !== "" &&
                         (!/^[+-]?\d+$/.test(value) ||
-                          !Number.isSafeInteger(Number(value))));
+                          !Number.isInteger(Number(value)) ||
+                          Number(value) < -2147483648 ||
+                          Number(value) > 2147483647));
                     setDrafts(
                       drafts.map((d, i) =>
                         i === index ? { ...d, value, invalid } : d
