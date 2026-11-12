@@ -119,6 +119,7 @@ export interface IUIConfig {
 
   vrTag?: string;
 
+  recentImageGalleries?: string[];
   pinnedScrapers?: string[];
   pinnedFilters?: Record<string, string[]>;
   savedFilterMenuItems?: ISavedFilterMenuItem[];

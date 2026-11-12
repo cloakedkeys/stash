@@ -26,6 +26,7 @@ import { useCanAdminister, useCanModify } from "src/hooks/CurrentUser";
 import { ImageFileInfoPanel } from "./ImageFileInfoPanel";
 import { ImageEditPanel } from "./ImageEditPanel";
 import { ImageDetailPanel } from "./ImageDetailPanel";
+import { AddToGalleryDialog } from "../AddToGalleryDialog";
 import { DeleteImagesDialog } from "../DeleteImagesDialog";
 import { faEllipsisV } from "@fortawesome/free-solid-svg-icons";
 import { imagePath, imageTitle } from "src/core/files";
@@ -72,6 +73,7 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
   const canAdminister = useCanAdminister();
   const [activeTabKey, setActiveTabKey] = useState("image-details-panel");
 
+  const [isAddToGalleryOpen, setIsAddToGalleryOpen] = useState(false);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState<boolean>(false);
   const [isGenerateDialogOpen, setIsGenerateDialogOpen] = useState(false);
 
@@ -209,6 +211,12 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
         </Dropdown.Toggle>
         <Dropdown.Menu className="bg-secondary text-white">
           <ImageSetAsMenu image={image} />
+          <Dropdown.Item
+            className="bg-secondary text-white"
+            onClick={() => setIsAddToGalleryOpen(true)}
+          >
+            <FormattedMessage id="actions.add_to_gallery" />
+          </Dropdown.Item>
           {canAdminister && (
             <Dropdown.Item
               key="rescan"
@@ -342,6 +350,12 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
         <title>{title}</title>
       </Helmet>
 
+      {isAddToGalleryOpen && (
+        <AddToGalleryDialog
+          imageIds={[image.id]}
+          onClose={() => setIsAddToGalleryOpen(false)}
+        />
+      )}
       {maybeRenderDeleteDialog()}
       {maybeRenderSceneGenerateDialog()}
       <div className="image-tabs order-xl-first order-last">
