@@ -25,6 +25,7 @@ import { GalleriesCriterionOption } from "./criteria/galleries";
 import { PhashCriterionOption } from "./criteria/phash";
 import { CustomFieldsCriterionOption } from "./criteria/custom-fields";
 import { FolderCriterionOption } from "./criteria/folder";
+import { IsClipCriterionOption } from "./criteria/is-clip";
 
 const defaultSortBy = "path";
 
@@ -66,6 +67,7 @@ const criterionOptions = [
   FolderCriterionOption,
   GalleriesCriterionOption,
   OrganizedCriterionOption,
+  IsClipCriterionOption,
   createMandatoryNumberCriterionOption("o_counter", "o_count", {
     sfwMessageID: "o_count_sfw",
   }),
