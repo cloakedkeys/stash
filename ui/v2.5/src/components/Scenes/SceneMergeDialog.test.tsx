@@ -14,6 +14,14 @@ const page = vi.hoisted(() => ({
   buttons: [] as { onClick?: () => void; title?: string }[],
   query: vi.fn(),
   merge: vi.fn(),
+  deleteFiles: vi.fn(),
+  close: vi.fn(),
+  checks: [] as {
+    id?: string;
+    checked?: boolean;
+    onChange?: (event: { target: { checked: boolean } }) => void;
+  }[],
+  cancel: undefined as undefined | { onClick: () => void },
   error: vi.fn(),
 }));
 vi.mock("react", async (original) => ({
@@ -36,13 +44,15 @@ vi.mock("react", async (original) => ({
 vi.mock("src/core/StashService", () => ({
   queryFindFullScenesByID: page.query,
   mutateSceneMerge: page.merge,
+  mutateDeleteFiles: page.deleteFiles,
 }));
 vi.mock("src/hooks/Toast", () => ({
   useToast: () => ({ error: page.error, success: vi.fn() }),
 }));
 vi.mock("src/hooks/CurrentUser", () => ({ useIsAdmin: () => true }));
-vi.mock("src/hooks/Config", () => ({
+vi.mock("src/hooks/Config", async () => ({
   useConfigurationContext: () => ({ configuration: { interface: {} } }),
+  ConfigurationContext: (await import("react")).createContext(undefined),
 }));
 vi.mock("src/utils/image", () => ({
   default: { imageToDataURL: async (url: string) => url },
@@ -66,8 +76,10 @@ vi.mock("src/components/Shared/Modal", () => ({
     header: string;
     children: ReactNode;
     accept: typeof page.accept;
+    cancel: typeof page.cancel;
   }) => {
     page.accept = props.accept;
+    page.cancel = props.cancel;
     return (
       <>
         <h1>{props.header}</h1>
@@ -78,6 +90,25 @@ vi.mock("src/components/Shared/Modal", () => ({
 }));
 vi.mock("react-bootstrap", async (original) => ({
   ...(await original<typeof import("react-bootstrap")>()),
+  Form: Object.assign(
+    (await original<typeof import("react-bootstrap")>()).Form,
+    {
+      Check: (props: (typeof page.checks)[number] & { label?: string }) => {
+        page.checks.push(props);
+        return (
+          <label>
+            <input
+              type="checkbox"
+              id={props.id}
+              checked={props.checked}
+              readOnly
+            />
+            {props.label}
+          </label>
+        );
+      },
+    }
+  ),
   Button: (props: {
     onClick?: () => void;
     title?: string;
@@ -133,19 +164,20 @@ const scenes = [
   stash_ids: [],
   custom_fields: {},
 })) as unknown as GQL.SceneDataFragment[];
-function render() {
+function render(selected = scenes) {
   page.next = 0;
   page.buttons = [];
+  page.checks = [];
   page.effects = [];
   return renderToStaticMarkup(
     <IntlProvider locale="en-GB" messages={flatten(messages)}>
       <SceneMergeModal
         show
-        scenes={scenes.map((scene) => ({
+        scenes={selected.map((scene) => ({
           id: scene.id,
           title: scene.title ?? "",
         }))}
-        onClose={() => {}}
+        onClose={page.close}
       />
     </IntlProvider>
   );
@@ -159,7 +191,9 @@ async function effects() {
 }
 beforeEach(() => {
   page.state = [];
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  page.merge.mockResolvedValue({ data: { sceneMerge: { id: "1" } } });
+  page.deleteFiles.mockResolvedValue({ data: { deleteFiles: true } });
   vi.stubGlobal("document", { body: {} });
   page.query.mockResolvedValue({ data: { findScenes: { scenes } } });
 });
@@ -241,4 +275,146 @@ it("keeps source before destination in step two and applies to the selected dest
     expect.any(Boolean),
     expect.any(Boolean)
   );
+});
+
+async function prepareMerge(deleteFiles = false, selected = scenes) {
+  render(selected);
+  if (deleteFiles) {
+    const check = page.checks.find((c) => c.id === "delete-source-files");
+    expect(check, "delete source files option").toBeDefined();
+    expect(check!.checked).toBe(false);
+    check!.onChange!({ target: { checked: true } });
+    render(selected);
+  }
+  await page.accept!.onClick();
+  render(selected);
+  await effects();
+  render(selected);
+  await page.accept!.onClick();
+}
+
+it("keeps every file by default", async () => {
+  render();
+  expect(page.checks.find((c) => c.id === "delete-source-files")?.checked).toBe(
+    false
+  );
+  await prepareMerge();
+  expect(page.merge).toHaveBeenCalledOnce();
+  expect(page.deleteFiles).not.toHaveBeenCalled();
+});
+
+it("warns with source file paths before doing anything and can cancel", async () => {
+  await prepareMerge(true);
+  const html = render();
+  expect(html).toContain("delete-dialog alert alert-danger");
+  expect(html).toContain("<li>/videos/puppies-2160.mp4</li>");
+  expect(html).not.toContain("puppies-1080.mp4");
+  expect(page.merge).not.toHaveBeenCalled();
+  expect(page.deleteFiles).not.toHaveBeenCalled();
+  page.cancel!.onClick();
+  render();
+  expect(page.merge).not.toHaveBeenCalled();
+  expect(page.deleteFiles).not.toHaveBeenCalled();
+});
+
+it("deletes all source files only after the merge succeeds", async () => {
+  const selected = [
+    ...scenes,
+    {
+      ...scenes[1],
+      id: "3",
+      files: [
+        { ...scenes[1].files[0], id: "f3", path: "/videos/third.mp4" },
+        { ...scenes[1].files[0], id: "f4", path: "/videos/fourth.mp4" },
+      ],
+    },
+  ];
+  page.query.mockResolvedValue({ data: { findScenes: { scenes: selected } } });
+  let finishMerge!: (result: unknown) => void;
+  page.merge.mockReturnValue(
+    new Promise((resolve) => {
+      finishMerge = resolve;
+    })
+  );
+  await prepareMerge(true, selected);
+  render(selected);
+  const completion = page.accept!.onClick();
+  expect(page.merge).toHaveBeenCalledOnce();
+  expect(page.deleteFiles).not.toHaveBeenCalled();
+  finishMerge({ data: { sceneMerge: { id: "1" } } });
+  await completion;
+  expect(page.deleteFiles).toHaveBeenCalledExactlyOnceWith(["f2", "f3", "f4"]);
+  expect(page.close).toHaveBeenCalledWith("1");
+});
+
+it("excludes destination files shared with a source from the warning and deletion", async () => {
+  const selected = [
+    scenes[0],
+    { ...scenes[1], files: [...scenes[0].files, ...scenes[1].files] },
+  ];
+  page.query.mockResolvedValue({ data: { findScenes: { scenes: selected } } });
+  await prepareMerge(true, selected);
+  const html = render(selected);
+  expect(html).toContain("<li>/videos/puppies-2160.mp4</li>");
+  expect(html).not.toContain("puppies-1080.mp4");
+  await page.accept!.onClick();
+  expect(page.deleteFiles).toHaveBeenCalledExactlyOnceWith(["f2"]);
+});
+
+it("merges without a warning when all source files belong to the destination", async () => {
+  const selected = [scenes[0], { ...scenes[1], files: scenes[0].files }];
+  page.query.mockResolvedValue({ data: { findScenes: { scenes: selected } } });
+  await prepareMerge(true, selected);
+  expect(render(selected)).not.toContain("delete-dialog alert alert-danger");
+  expect(page.merge).toHaveBeenCalledOnce();
+  expect(page.deleteFiles).not.toHaveBeenCalled();
+  expect(page.close).toHaveBeenCalledExactlyOnceWith("1");
+});
+
+it("lists and deletes a file shared by multiple sources only once", async () => {
+  const selected = [...scenes, { ...scenes[1], id: "3" }];
+  page.query.mockResolvedValue({ data: { findScenes: { scenes: selected } } });
+  await prepareMerge(true, selected);
+  const html = render(selected);
+  expect(html.match(/<li>\/videos\/puppies-2160\.mp4<\/li>/g)).toHaveLength(1);
+  await page.accept!.onClick();
+  expect(page.deleteFiles).toHaveBeenCalledExactlyOnceWith(["f2"]);
+});
+
+it("uses the sources after swapping the destination", async () => {
+  render();
+  page.buttons.find((b) => b.title === "Swap")!.onClick!();
+  await prepareMerge(true);
+  const html = render();
+  expect(html).toContain("C:\\videos\\puppies-1080.mp4");
+  expect(html).not.toContain("puppies-2160.mp4");
+  await page.accept!.onClick();
+  expect(page.deleteFiles).toHaveBeenCalledExactlyOnceWith(["f1"]);
+  expect(page.close).toHaveBeenCalledWith("2");
+});
+
+it.each([
+  "reject",
+  "no result",
+])("deletes nothing when merging fails: %s", async (failure) => {
+  const error = new Error("Merge failed");
+  if (failure === "reject") page.merge.mockRejectedValue(error);
+  else page.merge.mockResolvedValue({ data: { sceneMerge: null } });
+  await prepareMerge(true);
+  render();
+  await page.accept!.onClick();
+  expect(page.deleteFiles).not.toHaveBeenCalled();
+  expect(page.close).not.toHaveBeenCalled();
+  if (failure === "reject") expect(page.error).toHaveBeenCalledWith(error);
+});
+
+it("shows a deletion error and closes with the completed merge", async () => {
+  const error = new Error("Delete failed");
+  page.deleteFiles.mockRejectedValue(error);
+  await prepareMerge(true);
+  render();
+  await page.accept!.onClick();
+  expect(page.merge).toHaveBeenCalledOnce();
+  expect(page.error).toHaveBeenCalledWith(error);
+  expect(page.close).toHaveBeenCalledExactlyOnceWith("1");
 });
