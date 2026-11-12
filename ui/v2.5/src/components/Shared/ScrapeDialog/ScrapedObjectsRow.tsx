@@ -5,6 +5,7 @@ import { PerformerSelect } from "src/components/Performers/PerformerSelect";
 import {
   ObjectScrapeResult,
   ScrapeResult,
+  mergeLists,
 } from "src/components/Shared/ScrapeDialog/scrapeResult";
 import { TagIDSelect } from "src/components/Tags/TagSelect";
 import { StudioSelect } from "src/components/Studios/StudioSelect";
@@ -15,6 +16,7 @@ import { Badge, Button } from "react-bootstrap";
 import { Icon } from "../Icon";
 import { faLink, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { useIntl } from "react-intl";
+import { IHasStoredID } from "src/utils/data";
 
 interface INewScrapedObjects<T> {
   newValues: T[];
@@ -162,7 +164,7 @@ export const ScrapedStudioRow: React.FC<IScrapedStudioRow> = ({
   );
 };
 
-interface IScrapedObjectsRow<T> {
+interface IScrapedObjectsRow<T extends IHasStoredID> {
   title: string;
   field: string;
   result: ScrapeResult<T[]>;
@@ -178,7 +180,9 @@ interface IScrapedObjectsRow<T> {
   getName: (value: T) => string;
 }
 
-export const ScrapedObjectsRow = <T,>(props: IScrapedObjectsRow<T>) => {
+export const ScrapedObjectsRow = <T extends IHasStoredID>(
+  props: IScrapedObjectsRow<T>
+) => {
   const {
     title,
     field,
@@ -197,6 +201,10 @@ export const ScrapedObjectsRow = <T,>(props: IScrapedObjectsRow<T>) => {
       field={field}
       result={result}
       originalField={renderObjects(result)}
+      mergeValues={(original, scraped) =>
+        mergeLists(original, scraped, (value) => value.stored_id)
+      }
+      mergedField={(value) => renderObjects(new ScrapeResult(value))}
       newField={renderObjects(result, true, (value) =>
         onChange(result.cloneWithValue(value))
       )}
@@ -215,7 +223,7 @@ export const ScrapedObjectsRow = <T,>(props: IScrapedObjectsRow<T>) => {
   );
 };
 
-type IScrapedObjectRowImpl<T> = Omit<
+type IScrapedObjectRowImpl<T extends IHasStoredID> = Omit<
   IScrapedObjectsRow<T>,
   "renderObjects" | "getName"
 >;

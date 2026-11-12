@@ -225,6 +225,7 @@ export const GalleryScrapeDialog: React.FC<IGalleryScrapeDialogProps> = ({
 
   return (
     <ScrapeDialog
+      scrapeType="gallery"
       title={intl.formatMessage(
         { id: "dialogs.scrape_entity_title" },
         { entity_type: intl.formatMessage({ id: "gallery" }) }

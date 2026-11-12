@@ -164,6 +164,7 @@ export const StoryScrapeDialog: React.FC<IStoryScrapeDialogProps> = ({
 
   return (
     <ScrapeDialog
+      scrapeType="story"
       title={intl.formatMessage(
         { id: "dialogs.scrape_entity_title" },
         { entity_type: intl.formatMessage({ id: "story" }) }

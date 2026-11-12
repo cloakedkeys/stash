@@ -1,5 +1,5 @@
-import React, { useContext, useState } from "react";
-import { useIntl } from "react-intl";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { FormattedMessage, useIntl } from "react-intl";
 import {
   Form,
   Col,
@@ -9,13 +9,16 @@ import {
   FormControl,
 } from "react-bootstrap";
 import { Icon } from "../Icon";
-import clone from "lodash-es/clone";
 import { faCheck, faTimes } from "@fortawesome/free-solid-svg-icons";
 import { getCountryByISO } from "src/utils/country";
 import { CountrySelect } from "../CountrySelect";
 import { StringListInput } from "../StringListInput";
 import { ImageSelector } from "../ImageSelector";
-import { CustomFieldScrapeResults, ScrapeResult } from "./scrapeResult";
+import {
+  CustomFieldScrapeResults,
+  mergeLists,
+  ScrapeResult,
+} from "./scrapeResult";
 import { ScrapeDialogContext } from "./ScrapeDialog";
 
 function renderButtonIcon(selected: boolean) {
@@ -42,15 +45,38 @@ interface IScrapedRowProps<T> extends IScrapedFieldProps<T> {
   onChange: (value: ScrapeResult<T>) => void;
   newValues?: React.ReactNode;
   alwaysShow?: boolean;
+  mergeValues?: (original?: T, scraped?: T) => T;
+  mergedField?: (value: T) => React.ReactNode;
 }
 
 export const ScrapeDialogRow = <T,>(props: IScrapedRowProps<T>) => {
-  const { existingLabel, scrapedLabel } = useContext(ScrapeDialogContext);
+  const intl = useIntl();
+  const intlMergeTitle = intl.formatMessage({
+    id: "dialogs.scrape_merge_description",
+  });
+  const { existingLabel, scrapedLabel, mergeDefaults, setMergeDefault } =
+    useContext(ScrapeDialogContext);
+  const initialized = useRef(false);
+  const canMerge = !!props.mergeValues && !!mergeDefaults;
+
+  useEffect(() => {
+    // Missing objects may only become selectable after the user links them.
+    if (initialized.current || !canMerge || !props.result.scraped) return;
+    initialized.current = true;
+    if (mergeDefaults?.[props.field]) {
+      props.onChange(props.result.cloneWithMerge(props.mergeValues!));
+    }
+  }, [
+    canMerge,
+    mergeDefaults,
+    props.field,
+    props.result,
+    props.mergeValues,
+    props.onChange,
+  ]);
 
   function handleSelectClick(isNew: boolean) {
-    const ret = clone(props.result);
-    ret.useNewValue = isNew;
-    props.onChange(ret);
+    props.onChange(props.result.cloneWithSelection(isNew));
   }
 
   if (!props.result.scraped && !props.newValues && !props.alwaysShow) {
@@ -64,6 +90,30 @@ export const ScrapeDialogRow = <T,>(props: IScrapedRowProps<T>) => {
     >
       <Form.Label column lg="3">
         {props.title}
+        {canMerge && (
+          <div>
+            <Button
+              size="sm"
+              variant={props.result.useMergedValue ? "primary" : "secondary"}
+              aria-pressed={props.result.useMergedValue}
+              title={intlMergeTitle}
+              onClick={() =>
+                props.onChange(props.result.cloneWithMerge(props.mergeValues!))
+              }
+            >
+              <FormattedMessage id="actions.merge" />
+            </Button>
+            <Form.Check
+              id={`scrape-merge-default-${props.field}`}
+              className="mt-2"
+              checked={mergeDefaults?.[props.field] ?? false}
+              onChange={(e) =>
+                setMergeDefault?.(props.field, e.currentTarget.checked)
+              }
+              label={<FormattedMessage id="dialogs.scrape_merge_default" />}
+            />
+          </div>
+        )}
       </Form.Label>
 
       <Col lg="9">
@@ -78,7 +128,9 @@ export const ScrapeDialogRow = <T,>(props: IScrapedRowProps<T>) => {
                   variant="secondary"
                   onClick={() => handleSelectClick(false)}
                 >
-                  {renderButtonIcon(!props.result.useNewValue)}
+                  {renderButtonIcon(
+                    !props.result.useNewValue && !props.result.useMergedValue
+                  )}
                 </Button>
               </InputGroup.Prepend>
               {props.originalField}
@@ -95,7 +147,9 @@ export const ScrapeDialogRow = <T,>(props: IScrapedRowProps<T>) => {
                   variant="secondary"
                   onClick={() => handleSelectClick(true)}
                 >
-                  {renderButtonIcon(props.result.useNewValue)}
+                  {renderButtonIcon(
+                    props.result.useNewValue && !props.result.useMergedValue
+                  )}
                 </Button>
               </InputGroup.Prepend>
               {props.newField}
@@ -103,6 +157,14 @@ export const ScrapeDialogRow = <T,>(props: IScrapedRowProps<T>) => {
             {props.newValues}
           </Col>
         </Row>
+        {canMerge && props.result.useMergedValue && props.mergedField && (
+          <div className="mt-2" aria-live="polite">
+            <Form.Label>
+              <FormattedMessage id="actions.merge" />
+            </Form.Label>
+            {props.mergedField(props.result.currentValue()!)}
+          </div>
+        )}
       </Col>
     </Row>
   );
@@ -133,6 +195,7 @@ const ScrapedInputGroup: React.FC<IScrapedInputGroupProps> = (props) => {
 };
 
 interface IScrapedInputGroupRowProps {
+  mergeValues?: (original?: string, scraped?: string) => string;
   title: string;
   field: string;
   className?: string;
@@ -265,6 +328,7 @@ const ScrapedStringList: React.FC<IScrapedStringListProps> = (props) => {
 };
 
 interface IScrapedStringListRowProps {
+  mergeable?: boolean;
   title: string;
   field: string;
   placeholder?: string;
@@ -282,6 +346,15 @@ export const ScrapedStringListRow: React.FC<IScrapedStringListRowProps> = (
       title={props.title}
       field={props.field}
       result={props.result}
+      mergeValues={
+        props.field === "aliases" && props.mergeable !== false
+          ? (original, scraped) =>
+              mergeLists(original, scraped, (value) => value.toLowerCase())
+          : undefined
+      }
+      mergedField={(value) => (
+        <StringListInput value={value} setValue={() => {}} readOnly />
+      )}
       originalField={
         <ScrapedStringList
           placeholder={props.placeholder || props.title}
@@ -329,6 +402,15 @@ export const ScrapedTextAreaRow: React.FC<IScrapedInputGroupRowProps> = (
       title={props.title}
       field={props.field}
       result={props.result}
+      mergeValues={props.mergeValues}
+      mergedField={(value) => (
+        <FormControl
+          as="textarea"
+          value={value}
+          readOnly
+          className="bg-secondary text-white border-secondary"
+        />
+      )}
       originalField={
         <ScrapedTextArea
           placeholder={props.placeholder || props.title}

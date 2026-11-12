@@ -226,6 +226,7 @@ export const ImageScrapeDialog: React.FC<IImageScrapeDialogProps> = ({
 
   return (
     <ScrapeDialog
+      scrapeType="image"
       title={intl.formatMessage(
         { id: "dialogs.scrape_entity_title" },
         { entity_type: intl.formatMessage({ id: "image" }) }
