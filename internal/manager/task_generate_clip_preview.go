@@ -33,6 +33,7 @@ func (t *GenerateClipPreviewTask) Start(ctx context.Context) {
 	filePath := f.Base().Path
 
 	clipPreviewOptions := image.ClipPreviewOptions{
+		Threads:    GetInstance().Config.GetGenerationThreads(),
 		InputArgs:  GetInstance().Config.GetTranscodeInputArgs(),
 		OutputArgs: GetInstance().Config.GetTranscodeOutputArgs(),
 		Preset:     GetInstance().Config.GetPreviewPreset().String(),

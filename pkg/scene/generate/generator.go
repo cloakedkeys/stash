@@ -49,6 +49,7 @@ type ScenePaths interface {
 }
 
 type FFMpegConfig interface {
+	GetGenerationThreads() int
 	GetTranscodeInputArgs() []string
 	GetTranscodeOutputArgs() []string
 	GetGenerationHardwareAcceleration() bool

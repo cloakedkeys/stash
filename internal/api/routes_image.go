@@ -75,6 +75,7 @@ func (rs imageRoutes) serveThumbnail(w http.ResponseWriter, r *http.Request, img
 		defer wg.Done()
 
 		clipPreviewOptions := image.ClipPreviewOptions{
+			Threads:    manager.GetInstance().Config.GetGenerationThreads(),
 			InputArgs:  manager.GetInstance().Config.GetTranscodeInputArgs(),
 			OutputArgs: manager.GetInstance().Config.GetTranscodeOutputArgs(),
 			Preset:     manager.GetInstance().Config.GetPreviewPreset().String(),

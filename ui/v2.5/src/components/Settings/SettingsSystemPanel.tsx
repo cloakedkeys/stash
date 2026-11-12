@@ -443,6 +443,13 @@ export const SettingsConfigurationPanel: React.FC = () => {
 
       <SettingSection headingID="config.general.parallel_scan_head">
         <NumberSetting
+          id="generation-threads"
+          headingID="config.general.generation_threads_head"
+          subHeadingID="config.general.generation_threads_desc"
+          value={general.generationThreads ?? undefined}
+          onChange={(v) => saveGeneral({ generationThreads: v })}
+        />
+        <NumberSetting
           id="parallel-tasks"
           headingID="config.general.number_of_parallel_task_for_scan_generation_head"
           subHeadingID="config.general.number_of_parallel_task_for_scan_generation_desc"
