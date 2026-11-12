@@ -1218,6 +1218,7 @@
     },
     "merge": {
       "combined": "Combined",
+      "delete_source_files": "Delete the files merged in from the other scenes",
       "destination": "Destination",
       "destination_help": "Target scene where source will be merged into",
       "empty_results": "Destination field values will be unchanged.",
