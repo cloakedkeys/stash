@@ -96,7 +96,7 @@ func (s *Service) Merge(ctx context.Context, sourceIDs []int, destinationID int,
 
 	// The destination's hash is known now that it has its files. A
 	// destination that had no file has taken the first source's.
-	s.moveMarkerFiles(ctx, movedMarkers, updated.GetHash(s.Config.GetVideoFileNamingAlgorithm()))
+	s.moveMarkerFiles(ctx, movedMarkers, GeneratedKey(updated, s.Config.GetVideoFileNamingAlgorithm()))
 
 	// delete old scenes
 	for _, src := range sources {
@@ -124,7 +124,7 @@ func (s *Service) mergeSceneMarkers(ctx context.Context, destinationID int, src 
 		return nil, fmt.Errorf("finding scene markers: %w", err)
 	}
 
-	srcHash := src.GetHash(s.Config.GetVideoFileNamingAlgorithm())
+	srcHash := GeneratedKey(src, s.Config.GetVideoFileNamingAlgorithm())
 
 	var ret []movedMarker
 	for _, m := range markers {

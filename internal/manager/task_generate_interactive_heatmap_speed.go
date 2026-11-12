@@ -8,6 +8,7 @@ import (
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/scene"
 )
 
 type GenerateInteractiveHeatmapSpeedTask struct {
@@ -26,7 +27,7 @@ func (t *GenerateInteractiveHeatmapSpeedTask) Start(ctx context.Context) {
 		return
 	}
 
-	videoChecksum := t.Scene.GetHash(t.fileNamingAlgorithm)
+	videoChecksum := scene.GeneratedKey(&t.Scene, t.fileNamingAlgorithm)
 	funscriptPath := video.GetFunscriptPath(t.Scene.Path)
 	heatmapPath := instance.Paths.Scene.GetInteractiveHeatmapPath(videoChecksum)
 	drawRange := instance.Config.GetDrawFunscriptHeatmapRange()
@@ -74,7 +75,7 @@ func (t *GenerateInteractiveHeatmapSpeedTask) required() bool {
 		return true
 	}
 
-	sceneHash := t.Scene.GetHash(t.fileNamingAlgorithm)
+	sceneHash := scene.GeneratedKey(&t.Scene, t.fileNamingAlgorithm)
 	return !t.doesHeatmapExist(sceneHash) || primaryFile.InteractiveSpeed == nil
 }
 

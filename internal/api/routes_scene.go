@@ -254,7 +254,7 @@ func (rs sceneRoutes) streamSegment(w http.ResponseWriter, r *http.Request, stre
 		logger.Warnf("[transcode] error parsing query form: %v", err)
 	}
 
-	sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+	sceneHash := scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 
 	segment := chi.URLParam(r, "segment")
 	resolution := r.Form.Get("resolution")
@@ -289,7 +289,7 @@ func (rs sceneRoutes) Screenshot(w http.ResponseWriter, r *http.Request) {
 
 func (rs sceneRoutes) Preview(w http.ResponseWriter, r *http.Request) {
 	scene := r.Context().Value(sceneKey).(*models.Scene)
-	sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+	sceneHash := scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 	filepath := manager.GetInstance().Paths.Scene.GetVideoPreviewPath(sceneHash)
 
 	utils.ServeStaticFile(w, r, filepath)
@@ -297,7 +297,7 @@ func (rs sceneRoutes) Preview(w http.ResponseWriter, r *http.Request) {
 
 func (rs sceneRoutes) Webp(w http.ResponseWriter, r *http.Request) {
 	scene := r.Context().Value(sceneKey).(*models.Scene)
-	sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+	sceneHash := scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 	filepath := manager.GetInstance().Paths.Scene.GetWebpPreviewPath(sceneHash)
 
 	utils.ServeStaticFile(w, r, filepath)
@@ -411,7 +411,7 @@ func (rs sceneRoutes) VttThumbs(w http.ResponseWriter, r *http.Request) {
 	scene, ok := r.Context().Value(sceneKey).(*models.Scene)
 	var sceneHash string
 	if ok && scene != nil {
-		sceneHash = scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+		sceneHash = scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 	} else {
 		sceneHash = chi.URLParam(r, "sceneHash")
 		if !rs.hashAllowed(r, sceneHash) {
@@ -429,7 +429,7 @@ func (rs sceneRoutes) VttSprite(w http.ResponseWriter, r *http.Request) {
 	scene, ok := r.Context().Value(sceneKey).(*models.Scene)
 	var sceneHash string
 	if ok && scene != nil {
-		sceneHash = scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+		sceneHash = scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 	} else {
 		sceneHash = chi.URLParam(r, "sceneHash")
 		if !rs.hashAllowed(r, sceneHash) {
@@ -477,7 +477,7 @@ func (rs sceneRoutes) InteractiveHeatmap(w http.ResponseWriter, r *http.Request)
 		http.NotFound(w, r)
 		return
 	}
-	sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+	sceneHash := scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 	filepath := manager.GetInstance().Paths.Scene.GetInteractiveHeatmapPath(sceneHash)
 
 	utils.ServeStaticFile(w, r, filepath)
@@ -562,7 +562,7 @@ func (rs sceneRoutes) CaptionLang(w http.ResponseWriter, r *http.Request) {
 
 func (rs sceneRoutes) SceneMarkerStream(w http.ResponseWriter, r *http.Request) {
 	scene := r.Context().Value(sceneKey).(*models.Scene)
-	sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+	sceneHash := scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 	sceneMarkerID, _ := strconv.Atoi(chi.URLParam(r, "sceneMarkerId"))
 	var sceneMarker *models.SceneMarker
 	readTxnErr := rs.withReadTxn(r, func(ctx context.Context) error {
@@ -590,7 +590,7 @@ func (rs sceneRoutes) SceneMarkerStream(w http.ResponseWriter, r *http.Request) 
 
 func (rs sceneRoutes) SceneMarkerPreview(w http.ResponseWriter, r *http.Request) {
 	scene := r.Context().Value(sceneKey).(*models.Scene)
-	sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+	sceneHash := scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 	sceneMarkerID, _ := strconv.Atoi(chi.URLParam(r, "sceneMarkerId"))
 	var sceneMarker *models.SceneMarker
 	readTxnErr := rs.withReadTxn(r, func(ctx context.Context) error {
@@ -626,7 +626,7 @@ func (rs sceneRoutes) SceneMarkerPreview(w http.ResponseWriter, r *http.Request)
 
 func (rs sceneRoutes) SceneMarkerScreenshot(w http.ResponseWriter, r *http.Request) {
 	scene := r.Context().Value(sceneKey).(*models.Scene)
-	sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+	sceneHash := scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 	sceneMarkerID, _ := strconv.Atoi(chi.URLParam(r, "sceneMarkerId"))
 	var sceneMarker *models.SceneMarker
 	readTxnErr := rs.withReadTxn(r, func(ctx context.Context) error {

@@ -8,6 +8,7 @@ import (
 	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/scene/generate"
 )
 
@@ -70,7 +71,7 @@ func (t *GenerateTranscodeTask) Start(ctx context.Context) {
 		return
 	}
 
-	sceneHash := t.Scene.GetHash(t.fileNamingAlgorithm)
+	sceneHash := scene.GeneratedKey(&t.Scene, t.fileNamingAlgorithm)
 	transcodeSize := config.GetInstance().GetMaxTranscodeSize()
 
 	maxResolution := transcodeSize.GetMaxResolution()

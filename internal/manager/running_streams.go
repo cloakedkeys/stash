@@ -29,7 +29,7 @@ import (
 func KillRunningStreams(scene *models.Scene, fileNamingAlgo models.HashAlgorithm) {
 	instance.ReadLockManager.Cancel(scene.Path)
 
-	sceneHash := scene.GetHash(fileNamingAlgo)
+	sceneHash := scenePkg.GeneratedKey(scene, fileNamingAlgo)
 
 	if sceneHash == "" {
 		return
@@ -81,7 +81,7 @@ func (s *SceneServer) StreamSceneDirect(scene *models.Scene, w http.ResponseWrit
 		return
 	}
 
-	sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+	sceneHash := scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 
 	fp := GetInstance().Paths.Scene.GetStreamPath(scene.Path, sceneHash)
 	streamRequestCtx := ffmpeg.NewStreamRequestContext(w, r)
@@ -113,7 +113,7 @@ func (s *SceneServer) ServeScreenshot(scene *models.Scene, w http.ResponseWriter
 	if cover == nil {
 		// fallback to legacy image if present
 		if scene.Path != "" {
-			sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+			sceneHash := scenePkg.GeneratedKey(scene, config.GetInstance().GetVideoFileNamingAlgorithm())
 			filepath := GetInstance().Paths.Scene.GetLegacyScreenshotPath(sceneHash)
 
 			// fall back to the scene image blob if the file isn't present

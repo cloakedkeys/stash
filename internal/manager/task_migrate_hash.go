@@ -19,8 +19,8 @@ func (t *MigrateHashTask) Start() {
 		return
 	}
 
-	oshash := t.Scene.OSHash
-	checksum := t.Scene.Checksum
+	oshash := scene.GeneratedKey(t.Scene, models.HashAlgorithmOshash)
+	checksum := scene.GeneratedKey(t.Scene, models.HashAlgorithmMd5)
 
 	oldHash := oshash
 	newHash := checksum

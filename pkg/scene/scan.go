@@ -144,9 +144,15 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 			// sharing a hash with the real primary) can't destroy
 			// content that's still valid.
 			isPrimary := false
+			oldKeys := make(map[string]struct{})
 			for _, s := range existing {
 				if s.PrimaryFileID != nil && *s.PrimaryFileID == videoFile.ID {
 					isPrimary = true
+					// Keep the scene's range while selecting its old file hash.
+					oldScene := *s
+					oldScene.OSHash = GetHash(oldFile, models.HashAlgorithmOshash)
+					oldScene.Checksum = GetHash(oldFile, models.HashAlgorithmMd5)
+					oldKeys[GeneratedKey(&oldScene, h.FileNamingAlgorithm)] = struct{}{}
 					if s.CoverGenerated {
 						if err := h.CreatorUpdater.UpdateCover(ctx, s.ID, nil); err != nil {
 							return fmt.Errorf("clearing stale generated cover: %w", err)
@@ -174,7 +180,9 @@ func (h *ScanHandler) Handle(ctx context.Context, f models.File, oldFile models.
 				// transaction; registered before the ScanGenerator hook
 				// below so deletion still runs first.
 				txn.AddPostCommitHook(ctx, func(ctx context.Context) {
-					InvalidateGeneratedFiles(h.Paths, oldHash)
+					for key := range oldKeys {
+						InvalidateGeneratedFiles(h.Paths, key)
+					}
 				})
 			}
 		}
