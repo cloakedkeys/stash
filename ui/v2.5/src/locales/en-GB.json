@@ -119,6 +119,7 @@
     "open_random": "Open Random",
     "optimise_database": "Optimise database",
     "overwrite": "Overwrite",
+    "pin_scraper": "Pin scraper",
     "play": "Play",
     "play_random": "Play Random",
     "play_selected": "Play selected",
@@ -195,6 +196,7 @@
     },
     "temp_disable": "Disable temporarily…",
     "temp_enable": "Enable temporarily…",
+    "unpin_scraper": "Unpin scraper",
     "unset": "Unset",
     "use_default": "Use default",
     "verify_files": "Verify files",
@@ -501,6 +503,8 @@
       "generated_file_naming_hash_head": "Generated file naming hash",
       "generated_files_location": "Directory location for the generated files (scene markers, scene previews, sprites, etc).",
       "generated_path_head": "Generated path",
+      "generation_threads_desc": "Number of ffmpeg threads for transcodes, previews and marker previews. Defaults to 4. 0 or less lets ffmpeg choose. Transcode output args can override this value where supported.",
+      "generation_threads_head": "Generation threads",
       "hashing": "Hashing",
       "heatmap_generation": "Funscript Heatmap Generation",
       "image_ext_desc": "Comma-delimited list of file extensions that will be identified as images.",
@@ -1306,6 +1310,7 @@
       "equal": "Equal"
     },
     "found_sets": "{setCount, plural, one{# set of duplicates found.} other {# sets of duplicates found.}}",
+    "match_stash_id": "Match by Stash ID",
     "only_select_matching_codecs": "Only select if all codecs match in the duplicate group",
     "options": {
       "exact": "Exact",
@@ -1420,6 +1425,11 @@
   "group_count": "Group Count",
   "group_audio_number": "Audio Number",
   "group_scene_number": "Scene Number",
+  "group_scene_numbers": {
+    "edit": "Edit scene numbers",
+    "help": "Edit scene numbers for this group on this page. Leave a number empty to clear it.",
+    "invalid": "Enter a whole number."
+  },
   "groups": "Groups",
   "hair_color": "Hair Colour",
   "hertz": "{value} Hz",

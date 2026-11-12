@@ -185,7 +185,7 @@ type previewChunkOptions struct {
 func (g Generator) previewVideoChunk(lockCtx *fsutil.LockContext, path string, width, height int, options previewChunkOptions, fallback bool, useVsync2 bool, codec ffmpeg.VideoCodec, fullhw bool) error {
 	videoFilter, fullhw := g.previewVideoFilter(codec, width, height, scenePreviewWidth, fullhw)
 
-	videoArgs := codec.ExtraArgsHQ(options.Preset, scenePreviewCRF)
+	videoArgs := codec.ExtraArgsHQ(options.Preset, scenePreviewCRF, g.FFMpegConfig.GetGenerationThreads())
 	videoArgs = videoArgs.VideoFilter(videoFilter)
 	videoArgs = append(videoArgs, "-strict", "-2")
 	videoArgs = videoArgs.MovieTimescale(g.Encoder.Version())
@@ -326,7 +326,7 @@ func (g Generator) previewVideoToImage(input string) generateFn {
 			"-compression_level", "6",
 			"-preset", "default",
 			"-loop", "0",
-			"-threads", "4",
+			"-threads", strconv.Itoa(g.FFMpegConfig.GetGenerationThreads()),
 		)
 
 		encodeOptions := transcoder.TranscodeOptions{

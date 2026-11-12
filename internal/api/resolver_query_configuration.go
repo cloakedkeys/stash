@@ -155,6 +155,7 @@ func makeConfigGeneralResult() *ConfigGeneralResult {
 		FfprobePath:                    config.GetFFProbePath(),
 		CalculateMd5:                   config.IsCalculateMD5(),
 		VideoFileNamingAlgorithm:       config.GetVideoFileNamingAlgorithm(),
+		GenerationThreads:              config.GetGenerationThreads(),
 		ParallelTasks:                  config.GetParallelTasks(),
 		UseCustomSpriteInterval:        config.GetUseCustomSpriteInterval(),
 		SpriteInterval:                 config.GetSpriteInterval(),

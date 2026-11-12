@@ -1,3 +1,4 @@
+import { sortPinnedScrapers } from "src/hooks/pinnedScrapers";
 import React, { useState, useEffect, useRef } from "react";
 import { useIntl } from "react-intl";
 import { initialConfig, ITaggerConfig } from "src/components/Tagger/constants";
@@ -149,7 +150,10 @@ export const TaggerContext: React.FC<React.PropsWithChildren<unknown>> = ({
     }
 
     const { stashBoxes } = stashConfig.general;
-    const scrapers = Scrapers.data.listScrapers;
+    const scrapers = sortPinnedScrapers(
+      Scrapers.data.listScrapers,
+      stashConfig.ui.pinnedScrapers
+    );
 
     const stashboxSources: ITaggerSource[] = stashBoxes.map((s, i) => ({
       id: `${STASH_BOX_PREFIX}${s.endpoint}`,

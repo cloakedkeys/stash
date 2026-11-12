@@ -117,7 +117,9 @@ func urlFromSurf(ctx context.Context, loadURL string, driverOptions scraperDrive
 	// get global proxy
 	proxyURL := globalConfig.GetProxy()
 	if proxyURL != "" {
-		builder = builder.Proxy(g.String(proxyURL))
+		// Surf's proxy dialer already handles the proxy connection. Disable
+		// its environment proxy first to avoid tunnelling through it twice.
+		builder = builder.Proxy("").Proxy(g.String(proxyURL))
 	}
 
 	client := builder.
@@ -185,38 +187,41 @@ func urlFromCDP(ctx context.Context, urlCDP string, driverOptions scraperDriverO
 
 	// if scraperCDPPath is a remote address, then allocate accordingly
 	cdpPath := globalConfig.GetScraperCDPPath()
-	if cdpPath != "" {
-		var cancelAct context.CancelFunc
+	var cancelAct context.CancelFunc
 
-		if isCDPPathHTTP(globalConfig) || isCDPPathWS(globalConfig) {
-			remote, err := resolveRemoteCDP(ctx, cdpPath)
-			if err != nil {
-				return nil, err
-			}
-
-			ctx, cancelAct = chromedp.NewRemoteAllocator(ctx, remote)
-		} else {
-			// use a temporary user directory for chrome
-			dir, err := os.MkdirTemp("", "stash-chromedp")
-			if err != nil {
-				return nil, err
-			}
-			defer os.RemoveAll(dir)
-
-			opts := append(chromedp.DefaultExecAllocatorOptions[:],
-				chromedp.UserDataDir(dir),
-				chromedp.ExecPath(cdpPath),
-			)
-			if globalConfig.GetProxy() != "" {
-				url, _, _ := splitProxyAuth(globalConfig.GetProxy())
-				opts = append(opts, chromedp.ProxyServer(url))
-			}
-
-			ctx, cancelAct = chromedp.NewExecAllocator(ctx, opts...)
+	if isCDPPathHTTP(globalConfig) || isCDPPathWS(globalConfig) {
+		remote, err := resolveRemoteCDP(ctx, cdpPath)
+		if err != nil {
+			return nil, err
 		}
 
-		defer cancelAct()
+		ctx, cancelAct = chromedp.NewRemoteAllocator(ctx, remote)
+	} else {
+		// use a temporary user directory for chrome
+		dir, err := os.MkdirTemp("", "stash-chromedp")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(dir)
+
+		opts := append(chromedp.DefaultExecAllocatorOptions[:],
+			chromedp.UserDataDir(dir),
+		)
+		if cdpPath != "" {
+			opts = append(opts, chromedp.ExecPath(cdpPath))
+		}
+		if globalConfig.GetProxy() != "" {
+			url, _, _ := splitProxyAuth(globalConfig.GetProxy())
+			// Chrome resolves SOCKS5 hostnames through the proxy, but only
+			// recognises the socks5 scheme (not Go's socks5h alias).
+			url = strings.Replace(url, "socks5h://", "socks5://", 1)
+			opts = append(opts, chromedp.ProxyServer(url))
+		}
+
+		ctx, cancelAct = chromedp.NewExecAllocator(ctx, opts...)
 	}
+
+	defer cancelAct()
 
 	ctx, cancel := chromedp.NewContext(ctx)
 	defer cancel()

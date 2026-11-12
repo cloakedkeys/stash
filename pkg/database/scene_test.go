@@ -4841,7 +4841,7 @@ func TestSceneStore_FindDuplicates(t *testing.T) {
 	runRollbackTxn(t, func(ctx context.Context) error {
 		distance := 0
 		durationDiff := -1.
-		got, err := qb.FindDuplicates(ctx, distance, durationDiff, nil)
+		got, err := qb.FindDuplicates(ctx, distance, durationDiff, nil, false)
 		if err != nil {
 			t.Errorf("SceneStore.FindDuplicates() error = %v", err)
 			return nil
@@ -4851,7 +4851,7 @@ func TestSceneStore_FindDuplicates(t *testing.T) {
 
 		distance = 1
 		durationDiff = -1.
-		got, err = qb.FindDuplicates(ctx, distance, durationDiff, nil)
+		got, err = qb.FindDuplicates(ctx, distance, durationDiff, nil, false)
 		if err != nil {
 			t.Errorf("SceneStore.FindDuplicates() error = %v", err)
 			return nil
@@ -4980,7 +4980,7 @@ func TestSceneStore_FindDuplicatesWithFilter(t *testing.T) {
 		// Test 1: No filter - should find all duplicates (2 pairs: original + our new ones)
 		distance := 0
 		durationDiff := -1.0
-		got, err := qb.FindDuplicates(ctx, distance, durationDiff, nil)
+		got, err := qb.FindDuplicates(ctx, distance, durationDiff, nil, false)
 		if err != nil {
 			t.Errorf("FindDuplicates(nil filter) error = %v", err)
 			return nil
@@ -4994,7 +4994,7 @@ func TestSceneStore_FindDuplicatesWithFilter(t *testing.T) {
 				Value:    []string{strconv.Itoa(testTagID)},
 				Modifier: models.CriterionModifierIncludes,
 			},
-		})
+		}, false)
 		if err != nil {
 			t.Errorf("FindDuplicates(tag filter) error = %v", err)
 			return nil
@@ -5045,7 +5045,7 @@ func TestSceneStore_FindDuplicatesWithFilter(t *testing.T) {
 				Value:    []string{strconv.Itoa(nonExistentTagID)},
 				Modifier: models.CriterionModifierIncludes,
 			},
-		})
+		}, false)
 		if err != nil {
 			t.Errorf("FindDuplicates(non-existent tag filter) error = %v", err)
 			return nil
@@ -5059,7 +5059,7 @@ func TestSceneStore_FindDuplicatesWithFilter(t *testing.T) {
 				Value:    []string{strconv.Itoa(testTagID)},
 				Modifier: models.CriterionModifierIncludes,
 			},
-		})
+		}, false)
 		if err != nil {
 			t.Errorf("FindDuplicates(fuzzy + tag filter) error = %v", err)
 			return nil

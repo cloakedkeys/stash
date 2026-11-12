@@ -11,6 +11,7 @@ import { queryFindScenes, useFindScenes } from "src/core/StashService";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { DisplayMode } from "src/models/list-filter/types";
 import { Tagger } from "../Tagger/scenes/SceneTagger";
+import { GroupSceneNumbers } from "../Groups/GroupDetails/GroupSceneNumbers";
 import { IPlaySceneOptions, SceneQueue } from "src/models/sceneQueue";
 import { SceneWallPanel } from "./SceneWallPanel";
 import { SceneListTable } from "./SceneListTable";
@@ -725,16 +726,22 @@ export const FilteredSceneList = PatchComponent(
                   />
                 </div>
 
-                <LoadedContent loading={result.loading} error={result.error}>
-                  <SceneList
-                    filter={effectiveFilter}
-                    scenes={items}
-                    selectedIds={selectedIds}
-                    onSelectChange={onSelectChange}
-                    fromGroupId={fromGroupId}
-                    onSort={onSort}
-                  />
-                </LoadedContent>
+                <GroupSceneNumbers
+                  key={`${fromGroupId}-${filter.currentPage}`}
+                  scenes={items}
+                  groupId={fromGroupId}
+                >
+                  <LoadedContent loading={result.loading} error={result.error}>
+                    <SceneList
+                      filter={effectiveFilter}
+                      scenes={items}
+                      selectedIds={selectedIds}
+                      onSelectChange={onSelectChange}
+                      fromGroupId={fromGroupId}
+                      onSort={onSort}
+                    />
+                  </LoadedContent>
+                </GroupSceneNumbers>
 
                 {totalCount > filter.itemsPerPage && (
                   <div className="pagination-footer-container">

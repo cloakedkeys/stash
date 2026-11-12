@@ -157,7 +157,7 @@ func TestSceneStore_FindDuplicatesSceneFilter(t *testing.T) {
 				}
 
 				groupOf := func(filter *models.SceneFilterType) []int {
-					groups, err := db.Scene().FindDuplicates(ctx, distance, -1, filter)
+					groups, err := db.Scene().FindDuplicates(ctx, distance, -1, filter, false)
 					require.NoError(t, err)
 
 					var found [][]int

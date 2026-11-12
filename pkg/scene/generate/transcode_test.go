@@ -9,6 +9,8 @@ import (
 
 type transcodeTestConfig struct{}
 
+func (transcodeTestConfig) GetGenerationThreads() int { return 4 }
+
 func (transcodeTestConfig) GetTranscodeInputArgs() []string         { return nil }
 func (transcodeTestConfig) GetTranscodeOutputArgs() []string        { return nil }
 func (transcodeTestConfig) GetGenerationHardwareAcceleration() bool { return true }
