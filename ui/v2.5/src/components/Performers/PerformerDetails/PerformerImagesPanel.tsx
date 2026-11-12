@@ -8,7 +8,7 @@ import { usePerformerFilterHook } from "src/core/performers";
 import { useToast } from "src/hooks/Toast";
 import { View } from "src/components/List/views";
 import { PatchComponent } from "src/patch";
-import ImageUtils from "src/utils/image";
+import { imageToPictureDataURL } from "src/utils/imagePicture";
 
 interface IPerformerImagesPanel {
   active: boolean;
@@ -31,13 +31,7 @@ export const PerformerImagesPanel: React.FC<IPerformerImagesPanel> =
           const selectedImage = result.data?.findImages.images.find(
             (image) => image.id === selectedId
           );
-          const imagePath = selectedImage?.paths.image;
-
-          if (!imagePath) {
-            throw new Error("Selected image does not have an image path");
-          }
-
-          const imageData = await ImageUtils.imageToDataURL(imagePath);
+          const imageData = await imageToPictureDataURL(selectedImage, intl);
           await updatePerformer({
             variables: {
               input: {
