@@ -300,7 +300,7 @@ func TestSceneFileRangesShared(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, distance := range []int{0, 1} {
-			groups, err := db.Scene().FindDuplicates(ctx, distance, -1, nil)
+			groups, err := db.Scene().FindDuplicates(ctx, distance, -1, nil, false)
 			require.NoError(t, err)
 			var found []int
 			for _, g := range groups {
@@ -334,7 +334,7 @@ func TestSceneFileRangesShared(t *testing.T) {
 
 		// a part is a piece of the file, so it's never a duplicate of a whole copy of it
 		for _, distance := range []int{0, 1} {
-			groups, err := db.Scene().FindDuplicates(ctx, distance, -1, nil)
+			groups, err := db.Scene().FindDuplicates(ctx, distance, -1, nil, false)
 			require.NoError(t, err)
 			for _, g := range groups {
 				for _, s := range g {

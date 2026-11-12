@@ -31,11 +31,13 @@ query FindScenesByPathRegex($filter: FindFilterType) {
 query FindDuplicateScenes(
   $distance: Int
   $duration_diff: Float
+  $stash_id: Boolean
   $scene_filter: SceneFilterType
 ) {
   findDuplicateScenes(
     distance: $distance
     duration_diff: $duration_diff
+    stash_id: $stash_id
     scene_filter: $scene_filter
   ) {
     ...SlimSceneData

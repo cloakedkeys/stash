@@ -1301,6 +1301,7 @@
       "equal": "Equal"
     },
     "found_sets": "{setCount, plural, one{# set of duplicates found.} other {# sets of duplicates found.}}",
+    "match_stash_id": "Match by Stash ID",
     "only_select_matching_codecs": "Only select if all codecs match in the duplicate group",
     "options": {
       "exact": "Exact",
