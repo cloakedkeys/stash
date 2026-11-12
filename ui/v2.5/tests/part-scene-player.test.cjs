@@ -213,7 +213,7 @@ for (const [name, start, end, duration] of [
     assert.deepEqual(activity.saved, { resume: 0, played: 20 });
     assert.equal(
       state.thumbnail,
-      start != null || end != null ? null : s.paths.vtt
+      s.paths.vtt
     );
   });
 }
@@ -295,7 +295,7 @@ test("part captions are not queried or installed and scripts are not uploaded; w
   }
 });
 
-test("scrubber seeks on the scene timeline and hides part sprites and heatmap", () => {
+test("scrubber shows part sprites on the scene timeline and keeps the heatmap off", () => {
   const source = read("components/ScenePlayer/ScenePlayerScrubber.tsx");
   for (const isPart of [true, false]) {
     const s = scene(isPart ? 100 : null, isPart ? 140 : null);
@@ -330,7 +330,7 @@ test("scrubber seeks on the scene timeline and hides part sprites and heatmap", 
       ...React,
       useRef: () => ({ current: null }),
       useState: (initial) => [
-        typeof initial === "number" ? 300 : initial,
+        typeof initial === "number" ? 300 : [{ style: { backgroundImage: "url(part-sprite.jpg)" }, time: "0 - 40" }],
         () => {},
       ],
       useCallback: (fn) => fn,
@@ -365,8 +365,9 @@ test("scrubber seeks on the scene timeline and hides part sprites and heatmap", 
         onScroll() {},
       })
     );
-    assert.equal(vtt, isPart ? undefined : s.paths.vtt);
+    assert.equal(vtt, s.paths.vtt);
     assert.equal(html.includes("heatmap.png"), !isPart);
+    assert.ok(html.includes("part-sprite.jpg"));
     if (isPart) assert.ok(html.includes("left:150px"));
   }
 });

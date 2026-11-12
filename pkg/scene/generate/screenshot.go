@@ -2,6 +2,7 @@ package generate
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/stashapp/stash/pkg/ffmpeg/transcoder"
 	"github.com/stashapp/stash/pkg/fsutil"
@@ -27,9 +28,22 @@ func (g Generator) Screenshot(ctx context.Context, input string, videoWidth int,
 
 	logger.Infof("Creating screenshot for %s", input)
 
+	if g.Range.IsPart() && g.Range.End == nil {
+		g.Range.End = &videoDuration
+	}
 	at := screenshotDurationProportion * videoDuration
+	if g.Range.IsPart() {
+		at, _ = g.rangeSegment(screenshotDurationProportion*g.Range.Duration(videoDuration), 0)
+	}
 	if options.At != nil {
 		at = *options.At
+	}
+
+	if g.Range.IsPart() {
+		start, _ := g.rangeSegment(0, 0)
+		if at < start || at >= start+g.Range.Duration(videoDuration) {
+			return nil, fmt.Errorf("cover time %g is outside the scene range", at)
+		}
 	}
 
 	ret, err := g.generateBytes(lockCtx, g.ScenePaths, jpgPattern, g.screenshot(input, screenshotOptions{
@@ -58,6 +72,13 @@ func (g Generator) screenshot(input string, options screenshotOptions) generateF
 			OutputType:        transcoder.ScreenshotOutputTypeImage2,
 			Quality:           options.Quality,
 			Width:             options.Width,
+		}
+
+		if g.Range.IsPart() {
+			ssOptions.SlowSeek = true
+			if g.Range.End != nil {
+				ssOptions.Duration = *g.Range.End - options.Time
+			}
 		}
 
 		args := transcoder.ScreenshotTime(input, options.Time, ssOptions)

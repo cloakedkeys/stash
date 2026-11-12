@@ -86,6 +86,9 @@ type sceneMarkerOptions struct {
 
 func (g Generator) markerPreviewVideo(path string, width, height int, codec ffmpeg.VideoCodec, fullhw bool, options sceneMarkerOptions) generateFn {
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
+		if g.Range.IsPart() {
+			options.Seconds, options.Duration = g.rangeSegment(options.Seconds, options.Duration)
+		}
 		videoFilter, fullhw := g.previewVideoFilter(codec, width, height, markerPreviewWidth, fullhw)
 
 		videoArgs := codec.ExtraArgsHQ("veryslow", markerPreviewCRF, g.FFMpegConfig.GetGenerationThreads())
@@ -161,8 +164,12 @@ func (g Generator) sceneMarkerWebp(path string, options sceneMarkerOptions) gene
 			"-threads", strconv.Itoa(g.FFMpegConfig.GetGenerationThreads()),
 		)
 
+		duration := float64(markerImageDuration)
+		if g.Range.IsPart() {
+			options.Seconds, duration = g.rangeSegment(options.Seconds, duration)
+		}
 		trimOptions := transcoder.TranscodeOptions{
-			Duration:   markerImageDuration,
+			Duration:   duration,
 			StartTime:  float64(options.Seconds),
 			OutputPath: tmpFn,
 			VideoCodec: ffmpeg.VideoCodecLibWebP,
@@ -213,6 +220,10 @@ func (g Generator) sceneMarkerScreenshot(input string, options SceneMarkerScreen
 			Width:             options.Width,
 		}
 
+		if g.Range.IsPart() {
+			options.Seconds, ssOptions.Duration = g.rangeSegment(options.Seconds, 1)
+			ssOptions.SlowSeek = true
+		}
 		args := transcoder.ScreenshotTime(input, options.Seconds, ssOptions)
 
 		return g.generate(lockCtx, args)

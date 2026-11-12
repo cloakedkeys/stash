@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
@@ -46,6 +47,7 @@ func (t *GeneratePreviewTask) Start(ctx context.Context) {
 		}
 
 		t.generator.SampleAspectRatio = videoFile.SampleAspectRatio()
+		t.generator.Range = ffmpeg.StreamRange{Start: t.Scene.StartTime, End: t.Scene.EndTime}
 
 		if err := t.generateVideo(videoChecksum, videoFile.Path, videoFile.Width, videoFile.Height, videoFile.VideoStreamDuration, videoFile.FrameRate); err != nil {
 			logger.Errorf("error generating preview: %v", err)

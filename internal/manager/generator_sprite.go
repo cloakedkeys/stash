@@ -54,6 +54,8 @@ type SpriteGeneratorConfig struct {
 	// SpriteSize is the size in pixels of the longest dimension of each sprite image.
 	// The other dimension will be automatically calculated to maintain the aspect ratio of the video
 	SpriteSize int
+
+	Range ffmpeg.StreamRange
 }
 
 const (
@@ -87,6 +89,17 @@ func NewSpriteGenerator(videoFile ffmpeg.VideoFile, videoChecksum string, imageO
 		return nil, errors.New(s)
 	}
 
+	if config.Range.IsPart() {
+		if config.Range.End == nil {
+			end := videoFile.VideoStreamDuration
+			config.Range.End = &end
+		}
+		videoFile.VideoStreamDuration = config.Range.Duration(videoFile.VideoStreamDuration)
+		if videoFile.VideoStreamDuration <= 0 {
+			return nil, errors.New("part duration must be positive")
+		}
+	}
+
 	config.SpriteInterval = calculateSpriteInterval(videoFile, config)
 	chunkCount := int(math.Ceil(videoFile.VideoStreamDuration / config.SpriteInterval))
 
@@ -107,7 +120,7 @@ func NewSpriteGenerator(videoFile ffmpeg.VideoFile, videoChecksum string, imageO
 	slowSeek := false
 
 	// For files with small duration / low frame count  try to seek using frame number intead of seconds
-	if videoFile.VideoStreamDuration < 5 || (0 < videoFile.FrameCount && videoFile.FrameCount <= int64(chunkCount)) { // some files can have FrameCount == 0, only use SlowSeek  if duration < 5
+	if !config.Range.IsPart() && (videoFile.VideoStreamDuration < 5 || (0 < videoFile.FrameCount && videoFile.FrameCount <= int64(chunkCount))) { // some files can have FrameCount == 0, only use SlowSeek  if duration < 5
 		if videoFile.VideoStreamDuration <= 0 {
 			s := fmt.Sprintf("video %s: duration(%.3f)/frame count(%d) invalid, skipping sprite creation", videoFile.Path, videoFile.VideoStreamDuration, videoFile.FrameCount)
 			return nil, errors.New(s)
@@ -147,6 +160,7 @@ func NewSpriteGenerator(videoFile ffmpeg.VideoFile, videoChecksum string, imageO
 			FFMpegConfig:      instance.Config,
 			LockManager:       instance.ReadLockManager,
 			ScenePaths:        instance.Paths.Scene,
+			Range:             config.Range,
 		},
 	}, nil
 }
@@ -267,6 +281,9 @@ func (g *SpriteGenerator) generateSpriteVTT() error {
 		stepSize /= g.Info.FrameRate
 	}
 
+	if g.Config.Range.IsPart() {
+		stepSize = g.Info.VideoFile.VideoStreamDuration / float64(g.Info.ChunkCount)
+	}
 	return g.g.SpriteVTT(context.TODO(), g.VTTOutputPath, g.ImageOutputPath, stepSize, g.Info.ChunkCount)
 }
 

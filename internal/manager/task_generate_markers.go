@@ -152,12 +152,22 @@ func (t *GenerateMarkersTask) generateMarker(videoFile *models.VideoFile, scene 
 	sceneHash := scenePkg.GeneratedKey(scene, t.fileNamingAlgorithm)
 	seconds := float64(sceneMarker.Seconds)
 
+	if scenePkg.HasRange(scene) && (seconds < 0 || seconds >= (ffmpeg.StreamRange{Start: scene.StartTime, End: scene.EndTime}).Duration(videoFile.Duration)) {
+		return fmt.Errorf("scene marker is outside the part range")
+	}
+
 	// check if marker past duration
 	if seconds > float64(videoFile.Duration) {
 		return fmt.Errorf("scene marker at %s exceeds scene's video duration of %s", formatSeconds(seconds), formatSeconds(videoFile.Duration))
 	}
 
-	g := t.generator
+	generator := *t.generator
+	g := &generator
+	g.Range = ffmpeg.StreamRange{Start: scene.StartTime, End: scene.EndTime}
+	if scenePkg.HasRange(scene) && g.Range.End == nil {
+		end := videoFile.Duration
+		g.Range.End = &end
+	}
 
 	if t.VideoPreview {
 		if err := g.MarkerPreviewVideo(context.TODO(), videoFile.Path, videoFile.Width, videoFile.Height, sceneHash, seconds, sceneMarker.EndSeconds, instance.Config.GetPreviewAudio(), instance.Config.GetMaxMarkerPreviewDuration(), instance.Config.GetDefaultMarkerPreviewDuration(), codec, fullhw); err != nil {

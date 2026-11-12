@@ -68,6 +68,9 @@ type Generator struct {
 	ScenePaths   ScenePaths
 	Overwrite    bool
 
+	// Range limits generation to a scene within its source file.
+	Range ffmpeg.StreamRange
+
 	// SampleAspectRatio is the source pixel ratio after automatic rotation.
 	SampleAspectRatio float64
 }

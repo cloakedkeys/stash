@@ -26,6 +26,9 @@ type ScreenshotOptions struct {
 	// SlowSeek uses accurate seek by placing -ss after the input.
 	SlowSeek bool
 
+	// Duration caps a ranged screenshot at the scene end. Zero keeps legacy arguments.
+	Duration float64
+
 	// FFMpegVersion selects version-specific arguments. Used by ScreenshotFrame.
 	FFMpegVersion ffmpeg.Version
 }
@@ -76,6 +79,9 @@ func ScreenshotTime(input string, t float64, options ScreenshotOptions) ffmpeg.A
 	args = args.Input(input)
 	if options.SlowSeek {
 		args = args.Seek(t)
+	}
+	if options.Duration > 0 {
+		args = args.Duration(options.Duration)
 	}
 	args = args.VideoFrames(1)
 
