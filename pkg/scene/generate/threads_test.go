@@ -1,12 +1,16 @@
 package generate
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/image/bmp"
 
 	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/ffmpeg"
@@ -23,6 +27,32 @@ func init() {
 		}
 		if os.WriteFile(path, b, 0600) != nil {
 			os.Exit(1)
+		}
+		if log := os.Getenv("STASH_TEST_GENERATION_LOG"); log != "" && (len(os.Args) != 2 || os.Args[1] != "-version") {
+			f, err := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+			if err != nil {
+				os.Exit(1)
+			}
+			if _, err := f.Write(append(b, '\n')); err != nil {
+				os.Exit(1)
+			}
+			if f.Close() != nil {
+				os.Exit(1)
+			}
+			var data bytes.Buffer
+			if bmp.Encode(&data, image.NewRGBA(image.Rect(0, 0, 2, 2))) != nil {
+				os.Exit(1)
+			}
+			output := os.Args[len(os.Args)-1]
+			if output == "-" {
+				if _, err := os.Stdout.Write(data.Bytes()); err != nil {
+					os.Exit(1)
+				}
+			} else {
+				if os.WriteFile(output, data.Bytes(), 0600) != nil {
+					os.Exit(1)
+				}
+			}
 		}
 		os.Exit(0)
 	}

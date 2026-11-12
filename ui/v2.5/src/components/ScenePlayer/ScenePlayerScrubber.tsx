@@ -89,13 +89,11 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
     [onSeek, duration, scrubWidth]
   );
 
-  const spriteInfo = useSpriteInfo(
-    isPart ? undefined : (scene.paths.vtt ?? undefined)
-  );
+  const spriteInfo = useSpriteInfo(scene.paths.vtt ?? undefined);
   const [spriteItems, setSpriteItems] = useState<ISceneSpriteItem[]>();
 
   useEffect(() => {
-    if (isPart) {
+    if (isPart && (!spriteInfo || spriteInfo.length === 0)) {
       setSpriteItems(undefined);
       setScrubWidth(width);
       return;
@@ -335,7 +333,7 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
   }
 
   function renderSprites() {
-    if (isPart || !scene.paths.vtt) return;
+    if (!scene.paths.vtt) return;
 
     return spriteItems?.map((sprite, index) => {
       return (

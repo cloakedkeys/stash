@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
@@ -37,6 +38,7 @@ func (t *GenerateSpriteTask) Start(ctx context.Context) {
 	vttPath := instance.Paths.Scene.GetSpriteVttFilePath(sceneHash)
 
 	cfg := DefaultSpriteGeneratorConfig
+	cfg.Range = ffmpeg.StreamRange{Start: t.Scene.StartTime, End: t.Scene.EndTime}
 	cfg.SpriteSize = instance.Config.GetSpriteScreenshotSize()
 
 	if instance.Config.GetUseCustomSpriteInterval() {

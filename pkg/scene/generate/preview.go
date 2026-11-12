@@ -93,6 +93,13 @@ func (g Generator) PreviewVideo(ctx context.Context, path string, width, height 
 }
 
 func (g *Generator) previewVideo(path string, width, height int, videoStreamDuration float64, options PreviewOptions, fallback bool, useVsync2 bool) generateFn {
+	if g.Range.IsPart() {
+		if g.Range.End == nil {
+			end := videoStreamDuration
+			g.Range.End = &end
+		}
+		videoStreamDuration = g.Range.Duration(videoStreamDuration)
+	}
 	// #2496 - generate a single preview video for videos shorter than segments * segment duration
 	if videoStreamDuration < options.SegmentDuration*float64(options.Segments) {
 		return g.previewVideoSingle(path, width, height, videoStreamDuration, options, fallback, useVsync2)
@@ -183,6 +190,9 @@ type previewChunkOptions struct {
 }
 
 func (g Generator) previewVideoChunk(lockCtx *fsutil.LockContext, path string, width, height int, options previewChunkOptions, fallback bool, useVsync2 bool, codec ffmpeg.VideoCodec, fullhw bool) error {
+	if g.Range.IsPart() {
+		options.StartTime, options.Duration = g.rangeSegment(options.StartTime, options.Duration)
+	}
 	videoFilter, fullhw := g.previewVideoFilter(codec, width, height, scenePreviewWidth, fullhw)
 
 	videoArgs := codec.ExtraArgsHQ(options.Preset, scenePreviewCRF, g.FFMpegConfig.GetGenerationThreads())

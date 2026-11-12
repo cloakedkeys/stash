@@ -35,12 +35,22 @@ func (g Generator) SpriteScreenshot(ctx context.Context, input string, seconds f
 		ssOptions.Height = size
 	}
 
+	if g.Range.IsPart() {
+		seconds, ssOptions.Duration = g.rangeSegment(seconds, 1)
+		ssOptions.SlowSeek = true
+	}
 	args := transcoder.ScreenshotTime(input, seconds, ssOptions)
 	img, err := g.generateImage(lockCtx, args)
 	if err != nil {
 		logger.Warnf("[generator] fast sprite screenshot seek failed for %s at %.3fs, retrying with accurate seek: %v", input, seconds, err)
 
 		ssOptions.SlowSeek = true
+		if g.Range.IsPart() {
+			// A short part can have more tiles than frames. If no frame exists
+			// between this sample and the end, reuse the first frame in the
+			// part rather than seeking beyond it.
+			seconds, ssOptions.Duration = g.rangeSegment(0, g.Range.Duration(0))
+		}
 		args = transcoder.ScreenshotTime(input, seconds, ssOptions)
 		return g.generateImage(lockCtx, args)
 	}
@@ -135,8 +145,18 @@ func (g Generator) spriteVTT(spritePath string, stepSize float64, spriteChunks i
 		for index := 0; index < spriteChunks; index++ {
 			x := width * (index % gridSize)
 			y := height * int(math.Floor(float64(index)/float64(gridSize)))
-			startTime := utils.GetVTTTime(float64(index) * stepSize)
-			endTime := utils.GetVTTTime(float64(index+1) * stepSize)
+			start, end := float64(index)*stepSize, float64(index+1)*stepSize
+			if g.Range.IsPart() {
+				if index == spriteChunks-1 {
+					end = g.Range.Duration(0)
+				}
+				// VTT cues use milliseconds. Avoid truncating a
+				// cue by one millisecond after floating-point subtraction.
+				start = math.Round(start*1000) / 1000
+				end = math.Round(end*1000) / 1000
+			}
+			startTime := utils.GetVTTTime(start)
+			endTime := utils.GetVTTTime(end)
 			vttLines = append(vttLines, startTime+" --> "+endTime)
 			vttLines = append(vttLines, fmt.Sprintf("%s#xywh=%d,%d,%d,%d", spriteImageName, x, y, width, height))
 			vttLines = append(vttLines, "")

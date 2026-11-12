@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/scene/generate"
@@ -44,13 +45,6 @@ func (t *GenerateCoverTask) Start(ctx context.Context) {
 		return
 	}
 
-	var at float64
-	if t.ScreenshotAt == nil {
-		at = float64(videoFile.Duration) * 0.2
-	} else {
-		at = *t.ScreenshotAt
-	}
-
 	// we'll generate the screenshot, grab the generated data and set it
 	// in the database.
 
@@ -69,10 +63,11 @@ func (t *GenerateCoverTask) Start(ctx context.Context) {
 		LockManager:       instance.ReadLockManager,
 		ScenePaths:        instance.Paths.Scene,
 		Overwrite:         true,
+		Range:             ffmpeg.StreamRange{Start: t.Scene.StartTime, End: t.Scene.EndTime},
 	}
 
 	coverImageData, err := g.Screenshot(context.TODO(), videoFile.Path, videoFile.Width, videoFile.Duration, generate.ScreenshotOptions{
-		At: &at,
+		At: t.ScreenshotAt,
 	})
 	if err != nil {
 		logger.Errorf("Error generating screenshot: %v", err)

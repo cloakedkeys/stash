@@ -28,6 +28,10 @@ func (t *GenerateTranscodeTask) GetDescription() string {
 }
 
 func (t *GenerateTranscodeTask) Start(ctx context.Context) {
+	// Part playback already uses bounded live transcodes, never this stored file.
+	if scene.HasRange(&t.Scene) {
+		return
+	}
 	hasTranscode := HasTranscode(&t.Scene, t.fileNamingAlgorithm)
 	if !t.Overwrite && hasTranscode {
 		return
@@ -110,6 +114,9 @@ func (t *GenerateTranscodeTask) Start(ctx context.Context) {
 // used only when counting files to generate, doesn't affect the actual transcode generation
 // if container is missing from DB it is treated as non supported in order not to delay the user
 func (t *GenerateTranscodeTask) required() bool {
+	if scene.HasRange(&t.Scene) {
+		return false
+	}
 	f := t.Scene.Files.Primary()
 	if f == nil {
 		return false
