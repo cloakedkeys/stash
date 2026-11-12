@@ -1,3 +1,4 @@
+import { Dispatch, SetStateAction } from "react";
 import { useToast } from "src/hooks/Toast";
 import * as GQL from "src/core/generated-graphql";
 import {
@@ -18,20 +19,22 @@ function useCreateObject<T>(
   const Toast = useToast();
   const intl = useIntl();
 
-  async function createNewObject(o: T) {
+  async function createNewObject(objects: T | T[]) {
     try {
-      await createFunc(o);
+      for (const o of Array.isArray(objects) ? objects : [objects]) {
+        await createFunc(o);
 
-      Toast.success(
-        intl.formatMessage(
-          { id: "toast.created_entity" },
-          {
-            entity: intl
-              .formatMessage({ id: entityTypeID })
-              .toLocaleLowerCase(),
-          }
-        )
-      );
+        Toast.success(
+          intl.formatMessage(
+            { id: "toast.created_entity" },
+            {
+              entity: intl
+                .formatMessage({ id: entityTypeID })
+                .toLocaleLowerCase(),
+            }
+          )
+        );
+      }
     } catch (e) {
       Toast.error(e);
     }
@@ -100,9 +103,9 @@ export function useCreateScrapedStudio(props: IUseCreateNewStudioProps) {
 
 interface IUseCreateNewObjectProps<T> {
   scrapeResult: ScrapeResult<T[]>;
-  setScrapeResult: (scrapeResult: ScrapeResult<T[]>) => void;
+  setScrapeResult: Dispatch<SetStateAction<ScrapeResult<T[]>>>;
   newObjects: T[];
-  setNewObjects: (newObject: T[]) => void;
+  setNewObjects: Dispatch<SetStateAction<T[]>>;
   endpoint?: string;
 }
 
@@ -111,7 +114,7 @@ export function useCreateScrapedPerformer(
 ) {
   const [createPerformer] = usePerformerCreate();
 
-  const { scrapeResult, setScrapeResult, newObjects, setNewObjects } = props;
+  const { setScrapeResult, setNewObjects } = props;
 
   async function createNewPerformer(toCreate: GQL.ScrapedPerformer) {
     const input = scrapedPerformerToCreateInput(toCreate, props.endpoint);
@@ -120,27 +123,24 @@ export function useCreateScrapedPerformer(
       variables: { input },
     });
 
-    const newValue = [...(scrapeResult.newValue ?? [])];
-    if (result.data?.performerCreate)
-      newValue.push({
-        stored_id: result.data.performerCreate.id,
-        name: result.data.performerCreate.name,
-      });
+    setScrapeResult((current) => {
+      const newValue = [...(current.newValue ?? [])];
+      if (result.data?.performerCreate)
+        newValue.push({
+          stored_id: result.data.performerCreate.id,
+          name: result.data.performerCreate.name,
+        });
+      return current.cloneWithValue(newValue);
+    });
+    if (!props.newObjects.some((p) => p.name === toCreate.name))
+      throw new Error("Could not find performer to remove");
 
-    // add the new performer to the new performers value
-    const performerClone = scrapeResult.cloneWithValue(newValue);
-    setScrapeResult(performerClone);
-
-    // remove the performer from the list
-    const newPerformersClone = newObjects.concat();
-    const pIndex = newPerformersClone.findIndex(
-      (p) => p.name === toCreate.name
-    );
-    if (pIndex === -1) throw new Error("Could not find performer to remove");
-
-    newPerformersClone.splice(pIndex, 1);
-
-    setNewObjects(newPerformersClone);
+    setNewObjects((current) => {
+      const remaining = current.concat();
+      const index = remaining.findIndex((p) => p.name === toCreate.name);
+      if (index !== -1) remaining.splice(index, 1);
+      return remaining;
+    });
   }
 
   return useCreateObject("performer", createNewPerformer);
@@ -149,7 +149,7 @@ export function useCreateScrapedPerformer(
 export function useCreateScrapedGroup(
   props: IUseCreateNewObjectProps<GQL.ScrapedGroup>
 ) {
-  const { scrapeResult, setScrapeResult, newObjects, setNewObjects } = props;
+  const { setScrapeResult, setNewObjects } = props;
   const [createGroup] = useGroupCreate();
 
   async function createNewGroup(toCreate: GQL.ScrapedGroup) {
@@ -159,25 +159,24 @@ export function useCreateScrapedGroup(
       variables: { input: input },
     });
 
-    const newValue = [...(scrapeResult.newValue ?? [])];
-    if (result.data?.groupCreate)
-      newValue.push({
-        stored_id: result.data.groupCreate.id,
-        name: result.data.groupCreate.name,
-      });
+    setScrapeResult((current) => {
+      const newValue = [...(current.newValue ?? [])];
+      if (result.data?.groupCreate)
+        newValue.push({
+          stored_id: result.data.groupCreate.id,
+          name: result.data.groupCreate.name,
+        });
+      return current.cloneWithValue(newValue);
+    });
+    if (!props.newObjects.some((p) => p.name === toCreate.name))
+      throw new Error("Could not find group to remove");
 
-    // add the new object to the new object value
-    const resultClone = scrapeResult.cloneWithValue(newValue);
-    setScrapeResult(resultClone);
-
-    // remove the object from the list
-    const newObjectsClone = newObjects.concat();
-    const pIndex = newObjectsClone.findIndex((p) => p.name === toCreate.name);
-    if (pIndex === -1) throw new Error("Could not find group to remove");
-
-    newObjectsClone.splice(pIndex, 1);
-
-    setNewObjects(newObjectsClone);
+    setNewObjects((current) => {
+      const remaining = current.concat();
+      const index = remaining.findIndex((p) => p.name === toCreate.name);
+      if (index !== -1) remaining.splice(index, 1);
+      return remaining;
+    });
   }
 
   return useCreateObject("group", createNewGroup);
@@ -186,27 +185,24 @@ export function useCreateScrapedGroup(
 export function useLinkScrapedTag(
   props: IUseCreateNewObjectProps<GQL.ScrapedTag>
 ) {
-  const { scrapeResult, setScrapeResult, newObjects, setNewObjects } = props;
+  const { setScrapeResult, setNewObjects } = props;
 
   function linkTag(id: string, matchedName: string, scrapedName: string) {
-    const newValue = [...(scrapeResult.newValue ?? [])];
-    newValue.push({
-      stored_id: id,
-      name: matchedName,
+    setScrapeResult((current) =>
+      current.cloneWithValue([
+        ...(current.newValue ?? []),
+        { stored_id: id, name: matchedName },
+      ])
+    );
+    if (!props.newObjects.some((p) => p.name === scrapedName))
+      throw new Error("Could not find tag to remove");
+
+    setNewObjects((current) => {
+      const remaining = current.concat();
+      const index = remaining.findIndex((p) => p.name === scrapedName);
+      if (index !== -1) remaining.splice(index, 1);
+      return remaining;
     });
-
-    // add the new tag to the new tags value
-    const tagClone = scrapeResult.cloneWithValue(newValue);
-    setScrapeResult(tagClone);
-
-    // remove the tag from the list
-    const newTagsClone = newObjects.concat();
-    const pIndex = newTagsClone.findIndex((p) => p.name === scrapedName);
-    if (pIndex === -1) throw new Error("Could not find tag to remove");
-
-    newTagsClone.splice(pIndex, 1);
-
-    setNewObjects(newTagsClone);
   }
 
   return linkTag;

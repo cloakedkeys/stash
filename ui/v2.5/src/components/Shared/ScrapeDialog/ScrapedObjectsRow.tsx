@@ -1,10 +1,11 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import * as GQL from "src/core/generated-graphql";
 import { ScrapeDialogRow } from "src/components/Shared/ScrapeDialog/ScrapeDialogRow";
 import { PerformerSelect } from "src/components/Performers/PerformerSelect";
 import {
   ObjectScrapeResult,
   ScrapeResult,
+  mergeLists,
 } from "src/components/Shared/ScrapeDialog/scrapeResult";
 import { TagIDSelect } from "src/components/Tags/TagSelect";
 import { StudioSelect } from "src/components/Studios/StudioSelect";
@@ -15,16 +16,19 @@ import { Badge, Button } from "react-bootstrap";
 import { Icon } from "../Icon";
 import { faLink, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { useIntl } from "react-intl";
+import { IHasStoredID } from "src/utils/data";
 
 interface INewScrapedObjects<T> {
   newValues: T[];
   onCreateNew: (value: T) => void;
+  onCreateAll?: () => Promise<void> | void;
   onLinkExisting?: (value: T) => void;
   getName: (value: T) => string;
 }
 
 export const NewScrapedObjects = <T,>(props: INewScrapedObjects<T>) => {
   const intl = useIntl();
+  const [creatingAll, setCreatingAll] = useState(false);
 
   if (props.newValues.length === 0) {
     return null;
@@ -32,6 +36,23 @@ export const NewScrapedObjects = <T,>(props: INewScrapedObjects<T>) => {
 
   const ret = (
     <>
+      {props.onCreateAll && (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={creatingAll}
+          onClick={async () => {
+            setCreatingAll(true);
+            try {
+              await props.onCreateAll?.();
+            } finally {
+              setCreatingAll(false);
+            }
+          }}
+        >
+          {intl.formatMessage({ id: "actions.create_all" })}
+        </Button>
+      )}
       {props.newValues.map((t) => (
         <Badge
           className="tag-item"
@@ -162,13 +183,13 @@ export const ScrapedStudioRow: React.FC<IScrapedStudioRow> = ({
   );
 };
 
-interface IScrapedObjectsRow<T> {
+interface IScrapedObjectsRow<T extends IHasStoredID> {
   title: string;
   field: string;
   result: ScrapeResult<T[]>;
   onChange: (value: ScrapeResult<T[]>) => void;
   newObjects?: T[];
-  onCreateNew?: (value: T) => void;
+  onCreateNew?: (value: T | T[]) => Promise<void> | void;
   onLinkExisting?: (value: T) => void;
   renderObjects: (
     result: ScrapeResult<T[]>,
@@ -178,7 +199,9 @@ interface IScrapedObjectsRow<T> {
   getName: (value: T) => string;
 }
 
-export const ScrapedObjectsRow = <T,>(props: IScrapedObjectsRow<T>) => {
+export const ScrapedObjectsRow = <T extends IHasStoredID>(
+  props: IScrapedObjectsRow<T>
+) => {
   const {
     title,
     field,
@@ -197,6 +220,10 @@ export const ScrapedObjectsRow = <T,>(props: IScrapedObjectsRow<T>) => {
       field={field}
       result={result}
       originalField={renderObjects(result)}
+      mergeValues={(original, scraped) =>
+        mergeLists(original, scraped, (value) => value.stored_id)
+      }
+      mergedField={(value) => renderObjects(new ScrapeResult(value))}
       newField={renderObjects(result, true, (value) =>
         onChange(result.cloneWithValue(value))
       )}
@@ -206,6 +233,7 @@ export const ScrapedObjectsRow = <T,>(props: IScrapedObjectsRow<T>) => {
           <NewScrapedObjects
             newValues={newObjects ?? []}
             onCreateNew={onCreateNew}
+            onCreateAll={() => onCreateNew(newObjects)}
             onLinkExisting={onLinkExisting}
             getName={getName}
           />
@@ -215,7 +243,7 @@ export const ScrapedObjectsRow = <T,>(props: IScrapedObjectsRow<T>) => {
   );
 };
 
-type IScrapedObjectRowImpl<T> = Omit<
+type IScrapedObjectRowImpl<T extends IHasStoredID> = Omit<
   IScrapedObjectsRow<T>,
   "renderObjects" | "getName"
 >;

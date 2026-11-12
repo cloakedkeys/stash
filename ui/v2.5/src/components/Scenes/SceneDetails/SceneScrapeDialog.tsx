@@ -321,6 +321,7 @@ const _SceneScrapeDialog: React.FC<ISceneScrapeDialogProps> = ({
 
   return (
     <ScrapeDialog
+      scrapeType="scene"
       title={intl.formatMessage(
         { id: "dialogs.scrape_entity_title" },
         { entity_type: intl.formatMessage({ id: "scene" }) }

@@ -9,10 +9,12 @@ import {
 } from "src/models/list-filter/criteria/criterion";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { CriterionType } from "src/models/list-filter/types";
+import messages from "src/locales/en-GB.json";
 import { SceneDuplicateChecker } from "./SceneDuplicateChecker";
 
 const page = vi.hoisted(() => ({
   search: "",
+  groups: [] as GQL.SlimSceneDataFragment[][],
   loaded: false,
   push: vi.fn(),
   duplicates: vi.fn(),
@@ -35,7 +37,7 @@ vi.mock("src/core/generated-graphql", async (importOriginal) => ({
     page.duplicates(options);
     if (page.loaded) {
       return {
-        data: { findDuplicateScenes: [] },
+        data: { findDuplicateScenes: page.groups },
         loading: false,
         refetch: vi.fn(),
       };
@@ -48,7 +50,14 @@ vi.mock("src/core/generated-graphql", async (importOriginal) => ({
 
 function render() {
   return renderToStaticMarkup(
-    <IntlProvider locale="en-GB" messages={{}} onError={() => {}}>
+    <IntlProvider
+      locale="en-GB"
+      messages={{
+        "actions.merge_metadata_into_this":
+          messages.actions.merge_metadata_into_this,
+      }}
+      onError={() => {}}
+    >
       <SceneDuplicateChecker />
     </IntlProvider>
   );
@@ -82,6 +91,7 @@ function sceneListQuery(
 beforeEach(() => {
   vi.clearAllMocks();
   page.loaded = false;
+  page.groups = [];
 });
 
 describe("duplicate checker scene filter", () => {
@@ -162,4 +172,27 @@ describe("duplicate checker scene filter", () => {
     // one tag for the one criterion (its text needs the real messages)
     expect(html.match(/class="[^"]*\btag-item\b/g)).toHaveLength(1);
   });
+});
+
+it("labels each duplicate row as merging others metadata into that scene", () => {
+  page.loaded = true;
+  page.search = "";
+  page.groups = [
+    [
+      {
+        id: "1",
+        title: "Puppies Playing",
+        files: [],
+        paths: {},
+        performers: [],
+        tags: [],
+        groups: [],
+        galleries: [],
+        scene_markers: [],
+      } as unknown as GQL.SlimSceneDataFragment,
+    ],
+  ];
+  const html = render();
+  expect(html).toContain('data-action="merge"');
+  expect(html).toContain("Merge metadata into this");
 });

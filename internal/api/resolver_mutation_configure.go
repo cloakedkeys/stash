@@ -331,6 +331,7 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 	}
 
 	r.setConfigBool(config.CalculateMD5, input.CalculateMd5)
+	r.setConfigInt(config.GenerationThreads, input.GenerationThreads)
 	r.setConfigInt(config.ParallelTasks, input.ParallelTasks)
 	r.setConfigBool(config.PreviewAudio, input.PreviewAudio)
 	r.setConfigInt(config.PreviewSegments, input.PreviewSegments)

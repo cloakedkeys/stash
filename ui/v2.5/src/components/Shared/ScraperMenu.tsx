@@ -7,6 +7,11 @@ import { ScraperSourceInput, StashBox } from "src/core/generated-graphql";
 import { faSyncAlt } from "@fortawesome/free-solid-svg-icons";
 import { ClearableInput } from "./ClearableInput";
 import useFocus from "src/utils/focus";
+import {
+  sortPinnedScrapers,
+  usePinnedScrapers,
+} from "src/hooks/pinnedScrapers";
+import { ScraperMenuItem } from "./ScraperMenuItem";
 import ScreenUtils from "src/utils/screen";
 
 export const ScraperMenu: React.FC<{
@@ -25,6 +30,7 @@ export const ScraperMenu: React.FC<{
   onReloadScrapers,
 }) => {
   const intl = useIntl();
+  const { pinnedScrapers, togglePin, saving } = usePinnedScrapers();
   const [filter, setFilter] = useState("");
 
   const focusOnOpen = !ScreenUtils.isTouch();
@@ -41,14 +47,15 @@ export const ScraperMenu: React.FC<{
   }, [stashBoxes, filter]);
 
   const filteredScrapers = useMemo(() => {
-    if (!filter) return scrapers;
+    const sorted = sortPinnedScrapers(scrapers, pinnedScrapers);
+    if (!filter) return sorted;
 
-    return scrapers.filter(
+    return sorted.filter(
       (s) =>
         s.name.toLowerCase().includes(filter.toLowerCase()) ||
         s.id.toLowerCase().includes(filter.toLowerCase())
     );
-  }, [scrapers, filter]);
+  }, [scrapers, filter, pinnedScrapers]);
 
   return (
     <Dropdown
@@ -95,12 +102,14 @@ export const ScraperMenu: React.FC<{
         )}
 
         {filteredScrapers.map((s) => (
-          <Dropdown.Item
-            key={s.name}
-            onClick={() => onScraperClicked({ scraper_id: s.id })}
-          >
-            {s.name}
-          </Dropdown.Item>
+          <ScraperMenuItem
+            key={s.id}
+            scraper={s}
+            pinned={pinnedScrapers.includes(s.id)}
+            saving={saving}
+            togglePin={togglePin}
+            onSelect={() => onScraperClicked({ scraper_id: s.id })}
+          />
         ))}
       </Dropdown.Menu>
     </Dropdown>

@@ -45,6 +45,7 @@ export const defaultMaxOptionsShown = 200;
 export const defaultPreviewVolume = 25;
 
 export interface IUIConfig {
+  scrapeMergeDefaults?: Record<string, Record<string, boolean>>;
   // unknown to prevent direct access - use getFrontPageContent
   frontPageContent?: unknown;
 
@@ -118,6 +119,7 @@ export interface IUIConfig {
 
   vrTag?: string;
 
+  pinnedScrapers?: string[];
   pinnedFilters?: Record<string, string[]>;
   savedFilterMenuItems?: ISavedFilterMenuItem[];
   tableColumns?: Record<string, string[]>;

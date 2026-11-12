@@ -9,7 +9,10 @@ import {
 } from "src/components/Shared/ScrapeDialog/ScrapeDialogRow";
 import { ScrapeDialog } from "src/components/Shared/ScrapeDialog/ScrapeDialog";
 import { IStashBox } from "./StudioStashBoxModal";
-import { ScrapeResult } from "src/components/Shared/ScrapeDialog/scrapeResult";
+import {
+  mergeLists,
+  ScrapeResult,
+} from "src/components/Shared/ScrapeDialog/scrapeResult";
 import { useScrapedTags } from "src/components/Shared/ScrapeDialog/scrapedTags";
 import { Tag } from "src/components/Tags/TagSelect";
 import { uniq } from "lodash-es";
@@ -135,6 +138,19 @@ export const StudioScrapeDialog: React.FC<IStudioScrapeDialogProps> = ({
         />
         <ScrapedTextAreaRow
           field="aliases"
+          mergeValues={(original, scraped) =>
+            mergeLists(
+              original
+                ?.split(",")
+                .map((alias) => alias.trim())
+                .filter(Boolean),
+              scraped
+                ?.split(",")
+                .map((alias) => alias.trim())
+                .filter(Boolean),
+              (alias) => alias.toLowerCase()
+            ).join(", ")
+          }
           title={intl.formatMessage({ id: "aliases" })}
           result={aliases}
           onChange={(value) => setAliases(value)}
@@ -164,6 +180,7 @@ export const StudioScrapeDialog: React.FC<IStudioScrapeDialogProps> = ({
 
   return (
     <ScrapeDialog
+      scrapeType="studio"
       title={intl.formatMessage(
         { id: "dialogs.scrape_entity_title" },
         { entity_type: intl.formatMessage({ id: "studio" }) }

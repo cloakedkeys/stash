@@ -2,6 +2,7 @@ package generate
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/ffmpeg/transcoder"
@@ -87,7 +88,7 @@ func (g Generator) markerPreviewVideo(path string, width, height int, codec ffmp
 	return func(lockCtx *fsutil.LockContext, tmpFn string) error {
 		videoFilter, fullhw := g.previewVideoFilter(codec, width, height, markerPreviewWidth, fullhw)
 
-		videoArgs := codec.ExtraArgsHQ("veryslow", markerPreviewCRF)
+		videoArgs := codec.ExtraArgsHQ("veryslow", markerPreviewCRF, g.FFMpegConfig.GetGenerationThreads())
 		videoArgs = videoArgs.VideoFilter(videoFilter)
 		videoArgs = append(videoArgs,
 			"-movflags", "+faststart",
@@ -157,7 +158,7 @@ func (g Generator) sceneMarkerWebp(path string, options sceneMarkerOptions) gene
 			"-compression_level", "6",
 			"-preset", "default",
 			"-loop", "0",
-			"-threads", "4",
+			"-threads", strconv.Itoa(g.FFMpegConfig.GetGenerationThreads()),
 		)
 
 		trimOptions := transcoder.TranscodeOptions{
