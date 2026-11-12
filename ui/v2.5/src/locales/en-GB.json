@@ -167,6 +167,7 @@
     "selective_verify": "Selective verify",
     "set_as_default": "Set as default",
     "set_as_performer_image": "Set as performer image",
+    "set_as_tag_image": "Set as tag image",
     "set_back_image": "Back image…",
     "set_cover": "Set as Cover",
     "set_from_scene_cover": "Set from a scene cover",
@@ -2021,7 +2022,8 @@
     "started_auto_tagging": "Started auto tagging",
     "started_generating": "Started generating",
     "started_importing": "Started importing",
-    "updated_entity": "Updated {entity}"
+    "updated_entity": "Updated {entity}",
+    "video_clip_picture": "Video clips can't be used as a picture"
   },
   "total": "Total",
   "true": "True",

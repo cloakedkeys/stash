@@ -41,6 +41,7 @@ import { goBackOrReplace } from "src/utils/history";
 import { FormattedDate } from "src/components/Shared/Date";
 import { GenerateDialog } from "src/components/Dialogs/GenerateDialog";
 import { StudioLogo } from "src/components/Shared/StudioLogo";
+import { ImageSetAsMenu } from "./ImageSetAsMenu";
 
 interface IProps {
   image: GQL.ImageDataFragment;
@@ -207,6 +208,7 @@ const ImagePage: React.FC<IProps> = ({ image }) => {
           <Icon icon={faEllipsisV} />
         </Dropdown.Toggle>
         <Dropdown.Menu className="bg-secondary text-white">
+          <ImageSetAsMenu image={image} />
           {canAdminister && (
             <Dropdown.Item
               key="rescan"
