@@ -28,7 +28,7 @@ func init() {
 		if os.WriteFile(path, b, 0600) != nil {
 			os.Exit(1)
 		}
-		if log := os.Getenv("STASH_TEST_GENERATION_LOG"); log != "" && !(len(os.Args) == 2 && os.Args[1] == "-version") {
+		if log := os.Getenv("STASH_TEST_GENERATION_LOG"); log != "" && (len(os.Args) != 2 || os.Args[1] != "-version") {
 			f, err := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 			if err != nil {
 				os.Exit(1)
