@@ -54,6 +54,8 @@
     "close": "Close",
     "confirm": "Confirm",
     "continue": "Continue",
+    "copy_from_linked_gallery": "Copy from linked gallery",
+    "copy_from_linked_scene": "Copy from linked scene",
     "copy_to_clipboard": "Copy to clipboard",
     "create": "Create",
     "create_all": "Create all",
