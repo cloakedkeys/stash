@@ -38,6 +38,7 @@ import (
 	"github.com/anacrolix/dms/dlna"
 	"github.com/anacrolix/dms/upnp"
 	"github.com/anacrolix/dms/upnpav"
+	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/scene"
@@ -117,6 +118,10 @@ func sceneToContainer(scene *models.Scene, parent string, host string) interface
 		size = int(f.Size)
 		bitrate = uint(f.BitRate)
 		duration = int64(f.Duration)
+		if scene.StartTime != nil || scene.EndTime != nil {
+			duration = int64((ffmpeg.StreamRange{Start: scene.StartTime, End: scene.EndTime}).Duration(f.Duration))
+			size, bitrate = 0, 0
+		}
 	}
 
 	item.Res = append(item.Res, upnpav.Resource{
@@ -129,7 +134,7 @@ func sceneToContainer(scene *models.Scene, parent string, host string) interface
 			}.Encode(),
 		}).String(),
 		ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", mimeType, dlna.ContentFeatures{
-			SupportRange: true,
+			SupportRange: scene.StartTime == nil && scene.EndTime == nil,
 		}.String()),
 		Bitrate:  bitrate,
 		Duration: formatDurationSexagesimal(time.Duration(duration) * time.Second),

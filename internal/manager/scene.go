@@ -8,6 +8,7 @@ import (
 	"github.com/stashapp/stash/pkg/ffmpeg"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/models"
+	scenePkg "github.com/stashapp/stash/pkg/scene"
 )
 
 type SceneStreamEndpoint struct {
@@ -168,7 +169,7 @@ func GetSceneStreamPaths(scene *models.Scene, directStreamURL *url.URL, maxStrea
 	// don't care if we can't get the container
 	container, _ := GetVideoFileContainer(pf)
 
-	if HasTranscode(scene, config.GetInstance().GetVideoFileNamingAlgorithm()) || ffmpeg.IsValidAudioForContainer(audioCodec, container) {
+	if !scenePkg.HasRange(scene) && (HasTranscode(scene, config.GetInstance().GetVideoFileNamingAlgorithm()) || ffmpeg.IsValidAudioForContainer(audioCodec, container)) {
 		endpoints = append(endpoints, makeStreamEndpoint(directEndpointType, ""))
 	}
 

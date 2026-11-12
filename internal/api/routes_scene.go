@@ -19,6 +19,7 @@ import (
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	scenePkg "github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/utils"
 )
 
@@ -184,6 +185,7 @@ func (rs sceneRoutes) streamTranscode(w http.ResponseWriter, r *http.Request, st
 		VideoFile:  f,
 		Resolution: resolution,
 		StartTime:  ss,
+		Range:      ffmpeg.StreamRange{Start: scene.StartTime, End: scene.EndTime},
 	}
 
 	logger.Debugf("[transcode] streaming scene %d as %s", scene.ID, streamType.MimeType)
@@ -219,7 +221,7 @@ func (rs sceneRoutes) streamManifest(w http.ResponseWriter, r *http.Request, str
 	resolution := r.Form.Get("resolution")
 
 	logger.Debugf("[transcode] returning %s manifest for scene %d", logName, scene.ID)
-	streamManager.ServeManifest(w, r, streamType, f, resolution)
+	streamManager.ServeManifest(w, r, streamType, f, resolution, ffmpeg.StreamRange{Start: scene.StartTime, End: scene.EndTime})
 }
 
 func (rs sceneRoutes) StreamHLSSegment(w http.ResponseWriter, r *http.Request) {
@@ -263,6 +265,7 @@ func (rs sceneRoutes) streamSegment(w http.ResponseWriter, r *http.Request, stre
 		Resolution: resolution,
 		Hash:       sceneHash,
 		Segment:    segment,
+		Range:      ffmpeg.StreamRange{Start: scene.StartTime, End: scene.EndTime},
 	}
 
 	streamManager.ServeSegment(w, r, options)
@@ -441,6 +444,10 @@ func (rs sceneRoutes) VttSprite(w http.ResponseWriter, r *http.Request) {
 
 func (rs sceneRoutes) Funscript(w http.ResponseWriter, r *http.Request) {
 	s := r.Context().Value(sceneKey).(*models.Scene)
+	if scenePkg.HasRange(s) {
+		http.NotFound(w, r)
+		return
+	}
 	filepath := video.GetFunscriptPath(s.Path)
 
 	utils.ServeStaticFile(w, r, filepath)
@@ -448,6 +455,10 @@ func (rs sceneRoutes) Funscript(w http.ResponseWriter, r *http.Request) {
 
 func (rs sceneRoutes) InteractiveCSV(w http.ResponseWriter, r *http.Request) {
 	s := r.Context().Value(sceneKey).(*models.Scene)
+	if scenePkg.HasRange(s) {
+		http.NotFound(w, r)
+		return
+	}
 	filepath := video.GetFunscriptPath(s.Path)
 
 	// TheHandy directly only accepts interactive CSVs
@@ -462,6 +473,10 @@ func (rs sceneRoutes) InteractiveCSV(w http.ResponseWriter, r *http.Request) {
 
 func (rs sceneRoutes) InteractiveHeatmap(w http.ResponseWriter, r *http.Request) {
 	scene := r.Context().Value(sceneKey).(*models.Scene)
+	if scenePkg.HasRange(scene) {
+		http.NotFound(w, r)
+		return
+	}
 	sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
 	filepath := manager.GetInstance().Paths.Scene.GetInteractiveHeatmapPath(sceneHash)
 
@@ -470,6 +485,10 @@ func (rs sceneRoutes) InteractiveHeatmap(w http.ResponseWriter, r *http.Request)
 
 func (rs sceneRoutes) Caption(w http.ResponseWriter, r *http.Request, lang string, ext string) {
 	s := r.Context().Value(sceneKey).(*models.Scene)
+	if scenePkg.HasRange(s) {
+		http.NotFound(w, r)
+		return
+	}
 
 	var captions []*models.VideoCaption
 	readTxnErr := rs.withReadTxn(r, func(ctx context.Context) error {
@@ -519,6 +538,10 @@ func (rs sceneRoutes) Caption(w http.ResponseWriter, r *http.Request, lang strin
 }
 
 func (rs sceneRoutes) CaptionLang(w http.ResponseWriter, r *http.Request) {
+	if scenePkg.HasRange(r.Context().Value(sceneKey).(*models.Scene)) {
+		http.NotFound(w, r)
+		return
+	}
 	if values, ok := r.URL.Query()["stream"]; ok {
 		if len(values) != 1 {
 			http.Error(w, "invalid stream index", http.StatusBadRequest)

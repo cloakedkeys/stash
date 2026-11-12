@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/disintegration/imaging"
 	_ "golang.org/x/image/webp"
@@ -20,6 +21,7 @@ import (
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	scenePkg "github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/txn"
 	"github.com/stashapp/stash/pkg/utils"
 )
@@ -54,6 +56,28 @@ func (s *SceneServer) StreamSceneDirect(scene *models.Scene, w http.ResponseWrit
 	// #3526 - return 404 if the scene does not have any files
 	if scene.Path == "" {
 		http.Error(w, http.StatusText(404), 404)
+		return
+	}
+
+	// All scene addresses, including DLNA and named/download links, must honor
+	// the range. A byte-range response cannot represent a time range.
+	if scenePkg.HasRange(scene) {
+		m := GetInstance()
+		if m.StreamManager == nil {
+			http.Error(w, "Live transcoding disabled", http.StatusServiceUnavailable)
+			return
+		}
+		f := scene.Files.Primary()
+		if f == nil {
+			http.NotFound(w, r)
+			return
+		}
+		seek, _ := strconv.ParseFloat(r.URL.Query().Get("start"), 64)
+		m.StreamManager.ServeTranscode(w, r, ffmpeg.TranscodeOptions{
+			StreamType: ffmpeg.StreamTypeMP4, VideoFile: f, StartTime: seek,
+			Resolution: r.URL.Query().Get("resolution"),
+			Range:      ffmpeg.StreamRange{Start: scene.StartTime, End: scene.EndTime},
+		})
 		return
 	}
 

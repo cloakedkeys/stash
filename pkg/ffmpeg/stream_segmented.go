@@ -57,7 +57,7 @@ const (
 type StreamType struct {
 	Name          string
 	SegmentType   *SegmentType
-	ServeManifest func(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *models.VideoFile, resolution string)
+	ServeManifest func(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *models.VideoFile, resolution string, playbackRange StreamRange)
 	Args          func(codec VideoCodec, segment int, videoFilter VideoFilter, videoOnly bool, outputDir string) Args
 }
 
@@ -265,6 +265,20 @@ type StreamOptions struct {
 	Resolution string
 	Hash       string
 	Segment    string
+	Range      StreamRange
+}
+
+// Only ephemeral stream segments use this key. Generated media stays file-based.
+func (o StreamOptions) cacheDir(maxTranscodeSize int) string {
+	dir := o.StreamType.FileDir(o.Hash, maxTranscodeSize)
+	if o.Range.IsPart() {
+		end := "end"
+		if o.Range.End != nil {
+			end = strconv.FormatFloat(*o.Range.End, 'f', -1, 64)
+		}
+		dir += "_part_" + strconv.FormatFloat(o.Range.start(), 'f', -1, 64) + "_" + end
+	}
+	return dir
 }
 
 type transcodeProcess struct {
@@ -291,6 +305,7 @@ type runningStream struct {
 	dir              string
 	streamType       *StreamType
 	vf               *models.VideoFile
+	playbackRange    StreamRange
 	maxTranscodeSize int
 	outputDir        string
 
@@ -339,22 +354,50 @@ func (s *runningStream) makeStreamArgs(sm *StreamManager, segment int) Args {
 	args = args.LogLevel(LogLevelError)
 
 	codec := HLSGetCodec(sm, s.streamType.Name)
+	if s.playbackRange.IsPart() && codec == VideoCodecCopy {
+		codec = HLSGetCodec(sm, "hls")
+	}
 
 	fullhw := sm.config.GetTranscodeHardwareAcceleration() && sm.encoder.HWCanFullHWTranscode(sm.context, codec, s.vf.Path, s.vf.Width, s.vf.Height, s.maxTranscodeSize)
 	args = sm.encoder.HWDeviceInit(args, codec, fullhw)
 	args = append(args, extraInputArgs...)
 
-	if segment > 0 {
-		args = args.Seek(float64(segment * segmentLength))
+	offset := float64(segment * segmentLength)
+	seek := offset
+	if s.playbackRange.IsPart() {
+		seek += s.playbackRange.start()
+	}
+	if seek != 0 {
+		args = args.Seek(seek)
 	}
 
 	args = args.Input(s.vf.Path)
+	if s.playbackRange.IsPart() {
+		args = args.Duration(s.playbackRange.Duration(s.vf.Duration) - offset)
+		// Decode on a zero-based timeline, then place this segment at its scene
+		// time. Retaining file timestamps makes -t truncate the wrong interval.
+		args = append(args, "-output_ts_offset", fmt.Sprint(offset))
+	}
 
 	videoOnly := ProbeAudioCodec(s.vf.AudioCodec) == MissingUnsupported
 
 	videoFilter := sm.encoder.HWMaxResFilter(codec, s.vf.Width, s.vf.Height, s.maxTranscodeSize, fullhw)
 
-	args = append(args, s.streamType.Args(codec, segment, videoFilter, videoOnly, s.outputDir)...)
+	streamType := s.streamType
+	if s.playbackRange.IsPart() && streamType == StreamTypeHLSCopy {
+		streamType = StreamTypeHLS
+	}
+	streamArgs := streamType.Args(codec, segment, videoFilter, videoOnly, s.outputDir)
+	if s.playbackRange.IsPart() {
+		withoutCopyTS := make(Args, 0, len(streamArgs))
+		for _, arg := range streamArgs {
+			if arg != "-copyts" {
+				withoutCopyTS = append(withoutCopyTS, arg)
+			}
+		}
+		streamArgs = withoutCopyTS
+	}
+	args = append(args, streamArgs...)
 
 	args = append(args, extraOutputArgs...)
 
@@ -417,7 +460,7 @@ func segmentExists(path string) bool {
 
 // serveHLSManifest serves a generated HLS playlist. The URLs for the segments
 // are of the form {r.URL}/%d.ts{?urlQuery} where %d is the segment index.
-func serveHLSManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *models.VideoFile, resolution string) {
+func serveHLSManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *models.VideoFile, resolution string, playbackRange StreamRange) {
 	if sm.cacheDir == "" {
 		logger.Error("[transcode] cannot live transcode with HLS because cache dir is unset")
 		http.Error(w, "cannot live transcode with HLS because cache dir is unset", http.StatusServiceUnavailable)
@@ -459,6 +502,9 @@ func serveHLSManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request,
 	fmt.Fprint(&buf, "#EXT-X-PLAYLIST-TYPE:VOD\n")
 
 	leftover := probeResult.FileDuration
+	if playbackRange.IsPart() {
+		leftover = playbackRange.Duration(probeResult.FileDuration)
+	}
 	segment := 0
 
 	for leftover > 0 {
@@ -500,7 +546,7 @@ func copyAuthParams(dest url.Values, src url.Values) {
 }
 
 // serveDASHManifest serves a generated DASH manifest.
-func serveDASHManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *models.VideoFile, resolution string) {
+func serveDASHManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *models.VideoFile, resolution string, playbackRange StreamRange) {
 	if sm.cacheDir == "" {
 		logger.Error("[transcode] cannot live transcode with DASH because cache dir is unset")
 		http.Error(w, "cannot live transcode files with DASH because cache dir is unset", http.StatusServiceUnavailable)
@@ -576,7 +622,11 @@ func serveDASHManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request
 		urlQueryString = "?" + urlQuery.Encode()
 	}
 
-	mediaDuration := mpd.Duration(time.Duration(probeResult.FileDuration * float64(time.Second)))
+	duration := probeResult.FileDuration
+	if playbackRange.IsPart() {
+		duration = playbackRange.Duration(duration)
+	}
+	mediaDuration := mpd.Duration(time.Duration(duration * float64(time.Second)))
 	m := mpd.NewMPD(mpd.DASH_PROFILE_LIVE, mediaDuration.String(), "PT4.0S")
 
 	prefix := r.Header.Get("X-Forwarded-Prefix")
@@ -603,8 +653,8 @@ func serveDASHManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request
 	utils.ServeStaticContent(w, r, buf.Bytes())
 }
 
-func (sm *StreamManager) ServeManifest(w http.ResponseWriter, r *http.Request, streamType *StreamType, vf *models.VideoFile, resolution string) {
-	streamType.ServeManifest(sm, w, r, vf, resolution)
+func (sm *StreamManager) ServeManifest(w http.ResponseWriter, r *http.Request, streamType *StreamType, vf *models.VideoFile, resolution string, playbackRange StreamRange) {
+	streamType.ServeManifest(sm, w, r, vf, resolution, playbackRange)
 }
 
 func (sm *StreamManager) serveWaitingSegment(w http.ResponseWriter, r *http.Request, segment *waitingSegment) {
@@ -638,8 +688,27 @@ func (sm *StreamManager) ServeSegment(w http.ResponseWriter, r *http.Request, op
 	streamType := options.StreamType
 
 	segment, err := streamType.SegmentType.ParseSegment(options.Segment)
+	vf := options.VideoFile
+	if options.Range.IsPart() {
+		// Unknown file lengths are allowed by the range editor. Resolve an open
+		// end here so the manifest and segment bounds still agree.
+		if options.Range.End == nil && vf.Duration <= 0 {
+			probe, probeErr := sm.ffprobe.NewVideoFile(vf.Path)
+			if probeErr != nil {
+				http.Error(w, "could not read file duration", http.StatusInternalServerError)
+				return
+			}
+			copyFile := *vf
+			copyFile.Duration = probe.FileDuration
+			vf = &copyFile
+		}
+	}
 	// error if segment is past the end of the video
-	if err != nil || segment > lastSegment(options.VideoFile) {
+	last := lastSegment(vf)
+	if options.Range.IsPart() {
+		last = int(math.Ceil(options.Range.Duration(vf.Duration)/segmentLength)) - 1
+	}
+	if err != nil || segment > last {
 		http.Error(w, "invalid segment", http.StatusBadRequest)
 		return
 	}
@@ -649,7 +718,7 @@ func (sm *StreamManager) ServeSegment(w http.ResponseWriter, r *http.Request, op
 		maxTranscodeSize = models.StreamingResolutionEnum(options.Resolution).GetMaxResolution()
 	}
 
-	dir := options.StreamType.FileDir(options.Hash, maxTranscodeSize)
+	dir := options.cacheDir(maxTranscodeSize)
 	outputDir := filepath.Join(sm.cacheDir, dir)
 
 	name := streamType.SegmentType.MakeFilename(segment)
@@ -662,7 +731,8 @@ func (sm *StreamManager) ServeSegment(w http.ResponseWriter, r *http.Request, op
 		stream = &runningStream{
 			dir:              dir,
 			streamType:       options.StreamType,
-			vf:               options.VideoFile,
+			vf:               vf,
+			playbackRange:    options.Range,
 			maxTranscodeSize: maxTranscodeSize,
 			outputDir:        outputDir,
 
