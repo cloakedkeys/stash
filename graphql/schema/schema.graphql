@@ -43,8 +43,8 @@ type Query {
   findScenesByPathRegex(filter: FindFilterType): FindScenesResultType!
 
   """
-  Returns any groups of scenes that are perceptual duplicates within the queried distance
-  and the difference between their duration is smaller than durationDiff
+  Returns groups of scenes that are perceptual duplicates within the queried distance
+  and duration difference, or share an endpoint and Stash ID when stash_id is true.
   """
   findDuplicateScenes(
     distance: Int
@@ -54,6 +54,8 @@ type Query {
     """
     duration_diff: Float
     scene_filter: SceneFilterType
+    "Match scenes by the same endpoint and Stash ID instead of phash. Ignores distance and duration_diff."
+    stash_id: Boolean
   ): [[Scene!]!]!
 
   "Groups of images with generated perceptual hashes within the given distance (default 0), comparing all attached files including ZIP entries. MD5 and oshash are not compared."
