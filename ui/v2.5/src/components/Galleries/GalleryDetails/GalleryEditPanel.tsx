@@ -6,6 +6,7 @@ import Mousetrap from "mousetrap";
 import * as GQL from "src/core/generated-graphql";
 import * as yup from "yup";
 import {
+  getClient,
   queryScrapeGallery,
   queryScrapeGalleryURL,
   useListGalleryScrapers,
@@ -35,6 +36,7 @@ import {
   CustomFieldsInput,
   formatCustomFieldInput,
 } from "src/components/Shared/CustomFields";
+import { objectTitle } from "src/core/files";
 import cloneDeep from "lodash-es/cloneDeep";
 
 interface IProps {
@@ -240,6 +242,40 @@ export const GalleryEditPanel: React.FC<IProps> = ({
     setIsLoading(true);
     try {
       await mutateReloadScrapers();
+    } catch (e) {
+      Toast.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function onCopyFromLinkedScene(id: string) {
+    setIsLoading(true);
+    try {
+      const result = await getClient().query<GQL.FindSceneQuery>({
+        query: GQL.FindSceneDocument,
+        variables: { id },
+        fetchPolicy: "network-only",
+      });
+      const source = result.data.findScene;
+      if (!source) return;
+
+      setScrapedGallery({
+        title: source.title,
+        code: source.code,
+        date: source.date,
+        details: source.details,
+        photographer: source.director,
+        urls: source.urls,
+        studio: source.studio
+          ? { stored_id: source.studio.id, name: source.studio.name }
+          : null,
+        performers: source.performers.map((p) => ({
+          stored_id: p.id,
+          name: p.name,
+        })),
+        tags: source.tags.map((t) => ({ stored_id: t.id, name: t.name })),
+      });
     } catch (e) {
       Toast.error(e);
     } finally {
@@ -514,6 +550,23 @@ export const GalleryEditPanel: React.FC<IProps> = ({
             </Button>
           </div>
           <div className="ml-auto text-right d-flex">
+            {scenes.length > 0 && (
+              <Dropdown className="mr-2">
+                <Dropdown.Toggle>
+                  <FormattedMessage id="actions.copy_from_linked_scene" />
+                </Dropdown.Toggle>
+                <Dropdown.Menu>
+                  {scenes.map((item) => (
+                    <Dropdown.Item
+                      key={item.id}
+                      onClick={() => onCopyFromLinkedScene(item.id)}
+                    >
+                      {objectTitle(item) || item.id}
+                    </Dropdown.Item>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown>
+            )}
             {!isNew && (
               <ScraperMenu
                 toggle={intl.formatMessage({ id: "actions.scrape_with" })}

@@ -15,6 +15,7 @@ import cx from "classnames";
 import * as GQL from "src/core/generated-graphql";
 import * as yup from "yup";
 import {
+  getClient,
   queryScrapeScene,
   queryScrapeSceneURL,
   useListSceneScrapers,
@@ -520,6 +521,43 @@ export const SceneEditPanel: React.FC<IProps> = ({
     }
   }
 
+  async function onCopyFromLinkedGallery(id: string) {
+    setIsLoading(true);
+    try {
+      const result = await getClient().query<GQL.FindGalleryQuery>({
+        query: GQL.FindGalleryDocument,
+        variables: { id },
+        fetchPolicy: "network-only",
+      });
+      const source = result.data.findGallery;
+      if (!source) return;
+
+      setScrapedScene({
+        title: source.title,
+        code: source.code,
+        date: source.date,
+        details: source.details,
+        director: source.photographer,
+        urls: source.urls,
+        studio: source.studio
+          ? { stored_id: source.studio.id, name: source.studio.name }
+          : null,
+        performers: source.performers.map((p) => ({
+          stored_id: p.id,
+          name: p.name,
+        })),
+        tags: source.tags.map((t) => ({ stored_id: t.id, name: t.name })),
+        image: source.paths.cover
+          ? await ImageUtils.imageToDataURL(source.paths.cover)
+          : undefined,
+      });
+    } catch (e) {
+      Toast.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   function onScrapeDialogClosed(sceneData?: GQL.ScrapedSceneDataFragment) {
     if (sceneData) {
       updateSceneFromScrapedScene(sceneData);
@@ -965,8 +1003,25 @@ export const SceneEditPanel: React.FC<IProps> = ({
               </Button>
             )}
           </div>
-          {!isNew && (
-            <div className="ml-auto text-right d-flex">
+          <div className="ml-auto text-right d-flex">
+            {galleries.length > 0 && (
+              <Dropdown className="mr-2">
+                <Dropdown.Toggle>
+                  <FormattedMessage id="actions.copy_from_linked_gallery" />
+                </Dropdown.Toggle>
+                <Dropdown.Menu>
+                  {galleries.map((item) => (
+                    <Dropdown.Item
+                      key={item.id}
+                      onClick={() => onCopyFromLinkedGallery(item.id)}
+                    >
+                      {galleryTitle(item) || item.id}
+                    </Dropdown.Item>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown>
+            )}
+            {!isNew && (
               <ButtonGroup className="scraper-group">
                 <ScraperMenu
                   toggle={intl.formatMessage({ id: "actions.scrape_with" })}
@@ -984,8 +1039,8 @@ export const SceneEditPanel: React.FC<IProps> = ({
                   onReloadScrapers={onReloadScrapers}
                 />
               </ButtonGroup>
-            </div>
-          )}
+            )}
+          </div>
         </Row>
         <Row className={cx("form-container px-3", { saving: isSaving })}>
           <Col lg={7} xl={12}>
