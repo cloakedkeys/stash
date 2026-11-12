@@ -56,6 +56,7 @@
     "continue": "Continue",
     "copy_to_clipboard": "Copy to clipboard",
     "create": "Create",
+    "create_all": "Create all",
     "create_chapters": "Create Chapter",
     "create_entity": "Create {entityType}",
     "create_marker": "Create Marker",
