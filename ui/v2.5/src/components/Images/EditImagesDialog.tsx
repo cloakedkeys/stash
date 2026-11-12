@@ -5,7 +5,8 @@ import { useBulkImageUpdate } from "src/core/StashService";
 import * as GQL from "src/core/generated-graphql";
 import { StudioSelect } from "../Shared/Select";
 import { ModalComponent } from "../Shared/Modal";
-import { MultiSet } from "../Shared/MultiSet";
+import { MultiSet, MultiSetModeButtons } from "../Shared/MultiSet";
+import { URLListInput } from "../Shared/URLField";
 import { useToast } from "src/hooks/Toast";
 import { useIsAdmin } from "src/hooks/CurrentUser";
 import { RatingSystem } from "../Shared/Rating/RatingSystem";
@@ -193,6 +194,30 @@ export const EditImagesDialog: React.FC<IListOperationProps> = (
               value={updateInput.code}
               valueChanged={(newValue) => setUpdateField({ code: newValue })}
               unsetDisabled={unsetDisabled}
+            />
+          </BulkUpdateFormGroup>
+
+          <BulkUpdateFormGroup name="urls" inline={false}>
+            <MultiSetModeButtons
+              mode={updateInput.urls?.mode ?? GQL.BulkUpdateIdMode.Add}
+              onSetMode={(mode) =>
+                setUpdateField({
+                  urls: { mode, values: updateInput.urls?.values ?? [] },
+                })
+              }
+              disabled={isUpdating}
+            />
+            <URLListInput
+              value={updateInput.urls?.values ?? []}
+              setValue={(values) =>
+                setUpdateField({
+                  urls: {
+                    mode: updateInput.urls?.mode ?? GQL.BulkUpdateIdMode.Add,
+                    values,
+                  },
+                })
+              }
+              readOnly={isUpdating}
             />
           </BulkUpdateFormGroup>
 
