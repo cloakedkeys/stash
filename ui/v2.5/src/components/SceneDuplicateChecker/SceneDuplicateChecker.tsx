@@ -1025,6 +1025,25 @@ export const SceneDuplicateChecker: React.FC = () => {
                     <tr
                       className={i === 0 ? "duplicate-group" : ""}
                       key={scene.id}
+                      onClick={(e) => {
+                        // Controls (including their icons and labels) keep their
+                        // own actions; the rest of the row toggles selection.
+                        if (
+                          (e.target as Element).closest(
+                            'a, button, input, select, textarea, label, [role="button"], [contenteditable="true"]'
+                          )
+                        ) {
+                          return;
+                        }
+                        const selection = window.getSelection();
+                        if (
+                          selection?.toString() &&
+                          selection.containsNode(e.currentTarget, true)
+                        ) {
+                          return;
+                        }
+                        handleCheck(!checkedScenes[scene.id], scene.id);
+                      }}
                     >
                       <td>
                         <Form.Check
