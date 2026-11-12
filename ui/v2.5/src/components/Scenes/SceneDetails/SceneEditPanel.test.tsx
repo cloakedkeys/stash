@@ -156,6 +156,15 @@ describe("scene edit file times", () => {
     );
   });
 
+  it("uses the loaded scene start for the player even after editing the start", () => {
+    const scene = { files: [file], start_time: 83, end_time: 296 };
+    render(scene);
+    page.range!.onStartTimeChange(100);
+    render(scene);
+    expect(page.range?.startTime).toBe(100);
+    expect(page.range?.playerStartTime).toBe(83);
+  });
+
   it("sends explicit nulls when both times are cleared", () => {
     render({ files: [file], start_time: 83, end_time: 296 });
     page.range!.onStartTimeChange(null);

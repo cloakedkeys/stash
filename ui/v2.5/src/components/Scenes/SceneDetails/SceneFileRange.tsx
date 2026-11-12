@@ -7,6 +7,8 @@ import * as GQL from "src/core/generated-graphql";
 import TextUtils from "src/utils/text";
 
 interface IRangeFieldsProps {
+  // Start of the scene currently loaded in the player, not the edited value.
+  playerStartTime?: number | null;
   startTime: number | null | undefined;
   endTime: number | null | undefined;
   onStartTimeChange: (value: number | null) => void;
@@ -14,6 +16,7 @@ interface IRangeFieldsProps {
 }
 
 export const SceneFileRangeFields: React.FC<IRangeFieldsProps> = ({
+  playerStartTime,
   startTime,
   endTime,
   onStartTimeChange,
@@ -37,7 +40,8 @@ export const SceneFileRangeFields: React.FC<IRangeFieldsProps> = ({
           type="button"
           onClick={() => {
             const position = getPlayerPosition();
-            if (position !== undefined) onChange(position);
+            if (position !== undefined)
+              onChange((playerStartTime ?? 0) + position);
           }}
         >
           <FormattedMessage id="scene_file_range.set_from_current_time" />

@@ -9,11 +9,12 @@ import { SceneFileRangeFields } from "./SceneFileRange";
 
 export const SceneCreateFromPartDialog: React.FC<{
   fileID: string;
+  playerStartTime?: number | null;
   // the file's length in seconds, when known
   fileDuration?: number;
   sceneTitle: string;
   onClose: () => void;
-}> = ({ fileID, fileDuration, sceneTitle, onClose }) => {
+}> = ({ fileID, fileDuration, playerStartTime, sceneTitle, onClose }) => {
   const intl = useIntl();
   const history = useHistory();
   const Toast = useToast();
@@ -78,6 +79,7 @@ export const SceneCreateFromPartDialog: React.FC<{
         />
       </Form.Group>
       <SceneFileRangeFields
+        playerStartTime={playerStartTime}
         startTime={startTime}
         endTime={endTime}
         onStartTimeChange={setStartTime}

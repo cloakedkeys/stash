@@ -44,6 +44,7 @@ import {
 } from "src/hooks/Interactive/context";
 import { SceneInteractiveStatus } from "src/hooks/Interactive/status";
 import { canonicalLanguageCode, languageName } from "src/utils/caption";
+import { isPartScene, scenePlaybackDuration } from "src/utils/scenePlayback";
 import { VIDEO_PLAYER_ID } from "./util";
 import { objectTitle } from "src/core/files";
 import {
@@ -297,10 +298,13 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     onNext,
     onPrevious,
   }) => {
+    const isPart = isPartScene(scene);
+    const interactive = !isPart && scene.interactive;
     const { data: embeddedCaptions, error: embeddedCaptionsError } =
       GQL.useSceneEmbeddedCaptionsQuery({
         variables: { id: scene.id },
         fetchPolicy: "no-cache",
+        skip: isPart,
       });
 
     useEffect(() => {
@@ -322,6 +326,8 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     const loadedSource = useRef<{
       sceneId: string;
       fingerprints: FileFingerprint[];
+      startTime: number | null | undefined;
+      endTime: number | null | undefined;
     }>();
     const [sceneSaveActivity] = useSceneSaveActivity();
     const [sceneIncrementPlayCount] = useSceneIncrementPlayCount();
@@ -364,15 +370,16 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     const castScene = useRef({ scene, file, lanIp });
     castScene.current = { scene, file, lanIp };
 
+    const duration = scenePlaybackDuration(scene, file?.duration ?? 0);
     const maxLoopDuration = interfaceConfig?.maximumLoopDuration ?? 0;
     const looping = useMemo(
       () =>
         !!forceLoop ||
-        (!!file?.duration &&
+        (!!duration &&
           permitLoop &&
           maxLoopDuration !== 0 &&
-          file.duration < maxLoopDuration),
-      [file, permitLoop, maxLoopDuration, forceLoop]
+          duration < maxLoopDuration),
+      [duration, permitLoop, maxLoopDuration, forceLoop]
     );
 
     const getPlayer = useCallback(() => {
@@ -637,7 +644,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     }, [getPlayer, onNext, onPrevious]);
 
     useEffect(() => {
-      if (scene.interactive && interactiveInitialised) {
+      if (interactive && interactiveInitialised) {
         interactiveReady.current = false;
         uploadScript(
           scene.paths.funscript || "",
@@ -649,18 +656,18 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
     }, [
       uploadScript,
       interactiveInitialised,
-      scene.interactive,
+      interactive,
       scene.paths.funscript,
       scene.paths.interactive_csv,
     ]);
 
     // play the script if video started before script upload finished
     useEffect(() => {
-      if (interactiveState !== ConnectionState.Ready) return;
+      if (isPart || interactiveState !== ConnectionState.Ready) return;
       const player = getPlayer();
       if (!player || player.paused()) return;
       interactiveClient.ensurePlaying(player.currentTime());
-    }, [interactiveState, getPlayer, interactiveClient]);
+    }, [isPart, interactiveState, getPlayer, interactiveClient]);
 
     useEffect(() => {
       const player = getPlayer();
@@ -746,7 +753,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       if (!player) return;
 
       function playing(this: VideoJsPlayer) {
-        if (scene.interactive && interactiveReady.current) {
+        if (interactive && interactiveReady.current) {
           interactiveClient.play(this.currentTime());
           // trigger a second script play event to adjust for video player issues
           window.clearTimeout(playingTimer.current);
@@ -776,7 +783,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         player.off("timeupdate", timeupdate);
         window.clearTimeout(playingTimer.current);
       };
-    }, [getPlayer, interactiveClient, scene]);
+    }, [getPlayer, interactiveClient, interactive]);
 
     useEffect(() => {
       const player = getPlayer();
@@ -787,13 +794,20 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       if (!file) return;
       if (
         loadedSource.current?.sceneId === scene.id &&
-        fingerprintsMatch(file.fingerprints, loadedSource.current.fingerprints)
+        fingerprintsMatch(
+          file.fingerprints,
+          loadedSource.current.fingerprints
+        ) &&
+        loadedSource.current.startTime === scene.start_time &&
+        loadedSource.current.endTime === scene.end_time
       )
         return;
 
       loadedSource.current = {
         sceneId: scene.id,
         fingerprints: file.fingerprints,
+        startTime: scene.start_time,
+        endTime: scene.end_time,
       };
 
       setReady(false);
@@ -831,7 +845,6 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         );
       }
 
-      const { duration } = file;
       const sourceSelector = player.sourceSelector();
       sourceSelector.setSources(
         scene.sceneStreams
@@ -867,11 +880,14 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       if (
         !startPosition &&
         !alwaysStartFromBeginning &&
-        file.duration > resumeTime
+        duration > resumeTime
       ) {
         startPosition = resumeTime;
       }
 
+      if (isPart && (startPosition < 0 || startPosition >= duration)) {
+        startPosition = 0;
+      }
       setTime(startPosition);
 
       player.load();
@@ -896,7 +912,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       );
 
       player.ready(() => {
-        player.vttThumbnails().src(scene.paths.vtt ?? null);
+        player.vttThumbnails().src(isPart ? null : (scene.paths.vtt ?? null));
 
         // the browser keeps a pending start position from a previous source
         // that never loaded, so reset it when this scene starts from 0
@@ -918,12 +934,15 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
       uiConfig?.defaultStreamType,
       uiConfig?.defaultStreamingResolution,
       _initialTimestamp,
+      duration,
+      isPart,
     ]);
 
     useEffect(() => {
       const player = getPlayer();
       if (
         !player ||
+        isPart ||
         (!embeddedCaptionsError &&
           embeddedCaptions?.findScene?.id !== scene.id) ||
         loadedSource.current?.sceneId !== scene.id ||
@@ -1019,7 +1038,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         );
       }
       sourceSelector.selectTextTrack();
-    }, [getPlayer, scene, embeddedCaptions, embeddedCaptionsError]);
+    }, [getPlayer, scene, embeddedCaptions, embeddedCaptionsError, isPart]);
 
     useEffect(() => {
       return () => {
@@ -1183,7 +1202,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       // check if we're waiting for the interactive client
       if (
-        scene.interactive &&
+        interactive &&
         interactiveClient.handyKey &&
         currentScript !== scene.paths.funscript
       ) {
@@ -1192,7 +1211,14 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
 
       player.play();
       auto.current = false;
-    }, [getPlayer, scene, ready, interactiveClient, currentScript]);
+    }, [
+      getPlayer,
+      scene,
+      ready,
+      interactiveClient,
+      currentScript,
+      interactive,
+    ]);
 
     // Attach handler for onComplete event
     useEffect(() => {
@@ -1317,7 +1343,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = PatchComponent(
         onKeyDownCapture={onKeyDown}
       >
         <div className="video-wrapper" ref={videoRef} />
-        {scene.interactive &&
+        {interactive &&
           (interactiveState !== ConnectionState.Ready ||
             getPlayer()?.paused()) && <SceneInteractiveStatus />}
         {file && showScrubber && (

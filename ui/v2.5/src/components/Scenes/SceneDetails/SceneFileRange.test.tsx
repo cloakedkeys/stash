@@ -140,6 +140,29 @@ describe("scene file range fields", () => {
     expect(end).toHaveBeenCalledWith(296);
   });
 
+  it.each([
+    83.25,
+    0,
+    null,
+  ])("adds the loaded part start %s, even while editing another start", (playerStartTime) => {
+    const start = vi.fn();
+    const end = vi.fn();
+    render(
+      <SceneFileRangeFields
+        playerStartTime={playerStartTime}
+        startTime={200}
+        endTime={400}
+        onStartTimeChange={start}
+        onEndTimeChange={end}
+      />
+    );
+    page.position.mockReturnValue(12.5);
+    page.buttons[0].onClick!();
+    page.buttons[1].onClick!();
+    expect(start).toHaveBeenCalledWith((playerStartTime ?? 0) + 12.5);
+    expect(end).toHaveBeenCalledWith((playerStartTime ?? 0) + 12.5);
+  });
+
   it("leaves the field unchanged when there is no player", () => {
     const change = vi.fn();
     render(
@@ -182,6 +205,29 @@ describe("create scene from part", () => {
       end_time: 296,
     });
     expect(page.push).toHaveBeenCalledWith("/scenes/9");
+  });
+
+  it("creates another part using file times from a part player", async () => {
+    const element = (
+      <SceneCreateFromPartDialog
+        fileID="7"
+        sceneTitle="Part"
+        playerStartTime={83.25}
+        onClose={vi.fn()}
+      />
+    );
+    render(element);
+    page.position.mockReturnValueOnce(10).mockReturnValueOnce(20);
+    page.buttons[0].onClick!();
+    page.buttons[1].onClick!();
+    render(element);
+    await page.accept!.onClick();
+    expect(page.create).toHaveBeenCalledWith({
+      file_ids: ["7"],
+      title: "Part (part)",
+      start_time: 93.25,
+      end_time: 103.25,
+    });
   });
 
   it("sends null for an empty end time", async () => {
