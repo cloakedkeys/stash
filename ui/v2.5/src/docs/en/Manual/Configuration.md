@@ -211,7 +211,7 @@ These options are typically not exposed in the UI and must be changed manually i
 | `theme_color` | Sets the `theme-color` property in the UI. |
 | `gallery_cover_regex` | The regex responsible for selecting images as gallery covers |
 | `guest_account_enabled` | If true, allows read-only access to the system without authentication. Cannot be enabled when running in single-user mode. |
-| `proxy` | The url of a HTTP(S) proxy to be used when stash makes calls to online services. Example: https://user:password@my.proxy:8080. Note: SOCKS5 proxies are unsupported. |
+| `proxy` | The URL of an HTTP(S) or SOCKS5 proxy used when Stash calls online services, including scrapers, scraped images and stash-box. Examples: `https://user:password@my.proxy:8080` or `socks5://127.0.0.1:1080`. Go HTTP clients also accept `socks5h://` and resolve target hostnames through the proxy for both SOCKS5 schemes. Restart Stash after changing this setting. |
 | `no_proxy` | A list of domains for which the proxy must not be used. Default is all local LAN: localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12 |
 | `sequential_scanning` | Modifies behaviour of the scanning functionality to generate support files (previews/sprites/phash) at the same time as fingerprinting/screenshotting. Useful when scanning cached remote files. |
 | `trusted_proxies` | A list of trusted proxy IPs or CIDR ranges. If a request comes from a trusted proxy or if the request IP address is a local address, the `X-FORWARDED-FOR` header will be used to determine the client's real IP address. Default is empty (no trusted proxies). |
@@ -221,6 +221,10 @@ These options are typically not exposed in the UI and must be changed manually i
 | `signed_url_expiry` | The expiry time for signed URLs, in seconds. Signed URLs are used when authentication is required. Defaults to 4 hours to accommodate long video playback sessions. |
 | `user_graphql_rate_limit` | The maximum number of API requests per user allowed within the `user_graphql_rate_limit_window_seconds` time window. |
 | `user_graphql_rate_limit_window_seconds` | The time window in seconds for GraphQL API user-based rate limiting. Only applies if `user_graphql_rate_limit` is set. Default is 60 (1 minute). |
+
+Local Chrome scrapers receive the proxy as a `--proxy-server` argument, including when Chrome is found automatically. Stash translates `socks5h://` to Chrome's `socks5://` scheme. Chrome does not support SOCKS5 username/password authentication. For a remote Chrome instance, configure the proxy on that instance when starting it; Stash cannot change its launch arguments.
+
+Script scrapers inherit `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` from Stash. Their HTTP libraries must support SOCKS5. Python scrapers using Requests need its SOCKS dependency installed in the same Python environment (for example, `python -m pip install "requests[socks]"`). Stash does not install Python dependencies. The `no_proxy` setting applies to Go's environment-based HTTP clients; Chrome and script libraries use their own bypass rules.
 
 The following environment variables are also supported:
 
