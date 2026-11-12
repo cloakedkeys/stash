@@ -133,7 +133,7 @@ func (r *sceneResolver) Paths(ctx context.Context, obj *models.Scene) (*ScenePat
 	screenshotPath := builder.GetScreenshotURL()
 	previewPath := builder.GetStreamPreviewURL()
 	webpPath := builder.GetStreamPreviewImageURL()
-	objHash := obj.GetHash(config.GetVideoFileNamingAlgorithm())
+	objHash := scene.GeneratedKey(obj, config.GetVideoFileNamingAlgorithm())
 	vttPath := builder.GetSpriteVTTURL(objHash)
 	spritePath := builder.GetSpriteURL(objHash)
 	interactiveCsvPath := builder.GetInteractiveCSVURL("")

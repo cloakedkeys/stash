@@ -9,6 +9,7 @@ import (
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	scenePkg "github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/scene/generate"
 )
 
@@ -135,7 +136,7 @@ func (t *GenerateMarkersTask) generateSceneMarkers(ctx context.Context, scene *m
 	}
 
 	codec, fullhw := t.determineMarkerCodec(ctx, videoFile)
-	sceneHash := scene.GetHash(t.fileNamingAlgorithm)
+	sceneHash := scenePkg.GeneratedKey(scene, t.fileNamingAlgorithm)
 
 	for i, sceneMarker := range sceneMarkers {
 		index := i + 1
@@ -148,7 +149,7 @@ func (t *GenerateMarkersTask) generateSceneMarkers(ctx context.Context, scene *m
 }
 
 func (t *GenerateMarkersTask) generateMarker(videoFile *models.VideoFile, scene *models.Scene, sceneMarker *models.SceneMarker, codec ffmpeg.VideoCodec, fullhw bool) error {
-	sceneHash := scene.GetHash(t.fileNamingAlgorithm)
+	sceneHash := scenePkg.GeneratedKey(scene, t.fileNamingAlgorithm)
 	seconds := float64(sceneMarker.Seconds)
 
 	// check if marker past duration
@@ -194,7 +195,7 @@ func (t *GenerateMarkersTask) markersNeeded(ctx context.Context) int {
 		return 0
 	}
 
-	sceneHash := t.Scene.GetHash(t.fileNamingAlgorithm)
+	sceneHash := scenePkg.GeneratedKey(t.Scene, t.fileNamingAlgorithm)
 	for _, sceneMarker := range sceneMarkers {
 		seconds := int(sceneMarker.Seconds)
 

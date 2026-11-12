@@ -26,7 +26,7 @@ func (d *FileDeleter) MarkGeneratedFiles(scene *models.Scene) error {
 	if err := d.markSceneGeneratedFiles(scene); err != nil {
 		return err
 	}
-	sceneHash := scene.GetHash(d.FileNamingAlgo)
+	sceneHash := GeneratedKey(scene, d.FileNamingAlgo)
 
 	if sceneHash == "" {
 		return nil
@@ -67,7 +67,7 @@ func (d *FileDeleter) markSceneGeneratedFiles(scene *models.Scene) error {
 // Generated files bypass trash and are permanently deleted since they can be regenerated.
 func (d *FileDeleter) MarkMarkerFiles(scene *models.Scene, seconds int) error {
 	var files []string
-	for _, f := range d.Paths.SceneMarkers.MarkerFiles(scene.GetHash(d.FileNamingAlgo), seconds) {
+	for _, f := range d.Paths.SceneMarkers.MarkerFiles(GeneratedKey(scene, d.FileNamingAlgo), seconds) {
 		files = append(files, existingFiles(f)...)
 	}
 	return d.FilesWithoutTrash(files)

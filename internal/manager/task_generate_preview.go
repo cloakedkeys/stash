@@ -7,6 +7,7 @@ import (
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/scene/generate"
 )
 
@@ -34,7 +35,7 @@ func (t *GeneratePreviewTask) Start(ctx context.Context) {
 	generator := *t.generator
 	t.generator = &generator
 
-	videoChecksum := t.Scene.GetHash(t.fileNamingAlgorithm)
+	videoChecksum := scene.GeneratedKey(&t.Scene, t.fileNamingAlgorithm)
 
 	if t.videoPreviewRequired() {
 		ffprobe := instance.FFProbe
@@ -107,7 +108,7 @@ func (t *GeneratePreviewTask) videoPreviewRequired() bool {
 		return true
 	}
 
-	sceneChecksum := t.Scene.GetHash(t.fileNamingAlgorithm)
+	sceneChecksum := scene.GeneratedKey(&t.Scene, t.fileNamingAlgorithm)
 	if sceneChecksum == "" {
 		return false
 	}
@@ -133,7 +134,7 @@ func (t *GeneratePreviewTask) imagePreviewRequired() bool {
 		return true
 	}
 
-	sceneChecksum := t.Scene.GetHash(t.fileNamingAlgorithm)
+	sceneChecksum := scene.GeneratedKey(&t.Scene, t.fileNamingAlgorithm)
 	if sceneChecksum == "" {
 		return false
 	}

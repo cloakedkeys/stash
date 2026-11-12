@@ -7,6 +7,7 @@ import (
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/scene"
 )
 
 type GenerateSpriteTask struct {
@@ -31,7 +32,7 @@ func (t *GenerateSpriteTask) Start(ctx context.Context) {
 		return
 	}
 
-	sceneHash := t.Scene.GetHash(t.fileNamingAlgorithm)
+	sceneHash := scene.GeneratedKey(&t.Scene, t.fileNamingAlgorithm)
 	imagePath := instance.Paths.Scene.GetSpriteImageFilePath(sceneHash)
 	vttPath := instance.Paths.Scene.GetSpriteVttFilePath(sceneHash)
 
@@ -69,7 +70,7 @@ func (t GenerateSpriteTask) required() bool {
 		return true
 	}
 
-	sceneHash := t.Scene.GetHash(t.fileNamingAlgorithm)
+	sceneHash := scene.GeneratedKey(&t.Scene, t.fileNamingAlgorithm)
 	return !t.doesSpriteExist(sceneHash)
 }
 

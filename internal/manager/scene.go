@@ -241,7 +241,7 @@ func HasTranscode(scene *models.Scene, fileNamingAlgo models.HashAlgorithm) bool
 		return false
 	}
 
-	sceneHash := scene.GetHash(fileNamingAlgo)
+	sceneHash := scenePkg.GeneratedKey(scene, fileNamingAlgo)
 	if sceneHash == "" {
 		return false
 	}
