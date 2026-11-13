@@ -64,6 +64,8 @@ func (tagger *Tagger) PerformerScenes(ctx context.Context, p *models.Performer, 
 	t := getPerformerTaggers(p, tagger.Cache)
 
 	for _, tt := range t {
+		tt.longestMatchOnly = tagger.LongestMatchOnly
+		tt.performerReader = tagger.PerformerReader
 		if err := tt.tagScenes(ctx, paths, rw, func(o *models.Scene) (bool, error) {
 			if err := o.LoadPerformerIDs(ctx, rw); err != nil {
 				return false, err
@@ -94,6 +96,8 @@ func (tagger *Tagger) PerformerAudios(ctx context.Context, p *models.Performer, 
 	t := getPerformerTaggers(p, tagger.Cache)
 
 	for _, tt := range t {
+		tt.longestMatchOnly = tagger.LongestMatchOnly
+		tt.performerReader = tagger.PerformerReader
 		if err := tt.tagAudios(ctx, paths, rw, func(o *models.Audio) (bool, error) {
 			if err := o.LoadPerformerIDs(ctx, rw); err != nil {
 				return false, err
@@ -123,6 +127,8 @@ func (tagger *Tagger) PerformerImages(ctx context.Context, p *models.Performer, 
 	t := getPerformerTaggers(p, tagger.Cache)
 
 	for _, tt := range t {
+		tt.longestMatchOnly = tagger.LongestMatchOnly
+		tt.performerReader = tagger.PerformerReader
 		if err := tt.tagImages(ctx, paths, rw, func(o *models.Image) (bool, error) {
 			if err := o.LoadPerformerIDs(ctx, rw); err != nil {
 				return false, err
@@ -152,6 +158,8 @@ func (tagger *Tagger) PerformerGalleries(ctx context.Context, p *models.Performe
 	t := getPerformerTaggers(p, tagger.Cache)
 
 	for _, tt := range t {
+		tt.longestMatchOnly = tagger.LongestMatchOnly
+		tt.performerReader = tagger.PerformerReader
 		if err := tt.tagGalleries(ctx, paths, rw, func(o *models.Gallery) (bool, error) {
 			if err := o.LoadPerformerIDs(ctx, rw); err != nil {
 				return false, err

@@ -201,6 +201,7 @@ fragment ConfigDefaultSettingsData on ConfigDefaultSettingsResult {
   }
 
   autoTag {
+    longest_match_only
     performers
     studios
     tags

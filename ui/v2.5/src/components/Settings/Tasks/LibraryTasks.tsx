@@ -12,6 +12,7 @@ import { useAutoTagTrigger } from "src/hooks/useAutoTagTrigger";
 import { IdentifyDialog } from "../../Dialogs/IdentifyDialog/IdentifyDialog";
 import * as GQL from "src/core/generated-graphql";
 import { DirectorySelectionDialog } from "./DirectorySelectionDialog";
+import { AutoTagOptions } from "./AutoTagOptions";
 import { ScanOptions } from "./ScanOptions";
 import { useToast } from "src/hooks/Toast";
 import { GenerateOptions } from "./GenerateOptions";
@@ -25,53 +26,6 @@ import {
   AutoTagWarning,
 } from "src/components/Shared/AutoTagConfirmDialog";
 import { useSettings } from "../context";
-
-interface IAutoTagOptions {
-  options: GQL.AutoTagMetadataInput;
-  setOptions: (s: GQL.AutoTagMetadataInput) => void;
-}
-
-const AutoTagOptions: React.FC<IAutoTagOptions> = ({
-  options,
-  setOptions: setOptionsState,
-}) => {
-  const { performers, studios, tags } = options;
-  const wildcard = ["*"];
-
-  function set(v?: boolean) {
-    if (v) {
-      return wildcard;
-    }
-    return [];
-  }
-
-  function setOptions(input: Partial<GQL.AutoTagMetadataInput>) {
-    setOptionsState({ ...options, ...input });
-  }
-
-  return (
-    <>
-      <BooleanSetting
-        id="autotag-performers"
-        checked={!!performers?.length}
-        headingID="performers"
-        onChange={(v) => setOptions({ performers: set(v) })}
-      />
-      <BooleanSetting
-        id="autotag-studios"
-        checked={!!studios?.length}
-        headingID="studios"
-        onChange={(v) => setOptions({ studios: set(v) })}
-      />
-      <BooleanSetting
-        id="autotag-tags"
-        checked={!!tags?.length}
-        headingID="tags"
-        onChange={(v) => setOptions({ tags: set(v) })}
-      />
-    </>
-  );
-};
 
 export const LibraryTasks: React.FC = () => {
   const intl = useIntl();

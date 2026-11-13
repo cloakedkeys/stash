@@ -36,7 +36,17 @@ func getAudioFileTagger(s *models.Audio, cache *match.Cache) tagger {
 
 // AudioPerformers tags the provided audio with performers whose name matches the audio's path.
 func AudioPerformers(ctx context.Context, s *models.Audio, rw AudioPerformerUpdater, performerReader models.PerformerAutoTagQueryer, cache *match.Cache) error {
+	return audioPerformers(ctx, s, rw, performerReader, cache, false)
+}
+
+// AudioPerformersAtPath applies this tagger's performer matching options to audio.
+func (tagger *Tagger) AudioPerformersAtPath(ctx context.Context, s *models.Audio, rw AudioPerformerUpdater, performerReader models.PerformerAutoTagQueryer) error {
+	return audioPerformers(ctx, s, rw, performerReader, tagger.Cache, tagger.LongestMatchOnly)
+}
+
+func audioPerformers(ctx context.Context, s *models.Audio, rw AudioPerformerUpdater, performerReader models.PerformerAutoTagQueryer, cache *match.Cache, longestMatchOnly bool) error {
 	t := getAudioFileTagger(s, cache)
+	t.longestMatchOnly = longestMatchOnly
 
 	return t.tagPerformers(ctx, performerReader, func(subjectID, otherID int) (bool, error) {
 		if err := s.LoadPerformerIDs(ctx, rw); err != nil {

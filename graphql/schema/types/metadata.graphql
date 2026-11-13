@@ -235,6 +235,8 @@ input CleanGeneratedInput {
 }
 
 input AutoTagMetadataInput {
+  "Only keep performer matches that are not inside a longer performer match"
+  longest_match_only: Boolean
   "Paths to tag, null for all files"
   paths: [String!]
   """
@@ -252,6 +254,8 @@ input AutoTagMetadataInput {
 }
 
 type AutoTagMetadataOptions {
+  "Only keep performer matches that are not inside a longer performer match"
+  longest_match_only: Boolean
   """
   IDs of performers to tag files with, or "*" for all
   """

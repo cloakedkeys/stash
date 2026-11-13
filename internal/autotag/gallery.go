@@ -49,6 +49,7 @@ func getGalleryFileTagger(s *models.Gallery, cache *match.Cache) tagger {
 // match is applied.
 func (tagger *Tagger) GalleryPerformersAtPath(ctx context.Context, s *models.Gallery, rw GalleryPerformerUpdater, performerReader models.PerformerAutoTagQueryer) error {
 	t := getGalleryFileTagger(s, tagger.Cache)
+	t.longestMatchOnly = tagger.LongestMatchOnly
 
 	return t.tagPerformers(ctx, performerReader, func(subjectID, otherID int) (bool, error) {
 		if err := s.LoadPerformerIDs(ctx, rw); err != nil {
