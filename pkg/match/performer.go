@@ -1,6 +1,7 @@
 package match
 
 import (
+	"context"
 	"unicode"
 	"unicode/utf8"
 
@@ -68,4 +69,41 @@ func originalPathOffset(path string, loweredOffset int) int {
 		lowered += utf8.RuneLen(unicode.ToLower(r))
 	}
 	return len(path)
+}
+
+// LongestPerformerMatches drops occurrences fully contained in a strictly longer
+// occurrence. Equal spans, partial overlaps and separate occurrences survive.
+func LongestPerformerMatches(matches []PerformerMatch) []PerformerMatch {
+	var ret []PerformerMatch
+	for _, m := range matches {
+		contained := false
+		for _, other := range matches {
+			if other.Length > m.Length && other.Position <= m.Position && other.Position+other.Length >= m.Position+m.Length {
+				contained = true
+				break
+			}
+		}
+		if !contained {
+			ret = append(ret, m)
+		}
+	}
+	return ret
+}
+
+// PathToLongestPerformers uses the same candidates as PathToPerformers, then
+// removes contained occurrences before deduplicating performers.
+func PathToLongestPerformers(ctx context.Context, path string, reader models.PerformerAutoTagQueryer, cache *Cache, trimExt bool) ([]*models.Performer, error) {
+	performers, err := PathToPerformers(ctx, path, reader, cache, trimExt)
+	if err != nil {
+		return nil, err
+	}
+	var ret []*models.Performer
+	seen := make(map[int]bool)
+	for _, m := range LongestPerformerMatches(PerformersForPath(path, performers, cache)) {
+		if !seen[m.Performer.ID] {
+			seen[m.Performer.ID] = true
+			ret = append(ret, m.Performer)
+		}
+	}
+	return ret, nil
 }

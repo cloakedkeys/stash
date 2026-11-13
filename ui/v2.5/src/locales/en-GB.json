@@ -634,6 +634,10 @@
         "disable_warning": {
           "description": "Disable the confirmation warning shown before running auto tag.",
           "heading": "Disable auto tag warning"
+        },
+        "longest_match_only": {
+          "description": "Skip shorter performer names inside longer matches, such as Jane inside Jane Doe.",
+          "heading": "Only match the longest performer names"
         }
       },
       "auto_tag_based_on_filenames": "Auto tag content based on file paths.",

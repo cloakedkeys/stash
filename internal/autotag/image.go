@@ -40,6 +40,7 @@ func getImageFileTagger(s *models.Image, cache *match.Cache) tagger {
 // applied.
 func (tagger *Tagger) ImagePerformersAtPath(ctx context.Context, s *models.Image, rw ImagePerformerUpdater, performerReader models.PerformerAutoTagQueryer) error {
 	t := getImageFileTagger(s, tagger.Cache)
+	t.longestMatchOnly = tagger.LongestMatchOnly
 
 	return t.tagPerformers(ctx, performerReader, func(subjectID, otherID int) (bool, error) {
 		if err := s.LoadPerformerIDs(ctx, rw); err != nil {

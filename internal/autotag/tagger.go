@@ -24,16 +24,21 @@ import (
 )
 
 type Tagger struct {
-	TxnManager txn.Manager
-	Cache      *match.Cache
+	LongestMatchOnly bool
+	// PerformerReader supplies competing matches for performer-based longest matching.
+	PerformerReader models.PerformerAutoTagQueryer
+	TxnManager      txn.Manager
+	Cache           *match.Cache
 }
 
 type tagger struct {
-	ID      int
-	Type    string
-	Name    string
-	Path    string
-	trimExt bool
+	longestMatchOnly bool
+	performerReader  models.PerformerAutoTagQueryer
+	ID               int
+	Type             string
+	Name             string
+	Path             string
+	trimExt          bool
 
 	cache *match.Cache
 }
@@ -53,7 +58,11 @@ func (t *tagger) addLog(otherType, otherName string) {
 }
 
 func (t *tagger) tagPerformers(ctx context.Context, performerReader models.PerformerAutoTagQueryer, addFunc addLinkFunc) error {
-	others, err := match.PathToPerformers(ctx, t.Path, performerReader, t.cache, t.trimExt)
+	find := match.PathToPerformers
+	if t.longestMatchOnly {
+		find = match.PathToLongestPerformers
+	}
+	others, err := find(ctx, t.Path, performerReader, t.cache, t.trimExt)
 	if err != nil {
 		return err
 	}
@@ -121,8 +130,14 @@ func (t *tagger) tagScenes(ctx context.Context, paths []string, sceneReader mode
 		find = match.PathToScenesCandidatesFn
 	}
 	return find(ctx, t.Name, paths, sceneReader, func(ctx context.Context, p *models.Scene) error {
-		if t.Type == "performer" && !t.performerMatchesPath(p.Path) {
-			return nil
+		if t.Type == "performer" {
+			matched, err := t.performerMatchesPathWithOptions(ctx, p.Path, false)
+			if err != nil {
+				return err
+			}
+			if !matched {
+				return nil
+			}
 		}
 		added, err := addFunc(p)
 
@@ -144,8 +159,14 @@ func (t *tagger) tagAudios(ctx context.Context, paths []string, audioReader mode
 		find = match.PathToAudiosCandidatesFn
 	}
 	return find(ctx, t.Name, paths, audioReader, func(ctx context.Context, p *models.Audio) error {
-		if t.Type == "performer" && !t.performerMatchesPath(p.Path) {
-			return nil
+		if t.Type == "performer" {
+			matched, err := t.performerMatchesPathWithOptions(ctx, p.Path, false)
+			if err != nil {
+				return err
+			}
+			if !matched {
+				return nil
+			}
 		}
 		added, err := addFunc(p)
 
@@ -167,8 +188,14 @@ func (t *tagger) tagImages(ctx context.Context, paths []string, imageReader mode
 		find = match.PathToImagesCandidatesFn
 	}
 	return find(ctx, t.Name, paths, imageReader, func(ctx context.Context, p *models.Image) error {
-		if t.Type == "performer" && !t.performerMatchesPath(p.Path) {
-			return nil
+		if t.Type == "performer" {
+			matched, err := t.performerMatchesPathWithOptions(ctx, p.Path, false)
+			if err != nil {
+				return err
+			}
+			if !matched {
+				return nil
+			}
 		}
 		added, err := addFunc(p)
 
@@ -190,8 +217,14 @@ func (t *tagger) tagGalleries(ctx context.Context, paths []string, galleryReader
 		find = match.PathToGalleriesCandidatesFn
 	}
 	return find(ctx, t.Name, paths, galleryReader, func(ctx context.Context, p *models.Gallery) error {
-		if t.Type == "performer" && !t.performerMatchesPath(p.Path) {
-			return nil
+		if t.Type == "performer" {
+			matched, err := t.performerMatchesPathWithOptions(ctx, p.Path, p.PrimaryFileID != nil)
+			if err != nil {
+				return err
+			}
+			if !matched {
+				return nil
+			}
 		}
 		added, err := addFunc(p)
 
@@ -216,4 +249,20 @@ func (t *tagger) performerMatchesPath(path string) bool {
 		}
 	}
 	return false
+}
+
+func (t *tagger) performerMatchesPathWithOptions(ctx context.Context, path string, trimExt bool) (bool, error) {
+	if !t.longestMatchOnly {
+		return t.performerMatchesPath(path), nil
+	}
+	performers, err := match.PathToLongestPerformers(ctx, path, t.performerReader, t.cache, trimExt)
+	if err != nil {
+		return false, err
+	}
+	for _, p := range performers {
+		if p.ID == t.ID {
+			return true, nil
+		}
+	}
+	return false, nil
 }

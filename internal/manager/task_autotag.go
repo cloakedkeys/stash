@@ -83,13 +83,14 @@ func (j *autoTagJob) autoTagFiles(ctx context.Context, progress *job.Progress, p
 	logger.Infof("Preloaded auto-tag entities in %s", time.Since(preloadBegin))
 
 	t := autoTagFilesTask{
-		paths:      paths,
-		performers: performers,
-		studios:    studios,
-		tags:       tags,
-		progress:   progress,
-		repository: j.repository,
-		cache:      &j.cache,
+		paths:            paths,
+		performers:       performers,
+		studios:          studios,
+		tags:             tags,
+		progress:         progress,
+		repository:       j.repository,
+		cache:            &j.cache,
+		longestMatchOnly: j.input.LongestMatchOnly,
 	}
 
 	t.process(ctx)
@@ -158,8 +159,10 @@ func (j *autoTagJob) autoTagPerformers(ctx context.Context, progress *job.Progre
 
 	r := j.repository
 	tagger := autotag.Tagger{
-		TxnManager: r.TxnManager,
-		Cache:      &j.cache,
+		TxnManager:       r.TxnManager,
+		Cache:            &j.cache,
+		LongestMatchOnly: j.input.LongestMatchOnly,
+		PerformerReader:  r.Performer,
 	}
 
 	for _, performerId := range performerIds {
@@ -453,10 +456,11 @@ func (j *autoTagJob) autoTagTags(ctx context.Context, progress *job.Progress, pa
 }
 
 type autoTagFilesTask struct {
-	paths      []string
-	performers bool
-	studios    bool
-	tags       bool
+	longestMatchOnly bool
+	paths            []string
+	performers       bool
+	studios          bool
+	tags             bool
 
 	progress   *job.Progress
 	repository models.Repository
@@ -642,12 +646,13 @@ func (t *autoTagFilesTask) processScenes(ctx context.Context) {
 			}
 			taskQueue.Add(fmt.Sprintf("Auto-tagging %s", ss.DisplayName()), func(ctx context.Context) {
 				tt := autoTagSceneTask{
-					repository: r,
-					scene:      ss,
-					performers: t.performers,
-					studios:    t.studios,
-					tags:       t.tags,
-					cache:      t.cache,
+					repository:       r,
+					scene:            ss,
+					performers:       t.performers,
+					studios:          t.studios,
+					tags:             t.tags,
+					cache:            t.cache,
+					longestMatchOnly: t.longestMatchOnly,
 				}
 				tt.Start(ctx)
 				t.progress.Increment()
@@ -701,12 +706,13 @@ func (t *autoTagFilesTask) processAudios(ctx context.Context) {
 			}
 
 			tt := autoTagAudioTask{
-				repository: r,
-				audio:      ss,
-				performers: t.performers,
-				studios:    t.studios,
-				tags:       t.tags,
-				cache:      t.cache,
+				repository:       r,
+				audio:            ss,
+				performers:       t.performers,
+				studios:          t.studios,
+				tags:             t.tags,
+				cache:            t.cache,
+				longestMatchOnly: t.longestMatchOnly,
 			}
 
 			var wg sync.WaitGroup
@@ -779,12 +785,13 @@ func (t *autoTagFilesTask) processImages(ctx context.Context) {
 			}
 			taskQueue.Add(fmt.Sprintf("Auto-tagging %s", ss.DisplayName()), func(ctx context.Context) {
 				tt := autoTagImageTask{
-					repository: r,
-					image:      ss,
-					performers: t.performers,
-					studios:    t.studios,
-					tags:       t.tags,
-					cache:      t.cache,
+					repository:       r,
+					image:            ss,
+					performers:       t.performers,
+					studios:          t.studios,
+					tags:             t.tags,
+					cache:            t.cache,
+					longestMatchOnly: t.longestMatchOnly,
 				}
 				tt.Start(ctx)
 				t.progress.Increment()
@@ -853,12 +860,13 @@ func (t *autoTagFilesTask) processGalleries(ctx context.Context) {
 			}
 			taskQueue.Add(fmt.Sprintf("Auto-tagging %s", ss.DisplayName()), func(ctx context.Context) {
 				tt := autoTagGalleryTask{
-					repository: r,
-					gallery:    ss,
-					performers: t.performers,
-					studios:    t.studios,
-					tags:       t.tags,
-					cache:      t.cache,
+					repository:       r,
+					gallery:          ss,
+					performers:       t.performers,
+					studios:          t.studios,
+					tags:             t.tags,
+					cache:            t.cache,
+					longestMatchOnly: t.longestMatchOnly,
 				}
 				tt.Start(ctx)
 				t.progress.Increment()
@@ -902,8 +910,9 @@ func (t *autoTagFilesTask) process(ctx context.Context) {
 }
 
 type autoTagSceneTask struct {
-	repository models.Repository
-	scene      *models.Scene
+	longestMatchOnly bool
+	repository       models.Repository
+	scene            *models.Scene
 
 	performers bool
 	studios    bool
@@ -914,7 +923,7 @@ type autoTagSceneTask struct {
 
 func (t *autoTagSceneTask) Start(ctx context.Context) {
 	r := t.repository
-	tagger := &autotag.Tagger{TxnManager: r.TxnManager, Cache: t.cache}
+	tagger := &autotag.Tagger{TxnManager: r.TxnManager, Cache: t.cache, LongestMatchOnly: t.longestMatchOnly}
 
 	if err := r.WithDB(ctx, func(ctx context.Context) error {
 		if t.scene.Path == "" {
@@ -947,8 +956,9 @@ func (t *autoTagSceneTask) Start(ctx context.Context) {
 }
 
 type autoTagAudioTask struct {
-	repository models.Repository
-	audio      *models.Audio
+	longestMatchOnly bool
+	repository       models.Repository
+	audio            *models.Audio
 
 	performers bool
 	studios    bool
@@ -967,7 +977,7 @@ func (t *autoTagAudioTask) Start(ctx context.Context, wg *sync.WaitGroup) {
 		}
 
 		if t.performers {
-			if err := autotag.AudioPerformers(ctx, t.audio, r.Audio, r.Performer, t.cache); err != nil {
+			if err := (&autotag.Tagger{Cache: t.cache, LongestMatchOnly: t.longestMatchOnly}).AudioPerformersAtPath(ctx, t.audio, r.Audio, r.Performer); err != nil {
 				return fmt.Errorf("tagging audio performers for %s: %v", t.audio.DisplayName(), err)
 			}
 		}
@@ -991,8 +1001,9 @@ func (t *autoTagAudioTask) Start(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 type autoTagImageTask struct {
-	repository models.Repository
-	image      *models.Image
+	longestMatchOnly bool
+	repository       models.Repository
+	image            *models.Image
 
 	performers bool
 	studios    bool
@@ -1003,7 +1014,7 @@ type autoTagImageTask struct {
 
 func (t *autoTagImageTask) Start(ctx context.Context) {
 	r := t.repository
-	tagger := &autotag.Tagger{TxnManager: r.TxnManager, Cache: t.cache}
+	tagger := &autotag.Tagger{TxnManager: r.TxnManager, Cache: t.cache, LongestMatchOnly: t.longestMatchOnly}
 
 	if err := r.WithDB(ctx, func(ctx context.Context) error {
 		if t.performers {
@@ -1031,8 +1042,9 @@ func (t *autoTagImageTask) Start(ctx context.Context) {
 }
 
 type autoTagGalleryTask struct {
-	repository models.Repository
-	gallery    *models.Gallery
+	longestMatchOnly bool
+	repository       models.Repository
+	gallery          *models.Gallery
 
 	performers bool
 	studios    bool
@@ -1043,7 +1055,7 @@ type autoTagGalleryTask struct {
 
 func (t *autoTagGalleryTask) Start(ctx context.Context) {
 	r := t.repository
-	tagger := &autotag.Tagger{TxnManager: r.TxnManager, Cache: t.cache}
+	tagger := &autotag.Tagger{TxnManager: r.TxnManager, Cache: t.cache, LongestMatchOnly: t.longestMatchOnly}
 
 	if err := r.WithDB(ctx, func(ctx context.Context) error {
 		if t.performers {

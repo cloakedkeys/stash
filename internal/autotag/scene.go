@@ -41,6 +41,7 @@ func getSceneFileTagger(s *models.Scene, cache *match.Cache) tagger {
 // is applied.
 func (tagger *Tagger) ScenePerformersAtPath(ctx context.Context, s *models.Scene, rw ScenePerformerUpdater, performerReader models.PerformerAutoTagQueryer) error {
 	t := getSceneFileTagger(s, tagger.Cache)
+	t.longestMatchOnly = tagger.LongestMatchOnly
 
 	return t.tagPerformers(ctx, performerReader, func(subjectID, otherID int) (bool, error) {
 		if err := s.LoadPerformerIDs(ctx, rw); err != nil {

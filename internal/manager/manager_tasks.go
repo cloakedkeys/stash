@@ -473,6 +473,7 @@ func (s *Manager) generateScreenshot(ctx context.Context, sceneId string, at *fl
 }
 
 type AutoTagMetadataInput struct {
+	LongestMatchOnly bool `json:"longest_match_only"`
 	// Paths to tag, null for all files
 	Paths []string `json:"paths"`
 	// IDs of performers to tag files with, or "*" for all
